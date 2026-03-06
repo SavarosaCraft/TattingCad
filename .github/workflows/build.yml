@@ -38,6 +38,10 @@ jobs:
       - name: Install frontend deps
         run: npm install
 
+      - name: Make tauri executable
+        if: matrix.os == 'ubuntu-22.04'
+        run: chmod +x node_modules/.bin/tauri
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
