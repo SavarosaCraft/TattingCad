@@ -234,7 +234,13 @@ export const IconChevronDown = ({ size = 20, className = '' }) => (
   </svg>
 );
 
-
+export const IconImage = ({ size = 20, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
+    <path d="M200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Z M200,-200 L760,-200 L760,-760 L200,-760 L200,-200 Z M240,-280 L720,-280 L570,-480 L450,-320 L360,-440 L240,-280 Z M200,-200 L200,-760 L200,-200 Z M340,-560 Q365,-560 382.5,-577.5 Q400,-595 400,-620 Q400,-645 382.5,-662.5 Q365,-680 340,-680 Q315,-680 297.5,-662.5 Q280,-645 280,-620 Q280,-595 297.5,-577.5 Q315,-560 340,-560 Z" fill="currentColor"/>
+  </svg>
+);
+export const IconRefImageOn = IconImage;
+export const IconRefImageOff = IconImage; // not used — same as on
 
 
 export const IconOrtho = ({ size = 20, className = '' }) => (
@@ -268,14 +274,6 @@ export const IconPathEdit = ({ size = 20, className = '' }) => (
     <path d="M1.5081,3.175 Q0.8731,3.1419 0.4366,2.6855 Q0,2.2291 0,1.5875 Q0,0.926 0.463,0.463 Q0.926,0 1.5875,0 Q2.2291,0 2.6855,0.4366 Q3.1419,0.8731 3.175,1.5081 L2.6194,1.3428 Q2.5334,0.9856 2.249,0.7574 Q1.9645,0.5292 1.5875,0.5292 Q1.1509,0.5292 0.84,0.8401 Q0.5292,1.1509 0.5292,1.5875 Q0.5292,1.9645 0.7574,2.249 Q0.9856,2.5334 1.3428,2.6194 Z M3.8431,4.3656 L2.712,3.2345 L2.3812,4.2333 L1.5875,1.5875 L4.2333,2.3812 L3.2345,2.712 L4.3656,3.8431 Z" fill="currentColor" strokeWidth="0.0066"/>
   </svg>
 );
-export const IconImage = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Z M200,-200 L760,-200 L760,-760 L200,-760 L200,-200 Z M240,-280 L720,-280 L570,-480 L450,-320 L360,-440 L240,-280 Z M200,-200 L200,-760 L200,-200 Z M340,-560 Q365,-560 382.5,-577.5 Q400,-595 400,-620 Q400,-645 382.5,-662.5 Q365,-680 340,-680 Q315,-680 297.5,-662.5 Q280,-645 280,-620 Q280,-595 297.5,-577.5 Q315,-560 340,-560 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconRefImageOn = IconImage;
-export const IconRefImageOff = IconImage; // not used — same as on
 
 // ── Element creation ─────────────────────────────────────────────────────────
 export const IconAddRing = ({ size = 20, className = '' }) => (
@@ -548,10 +546,7 @@ export const IconBeadMode = ({ size = 20, className = '' }) => (
   </svg>
 );
 
-// ── Bead structure icons (placeholder until custom SVGs designed) ─────────────
-// Replace with processed Inkscape versions when ready.
-// Candidate files in zip: "core bead only.svg", "core+pico.svg",
-// "core+picot beads.svg", "Beads on picot.svg", "Suspended Beads.svg"
+// ── Bead structure icons ─────────────────────────────────────────────────────
 export const IconBeadCore = ({ size = 20, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 7.2026 7.2026" fill="none" className={className}>
     <path d="M0.9821,2.2727 L0.6079,2.6468 C1.0195,3.0584 1.4856,3.3671 2.0063,3.5729 C2.1166,3.6165 2.2273,3.6559 2.3386,3.6902 A1.2619,1.2619 0 0,0 3.6005,4.9299 A1.2619,1.2619 0 0,0 4.8625,3.6907 C4.9743,3.6562 5.0855,3.6167 5.1963,3.5729 C5.717,3.3671 6.1831,3.0584 6.5947,2.6468 L6.2205,2.2727 C5.8588,2.6344 5.4505,2.9058 4.9953,3.0866 C4.9174,3.1175 4.8391,3.1457 4.7607,3.1713 A1.2619,1.2619 0 0,0 3.6005,2.406 A1.2619,1.2619 0 0,0 2.4404,3.1713 C2.3624,3.1458 2.2848,3.1173 2.2073,3.0866 C1.7521,2.9058 1.3438,2.6344 0.9821,2.2727 Z M3.6005,2.7869 A0.8811,0.8811 0 0,1 4.3881,3.2732 A0.8811,0.8811 0 0,1 4.4816,3.668 A0.8811,0.8811 0 0,1 4.4726,3.7915 A0.8811,0.8811 0 0,1 3.6003,4.549 A0.8811,0.8811 0 0,1 2.728,3.791 A0.8811,0.8811 0 0,1 2.719,3.668 A0.8811,0.8811 0 0,1 2.8125,3.2726 A0.8811,0.8811 0 0,1 3.6,2.7869 Z" fill="currentColor" strokeWidth="0.0066"/>
@@ -754,6 +749,268 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     helpTabTools: 'Tools',
     helpTabFeatures: 'Features',
     helpTabTips: 'Tips',
+
+    // ── View menu ────────────────────────────────────────────────────────────
+    menuView: 'View',
+    menuViewTitle: 'View options',
+    viewFitView: 'Fit View',
+    viewShowInvalidNotation: 'Show Invalid Notation',
+    viewMaterials: 'Materials…',
+    viewThreadProperties: 'Thread Properties…',
+    viewBeadLibrary: 'Bead Library…',
+    viewUIScale: 'UI Scale',
+    viewLoadTheme: 'Load Theme…',
+    viewResetTheme: 'Reset Theme',
+    viewThemeHint: 'Edit indicator colors via tatting-theme.json — see Help → Tips for details.',
+
+    // ── Property bar mode banners ─────────────────────────────────────────────
+    modeRealisticTitle: 'REALISTIC VIEW',
+    modeRealisticSub: 'Editing disabled — pan and zoom only',
+    modePicotJoinTitle: 'PICOT EDIT MODE',
+    modePicotJoinSub: 'Click joint picots to select — then join or cut',
+    modeBeadingTitle: 'BEAD EDIT MODE',
+    modeBeadStructure: 'Structure:',
+    modeBeadCore: 'Core:',
+    modeBeadPicot: 'Picot:',
+    modeBeadLibraryBtn: 'Library…',
+
+    // ── Left toolbar extras ───────────────────────────────────────────────────
+    toolRotationHandlesHide: 'Hide rotation handles (or release Shift)',
+    toolRotationHandlesShow: 'Show rotation handles (or hold Shift)',
+    toolBeadingMode: 'Beading mode — select BE elements to configure beads',
+    toolPanRealistic: 'Pan (only mode in realistic view)',
+    toolPanRealisticSub: 'Pan & scroll',
+    toolPanRealisticSub2: 'only',
+    toolSwitchSchematic: 'Switch back to Schematic mode',
+    toolExitPicotEdit: 'Exit Picot Edit mode (Esc)',
+    toolExitBeadEdit: 'Exit Bead Edit mode (Esc)',
+    toolManageBeadLibrary: 'Manage bead library',
+
+    // ── Multiselect property bar ──────────────────────────────────────────────
+    multiRotateMinus: 'Rotate -90°',
+    multiRotatePlus: 'Rotate +90°',
+    multiFlipH: 'Flip Horizontal',
+    multiFlipV: 'Flip Vertical',
+
+    // ── Edit materials option ─────────────────────────────────────────────────
+    editMaterials: 'Edit materials…',
+
+    // ── Join tip popup ────────────────────────────────────────────────────────
+    joinTipTitle: 'Picot Join Mode',
+    joinTipBody1: 'You are now in Picot Join mode. Elements are dimmed so you can focus on the join points.',
+    joinTipBody2: 'To connect: select two joint picots at the same time (hold Shift and click both orange dots), then press Join in the toolbar. Click a connected pair to disconnect.',
+    joinTipBody3: 'Press Esc or click the Join Picots button again to exit.',
+    joinTipDontShow: "Don't show again",
+    joinTipGotIt: 'Got it',
+
+    // ── New canvas dialog ─────────────────────────────────────────────────────
+    newCanvasTitle: 'New Canvas',
+    newCanvasBody: 'This will discard all current work. Make sure to save first if you want to keep it.',
+    newCanvasCancel: 'Cancel',
+    newCanvasConfirm: 'Discard & New',
+
+    // ── Load confirm dialog ───────────────────────────────────────────────────
+    loadConfirmTitle: 'Load Project',
+    loadConfirmBody: 'This will replace the current canvas. Make sure to save first if you want to keep it.',
+    loadConfirmCancel: 'Cancel',
+    loadConfirmConfirm: 'Discard & Load',
+
+    // ── Remove image dialog ───────────────────────────────────────────────────
+    removeImageTitle: 'Remove Reference Image?',
+    removeImageBody: 'This cannot be undone.',
+    removeImageCancel: 'Cancel',
+    removeImageConfirm: 'Remove',
+
+    // ── Generic dialogs ───────────────────────────────────────────────────────
+    confirmDelete: 'Delete',
+    confirmCancel: 'Cancel',
+    alertOk: 'OK',
+
+    // ── Help ──────────────────────────────────────────────────────────────────
+    helpOpenTab: 'Open help in a new browser tab',
+    helpWindowTitle: 'Tatting Pattern Designer Help',
+
+    // ── Loading ───────────────────────────────────────────────────────────────
+    loadingDmcColors: 'Loading DMC colors...',
+
+    // ── Canvas labels (SVG title elements) ───────────────────────────────────
+    connectableJoinPoint: 'Connectable join point',
+    joinedPicotLabel: 'Joined picot',
+
+    // ── Bead Library panel ────────────────────────────────────────────────────
+    beadLibraryPanelTitle: 'Bead Library',
+    beadAdd: '+ Add',
+    beadDelete: 'Delete',
+    beadSelectPrompt: 'Select a bead to edit',
+    beadPropertiesHeader: 'Bead Properties',
+    beadSizeLabel: 'Size',
+    beadShapeLabel: 'Shape',
+    beadColorLabel: 'Color',
+    beadSizeClassHeader: 'Size Class Settings',
+    beadDsWidthSuffix: '× DS width',
+
+    // ── Thread Properties panel ───────────────────────────────────────────────
+    threadPresetsTitle: 'Thread Presets',
+    threadMeasurementsHeader: 'Measurements',
+    threadPicotLengthsHeader: 'Picot Lengths',
+    threadAltCalcHeader: 'Alternative Calculation',
+    threadAltBadge: 'Alternative',
+    threadPerStitchHeader: 'Per-Stitch Summary',
+    thread20DSWorking: '20 DS working thread',
+    thread20DSCore: '20 DS core thread',
+    thread20DSRegularSample: '20 DS + 10 regular picots sample',
+    thread20DSShortSample: '20 DS + 10 short picots sample',
+    threadCancelBtn: 'Cancel',
+    threadOkBtn: 'OK',
+    threadFromSample: '(from sample)',
+    threadHalfRegular: '(½× regular)',
+    threadWorkingPerDS: 'Working per DS',
+    threadWorkingPerSS: 'Working per SS',
+    threadCorePerDS: 'Core per DS',
+    threadRegularPicot: 'Regular picot',
+    threadLongPicot: 'Long picot',
+    threadShortPicot: 'Short picot',
+    threadJoinedPicot: 'Joined picot',
+
+    // ── Bead shape names ──────────────────────────────────────────────────────
+    shapeCircle: '● Circle',
+    shapeSquare: '■ Square',
+    shapeRectangle: '▬ Rectangle',
+    shapeDiamond: '◆ Diamond',
+    shapeTearUp: 'Tip Out',
+    shapeTearDown: 'Tip In',
+
+    // ── Click to change / rename labels ──────────────────────────────────────
+    clickToChangeColor: 'Click to change color',
+    clickToChangeSizeColor: 'Click to change default color for this size',
+    clickToRename: 'Click to rename',
+    selectAllWithMaterial: 'Select all elements with this material',
+
+    // ── Gradient picker ───────────────────────────────────────────────────────
+    clickGradientPreview: 'Click a gradient to preview',
+
+    // ── Notation hint / other ─────────────────────────────────────────────────
+    notationHintFormat: 'offset:color,offset:color,...',
+    beadCountLabel: 'Beads:',
+    matBLabel: 'Mat B:',
+    materialLabel: 'Material:',
+    regularPicotLabel: 'Regular picot',
+    longPicotLabel: 'Long picot (auto: 2×)',
+    shortPicotLabel: 'Short picot (auto: ½×)',
+    noneOption: '— none —',
+    nextBtn: 'Next →',
+    prevBtn: '← Prev',
+    fitViewBtn: 'Fit View',
+
+    // ── View menu render toggle ───────────────────────────────────────────────
+    viewSwitchRealistic: 'Switch to Realistic',
+    viewSwitchSchematic: 'Switch to Schematic',
+
+    // ── UI Scale ──────────────────────────────────────────────────────────────
+    uiScaleNormal: 'Normal',
+    uiScaleLarge: 'Large',
+
+    // ── Materials Manager panel ───────────────────────────────────────────────
+    materialsTitle: 'Materials',
+    materialsSelectAll: 'Select all',
+    materialsAddBtn: '+ Add Material',
+    materialsHint: 'Click a color swatch to change color. All elements with that material update instantly.',
+    materialNewName: 'Material',
+
+    // ── Color Picker tabs ─────────────────────────────────────────────────────
+    colorPickerTabLabel: 'Color Picker',
+    colorDmcTab: 'DMC Colors',
+    colorGradientsTab: 'Gradients',
+
+    // ── Bead Library: size class labels & descriptions ────────────────────────
+    beadSizeSmall: 'Small (S)',
+    beadSizeMedium: 'Medium (M)',
+    beadSizeLarge: 'Large (L)',
+    beadShapeCircle: '● Circle',
+    beadShapeSquare: '■ Square',
+    beadShapeRectangle: '▬ Rectangle',
+    beadShapeDiamond: '◆ Diamond',
+    beadShapeTipOut: 'Tip Out',
+    beadShapeTipIn: 'Tip In',
+    beadSizeClassHint: 'These control how each size class (S/M/L) renders — the DS width multiplier determines the visual diameter on canvas, and the color is used as the default for new beads of that size.',
+
+    // ── Thread Properties: remaining hardcoded strings ────────────────────────
+    thread20DSWorking: '20 DS working thread',
+    thread20DSCore: '20 DS core thread',
+    threadRegularPicotLabel: 'Regular picot',
+    threadJoinedPicotLabel: 'Joined picot',
+    threadLongPicotLabel: 'Long picot (auto: 2×)',
+    threadLongPicotHint: '= 2 × regular',
+    threadShortPicotLabel: 'Short picot (auto: ½×)',
+    threadShortPicotHintSample: '= from sample',
+    threadShortPicotHintAuto: '= ½ × regular',
+    threadSampleRegularLabel: '20 DS + 10 regular picots sample',
+    threadSampleShortLabel: '20 DS + 10 short picots sample',
+    threadOptional: 'optional',
+    threadAltSampleHint: 'Measure a test sample of 20 DS + 10 picots. Enter total length used.',
+    threadPresetAdd: '+ Add',
+    threadPresetDelete: 'Delete',
+    threadPresetNewName: 'New Preset',
+    threadNewBeadName: 'New Bead',
+
+    // ── Picot Join mode property bar ──────────────────────────────────────────
+    picotJoinBtn: 'Join',
+    picotCutBtn: 'Cut',
+    picotExitBtn: 'Exit Mode',
+
+    // ── Beading mode property bar ─────────────────────────────────────────────
+    beadExitBtn: 'Exit Mode',
+    beadSelectHint: 'tap or drag-select ◆ diamonds',
+    beadSelectedCount: '{n} selected',
+
+    // ── Realistic mode property bar ───────────────────────────────────────────
+    realisticSwitchToSchematic: 'Switch to Schematic',
+
+    // ── Bottom info bar ───────────────────────────────────────────────────────
+    infoNoSelection: 'No selection',
+    info1Selected: '1 object selected',
+    infoNSelected: '{n} objects selected',
+    infoElements: 'Elements',
+    infoZoom: 'Zoom',
+    infoColorPrefix: 'Color',
+    infoRing: 'Ring',
+    infoChain: 'Chain',
+    infoLine: 'Line',
+
+    // ── Property bar — split ring squeeze labels ──────────────────────────────
+    propSqueezeSq: 'Sq:',
+    propSqueezeCA: 'CA:',
+    propsqueezeCB: 'CB:',
+    propResetBtn: 'Reset',
+
+    // ── Help / About dropdown ─────────────────────────────────────────────────
+    menuHelpDropdown: 'Help & Info',
+    helpMenuHelp: 'Help & Quick Reference',
+    helpMenuAbout: 'About TattingCAD',
+    helpMenuKofi: 'Support on Ko-fi ♥',
+    helpMenuCheckUpdate: 'Check for Updates',
+
+    // ── About panel ───────────────────────────────────────────────────────────
+    aboutTitle: 'About TattingCAD',
+    aboutDescription: 'A visual tatting pattern designer for creating and editing lace diagrams.',
+    aboutVersion: 'Version',
+    aboutLicenseHeader: 'License',
+    aboutLicenseText: 'MIT License — Copyright © 2026 SavarosaCraft',
+    aboutLicenseFull: 'Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the above copyright notice.',
+    aboutGithub: 'View on GitHub',
+    aboutClose: 'Close',
+
+    // ── Update checker ────────────────────────────────────────────────────────
+    updateAvailable: 'Update available',
+    updateCurrentVersion: 'You are on v{current}',
+    updateDownload: 'Download',
+    updateDismiss: 'Dismiss',
+    updateChecking: 'Checking for updates…',
+    updateUpToDate: 'You are up to date (v{current})',
+    updateError: 'Could not reach update server',
+    updateLastChecked: 'Last checked',
+    updateNeverChecked: 'Never checked',
+    updateCheckNow: 'Check now',
   },
 };
 
@@ -1063,6 +1320,10 @@ const TattingDesigner = () => {
     return localStorage.getItem('tcad_seen_version') !== APP_VERSION;
   });
   const [showFileMenu, setShowFileMenu] = useState(false); // NEW: file operations dropdown menu
+  const [updateNotice, setUpdateNotice] = useState<{version: string, url: string} | null>(null);
+  const [showHelpMenu, setShowHelpMenu] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+  const [updateCheckStatus, setUpdateCheckStatus] = useState<'idle'|'checking'|'uptodate'|'error'>('idle');
   const [showArrangeMenu, setShowArrangeMenu] = useState(false); // Arrange menu (align/duplicate)
   const [groupRotationInput, setGroupRotationInput] = useState(''); // Temporary input for group rotation
   const [showOptionsMenu, setShowOptionsMenu] = useState(false); // Options menu
@@ -1162,7 +1423,8 @@ const TattingDesigner = () => {
   const fileButtonRef = useRef(null); // For dropdown positioning
   const arrangeButtonRef = useRef(null); // For arrange dropdown positioning
   const optionsButtonRef = useRef(null); // For options dropdown positioning
-  const viewButtonRef = useRef(null); // For view dropdown positioning
+  const viewButtonRef = useRef(null);   // For view dropdown positioning
+  const helpButtonRef = useRef(null);   // For help/about dropdown positioning
   const draggedHandleRef = useRef(null); // NEW: for path edit
   const fileInputRef = useRef(null);     // NEW: for reference image upload
   const loadInputRef = useRef(null);     // NEW: for loading project files
@@ -1511,46 +1773,69 @@ const TattingDesigner = () => {
     loadColors();
   }, []); // Only run on mount
 
-  // Load external translations on mount (translations.json)
-  // Merges into the hardcoded TRANSLATIONS — external file wins for any key it defines.
-  // "_languages" key in the JSON drives the language picker list.
+  // Load external translations on mount.
+  // File layout (all in the same folder as the app):
+  //   languages.json          — manifest: { "en": "English", "hu": "Magyar", ... }
+  //   translations_en.json    — flat key:value pairs for English
+  //   translations_hu.json    — flat key:value pairs for Hungarian
+  //   translations_XX.json    — one file per language code
+  //
+  // languages.json drives the language picker.
+  // Each translations_XX.json is loaded independently — a missing file is silently skipped.
+  // English is always available as the built-in fallback even if translations_en.json is absent.
   useEffect(() => {
     const loadTranslations = async () => {
       try {
-        const response = await fetch('./translations.json');
-        if (!response.ok) return; // Silently skip — hardcoded en always works
-        const data = await response.json();
+        // Step 1: load the language manifest
+        const manifestRes = await fetch('./languages.json');
+        if (!manifestRes.ok) return; // No manifest → use built-in English only
+        const manifest: Record<string, string> = await manifestRes.json();
+        if (typeof manifest !== 'object' || Array.isArray(manifest)) return;
 
-        // Pull language list from _languages block
-        if (data._languages && typeof data._languages === 'object') {
-          setAvailableLanguages(data._languages);
-          // If saved language is now valid, keep it; otherwise try navigator language
-          setLanguage(prev => {
-            if (data._languages[prev]) return prev;
-            const saved = localStorage.getItem('tcad_language');
-            if (saved && data._languages[saved]) return saved;
-            const nav = navigator.language?.split('-')[0] ?? 'en';
-            return data._languages[nav] ? nav : 'en';
-          });
-        }
+        setAvailableLanguages(manifest);
 
-        // Collect all language translation blocks (skip _meta, _languages, keys starting with _)
+        // Resolve initial language: keep current if valid, else saved, else navigator, else 'en'
+        setLanguage(prev => {
+          if (manifest[prev]) return prev;
+          const saved = localStorage.getItem('tcad_language');
+          if (saved && manifest[saved]) return saved;
+          const nav = navigator.language?.split('-')[0] ?? 'en';
+          return manifest[nav] ? nav : 'en';
+        });
+
+        // Step 2: load each language file in parallel
+        const entries = await Promise.all(
+          Object.keys(manifest).map(async (code) => {
+            try {
+              const res = await fetch(`./translations_${code}.json`);
+              if (!res.ok) return [code, null];
+              const data = await res.json();
+              if (typeof data !== 'object' || Array.isArray(data)) return [code, null];
+              // Only accept string values; skip any stray metadata keys
+              const flat: Record<string, string> = {};
+              for (const [k, v] of Object.entries(data)) {
+                if (!k.startsWith('_') && typeof v === 'string') flat[k] = v;
+              }
+              return [code, flat];
+            } catch {
+              return [code, null];
+            }
+          })
+        );
+
         const langs: Record<string, Record<string, string>> = {};
-        for (const [code, block] of Object.entries(data)) {
-          if (code.startsWith('_') || typeof block !== 'object' || Array.isArray(block)) continue;
-          // Filter out _comment* keys within the block
-          const filtered: Record<string, string> = {};
-          for (const [k, v] of Object.entries(block as Record<string, string>)) {
-            if (!k.startsWith('_') && typeof v === 'string') filtered[k] = v;
+        for (const [code, flat] of entries) {
+          if (flat && Object.keys(flat as object).length > 0) {
+            langs[code as string] = flat as Record<string, string>;
           }
-          langs[code] = filtered;
         }
+
         if (Object.keys(langs).length > 0) {
           setExtraTranslations(langs);
           console.log(`🌐 Loaded translations for: ${Object.keys(langs).join(', ')}`);
         }
       } catch (err) {
-        console.log('ℹ️ translations.json not found — using built-in English strings.');
+        console.log('ℹ️ languages.json not found — using built-in English strings.');
       }
     };
     loadTranslations();
@@ -1580,6 +1865,47 @@ const TattingDesigner = () => {
     };
     loadExternalTheme();
   }, []);
+  // Check for updates via GitHub Releases API — at most once every 6 months.
+  // Only fires if the repo is reachable. Never blocks the app. Silently ignored if offline.
+  // localStorage keys:
+  //   tcad_update_last_check  — ISO timestamp of last successful API call
+  //   tcad_update_seen        — version tag the user has already been notified about
+  useEffect(() => {
+    const REPO = 'SavarosaCraft/TattingCad';
+    const SIX_MONTHS_MS = 1000 * 60 * 60 * 24 * 183;
+
+    const lastCheck = localStorage.getItem('tcad_update_last_check');
+    const now = Date.now();
+    if (lastCheck && now - parseInt(lastCheck, 10) < SIX_MONTHS_MS) return;
+
+    const check = async () => {
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/releases/latest`,
+          { headers: { Accept: 'application/vnd.github+json' } }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const latestTag: string = data.tag_name ?? '';          // e.g. "v1.2.0"
+        const latestUrl: string = data.html_url ?? '';
+        localStorage.setItem('tcad_update_last_check', String(now));
+        if (!latestTag) return;
+
+        // Compare: strip leading 'v', compare against APP_VERSION
+        const latestClean = latestTag.replace(/^v/i, '');
+        if (latestClean === APP_VERSION) return;                 // Already up to date
+
+        const alreadySeen = localStorage.getItem('tcad_update_seen');
+        if (alreadySeen === latestTag) return;                   // User already notified
+
+        setUpdateNotice({ version: latestTag, url: latestUrl });
+      } catch {
+        // Offline or API rate-limited — silently skip.
+      }
+    };
+    check();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   React.useEffect(() => {
     if (notesTextareaRef.current && notesTextareaRef.current !== document.activeElement) {
       notesTextareaRef.current.value = patternNotes;
@@ -3623,7 +3949,8 @@ const TattingDesigner = () => {
   // Save project as JSON file
   // New canvas - confirm if there are elements
   const newCanvas = () => {
-    if (elements.length === 0) return; // Already empty
+    // Show warning if canvas has content or has been modified (history > initial state)
+    if (elements.length === 0 && historyIndex === 0) return;
     setShowNewCanvasDialog(true);
   };
 
@@ -5592,40 +5919,69 @@ const TattingDesigner = () => {
           
           if (path.type === 'cubic') {
             if (handleInfo.type === 'control1') {
-              // SIMPLIFIED STABLE APPROACH:
               // - User drags control1 to a new position
-              // - Start point stays FIXED
-              // - End point stays FIXED initially
-              // - Adjust control2 to maintain path length
-              
+              // - Start and End points stay FIXED
+              // - Adjust control2 length (same angle) to maintain path length
+              // - If control1 alone exceeds targetLength, clamp it first
+
               const P0 = { x: path.x, y: path.y };
               const P3 = { x: path.endX, y: path.endY };
-              const P1_new = { x: newControlX, y: newControlY };
-              
+              let P1_new = { x: newControlX, y: newControlY };
+
               // Calculate control1's handle vector (from start)
               const handle1_dx = P1_new.x - P0.x;
               const handle1_dy = P1_new.y - P0.y;
-              const handle1_length = Math.hypot(handle1_dx, handle1_dy);
               const handle1_angle = Math.atan2(handle1_dy, handle1_dx);
-              
-              // Get old control2's handle vector (from end) - we'll preserve its angle
+
+              // Get old control2's handle vector (from end) - preserve its angle
               const old_c2_dx = path.control2X - P3.x;
               const old_c2_dy = path.control2Y - P3.y;
               const old_c2_angle = Math.atan2(old_c2_dy, old_c2_dx);
-              
-              // Binary search for control2 handle length that maintains total path length
+
+              // PRE-CLAMP: check if control1 alone (with control2=0) already exceeds targetLength
+              const minPathWithC1 = calculatePathLength(sampleBezierPath({
+                type: 'cubic',
+                x: P0.x, y: P0.y,
+                control1X: P1_new.x, control1Y: P1_new.y,
+                control2X: P3.x, control2Y: P3.y,  // control2 at zero length
+                endX: P3.x, endY: P3.y
+              }, 20));
+
+              if (minPathWithC1 > targetLength) {
+                // Binary search: find max handle1 length along same angle that keeps path <= targetLength
+                let minH = 0;
+                let maxH = Math.hypot(handle1_dx, handle1_dy);
+                for (let iter = 0; iter < 20; iter++) {
+                  const tryH = (minH + maxH) / 2;
+                  const tryLen = calculatePathLength(sampleBezierPath({
+                    type: 'cubic',
+                    x: P0.x, y: P0.y,
+                    control1X: P0.x + Math.cos(handle1_angle) * tryH,
+                    control1Y: P0.y + Math.sin(handle1_angle) * tryH,
+                    control2X: P3.x, control2Y: P3.y,
+                    endX: P3.x, endY: P3.y
+                  }, 20));
+                  if (tryLen > targetLength) maxH = tryH;
+                  else minH = tryH;
+                }
+                P1_new = {
+                  x: P0.x + Math.cos(handle1_angle) * minH,
+                  y: P0.y + Math.sin(handle1_angle) * minH
+                };
+              }
+
+              // Binary search for control2 handle length that hits targetLength exactly
               let minLen = 0;
               let maxLen = targetLength;
               let bestP2 = { x: path.control2X, y: path.control2Y };
               let bestLengthDiff = Infinity;
-              
+
               for (let iter = 0; iter < 20; iter++) {
                 const c2_length = (minLen + maxLen) / 2;
                 const P2_try = {
                   x: P3.x + Math.cos(old_c2_angle) * c2_length,
                   y: P3.y + Math.sin(old_c2_angle) * c2_length
                 };
-                
                 const tryPath = {
                   type: 'cubic',
                   x: P0.x, y: P0.y,
@@ -5635,21 +5991,12 @@ const TattingDesigner = () => {
                 };
                 const tryLength = calculatePathLength(sampleBezierPath(tryPath, 20));
                 const lengthDiff = Math.abs(tryLength - targetLength);
-                
-                if (lengthDiff < bestLengthDiff) {
-                  bestLengthDiff = lengthDiff;
-                  bestP2 = P2_try;
-                }
-                
+                if (lengthDiff < bestLengthDiff) { bestLengthDiff = lengthDiff; bestP2 = P2_try; }
                 if (lengthDiff < tolerance * 0.5) break;
-                
-                if (tryLength < targetLength) {
-                  minLen = c2_length;
-                } else {
-                  maxLen = c2_length;
-                }
+                if (tryLength < targetLength) minLen = c2_length;
+                else maxLen = c2_length;
               }
-              
+
               return {
                 ...el,
                 paths: [{
@@ -5662,34 +6009,68 @@ const TattingDesigner = () => {
               };
               
             } else if (handleInfo.type === 'control2') {
-              // SIMPLIFIED STABLE APPROACH (mirrored for control2):
               // - User drags control2 to a new position
-              // - End point stays FIXED
-              // - Start point stays FIXED initially
-              // - Adjust control1 to maintain path length
-              
+              // - Start and End points stay FIXED
+              // - Adjust control1 length (same angle) to maintain path length
+              // - If control2 alone exceeds targetLength, clamp it first
+
               const P0 = { x: path.x, y: path.y };
               const P3 = { x: path.endX, y: path.endY };
-              const P2_new = { x: newControlX, y: newControlY };
-              
-              // Get old control1's handle vector (from start) - we'll preserve its angle
+              let P2_new = { x: newControlX, y: newControlY };
+
+              // Calculate control2's handle vector (from end)
+              const handle2_dx = P2_new.x - P3.x;
+              const handle2_dy = P2_new.y - P3.y;
+              const handle2_angle = Math.atan2(handle2_dy, handle2_dx);
+
+              // Get old control1's handle vector (from start) - preserve its angle
               const old_c1_dx = path.control1X - P0.x;
               const old_c1_dy = path.control1Y - P0.y;
               const old_c1_angle = Math.atan2(old_c1_dy, old_c1_dx);
-              
-              // Binary search for control1 handle length that maintains total path length
+
+              // PRE-CLAMP: check if control2 alone (with control1=0) already exceeds targetLength
+              const minPathWithC2 = calculatePathLength(sampleBezierPath({
+                type: 'cubic',
+                x: P0.x, y: P0.y,
+                control1X: P0.x, control1Y: P0.y,  // control1 at zero length
+                control2X: P2_new.x, control2Y: P2_new.y,
+                endX: P3.x, endY: P3.y
+              }, 20));
+
+              if (minPathWithC2 > targetLength) {
+                let minH = 0;
+                let maxH = Math.hypot(handle2_dx, handle2_dy);
+                for (let iter = 0; iter < 20; iter++) {
+                  const tryH = (minH + maxH) / 2;
+                  const tryLen = calculatePathLength(sampleBezierPath({
+                    type: 'cubic',
+                    x: P0.x, y: P0.y,
+                    control1X: P0.x, control1Y: P0.y,
+                    control2X: P3.x + Math.cos(handle2_angle) * tryH,
+                    control2Y: P3.y + Math.sin(handle2_angle) * tryH,
+                    endX: P3.x, endY: P3.y
+                  }, 20));
+                  if (tryLen > targetLength) maxH = tryH;
+                  else minH = tryH;
+                }
+                P2_new = {
+                  x: P3.x + Math.cos(handle2_angle) * minH,
+                  y: P3.y + Math.sin(handle2_angle) * minH
+                };
+              }
+
+              // Binary search for control1 handle length that hits targetLength exactly
               let minLen = 0;
               let maxLen = targetLength;
               let bestP1 = { x: path.control1X, y: path.control1Y };
               let bestLengthDiff = Infinity;
-              
+
               for (let iter = 0; iter < 20; iter++) {
                 const c1_length = (minLen + maxLen) / 2;
                 const P1_try = {
                   x: P0.x + Math.cos(old_c1_angle) * c1_length,
                   y: P0.y + Math.sin(old_c1_angle) * c1_length
                 };
-                
                 const tryPath = {
                   type: 'cubic',
                   x: P0.x, y: P0.y,
@@ -5699,21 +6080,12 @@ const TattingDesigner = () => {
                 };
                 const tryLength = calculatePathLength(sampleBezierPath(tryPath, 20));
                 const lengthDiff = Math.abs(tryLength - targetLength);
-                
-                if (lengthDiff < bestLengthDiff) {
-                  bestLengthDiff = lengthDiff;
-                  bestP1 = P1_try;
-                }
-                
+                if (lengthDiff < bestLengthDiff) { bestLengthDiff = lengthDiff; bestP1 = P1_try; }
                 if (lengthDiff < tolerance * 0.5) break;
-                
-                if (tryLength < targetLength) {
-                  minLen = c1_length;
-                } else {
-                  maxLen = c1_length;
-                }
+                if (tryLength < targetLength) minLen = c1_length;
+                else maxLen = c1_length;
               }
-              
+
               return {
                 ...el,
                 paths: [{
@@ -6376,29 +6748,19 @@ const TattingDesigner = () => {
         
         newPathData = tempPathData;
       } else {
-        // For open paths (chains), scale the path to match new stitch count
+        // For open paths (chains): keep BOTH endpoints fixed, bend the curve to match new length.
+        // Uses the same binary-search-on-perpendicular-depth approach as length-preserving drag.
         if (el.paths && el.paths.length > 0) {
-          const oldLength = el.stitchCount * dsWidth;
           const newLength = parsed.stitchCount * dsWidth;
-          const scaleFactor = newLength / oldLength;
-          
-          // Get the start point (first point of first path)
-          const startX = el.paths[0].x;
-          const startY = el.paths[0].y;
-          
-          // Scale all paths relative to start point
-          const scaledPaths = el.paths.map(path => {
-            if (path.type === 'cubic') {
-              return {
-                ...path,
-                endX: startX + (path.endX - startX) * scaleFactor,
-                endY: startY + (path.endY - startY) * scaleFactor,
-                control1X: startX + (path.control1X - startX) * scaleFactor,
-                control1Y: startY + (path.control1Y - startY) * scaleFactor,
-                control2X: startX + (path.control2X - startX) * scaleFactor,
-                control2Y: startY + (path.control2Y - startY) * scaleFactor,
-              };
-            } else {
+          const tolerance = newLength * 0.005; // 0.5% tolerance — tight but fast
+
+          const adjustedPaths = el.paths.map(path => {
+            if (path.type !== 'cubic') {
+              // Quadratic legacy path — fall back to old scale-from-start
+              const startX = path.x;
+              const startY = path.y;
+              const oldLength = el.stitchCount * dsWidth;
+              const scaleFactor = newLength / oldLength;
               return {
                 ...path,
                 endX: startX + (path.endX - startX) * scaleFactor,
@@ -6407,9 +6769,84 @@ const TattingDesigner = () => {
                 controlY: startY + (path.controlY - startY) * scaleFactor,
               };
             }
+
+            // Cubic bezier: pin start & end, solve for perpendicular bow depth
+            const sx = path.x,    sy = path.y;
+            const ex = path.endX, ey = path.endY;
+            const midX = (sx + ex) / 2;
+            const midY = (sy + ey) / 2;
+            const axisX = ex - sx;
+            const axisY = ey - sy;
+            const perpX = -axisY;
+            const perpY =  axisX;
+            const perpLen = Math.hypot(perpX, perpY);
+
+            // Determine which side of the axis the current control points sit on
+            const oldMidX = (path.control1X + path.control2X) / 2;
+            const oldMidY = (path.control1Y + path.control2Y) / 2;
+            const sideSign = perpLen > 0
+              ? (Math.sign(((oldMidX - midX) * perpX + (oldMidY - midY) * perpY)) || 1)
+              : 1;
+
+            // Straight-line distance between the two endpoints
+            const chordLen = Math.hypot(axisX, axisY);
+
+            // If new length ≤ chord we can't bow — move end endpoint closer along
+            // the same axis so the straight line equals the new length exactly
+            if (newLength <= chordLen || perpLen === 0) {
+              const dirX = chordLen > 0 ? axisX / chordLen : 1;
+              const dirY = chordLen > 0 ? axisY / chordLen : 0;
+              const newEx = sx + dirX * newLength;
+              const newEy = sy + dirY * newLength;
+              return {
+                ...path,
+                endX: newEx, endY: newEy,
+                control1X: sx + dirX * newLength * 0.33,
+                control1Y: sy + dirY * newLength * 0.33,
+                control2X: sx + dirX * newLength * 0.67,
+                control2Y: sy + dirY * newLength * 0.67,
+              };
+            }
+
+            // Binary search: find perpendicular depth that yields newLength
+            let minDepth = 0;
+            let maxDepth = newLength * 2; // generous upper bound
+            let bestC1X = path.control1X, bestC1Y = path.control1Y;
+            let bestC2X = path.control2X, bestC2Y = path.control2Y;
+
+            for (let iter = 0; iter < 20; iter++) {
+              const tryDepth = (minDepth + maxDepth) / 2;
+              const offX = (perpX / perpLen) * tryDepth * sideSign;
+              const offY = (perpY / perpLen) * tryDepth * sideSign;
+
+              const c1x = sx + axisX * 0.33 + offX;
+              const c1y = sy + axisY * 0.33 + offY;
+              const c2x = sx + axisX * 0.67 + offX;
+              const c2y = sy + axisY * 0.67 + offY;
+
+              const tryPath = { type: 'cubic', x: sx, y: sy, endX: ex, endY: ey,
+                                control1X: c1x, control1Y: c1y,
+                                control2X: c2x, control2Y: c2y };
+              const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
+
+              bestC1X = c1x; bestC1Y = c1y;
+              bestC2X = c2x; bestC2Y = c2y;
+
+              if (Math.abs(tryLen - newLength) < tolerance) break;
+              if (tryLen < newLength) minDepth = tryDepth;
+              else                   maxDepth = tryDepth;
+            }
+
+            return {
+              ...path,
+              // endpoints unchanged
+              x: sx, y: sy, endX: ex, endY: ey,
+              control1X: bestC1X, control1Y: bestC1Y,
+              control2X: bestC2X, control2Y: bestC2Y,
+            };
           });
-          
-          newPathData = { paths: scaledPaths };
+
+          newPathData = { paths: adjustedPaths };
         }
       }
       
@@ -8029,6 +8466,8 @@ const TattingDesigner = () => {
       if (renderMode === 'realistic') { setRenderMode('schematic'); return; }
       if (showColorPicker) { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); return; }
       if (showMaterialsPanel) { setShowMaterialsPanel(false); return; }
+      if (showAbout) { setShowAbout(false); return; }
+      if (showHelpMenu) { setShowHelpMenu(false); return; }
       if (showHelp) { setShowHelp(false); return; }
       if (showBeadLibrary) { setShowBeadLibrary(false); return; }
       if (showSaveDialog) { setShowSaveDialog(false); return; }
@@ -8306,6 +8745,33 @@ const TattingDesigner = () => {
           }`}>
             <span>{loadMsg.type === 'success' ? '✓' : '✕'}</span>
             <span>{loadMsg.text}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Update available banner */}
+      {updateNotice && (
+        <div
+          className="fixed bottom-8 right-4 flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border border-blue-400 bg-gray-800 text-white text-sm"
+          style={{ zIndex: 2147483646, maxWidth: '320px' }}
+        >
+          <span className="text-blue-300 text-lg flex-shrink-0">↑</span>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold">{t('updateAvailable')}: {updateNotice.version}</div>
+            <div className="text-gray-400 text-xs">{t('updateCurrentVersion').replace('{current}', APP_VERSION)}</div>
+          </div>
+          <div className="flex flex-col gap-1 flex-shrink-0">
+            <button
+              onClick={() => window.open(updateNotice.url, '_blank')}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-semibold"
+            >{t('updateDownload')}</button>
+            <button
+              onClick={() => {
+                localStorage.setItem('tcad_update_seen', updateNotice.version);
+                setUpdateNotice(null);
+              }}
+              className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"
+            >{t('updateDismiss')}</button>
           </div>
         </div>
       )}
@@ -8687,10 +9153,10 @@ const TattingDesigner = () => {
               onClick={() => setShowViewMenu(!showViewMenu)}
               className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
               style={{ height: '44px', width: window.innerWidth <= 768 ? '44px' : 'auto' }}
-              title="View options"
+              title={t('menuViewTitle')}
             >
               <IconEyeOn size={18} />
-              <span className="text-sm font-medium hide-label-mobile">View</span>
+              <span className="text-sm font-medium hide-label-mobile">{t('menuView')}</span>
               <IconChevronDown size={14} className="hide-label-mobile" />
             </button>
           </div>
@@ -8782,14 +9248,16 @@ const TattingDesigner = () => {
           {/* Divider */}
           <div className="w-px h-8 bg-gray-600"></div>
           
-          {/* Help button */}
+          {/* Help / About dropdown */}
           <button
-            onClick={() => setShowHelp(true)}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center justify-center"
+            ref={helpButtonRef}
+            onClick={() => setShowHelpMenu(v => !v)}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1 justify-center"
             style={{ height: '44px' }}
-            title={t('menuHelp')}
+            title={t('menuHelpDropdown')}
           >
             <IconHelp size={20} />
+            <span className="text-xs">&#9660;</span>
           </button>
         </div>
         
@@ -8802,16 +9270,16 @@ const TattingDesigner = () => {
             <div className="flex items-center gap-3 flex-wrap w-full py-1 top-toolbar-scalable">
               <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-amber-700 border border-amber-400">
                 <IconRenderRealistic size={16} />
-                <span className="font-bold text-sm text-white tracking-wide">REALISTIC VIEW</span>
+                <span className="font-bold text-sm text-white tracking-wide">{t('modeRealisticTitle')}</span>
               </div>
-              <span className="text-gray-400 text-xs">Editing disabled — pan and zoom only</span>
+              <span className="text-gray-400 text-xs">{t('modeRealisticSub')}</span>
               <div className="ml-auto">
                 <button
                   onClick={() => setRenderMode('schematic')}
                   className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                  title="Switch back to Schematic mode"
+                  title={t('toolSwitchSchematic')}
                 >
-                  <IconRenderSchematic size={14} /> Switch to Schematic
+                  <IconRenderSchematic size={14} /> {t('realisticSwitchToSchematic')}
                 </button>
               </div>
             </div>
@@ -8821,9 +9289,9 @@ const TattingDesigner = () => {
               {/* Mode banner */}
               <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-blue-700 border border-blue-400">
                 <IconJoinPicots size={16} />
-                <span className="font-bold text-sm text-white tracking-wide">PICOT EDIT MODE</span>
+                <span className="font-bold text-sm text-white tracking-wide">{t('modePicotJoinTitle')}</span>
               </div>
-              <span className="text-gray-400 text-xs">Click joint picots to select — then join or cut</span>
+              <span className="text-gray-400 text-xs">{t('modePicotJoinSub')}</span>
               <div className="flex items-center gap-1 ml-2">
                 <button
                   onClick={joinSelectedPicots}
@@ -8831,7 +9299,7 @@ const TattingDesigner = () => {
                   className="flex items-center gap-1.5 px-3 py-1 rounded bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium"
                   title={t('toolJoinPicots')}
                 >
-                  <IconLink size={16} /> Join
+                  <IconLink size={16} /> {t('picotJoinBtn')}
                 </button>
                 <button
                   onClick={breakSelectedPicots}
@@ -8839,16 +9307,16 @@ const TattingDesigner = () => {
                   className="flex items-center gap-1.5 px-3 py-1 rounded bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium"
                   title={t('toolBreakPicots')}
                 >
-                  <IconUnlink size={16} /> Cut
+                  <IconUnlink size={16} /> {t('picotCutBtn')}
                 </button>
               </div>
               <div className="ml-auto">
                 <button
                   onClick={() => { setActiveMode(null); setShowJoinTip(false); }}
                   className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                  title="Exit Picot Edit mode (Esc)"
+                  title={t('toolExitPicotEdit')}
                 >
-                  ✕ Exit Mode
+                  ✕ {t('picotExitBtn')}
                 </button>
               </div>
             </div>
@@ -8913,19 +9381,19 @@ const TattingDesigner = () => {
                   {/* Mode banner */}
                   <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-purple-700 border border-purple-400 flex-shrink-0">
                     <IconBeadMode size={16} />
-                    <span className="font-bold text-sm text-white tracking-wide">BEAD EDIT MODE</span>
+                    <span className="font-bold text-sm text-white tracking-wide">{t('modeBeadingTitle')}</span>
                   </div>
 
                   {/* Selection hint */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {selectedBEs.length === 0 && <span className="text-gray-400 text-xs">tap or drag-select ◆ diamonds</span>}
-                    {selectedBEs.length > 1 && <span className="text-purple-300 text-xs">{selectedBEs.length} selected</span>}
+                    {selectedBEs.length === 0 && <span className="text-gray-400 text-xs">{t('beadSelectHint')}</span>}
+                    {selectedBEs.length > 1 && <span className="text-purple-300 text-xs">{t('beadSelectedCount').replace('{n}', String(selectedBEs.length))}</span>}
                   </div>
 
                   {bePicot && <>
                     {/* Structure buttons */}
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-gray-400 text-xs mr-1">Structure:</span>
+                      <span className="text-gray-400 text-xs mr-1">{t('modeBeadStructure')}</span>
                       {STRUCTURES.map(s => (
                         <button key={s.id}
                           onClick={() => updateBEPicot({beStructure: s.id})}
@@ -8939,7 +9407,7 @@ const TattingDesigner = () => {
                     {/* Joint toggle */}
                     <button
                       onClick={() => updateBEPicot({beIsJoint: !bePicot.beIsJoint})}
-                      title="Connectable join point"
+                      title={t('connectableJoinPoint')}
                       className={`px-2 py-0.5 rounded text-xs border flex-shrink-0 top-toolbar-scalable ${bePicot.beIsJoint ? 'bg-yellow-600 border-yellow-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-400'}`}
                       style={{touchAction:'manipulation'}}
                     ><IconLink size={14} /></button>
@@ -8950,9 +9418,9 @@ const TattingDesigner = () => {
                     <button
                       onClick={() => { setActiveMode(null); setSelectedBEs([]); }}
                       className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                      title="Exit Bead Edit mode (Esc)"
+                      title={t('toolExitBeadEdit')}
                     >
-                      ✕ Exit Mode
+                      ✕ {t('beadExitBtn')}
                     </button>
                   </div>
                 </div>
@@ -8963,7 +9431,7 @@ const TattingDesigner = () => {
                     {/* Core bead */}
                     {coreBeadsEnabled && (
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <span className="text-gray-400 text-xs">Core:</span>
+                        <span className="text-gray-400 text-xs">{t('modeBeadCore')}</span>
                         <BeadSlot slotIdx={0} beadIds={bePicot.coreBeads} field="coreBeads" />
                       </div>
                     )}
@@ -8971,7 +9439,7 @@ const TattingDesigner = () => {
                     {/* Picot beads (up to 3) */}
                     {picotBeadsEnabled && (
                       <div className="flex items-center gap-1 flex-shrink-0 flex-wrap">
-                        <span className="text-gray-400 text-xs">Picot:</span>
+                        <span className="text-gray-400 text-xs">{t('modeBeadPicot')}</span>
                         {[0,1,2].map(i => (
                           <BeadSlot key={i} slotIdx={i} beadIds={bePicot.picotBeads} field="picotBeads" />
                         ))}
@@ -8982,8 +9450,8 @@ const TattingDesigner = () => {
                     <button
                       onClick={() => setShowBeadLibrary(true)}
                       className="px-2 py-0.5 bg-purple-800 hover:bg-purple-700 text-purple-200 text-xs rounded border border-purple-600 flex-shrink-0"
-                      title="Manage bead library"
-                    >Library…</button>
+                      title={t('toolManageBeadLibrary')}
+                    >{t('modeBeadLibraryBtn')}</button>
                   </div>
                 )}
 
@@ -8994,9 +9462,9 @@ const TattingDesigner = () => {
               {selectedElement.type === 'line' ? (
                 /* Line properties: order number + optional bead notation */
                 <div className="flex items-center gap-0.5 md:gap-3">
-                  <span className="text-xs text-gray-400 px-2">Line</span>
+                  <span className="text-xs text-gray-400 px-2">{t('infoLine')}</span>
                   <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                    <label className="text-xs text-gray-400 hide-label-mobile">Order:</label>
+                    <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
                     <input
                       type="text"
                       value={selectedElement.orderNumber || ''}
@@ -9806,7 +10274,7 @@ const TattingDesigner = () => {
 
               {/* Order number - for all elements (rings and chains) */}
               <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                <label className="text-xs text-gray-400 hide-label-mobile">Order:</label>
+                <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
                 <input
                   type="text"
                   value={selectedElement.orderNumber || ''}
@@ -9861,7 +10329,7 @@ const TattingDesigner = () => {
                   {/* Shape toggle - hide for split rings */}
                   {!selectedElement.isSplitRing && (
                     <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                      <label className="text-xs text-gray-400 hide-label-mobile">Shape:</label>
+                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propShape')}</label>
                       <button
                         onClick={toggleShape}
                         className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 flex items-center gap-1"
@@ -9876,7 +10344,7 @@ const TattingDesigner = () => {
                   {selectedElement.isSplitRing ? (
                     /* Split ring: Sq=squash, CA=C-shape section A, CB=C-shape section B */
                     <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable flex-wrap">
-                      <label className="text-xs text-gray-400 hide-label-mobile">Sq:</label>
+                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueezeSq')}</label>
                       <input
                         type="range" min="0" max="1" step="0.05"
                         value={selectedElement.squeeze ?? 0.25}
@@ -9897,7 +10365,7 @@ const TattingDesigner = () => {
                         className="w-14"
                       />
                       <span className="text-xs text-gray-400 w-6">{(selectedElement.squeeze ?? 0.25).toFixed(2)}</span>
-                      <label className="text-xs text-gray-400 hide-label-mobile">CA:</label>
+                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueezeCA')}</label>
                       <input
                         type="range" min="0" max="3" step="0.05"
                         value={selectedElement.squeezeCA ?? 0.75}
@@ -9918,7 +10386,7 @@ const TattingDesigner = () => {
                         className="w-14"
                       />
                       <span className="text-xs text-gray-400 w-6">{(selectedElement.squeezeCA ?? 0.75).toFixed(2)}</span>
-                      <label className="text-xs text-gray-400 hide-label-mobile">CB:</label>
+                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propsqueezeCB')}</label>
                       <input
                         type="range" min="0" max="3" step="0.05"
                         value={selectedElement.squeezeCB ?? 0.75}
@@ -9951,12 +10419,12 @@ const TattingDesigner = () => {
                         }}
                         className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
                         title={t('propResetSqueeze')}
-                      >Reset</button>
+                      >{t('propResetBtn')}</button>
                     </div>
                   ) : (
                     /* Regular ring: single squeeze slider */
                     <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                      <label className="text-xs text-gray-400 hide-label-mobile">Squeeze:</label>
+                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueeze')}</label>
                       <input
                         type="range" min="-0.5" max="0.5" step="0.1"
                         value={selectedElement.squeeze || 0}
@@ -9991,7 +10459,7 @@ const TattingDesigner = () => {
                         }}
                         className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
                         title={t('propResetSqueeze')}
-                      >Reset</button>
+                      >{t('propResetBtn')}</button>
                     </div>
                   )}
                 </>
@@ -10001,7 +10469,7 @@ const TattingDesigner = () => {
               {/* Material assignment dropdown — end of property bar */}
               <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
               <div className="flex items-center gap-1 top-toolbar-scalable">
-                <label className="text-xs text-gray-400 hide-label-mobile">Material:</label>
+                <label className="text-xs text-gray-400 hide-label-mobile">{t('materialLabel')}</label>
                 <select
                   value={selectedElement.materialId || 'default'}
                   onChange={(e) => {
@@ -10018,7 +10486,7 @@ const TattingDesigner = () => {
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                   <option disabled>──────</option>
-                  <option value="__edit__">Edit materials…</option>
+                  <option value="__edit__">{t('editMaterials')}</option>
                 </select>
                 {(() => {
                   const mat = materials.find(m => m.id === (selectedElement.materialId || 'default'));
@@ -10039,7 +10507,7 @@ const TattingDesigner = () => {
                  <>
                    <div className="w-px h-6 bg-gray-600 mx-1" />
                    <div className="flex items-center gap-1 top-toolbar-scalable">
-                     <label className="text-xs text-gray-400 hide-label-mobile">Mat B:</label>
+                     <label className="text-xs text-gray-400 hide-label-mobile">{t('matBLabel')}</label>
                      <select
                        value={selectedElement.materialIdB || selectedElement.materialId || 'default'}
                        onChange={(e) => {
@@ -10056,7 +10524,7 @@ const TattingDesigner = () => {
                          <option key={m.id} value={m.id}>{m.name}</option>
                        ))}
                        <option disabled>──────────</option>
-                       <option value="__edit__">Edit materials…</option>
+                       <option value="__edit__">{t('editMaterials')}</option>
                      </select>
                      {(() => {
                        const matB = materials.find(m => m.id === (selectedElement.materialIdB || selectedElement.materialId || 'default'));
@@ -10639,7 +11107,7 @@ const TattingDesigner = () => {
 
                     {/* Rotate + Flip */}
                     <div className="flex items-center gap-0.5 md:gap-1 top-toolbar-scalable">
-                      <button onClick={() => applyMultiSelectRotationDelta(-90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title="Rotate -90°"><IconRotateCCW size={16} /></button>
+                      <button onClick={() => applyMultiSelectRotationDelta(-90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiRotateMinus')}><IconRotateCCW size={16} /></button>
                       <input
                         type="number"
                         value={groupRotationInput}
@@ -10650,9 +11118,9 @@ const TattingDesigner = () => {
                         style={{ width: '3.4rem' }}
                         placeholder="Δ°"
                       />
-                      <button onClick={() => applyMultiSelectRotationDelta(90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title="Rotate +90°"><IconRotateCW size={16} /></button>
-                      <button onClick={doFlipH} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title="Flip Horizontal"><IconFlipH size={16} /></button>
-                      <button onClick={doFlipV} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title="Flip Vertical"><IconFlipV size={16} /></button>
+                      <button onClick={() => applyMultiSelectRotationDelta(90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiRotatePlus')}><IconRotateCW size={16} /></button>
+                      <button onClick={doFlipH} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipH')}><IconFlipH size={16} /></button>
+                      <button onClick={doFlipV} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipV')}><IconFlipV size={16} /></button>
 
                       {/* Notation position */}
                       <div className="w-px h-6 bg-gray-600 mx-1" />
@@ -10679,7 +11147,7 @@ const TattingDesigner = () => {
                     {/* Material */}
                     <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
                     <div className="flex items-center gap-1 top-toolbar-scalable">
-                      <label className="text-xs text-gray-400 hide-label-mobile">Material:</label>
+                      <label className="text-xs text-gray-400 hide-label-mobile">{t('materialLabel')}</label>
                       <select
                         defaultValue="default"
                         onChange={(e) => {
@@ -10697,7 +11165,7 @@ const TattingDesigner = () => {
                       >
                         {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         <option disabled>──────</option>
-                        <option value="__edit__">Edit materials…</option>
+                        <option value="__edit__">{t('editMaterials')}</option>
                       </select>
                     </div>
                   </>
@@ -10899,11 +11367,11 @@ const TattingDesigner = () => {
           {renderMode === 'realistic' && (
             <>
               {/* Realistic mode: Pan only — editing disabled */}
-              <button onClick={() => setCurrentTool('pan')} className="p-2 rounded col-span-2 pointer-events-auto bg-blue-600" style={{ touchAction: 'manipulation' }} title="Pan (only mode in realistic view)">
+              <button onClick={() => setCurrentTool('pan')} className="p-2 rounded col-span-2 pointer-events-auto bg-blue-600" style={{ touchAction: 'manipulation' }} title={t('toolPanRealistic')}>
                 <IconPan size={20} />
               </button>
               <div className="col-span-2 text-center text-gray-400 text-xs leading-tight px-1 py-0.5">
-                Pan &amp; scroll<br/>only
+                {t('toolPanRealisticSub')}<br/>{t('toolPanRealisticSub2')}
               </div>
             </>
           )}
@@ -10921,7 +11389,7 @@ const TattingDesigner = () => {
             onClick={() => setShowRotationHandles(!showRotationHandles)} 
             className={`p-2 rounded pointer-events-auto ${showRotationHandles ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} 
             style={{ touchAction: 'manipulation' }}
-            title={showRotationHandles ? "Hide rotation handles (or release Shift)" : "Show rotation handles (or hold Shift)"}
+            title={showRotationHandles ? t('toolRotationHandlesHide') : t('toolRotationHandlesShow')}
           >
             <IconRotateMode size={20} />
           </button>
@@ -10972,7 +11440,7 @@ const TattingDesigner = () => {
             }}
             className={`p-2 rounded col-span-2 pointer-events-auto flex items-center justify-center ${activeMode === 'beading' ? 'bg-purple-600' : 'bg-gray-700 active:bg-gray-600'}`}
             style={{ touchAction: 'manipulation' }}
-            title="Beading mode — select BE elements to configure beads"
+            title={t('toolBeadingMode')}
           >
             <IconBeadMode size={20} />
           </button>
@@ -11056,14 +11524,14 @@ const TattingDesigner = () => {
             ></div>
             
             <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white rounded z-50 shadow-xl p-4" style={{ width: '280px' }}>
-              <h3 className="font-semibold mb-3">Remove Reference Image?</h3>
-              <p className="text-sm text-gray-400 mb-4">This cannot be undone.</p>
+              <h3 className="font-semibold mb-3">{t('removeImageTitle')}</h3>
+              <p className="text-sm text-gray-400 mb-4">{t('removeImageBody')}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowRemoveConfirm(false)}
                   className="flex-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded"
                 >
-                  Cancel
+                  {t('removeImageCancel')}
                 </button>
                 <button
                   onClick={() => {
@@ -11072,7 +11540,7 @@ const TattingDesigner = () => {
                   }}
                   className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 rounded"
                 >
-                  Remove
+                  {t('removeImageConfirm')}
                 </button>
               </div>
             </div>
@@ -11122,10 +11590,10 @@ const TattingDesigner = () => {
             <div className="flex flex-wrap items-center gap-2">
               <span>
                 {selectedIds.length === 0 
-                  ? 'No selection' 
+                  ? t('infoNoSelection') 
                   : selectedIds.length === 1 
-                    ? `1 object selected` 
-                    : `${selectedIds.length} objects selected`}
+                    ? t('info1Selected') 
+                    : t('infoNSelected').replace('{n}', String(selectedIds.length))}
               </span>
               
               {selectedIds.length === 1 && (() => {
@@ -11137,24 +11605,24 @@ const TattingDesigner = () => {
                 if (selected.isGradient) {
                   const gradient = dmcColors.find(c => c.id === selected.color && c.type === 'gradient');
                   if (gradient) {
-                    colorInfo = `Color: ${gradient.name} (${gradient.id})`;
+                    colorInfo = `${t('infoColorPrefix')}: ${gradient.name} (${gradient.id})`;
                   } else {
-                    colorInfo = `Color: Gradient ${selected.color}`;
+                    colorInfo = `${t('infoColorPrefix')}: ${t('colorGradientsTab')} ${selected.color}`;
                   }
                 } else {
                   // Solid color - try to find DMC name
                   const dmcSolid = dmcColors.find(c => c.hex === selected.color && c.type !== 'gradient');
                   if (dmcSolid) {
-                    colorInfo = `Color: ${dmcSolid.name} (${dmcSolid.id}) - ${selected.color}`;
+                    colorInfo = `${t('infoColorPrefix')}: ${dmcSolid.name} (${dmcSolid.id}) - ${selected.color}`;
                   } else {
-                    colorInfo = `Color: ${selected.color}`;
+                    colorInfo = `${t('infoColorPrefix')}: ${selected.color}`;
                   }
                 }
                 
                 return (
                   <>
                     <span className="text-gray-500">|</span>
-                    <span>{selected.type === 'ring' ? 'Ring' : 'Chain'}</span>
+                    <span>{selected.type === 'ring' ? t('infoRing') : t('infoChain')}</span>
                     <span className="text-gray-500">|</span>
                     <span>{selected.stitchCount} DS</span>
                     <span className="text-gray-500">|</span>
@@ -11166,11 +11634,11 @@ const TattingDesigner = () => {
             
             {/* Right side - General info */}
             <div className="flex flex-wrap items-center gap-2">
-              <span>Elements: {elements.length}</span>
+              <span>{t('infoElements')}: {elements.length}</span>
               <span className="text-gray-500">|</span>
-              <span>Zoom: {(zoom * 100).toFixed(0)}%</span>
+              <span>{t('infoZoom')}: {(zoom * 100).toFixed(0)}%</span>
               <span className="text-gray-500">|</span>
-              <span>{renderMode === 'realistic' ? 'Realistic' : 'Schematic'}</span>
+              <span>{renderMode === 'realistic' ? t('renderRealistic') : t('renderSchematic')}</span>
             </div>
           </div>
         </div>
@@ -12449,20 +12917,34 @@ const TattingDesigner = () => {
               <h2 className="text-white text-lg md:text-xl font-bold">Help</h2>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.open('./tatting-help.html', '_blank')}
+                  onClick={() => {
+                    const helpUrl = language === 'en'
+                      ? './tatting-help.html'
+                      : `./tatting-help_${language}.html`;
+                    window.open(helpUrl, '_blank');
+                  }}
                   className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded"
-                  title="Open help in a new browser tab"
+                  title={t('helpOpenTab')}
                 >↗ Open in browser</button>
                 <button onClick={() => setShowHelp(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
               </div>
             </div>
-            {/* Help content — loaded from tatting-help.html */}
-            <iframe
-              src="./tatting-help.html"
-              className="flex-1 w-full rounded-b-lg"
-              style={{ border: 'none', minHeight: 0 }}
-              title="Tatting Pattern Designer Help"
-            />
+            {/* Help content — language-aware, falls back to English */}
+            {(() => {
+              const helpUrl = language === 'en'
+                ? './tatting-help.html'
+                : `./tatting-help_${language}.html`;
+              return (
+                <iframe
+                  key={helpUrl}
+                  src={helpUrl}
+                  onError={(e) => { if (language !== 'en') (e.target as HTMLIFrameElement).src = './tatting-help.html'; }}
+                  className="flex-1 w-full rounded-b-lg"
+                  style={{ border: 'none', minHeight: 0 }}
+                  title={t('helpWindowTitle')}
+                />
+              );
+            })()}
           </div>
         </div>
       )}
@@ -12486,7 +12968,7 @@ const TattingDesigner = () => {
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Color Picker
+                {t('colorPickerTabLabel')}
               </button>
               {(!pickerTabsAllowed || pickerTabsAllowed.includes('swatches')) && (
                 <button
@@ -12497,7 +12979,7 @@ const TattingDesigner = () => {
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  DMC Colors
+                  {t('colorDmcTab')}
                 </button>
               )}
               {(!pickerTabsAllowed || pickerTabsAllowed.includes('gradients')) && (
@@ -12509,7 +12991,7 @@ const TattingDesigner = () => {
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  Gradients
+                  {t('colorGradientsTab')}
                 </button>
               )}
             </div>
@@ -12818,7 +13300,7 @@ const TattingDesigner = () => {
               <div>
                 {dmcColors.length === 0 ? (
                   <div className="bg-gray-700 rounded p-6 text-center">
-                    <p className="text-gray-400">Loading DMC colors...</p>
+                    <p className="text-gray-400">{t('loadingDmcColors')}</p>
                   </div>
                 ) : (
                   <>
@@ -13163,7 +13645,7 @@ const TattingDesigner = () => {
                                 <p className="text-gray-300 font-mono text-xs mb-2">ID: {selectedGradient.id} · {selectedGradient.group || 'Gradient'}</p>
                               </>
                             ) : (
-                              <p className="text-gray-400 text-sm">Click a gradient to preview</p>
+                              <p className="text-gray-400 text-sm">{t('clickGradientPreview')}</p>
                             )}
                           </div>
                         </div>
@@ -13210,7 +13692,7 @@ const TattingDesigner = () => {
                 }}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                OK
+                {t('alertOk')}
               </button>
               <button
                 onClick={() => {
@@ -13221,7 +13703,7 @@ const TattingDesigner = () => {
                 }}
                 className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
               >
-                Cancel
+                {t('confirmCancel')}
               </button>
             </div>
             </div>{/* end footer */}
@@ -13236,11 +13718,11 @@ const TattingDesigner = () => {
       {showJoinTip && activeMode === 'picotJoin' && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-blue-500 shadow-2xl">
-            <h2 className="text-lg font-bold text-blue-400 mb-3">Picot Join Mode</h2>
+            <h2 className="text-lg font-bold text-blue-400 mb-3">{t('joinTipTitle')}</h2>
             <div className="text-gray-200 text-sm space-y-2 mb-5">
-              <p>You are now in <strong className="text-white">Picot Join mode</strong>. Elements are dimmed so you can focus on the join points.</p>
-              <p>Click a <strong className="text-orange-400">joint picot</strong> (orange dot) to select it, then click another to connect them. Click a connected pair to disconnect.</p>
-              <p>Press <kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-xs">Esc</kbd> or click the Join Picots button again to exit.</p>
+              <p>{t('joinTipBody1')}</p>
+              <p>{t('joinTipBody2')}</p>
+              <p>{t('joinTipBody3')}</p>
             </div>
             <div className="flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 text-gray-400 text-sm cursor-pointer select-none">
@@ -13252,14 +13734,14 @@ const TattingDesigner = () => {
                   }}
                   className="w-4 h-4"
                 />
-                Don't show again
+                {t('joinTipDontShow')}
               </label>
               <button
                 onClick={() => setShowJoinTip(false)}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
                 autoFocus
               >
-                Got it
+                {t('joinTipGotIt')}
               </button>
             </div>
           </div>
@@ -13269,21 +13751,21 @@ const TattingDesigner = () => {
       {showNewCanvasDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-gray-600 shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">New Canvas</h2>
-            <p className="text-gray-300 text-sm mb-5">This will discard all current work. Make sure to save first if you want to keep it.</p>
+            <h2 className="text-lg font-bold text-white mb-2">{t('newCanvasTitle')}</h2>
+            <p className="text-gray-300 text-sm mb-5">{t('newCanvasBody')}</p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowNewCanvasDialog(false)}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
                 autoFocus
               >
-                Cancel
+                {t('newCanvasCancel')}
               </button>
               <button
                 onClick={confirmNewCanvas}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
               >
-                Discard &amp; New
+                {t('newCanvasConfirm')}
               </button>
             </div>
           </div>
@@ -13293,15 +13775,15 @@ const TattingDesigner = () => {
       {showLoadConfirmDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-gray-600 shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">Load Project</h2>
-            <p className="text-gray-300 text-sm mb-5">This will replace the current canvas. Make sure to save first if you want to keep it.</p>
+            <h2 className="text-lg font-bold text-white mb-2">{t('loadConfirmTitle')}</h2>
+            <p className="text-gray-300 text-sm mb-5">{t('loadConfirmBody')}</p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowLoadConfirmDialog(false)}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
                 autoFocus
               >
-                Cancel
+                {t('loadConfirmCancel')}
               </button>
               <button
                 onClick={() => {
@@ -13310,7 +13792,7 @@ const TattingDesigner = () => {
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
               >
-                Discard &amp; Load
+                {t('loadConfirmConfirm')}
               </button>
             </div>
           </div>
@@ -13394,6 +13876,150 @@ const TattingDesigner = () => {
     </div>
     
     {/* File dropdown menu - rendered at top level to avoid clipping */}
+    {/* ── Help / About dropdown ──────────────────────────────────── */}
+    {showHelpMenu && (
+      <>
+        <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setShowHelpMenu(false)} />
+        <div
+          className="fixed bg-gray-700 rounded shadow-xl min-w-[220px]"
+          onClick={(e) => e.stopPropagation()}
+          style={(() => {
+            const rect = helpButtonRef.current?.getBoundingClientRect();
+            const menuWidth = 220;
+            const spaceRight = rect ? window.innerWidth - rect.left : 0;
+            return {
+              zIndex: 9999,
+              top: rect ? `${rect.bottom + 4}px` : '4rem',
+              ...(rect && spaceRight < menuWidth
+                ? { right: `${window.innerWidth - rect.right}px` }
+                : { left: rect ? `${rect.left}px` : '1rem' }),
+            };
+          })()}
+        >
+          <button onClick={() => { setShowHelp(true); setShowHelpMenu(false); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            <IconHelp size={16} /><span>{t('helpMenuHelp')}</span>
+          </button>
+          <div className="border-t border-gray-600 my-1" />
+          <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            <span className="text-gray-300 text-base w-4 text-center flex-shrink-0">ℹ</span><span>{t('helpMenuAbout')}</span>
+          </button>
+          <button onClick={() => { window.open('https://ko-fi.com/YOUR_KOFI_NAME', '_blank'); setShowHelpMenu(false); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            <span className="text-red-400 w-4 text-center flex-shrink-0">♥</span><span>{t('helpMenuKofi')}</span>
+          </button>
+          <div className="border-t border-gray-600 my-1" />
+          <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); setUpdateCheckStatus('idle'); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            <span className="text-blue-300 w-4 text-center flex-shrink-0">↑</span><span>{t('helpMenuCheckUpdate')}</span>
+          </button>
+        </div>
+      </>
+    )}
+
+    {/* ── About panel ──────────────────────────────────────────────── */}
+    {showAbout && (
+      <>
+        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 10002 }} onClick={() => setShowAbout(false)} />
+        <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+          style={{ zIndex: 10003, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 95vw)', maxHeight: '85dvh', overflowY: 'auto' }}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600">
+            <h2 className="text-white font-bold text-lg">{t('aboutTitle')}</h2>
+            <button onClick={() => setShowAbout(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
+          </div>
+
+          <div className="px-5 py-5 space-y-5">
+            {/* Name + version */}
+            <div>
+              <div className="text-white font-bold text-xl">TattingCAD</div>
+              <div className="text-gray-400 text-sm">{t('aboutVersion')} {APP_VERSION}</div>
+            </div>
+
+            <p className="text-gray-300 text-sm leading-relaxed">{t('aboutDescription')}</p>
+
+            {/* License */}
+            <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('aboutLicenseHeader')}</div>
+              <div className="bg-gray-700 rounded p-3 text-xs text-gray-300 leading-relaxed space-y-2">
+                <div className="font-semibold">{t('aboutLicenseText')}</div>
+                <div className="text-gray-400">{t('aboutLicenseFull')}</div>
+              </div>
+            </div>
+
+            {/* GitHub */}
+            <button onClick={() => window.open('https://github.com/SavarosaCraft/TattingCad', '_blank')}
+              className="w-full py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm flex items-center justify-center gap-2 border border-gray-500">
+              <span>⛯</span><span>{t('aboutGithub')}</span>
+            </button>
+
+            {/* Ko-fi */}
+            <button onClick={() => window.open('https://ko-fi.com/YOUR_KOFI_NAME', '_blank')}
+              className="w-full py-2 rounded-lg bg-red-900 hover:bg-red-800 text-white text-sm flex items-center justify-center gap-2 border border-red-700">
+              <span>♥</span><span>{t('helpMenuKofi')}</span>
+            </button>
+
+            {/* Update checker */}
+            <div className="border-t border-gray-600 pt-4">
+              <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">{t('helpMenuCheckUpdate')}</div>
+              {(() => {
+                const lastCheck = localStorage.getItem('tcad_update_last_check');
+                const lastCheckedStr = lastCheck
+                  ? new Date(parseInt(lastCheck, 10)).toLocaleDateString()
+                  : t('updateNeverChecked');
+                return (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="text-xs text-gray-400 flex-1">{t('updateLastChecked')}: {lastCheckedStr}</div>
+                    {updateCheckStatus === 'idle' && (
+                      <button
+                        onClick={async () => {
+                          setUpdateCheckStatus('checking');
+                          try {
+                            const res = await fetch('https://api.github.com/repos/SavarosaCraft/TattingCad/releases/latest', { headers: { Accept: 'application/vnd.github+json' } });
+                            if (!res.ok) { setUpdateCheckStatus('error'); return; }
+                            const data = await res.json();
+                            const latestTag: string = data.tag_name ?? '';
+                            const latestUrl: string = data.html_url ?? '';
+                            localStorage.setItem('tcad_update_last_check', String(Date.now()));
+                            const latestClean = latestTag.replace(/^v/i, '');
+                            if (!latestClean || latestClean === APP_VERSION) {
+                              setUpdateCheckStatus('uptodate');
+                            } else {
+                              setUpdateCheckStatus('idle');
+                              setUpdateNotice({ version: latestTag, url: latestUrl });
+                            }
+                          } catch { setUpdateCheckStatus('error'); }
+                        }}
+                        className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded"
+                      >{t('updateCheckNow')}</button>
+                    )}
+                    {updateCheckStatus === 'checking' && <span className="text-xs text-gray-400 italic">{t('updateChecking')}</span>}
+                    {updateCheckStatus === 'uptodate' && <span className="text-xs text-green-400">✓ {t('updateUpToDate').replace('{current}', APP_VERSION)}</span>}
+                    {updateCheckStatus === 'error' && <span className="text-xs text-red-400">✕ {t('updateError')}</span>}
+                    {updateNotice && (
+                      <div className="w-full mt-2 flex items-center gap-2 bg-blue-900 border border-blue-600 rounded p-2 text-xs">
+                        <span className="text-blue-300 flex-1">{t('updateAvailable')}: {updateNotice.version}</span>
+                        <button onClick={() => window.open(updateNotice.url, '_blank')} className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded font-semibold">{t('updateDownload')}</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          <div className="px-5 pb-5">
+            <button onClick={() => setShowAbout(false)}
+              className="w-full py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm">
+              {t('aboutClose')}
+            </button>
+          </div>
+        </div>
+      </>
+    )}
+
     {showFileMenu && (
       <>
         {/* Click overlay to close menu - allows clicks through to dropdown */}
@@ -13423,8 +14049,8 @@ const TattingDesigner = () => {
         >
           <button
             onClick={() => {
-              newCanvas();
               setShowFileMenu(false);
+              setTimeout(() => newCanvas(), 0);
             }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
@@ -13658,7 +14284,7 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
             <IconFitView size={16} />
-            <span>Fit View</span>
+            <span>{t('viewFitView')}</span>
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -13676,7 +14302,7 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
             <span>{renderMode === 'schematic' ? <IconRenderRealistic size={16} /> : <IconRenderSchematic size={16} />}</span>
-            <span>{renderMode === 'schematic' ? 'Switch to Realistic' : 'Switch to Schematic'}</span>
+            <span>{renderMode === 'schematic' ? t('viewSwitchRealistic') : t('viewSwitchSchematic')}</span>
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -13702,7 +14328,7 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
             {showInvalidNotation ? <IconInvalidOff size={16} /> : <IconInvalidOn size={16} />}
-            <span>Show Invalid Notation</span>
+            <span>{t('viewShowInvalidNotation')}</span>
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -13765,7 +14391,7 @@ const TattingDesigner = () => {
             onClick={() => { setShowMaterialsPanel(true); setShowOptionsMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
-            <span>Materials…</span>
+            <span>{t('viewMaterials')}</span>
           </button>
 
           {/* Thread Properties */}
@@ -13773,7 +14399,7 @@ const TattingDesigner = () => {
             onClick={() => { setShowThreadProperties(true); setShowOptionsMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
-            <span>Thread Properties…</span>
+            <span>{t('viewThreadProperties')}</span>
           </button>
 
           {/* Bead Library */}
@@ -13781,7 +14407,7 @@ const TattingDesigner = () => {
             onClick={() => { setShowBeadLibrary(true); setShowOptionsMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
-            <span>Bead Library…</span>
+            <span>{t('viewBeadLibrary')}</span>
           </button>
 
           {/* Notation Font Size */}
@@ -13808,7 +14434,7 @@ const TattingDesigner = () => {
           {/* UI Scale */}
           <div className="px-4 py-2">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-white text-sm">UI Scale</span>
+              <span className="text-white text-sm">{t('viewUIScale')}</span>
             </div>
             <div className="flex gap-1">
               {(['normal', 'large'] as const).map(s => (
@@ -13821,7 +14447,7 @@ const TattingDesigner = () => {
                       : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
                   }`}
                 >
-                  {s === 'normal' ? 'Normal' : 'Large'}
+                  {s === 'normal' ? t('uiScaleNormal') : t('uiScaleLarge')}
                 </button>
               ))}
             </div>
@@ -13870,17 +14496,17 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
             <IconLoad size={16} />
-            <span>Load Theme…</span>
+            <span>{t('viewLoadTheme')}</span>
           </button>
           <button
             onClick={() => { setTheme(DEFAULT_THEME); setShowOptionsMenu(false); showLoadMsg('success', 'Theme reset to default.'); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
             <span className="text-base">↩️</span>
-            <span>Reset Theme</span>
+            <span>{t('viewResetTheme')}</span>
           </button>
           <div className="px-4 py-1 pb-2">
-            <p className="text-gray-500 text-xs">Edit indicator colors via <code className="bg-gray-600 px-1 rounded">tatting-theme.json</code> — see Help → Tips for details.</p>
+            <p className="text-gray-500 text-xs">{t('viewThemeHint')}</p>
           </div>
 
         </div>
@@ -13893,7 +14519,7 @@ const TattingDesigner = () => {
         <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600"
           style={{zIndex:10001, top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(420px, 95vw)', maxHeight:'85dvh', overflowY:'auto'}}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600">
-            <h2 className="text-white font-bold text-lg">Materials</h2>
+            <h2 className="text-white font-bold text-lg">{t('materialsTitle')}</h2>
             <button onClick={() => setShowMaterialsPanel(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
           </div>
 
@@ -13904,7 +14530,7 @@ const TattingDesigner = () => {
                 <div
                   className="w-8 h-8 rounded border-2 border-gray-500 cursor-pointer flex-shrink-0 hover:border-white relative overflow-hidden flex items-center justify-center"
                   style={{ backgroundColor: mat.isGradient ? getGradientColorAtPosition(mat.color, 0.5) : mat.color }}
-                  title="Click to change color"
+                  title={t('clickToChangeColor')}
                   onClick={() => {
                     setPickerColor(mat.isGradient ? '#FFFFFF' : mat.color);
                     setColorPickerTab('picker');
@@ -13943,9 +14569,9 @@ const TattingDesigner = () => {
                     setShowMaterialsPanel(false);
                   }}
                   className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded flex-shrink-0"
-                  title="Select all elements with this material"
+                  title={t('selectAllWithMaterial')}
                 >
-                  Select all
+                  {t('materialsSelectAll')}
                 </button>
 
                 {/* Delete (not for default) */}
@@ -13968,7 +14594,7 @@ const TattingDesigner = () => {
               <button
                 onClick={() => {
                   const id = `mat_${Date.now()}`;
-                  setMaterials(prev => [...prev, { id, name: `Material ${prev.length}`, color: '#AAAAAA', isGradient: false }]);
+                  setMaterials(prev => [...prev, { id, name: `${t('materialNewName')} ${prev.length}`, color: '#AAAAAA', isGradient: false }]);
                   if (selectedIds.length > 0) {
                     setElements(prev => prev.map(el =>
                       selectedIds.includes(el.id) ? { ...el, materialId: id } : el
@@ -13977,13 +14603,13 @@ const TattingDesigner = () => {
                 }}
                 className="w-full py-2 rounded-lg border-2 border-dashed border-gray-500 text-gray-400 hover:border-white hover:text-white text-sm"
               >
-                + Add Material
+                {t('materialsAddBtn')}
               </button>
             )}
           </div>
 
           <div className="px-5 pb-4">
-            <p className="text-xs text-gray-500">Click a color swatch to change color. All elements with that material update instantly.</p>
+            <p className="text-xs text-gray-500">{t('materialsHint')}</p>
           </div>
         </div>
       </>
@@ -13991,12 +14617,12 @@ const TattingDesigner = () => {
 
     {/* ── Bead Library Panel ───────────────────────────────────── */}
     {showBeadLibrary && (() => {
-      const SIZE_LABELS = { Y: 'Small (S)', Z: 'Medium (M)', V: 'Large (L)' };
+      const SIZE_LABELS = { Y: t('beadSizeSmall'), Z: t('beadSizeMedium'), V: t('beadSizeLarge') };
       const activeBead = beadLibrary.find(b => b.id === selectedBeadId) || null;
       const updateBead = (id, changes) => setBeadLibrary(prev => prev.map(b => b.id === id ? { ...b, ...changes } : b));
       const addBead = () => {
         const id = `bead_${Date.now()}`;
-        setBeadLibrary(prev => [...prev, { id, name: 'New Bead', size: 'Y', color: '#3b82f6' }]);
+        setBeadLibrary(prev => [...prev, { id, name: t('threadNewBeadName'), size: 'Y', color: '#3b82f6' }]);
         setSelectedBeadId(id);
       };
       const deleteBead = (id) => {
@@ -14014,7 +14640,7 @@ const TattingDesigner = () => {
               {/* Left: Bead list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
                 <div className="px-3 py-3 border-b border-gray-600">
-                  <span className="text-white font-semibold text-sm flex items-center gap-2"><IconBeadCore size={16} /> Bead Library</span>
+                  <span className="text-white font-semibold text-sm flex items-center gap-2"><IconBeadCore size={16} /> {t('beadLibraryPanelTitle')}</span>
                 </div>
                 <div className="flex-1 overflow-y-auto flex sm:flex-col flex-row">
                   {beadLibrary.map(b => (
@@ -14031,10 +14657,10 @@ const TattingDesigner = () => {
                 </div>
                 <div className="p-2 border-t border-gray-600 flex gap-1">
                   <button onClick={addBead}
-                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">+ Add</button>
+                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('beadAdd')}</button>
                   {activeBead && beadLibrary.length > 1 && (
                     <button onClick={() => setConfirmDialog({ message: `Delete "${activeBead.name}"?`, onConfirm: () => deleteBead(activeBead.id) })}
-                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">Delete</button>
+                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('beadDelete')}</button>
                   )}
                 </div>
               </div>
@@ -14053,12 +14679,12 @@ const TattingDesigner = () => {
                         value={activeBead.name}
                         onChange={e => updateBead(activeBead.id, { name: e.target.value })}
                         placeholder="Bead name"
-                        title="Click to rename"
+                        title={t('clickToRename')}
                       />
                       <span className="text-gray-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">✎</span>
                     </div>
                   ) : (
-                    <span className="text-gray-400 text-sm">Select a bead to edit</span>
+                    <span className="text-gray-400 text-sm">{t('beadSelectPrompt')}</span>
                   )}
                   <button onClick={() => setShowBeadLibrary(false)}
                     className="text-gray-400 hover:text-white text-xl ml-4">✕</button>
@@ -14069,9 +14695,9 @@ const TattingDesigner = () => {
                   {/* Individual bead settings */}
                   {activeBead && (
                     <>
-                      <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">Bead Properties</div>
+                      <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">{t('beadPropertiesHeader')}</div>
                       <div className="flex items-center gap-3 mb-3">
-                        <span className="text-gray-300 text-sm w-16">Size</span>
+                        <span className="text-gray-300 text-sm w-16">{t('beadSizeLabel')}</span>
                         <div className="flex gap-1">
                           {Object.entries(SIZE_LABELS).map(([k, label]) => (
                             <button key={k}
@@ -14082,7 +14708,7 @@ const TattingDesigner = () => {
                         </div>
                       </div>
                       <div className="flex items-start gap-3 mb-3">
-                        <span className="text-gray-300 text-sm w-16 pt-1">Shape</span>
+                        <span className="text-gray-300 text-sm w-16 pt-1">{t('beadShapeLabel')}</span>
                         <div className="flex flex-wrap gap-1">
                           {[
                             { value: 'circle',       label: <span>●</span> },
@@ -14101,7 +14727,7 @@ const TattingDesigner = () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-3 mb-4">
-                        <span className="text-gray-300 text-sm w-16">Color</span>
+                        <span className="text-gray-300 text-sm w-16">{t('beadColorLabel')}</span>
                         <div className="flex items-center gap-2">
                           <div
                             className="w-8 h-8 rounded-full border-2 border-gray-500 cursor-pointer hover:border-white flex-shrink-0"
@@ -14119,15 +14745,15 @@ const TattingDesigner = () => {
                         </div>
                       </div>
                       <div className="flex items-start gap-3 mb-4">
-                        <span className="text-gray-300 text-sm w-16 pt-1">Shape</span>
+                        <span className="text-gray-300 text-sm w-16 pt-1">{t('beadShapeLabel')}</span>
                         <div className="grid grid-cols-3 gap-1">
                           {[
-                            { value: 'circle',        label: <span>● Circle</span> },
-                            { value: 'square',        label: <span>■ Square</span> },
-                            { value: 'rectangle',     label: <span>▬ Rectangle</span> },
-                            { value: 'diamond',       label: <span>◆ Diamond</span> },
-                            { value: 'teardrop-up',   label: <span className="flex items-center gap-1"><IconShapeTeardrop size={12} /> Tip Out</span> },
-                            { value: 'teardrop-down', label: <span className="flex items-center gap-1"><span style={{display:'inline-block',transform:'scaleY(-1)'}}><IconShapeTeardrop size={12} /></span> Tip In</span> },
+                            { value: 'circle',        label: <span>{t('beadShapeCircle')}</span> },
+                            { value: 'square',        label: <span>{t('beadShapeSquare')}</span> },
+                            { value: 'rectangle',     label: <span>{t('beadShapeRectangle')}</span> },
+                            { value: 'diamond',       label: <span>{t('beadShapeDiamond')}</span> },
+                            { value: 'teardrop-up',   label: <span className="flex items-center gap-1"><IconShapeTeardrop size={12} /> {t('beadShapeTipOut')}</span> },
+                            { value: 'teardrop-down', label: <span className="flex items-center gap-1"><span style={{display:'inline-block',transform:'scaleY(-1)'}}><IconShapeTeardrop size={12} /></span> {t('beadShapeTipIn')}</span> },
                           ].map(({ value, label }) => (
                             <button key={value}
                               onClick={() => updateBead(activeBead.id, { shape: value })}
@@ -14141,9 +14767,9 @@ const TattingDesigner = () => {
                   )}
 
                   {/* Global size-class settings (Y/Z/V multipliers + colors) */}
-                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">Size Class Settings</div>
+                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">{t('beadSizeClassHeader')}</div>
                   <div className="text-xs text-gray-500 mb-3 leading-relaxed">
-                    These control how each size class (S/M/L) renders — the DS width multiplier determines the visual diameter on canvas, and the color is used as the default for new beads of that size.
+                    {t('beadSizeClassHint')}
                   </div>
                   {['Y', 'Z', 'V'].map(key => (
                     <div key={key} className="flex items-center gap-3 mb-3">
@@ -14157,7 +14783,7 @@ const TattingDesigner = () => {
                           setPickerCallback(() => (color) => setBeadSettings(prev => ({ ...prev, [key]: { ...prev[key], color } })));
                           setShowColorPicker(true);
                         }}
-                        title="Click to change default color for this size"
+                        title={t('clickToChangeSizeColor')}
                       />
                       <span className="text-white text-sm font-bold w-20">{SIZE_LABELS[key]}</span>
                       <input
@@ -14167,7 +14793,7 @@ const TattingDesigner = () => {
                         onChange={e => setBeadSettings(prev => ({ ...prev, [key]: { ...prev[key], dsMultiplier: parseFloat(e.target.value) || 1 } }))}
                         className="w-16 px-2 py-1 bg-gray-600 text-white text-xs rounded border border-gray-500 text-center"
                       />
-                      <span className="text-gray-400 text-xs">× DS width</span>
+                      <span className="text-gray-400 text-xs">{t('beadDsWidthSuffix')}</span>
                       <span className="text-gray-500 text-xs">≈ {Math.round(dsWidth * beadSettings[key].dsMultiplier)}px</span>
                     </div>
                   ))}
@@ -14194,7 +14820,7 @@ const TattingDesigner = () => {
       };
       const addPreset = () => {
         const newId = 'preset_' + Date.now();
-        const newPreset = { ...DEFAULT_THREAD_PRESET, id: newId, name: 'New Preset' };
+        const newPreset = { ...DEFAULT_THREAD_PRESET, id: newId, name: t('threadPresetNewName') };
         const updated = [...threadPresets, newPreset];
         setThreadPresets(updated);
         setActivePresetId(newId);
@@ -14221,7 +14847,7 @@ const TattingDesigner = () => {
               {/* Left: Preset list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
                 <div className="px-3 py-3 border-b border-gray-600">
-                  <span className="text-white font-semibold text-sm">🧵 Thread Presets</span>
+                  <span className="text-white font-semibold text-sm">{t('threadPresetsTitle')}</span>
                 </div>
                 <div className="flex-1 overflow-y-auto sm:overflow-y-auto overflow-x-auto sm:overflow-x-hidden flex sm:flex-col flex-row">
                   {threadPresets.map(p => (
@@ -14234,10 +14860,10 @@ const TattingDesigner = () => {
                 </div>
                 <div className="p-2 border-t border-gray-600 flex gap-1">
                   <button onClick={addPreset}
-                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">+ Add</button>
+                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('threadPresetAdd')}</button>
                   {threadPresets.length > 1 && (
                     <button onClick={() => setConfirmDialog({ message: `Delete "${activePreset.name}"?`, onConfirm: () => deletePreset(activePresetId) })}
-                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">Delete</button>
+                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('threadPresetDelete')}</button>
                   )}
                 </div>
               </div>
@@ -14258,72 +14884,72 @@ const TattingDesigner = () => {
                 <div className="flex-1 overflow-y-auto px-4 py-3">
 
                   {/* Core measurements */}
-                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Measurements</div>
+                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadMeasurementsHeader')}</div>
                   <div className="grid grid-cols-2 gap-x-4">
-                    <ThreadPropertiesNumInput label="20 DS working thread" value={activePreset.ds20Working}
+                    <ThreadPropertiesNumInput label={t('thread20DSWorking')} value={activePreset.ds20Working}
                       onChange={v => updatePreset(activePreset.id, { ds20Working: v })} />
-                    <ThreadPropertiesNumInput label="20 DS core thread" value={activePreset.ds20Core}
+                    <ThreadPropertiesNumInput label={t('thread20DSCore')} value={activePreset.ds20Core}
                       onChange={v => updatePreset(activePreset.id, { ds20Core: v })} />
                   </div>
 
                   <div className="border-t border-gray-600 my-3" />
 
                   {/* Picot lengths */}
-                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Picot Lengths</div>
+                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadPicotLengthsHeader')}</div>
                   <div className="grid grid-cols-2 gap-x-4">
-                    <ThreadPropertiesNumInput label="Regular picot" value={activePreset.picotRegular}
+                    <ThreadPropertiesNumInput label={t('threadRegularPicotLabel')} value={activePreset.picotRegular}
                       onChange={v => updatePreset(activePreset.id, { picotRegular: v })} />
-                    <ThreadPropertiesNumInput label="Joined picot" value={activePreset.picotJoined}
+                    <ThreadPropertiesNumInput label={t('threadJoinedPicotLabel')} value={activePreset.picotJoined}
                       onChange={v => updatePreset(activePreset.id, { picotJoined: v })} />
-                    <ThreadPropertiesNumInput label="Long picot (auto: 2×)" value={activePreset.picotRegular * 2} readOnly hint="= 2 × regular" />
-                    <ThreadPropertiesNumInput label="Short picot (auto: ½×)" value={activePreset.picotShort ?? activePreset.picotRegular * 0.5} readOnly hint={activePreset.picotShort ? "= from sample" : "= ½ × regular"} />
+                    <ThreadPropertiesNumInput label={t('threadLongPicotLabel')} value={activePreset.picotRegular * 2} readOnly hint={t('threadLongPicotHint')} />
+                    <ThreadPropertiesNumInput label={t('threadShortPicotLabel')} value={activePreset.picotShort ?? activePreset.picotRegular * 0.5} readOnly hint={activePreset.picotShort ? t('threadShortPicotHintSample') : t('threadShortPicotHintAuto')} />
                   </div>
 
                   <div className="border-t border-gray-600 my-3" />
 
                   {/* Alternative calculation */}
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="text-xs text-gray-400 uppercase tracking-wider">Alternative Calculation</div>
-                    <span className="text-xs bg-yellow-700 text-yellow-200 px-1.5 py-0.5 rounded font-medium">Alternative</span>
+                    <div className="text-xs text-gray-400 uppercase tracking-wider">{t('threadAltCalcHeader')}</div>
+                    <span className="text-xs bg-yellow-700 text-yellow-200 px-1.5 py-0.5 rounded font-medium">{t('threadAltBadge')}</span>
                   </div>
                   <div className="text-xs text-gray-500 mb-3 leading-relaxed">
-                    Measure a test sample of 20 DS + 10 picots. Enter total length used.
+                    {t('threadAltSampleHint')}
                   </div>
 
                   {/* Alternative sample inputs */}
                   <div className="grid grid-cols-2 gap-x-4">
                     <ThreadPropertiesNumInput
-                      label="20 DS + 10 regular picots sample"
+                      label={t('threadSampleRegularLabel')}
                       value={activePreset.sample20DS10Regular ?? ''}
                       onChange={v => {
                         const picotR = Math.round((v - activePreset.ds20Working) / 10 * 10) / 10;
                         updatePreset(activePreset.id, { sample20DS10Regular: v, picotRegular: picotR > 0 ? picotR : activePreset.picotRegular });
                       }}
-                      hint={activePreset.sample20DS10Regular ? `→ regular picot = ${Math.round((activePreset.sample20DS10Regular - activePreset.ds20Working) / 10 * 10) / 10} mm` : 'optional'}
+                      hint={activePreset.sample20DS10Regular ? `→ regular picot = ${Math.round((activePreset.sample20DS10Regular - activePreset.ds20Working) / 10 * 10) / 10} mm` : t('threadOptional')}
                     />
                     <ThreadPropertiesNumInput
-                      label="20 DS + 10 short picots sample"
+                      label={t('threadSampleShortLabel')}
                       value={activePreset.sample20DS10Short ?? ''}
                       onChange={v => {
                         const picotSh = Math.round((v - activePreset.ds20Working) / 10 * 10) / 10;
                         updatePreset(activePreset.id, { sample20DS10Short: v, picotShort: picotSh > 0 ? picotSh : undefined });
                       }}
-                      hint={activePreset.sample20DS10Short ? `→ short picot = ${Math.round((activePreset.sample20DS10Short - activePreset.ds20Working) / 10 * 10) / 10} mm` : 'optional'}
+                      hint={activePreset.sample20DS10Short ? `→ short picot = ${Math.round((activePreset.sample20DS10Short - activePreset.ds20Working) / 10 * 10) / 10} mm` : t('threadOptional')}
                     />
                   </div>
 
                   <div className="border-t border-gray-600 my-3" />
 
                   {/* Calculated summary */}
-                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Per-Stitch Summary</div>
+                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadPerStitchHeader')}</div>
                   <div className="bg-gray-700 rounded p-3 text-xs text-gray-300 space-y-1 font-mono">
-                    <div>Working per DS = {(activePreset.ds20Working / 20).toFixed(2)} mm</div>
-                    <div>Working per SS = {(activePreset.ds20Working / 40).toFixed(2)} mm</div>
-                    <div>Core per DS   = {(activePreset.ds20Core / 20).toFixed(2)} mm</div>
-                    <div className="pt-1 border-t border-gray-600">Regular picot = {activePreset.picotRegular} mm</div>
-                    <div>Long picot    = {(activePreset.picotRegular * 2).toFixed(1)} mm</div>
-                    <div>Short picot   = {(activePreset.picotShort ?? activePreset.picotRegular * 0.5).toFixed(1)} mm{activePreset.picotShort ? ' (from sample)' : ' (½× regular)'}</div>
-                    <div>Joined picot  = {activePreset.picotJoined} mm</div>
+                    <div>{t('threadWorkingPerDS')} = {(activePreset.ds20Working / 20).toFixed(2)} mm</div>
+                    <div>{t('threadWorkingPerSS')} = {(activePreset.ds20Working / 40).toFixed(2)} mm</div>
+                    <div>{t('threadCorePerDS')} = {(activePreset.ds20Core / 20).toFixed(2)} mm</div>
+                    <div className="pt-1 border-t border-gray-600">{t('threadRegularPicot')} = {activePreset.picotRegular} mm</div>
+                    <div>{t('threadLongPicot')} = {(activePreset.picotRegular * 2).toFixed(1)} mm</div>
+                    <div>{t('threadShortPicot')} = {(activePreset.picotShort ?? activePreset.picotRegular * 0.5).toFixed(1)} mm{activePreset.picotShort ? ` ${t('threadFromSample')}` : ` ${t('threadHalfRegular')}`}</div>
+                    <div>{t('threadJoinedPicot')} = {activePreset.picotJoined} mm</div>
                   </div>
                 </div>
               </div>
@@ -14345,11 +14971,11 @@ const TattingDesigner = () => {
               <button
                 onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
                 className="flex-1 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-semibold"
-              >{confirmDialog.confirmLabel || 'Delete'}</button>
+              >{confirmDialog.confirmLabel || t('confirmDelete')}</button>
               <button
                 onClick={() => setConfirmDialog(null)}
                 className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm"
-              >Cancel</button>
+              >{t('confirmCancel')}</button>
             </div>
           </div>
         </div>
@@ -14370,7 +14996,7 @@ const TattingDesigner = () => {
             <button
               onClick={() => setAlertDialog(null)}
               className="py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium"
-            >OK</button>
+            >{t('alertOk')}</button>
           </div>
         </div>
       </>

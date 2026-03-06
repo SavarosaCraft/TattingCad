@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>JSON Translation Editor</title>
+
+<style>
+
+body{
+  font-family: Arial, sans-serif;
+  margin:20px;
+}
+
+.controls{
+  margin-bottom:15px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+
+th:nth-child(1), td:nth-child(1){
+  width:10%;
+}
+
+th:nth-child(2), td:nth-child(2){
+  width:45%;
+}
+
+th:nth-child(3), td:nth-child(3){
+  width:45%;
+}
+
+.key{
+  color:#666;
+  font-size:12px;
+  word-break:break-all;
+}
+
+textarea{
+  width:100%;
+  min-height:60px;
+  resize:vertical;
+  box-sizing:border-box;
+  font-family:inherit;
+}
+
+.untranslated{
+  background:#fff3cd;
+}
+
+.mismatch{
+  background:#ffd6d6;
+}
+
+.hidden{
+  display:none;
+}
+
+</style>
+</head>
+
+<body>
+
+<h2>JSON Translation Editor</h2>
+
+<div class="controls">
+  English JSON:
+  <input type="file" id="englishFile">
+
+  Translation JSON:
+  <input type="file" id="translationFile">
+
+  <button onclick="filterAll()">All</button>
+  <button onclick="filterUntranslated()">Untranslated</button>
+  <button onclick="filterMismatch()">Mismatched Keys</button>
+
+  <button onclick="downloadJSON()">Download Translation</button>
+</div>
+
+<div id="stats"></div>
+
+<table id="table">
+<thead>
+<tr>
+<th>Key</th>
+<th>English</th>
+<th>Translation</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<script>
+
+let english={}
+let translation={}
+let working={}
+
+function loadFile(file, callback){
+  const reader=new FileReader()
+  reader.onload=e=>callback(JSON.parse(e.target.result))
+  reader.readAsText(file)
+}
+
+document.getElementById("englishFile").addEventListener("change",e=>{
+  loadFile(e.target.files[0],data=>{
+    english=data
+    buildTable()
+  })
+})
+
+document.getElementById("translationFile").addEventListener("change",e=>{
+  loadFile(e.target.files[0],data=>{
+    translation=data
+    buildTable()
+  })
+})
+
+function autoResize(el){
+  el.style.height="auto"
+  el.style.height=el.scrollHeight+"px"
+}
+
+function buildTable(){
+
+  const tbody=document.querySelector("#table tbody")
+  tbody.innerHTML=""
+
+  working={...translation}
+
+  const allKeys=new Set([
+    ...Object.keys(english),
+    ...Object.keys(translation)
+  ])
+
+  let translated=0
+  let total=Object.keys(english).length
+
+  allKeys.forEach(key=>{
+
+    const tr=document.createElement("tr")
+
+    const en=english[key]
+    const trn=working[key]
+
+    const keyCell=document.createElement("td")
+    keyCell.textContent=key
+    keyCell.className="key"
+
+    const enCell=document.createElement("td")
+    enCell.className="english"
+
+    const enArea=document.createElement("textarea")
+    enArea.value=en||""
+    enArea.readOnly=true
+    autoResize(enArea)
+
+    enArea.addEventListener("input",()=>autoResize(enArea))
+
+    enCell.appendChild(enArea)
+
+    const trCell=document.createElement("td")
+    trCell.className="translation"
+
+    const input=document.createElement("textarea")
+    input.value=trn||""
+    autoResize(input)
+
+    input.oninput=()=>{
+      working[key]=input.value
+      updateRowState(tr,en,input.value)
+      autoResize(input)
+    }
+
+    trCell.appendChild(input)
+
+    tr.appendChild(keyCell)
+    tr.appendChild(enCell)
+    tr.appendChild(trCell)
+
+    updateRowState(tr,en,input.value)
+
+    tbody.appendChild(tr)
+
+    if(input.value) translated++
+  })
+
+  document.getElementById("stats").textContent=
+  "Translated: "+translated+" / "+total
+}
+
+function updateRowState(row,en,trn){
+
+  row.classList.remove("untranslated","mismatch")
+
+  const key=row.children[0].textContent
+
+  if(!(key in english) || !(key in translation)){
+    row.classList.add("mismatch")
+  }
+
+  if(!trn){
+    row.classList.add("untranslated")
+  }
+}
+
+function filterAll(){
+  document.querySelectorAll("tbody tr").forEach(r=>r.classList.remove("hidden"))
+}
+
+function filterUntranslated(){
+  document.querySelectorAll("tbody tr").forEach(r=>{
+    r.classList.toggle("hidden",!r.classList.contains("untranslated"))
+  })
+}
+
+function filterMismatch(){
+  document.querySelectorAll("tbody tr").forEach(r=>{
+    r.classList.toggle("hidden",!r.classList.contains("mismatch"))
+  })
+}
+
+function downloadJSON(){
+
+  const data=JSON.stringify(working,null,2)
+
+  const blob=new Blob([data],{type:"application/json"})
+  const url=URL.createObjectURL(blob)
+
+  const a=document.createElement("a")
+  a.href=url
+  a.download="translation.json"
+  a.click()
+
+  URL.revokeObjectURL(url)
+}
+
+</script>
+
+</body>
+</html>
