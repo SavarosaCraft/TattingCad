@@ -33,11 +33,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../dist/dmc_colors.json",
-      "../dist/tatting-help.html",
-      "../dist/translations.json",
-      "../dist/tatting-theme.json"
-    ]
+"resources": [ 
+"../dist/*.json", 
+"../dist/*.html" 
+]
   }
 }

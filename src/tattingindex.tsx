@@ -1242,7 +1242,9 @@ const TattingDesigner = () => {
   const [loadMsg, setLoadMsg] = useState(null); // { type: 'success'|'error', text: string }
   const [currentTool, setCurrentTool] = useState('pan'); // 'pan' | 'select' | 'path' | 'line' | 'picotJoin' | 'beading' | 'image'
   const [activeMode, setActiveMode] = useState(null); // 'picotJoin' | 'beading' | null — persists across pan/select tool switches
-  const [bgColor, setBgColor] = useState('#1F2937');
+  const [bgColor, setBgColor] = useState<string>(() => {
+    try { return localStorage.getItem('tcad_bg_color') || '#1F2937'; } catch { return '#1F2937'; }
+  });
   const [customColors, setCustomColors] = useState([]);
   const [referenceImage, setReferenceImage] = useState(null);
   const [refImageProps, setRefImageProps] = useState({ opacity: 0.5, rotation: 0, scale: 1, visible: true, x: 0, y: 0 });
@@ -1335,7 +1337,9 @@ const TattingDesigner = () => {
   const [renderMode, setRenderMode] = useState('schematic'); // 'schematic' | 'realistic'
   const [orthoLock, setOrthoLock] = useState(false); // Constrain movement to X or Y axis
   const [notationFontSize, setNotationFontSize] = useState('medium'); // 'small' | 'medium' | 'large'
-  const [uiScale, setUiScale] = useState('normal'); // 'normal' | 'large'
+  const [uiScale, setUiScale] = useState<string>(() => {
+    try { return localStorage.getItem('tcad_ui_scale') || 'normal'; } catch { return 'normal'; }
+  }); // 'normal' | 'large'
   const [patternNotes, setPatternNotes] = useState(''); // Pattern notes / instructions
   const [materials, setMaterials] = useState(DEFAULT_MATERIALS); // Material groups (up to 10)
   const [showMaterialsPanel, setShowMaterialsPanel] = useState(false); // Materials manager popup
@@ -14336,7 +14340,9 @@ const TattingDesigner = () => {
           {/* Background Color */}
           <button
             onClick={() => {
-              setBgColor(BG_COLORS[(BG_COLORS.indexOf(bgColor) + 1) % BG_COLORS.length]);
+              const next = BG_COLORS[(BG_COLORS.indexOf(bgColor) + 1) % BG_COLORS.length];
+              localStorage.setItem('tcad_bg_color', next);
+              setBgColor(next);
             }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
@@ -14440,7 +14446,7 @@ const TattingDesigner = () => {
               {(['normal', 'large'] as const).map(s => (
                 <button
                   key={s}
-                  onClick={() => setUiScale(s)}
+                  onClick={() => { localStorage.setItem('tcad_ui_scale', s); setUiScale(s); }}
                   className={`flex-1 py-1 rounded text-xs font-medium ${
                     uiScale === s
                       ? 'bg-blue-600 text-white'
