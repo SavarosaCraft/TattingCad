@@ -34,7 +34,8 @@
       "icons/icon.ico"
     ],
 "resources": [ 
-"../dist/*.json", 
+"../dist/*.json",
+"../dist/*.md", 
 "../dist/*.html" 
 ]
   }
