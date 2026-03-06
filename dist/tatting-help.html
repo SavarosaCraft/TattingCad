@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tatting Pattern Designer — Help</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #111827;
+      color: #d1d5db;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 700; color: #fff; }
+    header span { font-size: 0.85rem; color: #6b7280; }
+
+    /* ── Tab bar ── */
+    nav {
+      background: #1f2937;
+      border-bottom: 1px solid #374151;
+      display: flex;
+      overflow-x: auto;
+      scrollbar-width: none;
+      position: sticky;
+      top: 57px;
+      z-index: 9;
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav button {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 0.6rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: #9ca3af;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s;
+    }
+    nav button:hover { color: #fff; }
+    nav button.active { color: #fff; border-bottom-color: #3b82f6; background: #111827; }
+
+    /* ── Content ── */
+    main {
+      flex: 1;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Typography helpers ── */
+    h2 { font-size: 1.3rem; font-weight: 700; color: #60a5fa; margin-bottom: 1rem; }
+    h3 { font-size: 1.05rem; font-weight: 600; color: #60a5fa; margin-bottom: 0.6rem; }
+    h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; }
+    p { font-size: 0.875rem; line-height: 1.6; }
+
+    .muted  { color: #6b7280; }
+    .light  { color: #d1d5db; }
+    .white  { color: #fff; }
+    .green  { color: #34d399; }
+    .yellow { color: #fbbf24; }
+    .blue   { color: #60a5fa; }
+    .purple { color: #a78bfa; }
+    .code-inline {
+      background: #374151;
+      color: #d1fae5;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+    }
+    em { font-style: italic; color: #d1d5db; }
+    strong { color: #f3f4f6; }
+
+    /* ── Cards ── */
+    .card {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card-blue  { border-color: #1d4ed8; background: rgba(30,58,138,0.2); }
+    .card-green { border-color: #065f46; background: rgba(6,78,59,0.15); }
+
+    /* ── Step circles ── */
+    .steps { display: flex; flex-direction: column; gap: 1rem; }
+    .step { display: flex; gap: 0.75rem; align-items: flex-start; }
+    .step-num {
+      flex-shrink: 0;
+      width: 2rem; height: 2rem;
+      background: #2563eb;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.85rem; color: #fff;
+    }
+    .step-body h5 { font-size: 0.9rem; font-weight: 600; color: #fff; margin-bottom: 0.25rem; }
+    .step-body p  { font-size: 0.825rem; color: #d1d5db; }
+
+    /* ── Tool entries ── */
+    .tool { margin-bottom: 1rem; }
+    .tool-name { font-weight: 600; color: #d1d5db; margin-bottom: 0.25rem; }
+    .tool-desc { color: #9ca3af; font-size: 0.85rem; padding-left: 0.75rem; line-height: 1.6; }
+    .tool-desc ul { padding-left: 1.25rem; margin-top: 0.3rem; }
+    .tool-desc li { margin-bottom: 0.2rem; }
+
+    /* ── Shortcut grid ── */
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+    kbd {
+      background: #374151;
+      border: 1px solid #4b5563;
+      border-radius: 4px;
+      padding: 0.15rem 0.5rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: #e5e7eb;
+      margin-right: 0.4rem;
+    }
+
+    /* ── Code blocks ── */
+    .codeblock {
+      background: #111827;
+      border-radius: 6px;
+      padding: 0.6rem 0.75rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: #6ee7b7;
+      margin: 0.4rem 0;
+      line-height: 1.7;
+    }
+    .codeblock .hl  { color: #fde68a; }
+    .codeblock .dim { color: #4b5563; }
+    .codeblock .bl  { color: #93c5fd; }
+
+    /* ── Notation grid ── */
+    .notation-section { margin-bottom: 1.25rem; }
+    .notation-label { font-weight: 600; color: #d1d5db; font-size: 0.875rem; margin-bottom: 0.4rem; }
+    .notation-rows { padding-left: 0.5rem; font-size: 0.85rem; }
+    .notation-rows > div { margin-bottom: 0.3rem; }
+
+    /* ── Feature grid ── */
+    .feature { margin-bottom: 1rem; }
+    .feature-name { font-weight: 600; color: #d1d5db; margin-bottom: 0.2rem; font-size: 0.9rem; }
+    .feature-body { color: #9ca3af; font-size: 0.85rem; padding-left: 0.75rem; line-height: 1.6; }
+
+    /* ── Tips list ── */
+    .tips-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+    .tips-list li { font-size: 0.875rem; line-height: 1.5; padding-left: 0.25rem; }
+    .tips-list li::before { content: "• "; color: #6b7280; }
+
+    /* ── Theme table ── */
+    .theme-table { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 1rem; font-size: 0.78rem; font-family: monospace; margin-top: 0.5rem; }
+    .theme-table .k { color: #93c5fd; }
+    .theme-table .v { color: #9ca3af; }
+
+    /* ── Bead cards ── */
+    .bead-tag {
+      display: inline-block;
+      background: #1e3a8a;
+      color: #93c5fd;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      margin-right: 0.5rem;
+    }
+
+    /* ── Pro tips checkmarks ── */
+    .pro-tips { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+    .pro-tips li { display: flex; gap: 0.5rem; font-size: 0.875rem; }
+    .pro-tips .check { color: #34d399; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── Essentials 2-col ── */
+    .essentials { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem; }
+    .essentials .e-name { font-weight: 600; color: #fff; }
+    .essentials .e-desc { color: #d1d5db; }
+
+    /* ── Responsive ── */
+    @media (max-width: 540px) {
+      .shortcut-grid { grid-template-columns: 1fr; }
+      .essentials { grid-template-columns: 1fr; }
+      .theme-table { grid-template-columns: 1fr; }
+      main { padding: 1rem 0.75rem 3rem; }
+    }
+
+    /* ── Print ── */
+    @media print {
+      header, nav { position: static; }
+      .tab-panel { display: block !important; page-break-before: always; }
+      .tab-panel:first-of-type { page-break-before: avoid; }
+      body { background: #fff; color: #111; }
+      .card { border: 1px solid #ccc; background: #f9f9f9; }
+      .codeblock { background: #f3f4f6; color: #166534; }
+      kbd { background: #e5e7eb; }
+      .code-inline { background: #e5e7eb; color: #065f46; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🧵 Tatting Pattern Designer</h1>
+    <span>Help &amp; Reference</span>
+  </div>
+  <div style="margin-left:auto; display:flex; gap:0.5rem;">
+    <button onclick="window.print()" style="background:#374151;border:none;color:#d1d5db;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">🖨 Print</button>
+  </div>
+</header>
+
+<nav id="tabbar">
+  <button class="active" onclick="show('quickstart',this)">🚀 Quick Start</button>
+  <button onclick="show('shortcuts',this)">⌨️ Shortcuts</button>
+  <button onclick="show('notation',this)">📝 Notation</button>
+  <button onclick="show('tools',this)">🔧 Tools</button>
+  <button onclick="show('features',this)">🎨 Features</button>
+  <button onclick="show('tips',this)">💡 Tips</button>
+  <button onclick="show('beads',this)">🪩 Beads</button>
+</nav>
+
+<main>
+
+<!-- ══════════════════════════════ QUICK START ══════════════════════════════ -->
+<section id="tab-quickstart" class="tab-panel active">
+  <h2>Welcome to Tatting Pattern Designer!</h2>
+  <p class="light" style="margin-bottom:1.5rem;">Create beautiful tatting patterns with this digital design tool.</p>
+
+  <div class="card">
+    <h4 class="green">📍 Getting Started in 5 Steps</h4>
+    <div class="steps" style="margin-top:0.75rem;">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h5>Add Your First Ring or Chain</h5>
+          <p>Use the left toolbar buttons or click the canvas to add elements. Rings are for closed loops, chains connect elements.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h5>Write Notation</h5>
+          <p>Select an element and type notation like <code class="code-inline">r: 5ds-p-5ds</code> in the properties panel. The pattern updates automatically!</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h5>Add Picots &amp; Joins</h5>
+          <p>Use <code class="code-inline">p</code> for picots, <code class="code-inline">jp</code> for join points (green → yellow when connected), <code class="code-inline">gp</code> for guide points, <code class="code-inline">jpg</code> for guide joined picots.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h5>Assign Materials</h5>
+          <p>Open <strong>Options → Materials…</strong> to create thread materials with colors or gradients, then assign them to elements from the property bar.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <h5>Save &amp; Export</h5>
+          <p>Click <span class="blue">Save</span> to download your project as a <code class="code-inline">.json</code> file, or export as SVG for printing and sharing.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <h4 class="yellow">🎯 Essential Tools</h4>
+    <div class="essentials" style="margin-top:0.6rem;">
+      <div><div class="e-name">🖐️ Pan Tool</div><div class="e-desc">Move around the canvas (or middle-click drag)</div></div>
+      <div><div class="e-name">🖱️ Select Tool</div><div class="e-desc">Click elements to edit, drag to move</div></div>
+      <div><div class="e-name">⭕ Ring Tool</div><div class="e-desc">Click to add rings (circles or teardrops)</div></div>
+      <div><div class="e-name">⛓️ Chain Tool</div><div class="e-desc">Click to add chains between elements</div></div>
+      <div><div class="e-name">🎨 Realistic View</div><div class="e-desc">Toggle to see stitches rendered realistically</div></div>
+      <div><div class="e-name">🔢 Order Numbers</div><div class="e-desc">Number elements to generate pattern text</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <h4 style="color:#a78bfa;">✨ Pro Tips</h4>
+    <ul class="pro-tips" style="margin-top:0.6rem;">
+      <li><span class="check">✓</span><span><strong>Snap to Points:</strong> Enable snap (🧲 button) to connect elements precisely at join/guide points</span></li>
+      <li><span class="check">✓</span><span><strong>Rotation:</strong> Hold Shift (desktop) or click rotation toggle (mobile) to rotate selected elements</span></li>
+      <li><span class="check">✓</span><span><strong>Squeeze Rings:</strong> Use the Squeeze slider to make rings taller/wider while keeping stitch count constant</span></li>
+      <li><span class="check">✓</span><span><strong>Pattern Generation:</strong> Assign order numbers (1, 2, 3…) then click "Generate Pattern" to copy notation</span></li>
+      <li><span class="check">✓</span><span><strong>Reference Images:</strong> Upload a photo/diagram to trace over (adjust opacity and scale)</span></li>
+      <li><span class="check">✓</span><span><strong>Show Unnumbered:</strong> Toggle to see which elements need order numbers (pink glow highlight)</span></li>
+    </ul>
+  </div>
+
+  <div class="card card-blue" style="margin-top:1rem;">
+    <h4 class="blue">💾 Auto-Save</h4>
+    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to browser storage. Use the Save button to download a permanent copy!</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ SHORTCUTS ══════════════════════════════ -->
+<section id="tab-shortcuts" class="tab-panel">
+  <h2>Keyboard Shortcuts</h2>
+  <div class="shortcut-grid">
+    <div><kbd>Ctrl+N</kbd> New canvas</div>
+    <div><kbd>Ctrl+S</kbd> Save project</div>
+    <div><kbd>Ctrl+Z</kbd> Undo</div>
+    <div><kbd>Shift+Z</kbd> Redo</div>
+    <div><kbd>Ctrl+A</kbd> Select all</div>
+    <div><kbd>Ctrl+C</kbd> Copy</div>
+    <div><kbd>Ctrl+V</kbd> Paste</div>
+    <div><kbd>D</kbd> Duplicate in place</div>
+    <div><kbd>Delete</kbd> Delete selected</div>
+    <div><kbd>Ctrl+G</kbd> Group selection</div>
+    <div><kbd>Shift+G</kbd> Ungroup</div>
+    <div><kbd>Tab</kbd> Toggle Pan/Select</div>
+    <div><kbd>V</kbd> Toggle Realistic view</div>
+    <div><kbd>Escape</kbd> Exit realistic view</div>
+    <div><kbd>F</kbd> Fit all to view</div>
+    <div><kbd>+</kbd> Zoom in</div>
+    <div><kbd>-</kbd> Zoom out</div>
+    <div><kbd>Shift (hold)</kbd> Ortho lock + rotation handles</div>
+    <div><kbd>Middle-click drag</kbd> Pan canvas</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ NOTATION ══════════════════════════════ -->
+<section id="tab-notation" class="tab-panel">
+  <h2>Notation Syntax</h2>
+
+  <div class="notation-section">
+    <div class="notation-label">Basic Ring / Chain</div>
+    <div class="notation-rows">
+      <div><code class="code-inline">r: 20ds</code> &nbsp;Ring with 20 double stitches</div>
+      <div><code class="code-inline">c: 10ds</code> &nbsp;Chain with 10 double stitches</div>
+    </div>
+  </div>
+
+  <div class="notation-section">
+    <div class="notation-label">Separators</div>
+    <div class="notation-rows">
+      <div>Use <code class="code-inline">-</code> (dash) or <code class="code-inline">.</code> (dot) between tokens — both are identical.</div>
+      <div><code class="code-inline">r: 5ds-p-5ds</code> &nbsp;= &nbsp;<code class="code-inline">r: 5ds.p.5ds</code></div>
+    </div>
+  </div>
+
+  <div class="notation-section">
+    <div class="notation-label">With Picots</div>
+    <div class="notation-rows">
+      <div><code class="code-inline">r: 10ds-p-10ds</code> &nbsp;Ring with picot at 10 stitches</div>
+      <div><code class="code-inline">r: 5ds-jp-5ds</code> &nbsp;Ring with joint picot (green → yellow when connected)</div>
+    </div>
+  </div>
+
+  <div class="notation-section">
+    <div class="notation-label">Picot Types</div>
+    <div class="notation-rows">
+      <div><code class="code-inline">p</code> &nbsp;Medium picot (default)</div>
+      <div><code class="code-inline">sp</code> &nbsp;Small picot</div>
+      <div><code class="code-inline">lp</code> &nbsp;Large picot</div>
+      <div><code class="code-inline">jp</code> &nbsp;Joint picot — green (free), yellow (connected), pink (selected)</div>
+      <div><code class="code-inline">jpg</code> &nbsp;Guide joined picot — green arm, snap point + joinable</div>
+      <div><code class="code-inline">gp</code> &nbsp;Guide point — yellow-green diamond on path, snap anchor, no arm</div>
+    </div>
+  </div>
+
+  <div class="notation-section">
+    <div class="notation-label">Repeats</div>
+    <div class="notation-rows">
+      <div><code class="code-inline">r: 3ds-4*(p-2ds)</code> &nbsp;Repeat (p-2ds) four times</div>
+      <div><code class="code-inline">r: 5*(3ds-p)</code> &nbsp;Repeat (3ds-p) five times</div>
+    </div>
+  </div>
+
+  <div class="notation-section">
+    <div class="notation-label">Split Ring</div>
+    <div class="notation-rows">
+      <div>A split ring uses two notation fields — Side A and Side B.</div>
+      <div class="codeblock">
+        <span class="bl">Side A:</span> sr: 5ds-p-5ds<br>
+        <span class="bl">Side B:</span> 3ds-jp-3ds &nbsp;<span class="dim">← no sr: prefix</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="notation-section">
+    <div class="notation-label">Examples</div>
+    <div class="codeblock">
+      r: 4ds-p-4ds-p-4ds-p-4ds<br>
+      c: 5ds-jp-5ds<br>
+      r: 5*(3ds-p)-3ds
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ TOOLS ══════════════════════════════ -->
+<section id="tab-tools" class="tab-panel">
+  <h2>Tools</h2>
+
+  <div class="tool">
+    <div class="tool-name">🖱️ Pan Tool</div>
+    <div class="tool-desc">Click and drag to move the camera view. Also activated by holding Space or middle-click drag.</div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">👆 Select Tool</div>
+    <div class="tool-desc">Click to select elements. Drag to move. Shift+Click for multi-select. Drag empty space for box selection.</div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">⭕ Ring Tool (R)</div>
+    <div class="tool-desc">Adds a new ring at the center of your viewport. Use the notation field to define stitches and picots. Toggle circle / teardrop shape in the property bar.</div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">◑ Split Ring (SR)</div>
+    <div class="tool-desc">
+      A split ring has two separate halves — Side A and Side B — each with their own notation. Lets you define different stitch sequences on each arc.
+      <div class="codeblock" style="margin-top:0.4rem;">
+        <span class="bl">Side A:</span> sr: 5ds-p-5ds<br>
+        <span class="bl">Side B:</span> 3ds-jp-3ds &nbsp;<span class="dim">(no sr: prefix)</span>
+      </div>
+      The split line between the two halves is shown as a dashed divider. Picots on either side work exactly like on regular rings.
+    </div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">〰️ Chain Tool (C)</div>
+    <div class="tool-desc">Adds a curved chain. Drag the bezier handles (in Path Edit mode) to shape the curve. Picots sit on the outside of the curve.</div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">📏 Line Tool (L)</div>
+    <div class="tool-desc">
+      Creates a visual connector line — no stitches, not included in pattern output. Use it to link elements, mark thread paths, or add diagram annotations.
+      <ul style="margin-top:0.3rem; font-size:0.82rem; color:#6b7280;">
+        <li>Adjust thickness with the Line Width slider in the property bar.</li>
+        <li>Use Path Edit (PE) to curve the line just like a chain.</li>
+        <li>Lines can carry beads — add bead notation in the line's notation field.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">✏️ Path Edit (PE)</div>
+    <div class="tool-desc">Select a chain or line, then click PE to edit its curve. Drag the green start/end handles or the blue control handles to reshape. Handles stay fixed screen size regardless of zoom.</div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">🔗 Picot Join (PJ)</div>
+    <div class="tool-desc">
+      Used to connect joint picots (<code class="code-inline">jp</code>) between elements.
+      <ul style="margin-top:0.3rem; font-size:0.82rem; color:#6b7280;">
+        <li>Green dot = unconnected jp. Yellow dot = already connected.</li>
+        <li>In PJ mode, drag a box to select the picots you want to link, then click Link (🔗).</li>
+        <li>Click Unlink (🔓) to remove a connection.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tool">
+    <div class="tool-name">🖼️ Image Tool</div>
+    <div class="tool-desc">Upload a reference image to trace over. Adjust opacity, scale, position, and rotation in the image controls panel.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ FEATURES ══════════════════════════════ -->
+<section id="tab-features" class="tab-panel">
+  <h2>Features</h2>
+
+  <div class="feature">
+    <div class="feature-name">🔄 Rotation</div>
+    <div class="feature-body">
+      <strong>Desktop:</strong> Hold Shift to show rotation handles at corners of bounding box. Drag to rotate.<br>
+      <strong>Mobile:</strong> Click the rotation button (🔄) to toggle handles on/off.<br>
+      <strong>Fine Control:</strong> Type any angle in the rotation input (45°, 30°, 7.5°…) and press Enter. Works for single elements and groups.<br>
+      Use ↶ ↷ buttons for quick 90° rotations.
+    </div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">🔃 Flipping</div>
+    <div class="feature-body">Use <strong>Flip H</strong> and <strong>Flip V</strong> buttons to mirror selected elements. Perfect for symmetrical patterns.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">📋 Arrange Menu</div>
+    <div class="feature-body">
+      • <strong>Duplicate in Place (D)</strong> — copy at exact same position, ideal for radial patterns<br>
+      • <strong>Align</strong> — align 2+ elements: Left, Center H, Right, Top, Center V, Bottom
+    </div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">⚙️ Options Menu</div>
+    <div class="feature-body">
+      • <strong>Materials…</strong> — create/manage thread materials<br>
+      • <strong>Thread Properties…</strong> — adjust thread weight and sizing<br>
+      • <strong>Notation Size</strong> — Small / Medium / Large label size<br>
+      • <strong>UI Scale</strong> — Normal / Large toolbar size<br>
+      • <strong>Snap</strong> — toggle snap-to-points<br>
+      • <strong>Bead Sizes</strong> — configure Y/Z/V bead diameters<br>
+      • <strong>Load / Reset Theme</strong> — customise indicator colors
+    </div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">🟢 Joint Picots</div>
+    <div class="feature-body">Type <code class="code-inline">jp</code> in notation to create join points. Green = free, yellow = connected to another element, pink = selected. Use the Picot Join tool to link them.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">🟡 Guide Points &amp; Guide Joined Picots</div>
+    <div class="feature-body">
+      <strong>gp</strong> (Guide Point) — yellow-green diamond on the path. Acts as a snap anchor — other elements snap to it. Does not appear in exported images.<br>
+      <strong>jpg</strong> (Guide Joined Picot) — a green picot arm. Acts as a visual guide and snap point for joining picots.
+    </div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">📦 Groups</div>
+    <div class="feature-body">Select multiple elements and press Ctrl+G to group them. Grouped elements move, rotate, and flip together. Use Shift+G to ungroup.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">🖼️ Reference Image</div>
+    <div class="feature-body">Upload a background image to trace over. Adjust opacity, scale, position, and rotation in the reference image controls.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">🎨 Materials &amp; Colors</div>
+    <div class="feature-body">
+      <strong>Materials:</strong> Create reusable thread materials in Options → Materials… — assign solid DMC colors or gradients, then apply from the property bar.<br>
+      <strong>Gradients:</strong> Bottom toolbar shows selected gradients (4 by default, max 10). Click + to add from the gradient picker. Ctrl+Click a gradient to remove it.
+    </div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">💾 Export &amp; Save</div>
+    <div class="feature-body">Export as SVG (vector, scales to any size). Projects auto-save every 3 minutes to browser storage. Use File menu to manually save/load.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">🔢 Order Numbers</div>
+    <div class="feature-body">Enter a number in the "Order #" field to label rings and chains for pattern instructions.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ TIPS ══════════════════════════════ -->
+<section id="tab-tips" class="tab-panel">
+  <h2>Tips &amp; Tricks</h2>
+
+  <ul class="tips-list" style="margin-bottom:2rem;">
+    <li><strong>Radial patterns:</strong> Create one petal, press D to duplicate in place, type an angle (e.g. 45° for 8-petal, 30° for 12-point). Repeat D + Enter until complete.</li>
+    <li><strong>Quick color edit:</strong> Double-click any color swatch in the palette to open the color picker.</li>
+    <li><strong>Rotation handles:</strong> Hold Shift (desktop) or click rotation button (mobile) to show handles. Release/click again to hide for easier movement.</li>
+    <li><strong>Fast rotation:</strong> Use ↶ and ↷ buttons for instant 90° rotations instead of typing angles.</li>
+    <li><strong>Symmetry with flipping:</strong> Duplicate elements and use Flip H or Flip V to create perfectly mirrored patterns.</li>
+    <li><strong>Alignment:</strong> Use Arrange menu alignment options to quickly organise multiple elements (requires 2+ selected).</li>
+    <li><strong>Joint picot connections:</strong> Joint picots appear as green dots on paths — yellow once connected. Click them directly to select.</li>
+    <li><strong>Gradient search:</strong> Use the search bar in the gradient picker to find gradients by name or ID.</li>
+    <li><strong>Auto-save:</strong> Your work is automatically saved every 3 minutes to browser storage.</li>
+    <li><strong>Undo safety:</strong> Undo/Redo tracks up to 50 states — experiment freely.</li>
+    <li><strong>Copy preserves:</strong> Copy/paste maintains all element properties including groups and connections.</li>
+    <li><strong>Zoom tricks:</strong> Use + / - keys or mouse wheel to zoom. Press F to fit all elements in view.</li>
+    <li><strong>Multi-select:</strong> Hold Shift while clicking to add elements to your selection.</li>
+    <li><strong>Box selection:</strong> Drag in empty space to create a selection box around multiple elements.</li>
+    <li><strong>Group workflow:</strong> Group related elements (Ctrl+G) to rotate and move them as one unit. Ungroup with Shift+G.</li>
+  </ul>
+
+  <h3>🎨 Customising Indicator Colors</h3>
+  <p style="margin-bottom:0.75rem; font-size:0.875rem;">The snap points, joint picot dots, path-edit handles and connection lines all use colors defined in a <code class="code-inline">tatting-theme.json</code> file.</p>
+
+  <div class="card">
+    <h4>To customise:</h4>
+    <ol style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.875rem; line-height:1.8; color:#d1d5db;">
+      <li>Open <code class="code-inline">tatting-theme.json</code> in any text editor.</li>
+      <li>Change any hex color value (e.g. <code class="code-inline">"#FFA500"</code> → <code class="code-inline">"#00BFFF"</code>).</li>
+      <li>Save the file and reload the app — colors apply automatically.</li>
+    </ol>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-top:0.6rem;">You can also load a theme mid-session via <strong>Options → Load Theme…</strong> without restarting.</p>
+  </div>
+
+  <h4 style="margin-top:1rem; margin-bottom:0.5rem;">Theme keys</h4>
+  <div class="theme-table">
+    <div class="k">snapOuter / snapInner</div><div class="v">Snap point circles</div>
+    <div class="k">jpUnconnected</div><div class="v">Joint picot — free (green)</div>
+    <div class="k">jpConnected</div><div class="v">Joint picot — joined (yellow)</div>
+    <div class="k">jpSelected</div><div class="v">Joint picot — selected (pink)</div>
+    <div class="k">handleStart</div><div class="v">Path edit start/end handle</div>
+    <div class="k">handleControl1 / 2</div><div class="v">Bezier control handles</div>
+    <div class="k">connectionLine / Dot</div><div class="v">Picot connection visuals</div>
+    <div class="k">jpgArm / jpgArmSelected</div><div class="v">Guide joined picot arm</div>
+    <div class="k">gpDiamond</div><div class="v">Guide point diamond</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ BEADS ══════════════════════════════ -->
+<section id="tab-beads" class="tab-panel">
+  <h2>Bead Notation</h2>
+  <p style="margin-bottom:1rem; font-size:0.875rem;">Beads are added inline in the notation string. Three size keys: <code class="code-inline">Y</code> (small), <code class="code-inline">Z</code> (medium), <code class="code-inline">V</code> (large). Sizes are configurable in <strong>Options → Bead Sizes</strong>.</p>
+
+  <!-- bc -->
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">bc:Y</span>
+      <strong class="white">Core Bead</strong>
+    </div>
+    <p style="font-size:0.875rem;">A single bead threaded directly <em>onto</em> the core thread — sits inline on the path with the thread looping behind it. Uses one ds-position.</p>
+    <div class="codeblock">
+      r: 5ds-<span class="hl">bc:Y</span>-5ds<br>
+      c: 3ds-<span class="hl">bc:Z</span>-3ds-<span class="hl">bc:Y</span>-3ds
+    </div>
+    <p style="font-size:0.78rem; color:#6b7280;">Single size letter only (Y, Z, or V). Can appear multiple times.</p>
+  </div>
+
+  <!-- bcp -->
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">bcp:Y:ZZ</span>
+      <strong class="white">Core + Picot Bead</strong>
+    </div>
+    <p style="font-size:0.875rem;">A core bead on the thread <em>plus</em> a branch of picot beads from its edge. Two parts separated by <code class="code-inline">:</code> — first is the core size, second is the picot sequence.</p>
+    <div class="codeblock">
+      r: 4ds-<span class="hl">bcp:Y:ZZ</span>-4ds  <span class="dim">← Y core, ZZ picot branch</span><br>
+      r: 4ds-<span class="hl">bcp:Z:YZY</span>-4ds  <span class="dim">← Z core, YZY branch</span>
+    </div>
+  </div>
+
+  <!-- bp -->
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">bp:YZY</span>
+      <strong class="white">Beaded Picot</strong>
+    </div>
+    <p style="font-size:0.875rem;">Replaces a regular picot with beads threaded onto the picot loop. Beads are arranged along a branch perpendicular to the path.</p>
+    <div class="codeblock">
+      r: 5ds-<span class="hl">bp:Y</span>-5ds     <span class="dim">← single bead picot</span><br>
+      r: 5ds-<span class="hl">bp:YZY</span>-5ds   <span class="dim">← three bead branch</span><br>
+      r: 3ds-<span class="hl">bp:2Y</span>-3ds    <span class="dim">← shorthand: 2 Y beads</span>
+    </div>
+  </div>
+
+  <!-- sb -->
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">sb:ZY</span>
+      <strong class="white">Suspended Bead</strong>
+    </div>
+    <p style="font-size:0.875rem;">Beads stacked in a straight column perpendicular to the path, like a charm dangle. A line is drawn from the path to the tip of the outermost bead.</p>
+    <div class="codeblock">
+      c: 4ds-<span class="hl">sb:Y</span>-4ds    <span class="dim">← single suspended bead</span><br>
+      c: 4ds-<span class="hl">sb:ZY</span>-4ds   <span class="dim">← Z closest to path, Y at tip</span>
+    </div>
+  </div>
+
+  <!-- bjp -->
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">bjp:YZ</span>
+      <strong class="white">Beaded Joint Picot</strong>
+    </div>
+    <p style="font-size:0.875rem;">Beads clustered at the midpoint of a picot <em>connection</em> — shown where two linked <code class="code-inline">jp</code> picots meet. 1 bead = centred. 2 = side by side. 3+ = circular cluster.</p>
+    <div class="codeblock">
+      r: 5ds-<span class="hl">bjp:Y</span>-5ds    <span class="dim">← 1 bead at join</span><br>
+      r: 5ds-<span class="hl">bjp:3Z</span>-5ds   <span class="dim">← 3 Z beads clustered</span>
+    </div>
+  </div>
+
+  <!-- Sequence syntax -->
+  <div class="card">
+    <h4>Bead Sequence Syntax</h4>
+    <p style="font-size:0.875rem; margin-top:0.3rem;">Each letter = one bead of that size. A leading number repeats it: <code class="code-inline">3Y</code> = <code class="code-inline">YYY</code>. Mix sizes freely.</p>
+    <div class="codeblock" style="margin-top:0.5rem;">
+      Y     → one small bead<br>
+      YZY   → small · medium · small<br>
+      3Y    → three small beads<br>
+      2YZ   → two small + one medium<br>
+      V     → one large bead
+    </div>
+  </div>
+
+  <p style="font-size:0.8rem; color:#6b7280; font-style:italic; margin-top:1rem;">💡 A printable PDF quick-reference for bead notation is planned for a future update.</p>
+</section>
+
+</main>
+
+<script>
+  function show(tab, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#tabbar button').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    btn.classList.add('active');
+    // Scroll tab into view on mobile
+    btn.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Support ?tab=beads in URL for direct linking
+  const params = new URLSearchParams(location.search);
+  const t = params.get('tab');
+  if (t) {
+    const btn = [...document.querySelectorAll('#tabbar button')].find(b => b.getAttribute('onclick')?.includes("'" + t + "'"));
+    if (btn) show(t, btn);
+  }
+</script>
+</body>
+</html>
