@@ -657,11 +657,11 @@ const LANGUAGES_FALLBACK: Record<string, string> = {
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   en: {
     // ── Startup / Disclaimer ────────────────────────────────────────────────
-    disclaimerTitle: 'Test Version',
-    disclaimerVersion: 'Version 1.1',
-    disclaimerBody2: 'Expect bugs, incomplete features, and possible data loss.',
-    disclaimerBody3: 'Use at your own risk.',
-    disclaimerBody4: 'Thank you for testing and for any feedback you share!',
+    disclaimerTitle: 'Pre-Release Test Version',
+    disclaimerVersion: 'Version 0.9.94',
+    disclaimerBody2: 'Feature-ready. If you experience any bugs or unexpected behavior, please let me know.',
+    disclaimerBody3: 'Save often — but no major issues are expected.',
+    disclaimerBody4: 'Use at your own risk.',
     disclaimerDontShow: "Don't show again for this version",
     disclaimerCopyright: '© 2026 Melinda Kiss',
     disclaimerContinue: 'I Understand – Continue',
@@ -1387,7 +1387,7 @@ const TattingDesigner = () => {
   const [showLoadConfirmDialog, setShowLoadConfirmDialog] = useState(false);
   const [showJoinTip, setShowJoinTip] = useState(() => localStorage.getItem('tcad_seen_join_tip') !== '1');
   const [saveDialogName, setSaveDialogName] = useState(''); // NEW: temp name in save dialog
-  const APP_VERSION = '1.1';
+  const APP_VERSION = '0.9.94';
   const [showDisclaimer, setShowDisclaimer] = useState(() => {
     // Show if user hasn't dismissed this exact version yet
     return localStorage.getItem('tcad_seen_version') !== APP_VERSION;
@@ -14095,8 +14095,8 @@ const TattingDesigner = () => {
             <p className="text-center text-gray-400 text-xs mb-3">{t('disclaimerVersion')}</p>
             <div className="text-gray-200 space-y-1 mb-4 leading-snug text-sm">
               <p>{t('disclaimerBody2')}</p>
-              <p className="text-red-300 font-semibold">{t('disclaimerBody3')}</p>
-              <p>{t('disclaimerBody4')}</p>
+              <p>{t('disclaimerBody3')}</p>
+              <p className="text-red-300 font-semibold">{t('disclaimerBody4')}</p>
               <p className="text-gray-400 text-xs text-center mt-2">{t('disclaimerCopyright')}</p>
             </div>
             {/* Don't show again checkbox */}
