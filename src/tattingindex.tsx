@@ -1,4 +1,32 @@
 // Tatting Pattern Designer - Version 1.05 TEST
+// CHANGES IN SESSION 25:
+// - pasteFromClipboard now preserves picot connections (was silently dropping them)
+// - Ctrl+V keyboard shortcut now calls pasteFromClipboard() instead of reimplementing paste
+// - All load/save/theme error and success messages now go through t() — no more hardcoded English
+// - pushHistoryState() extracted as shared helper (was duplicated in useEffect + mouseUp handler)
+// - filteredSolidColors useMemo removed (dead code — replaced by filteredSolidColorsDebounced)
+// - shouldShowRotationHandles converted from useMemo to plain const (trivial boolean OR)
+// - IDs now use crypto.randomUUID() — replaces Date.now()+Math.random() (17 sites, collision-safe)
+// - console.log calls removed from production code
+// - Autosave comment corrected to 3 minutes (was incorrectly documented as 30 seconds)
+// - Safe area insets added: top header and bottom info bar respect Android status/nav bars
+// - languagePickerLabel: 'Language / Nyelv' → 'Language' (Hungarian removed for other translators)
+// - translations_en.json: all _comment_ section headers translated to English (were Hungarian)
+// - Pattern output: bead block now also lists named beads (BE library beads) by name × count
+// - Materials panel: name input border always visible (border-gray-400, focus ring)
+// - Bead library panel: name input border always visible (was hidden until hover)
+// - Split ring material label changed from 'Material:' to 'Mat A:' (new matALabel key)
+// - Ref image controls: Upload Image, Opacity, Scale, Rotate, Visible/Hidden, Remove → all t()
+// - UI: select-none added to root app div — no accidental text selection on labels/buttons
+//
+// CHANGES IN SESSION 24:
+// - lss / rss token support: same path size as ss (0.5 DS each), stored as distinct types
+//   so on-screen labels and future rendering can distinguish left/right single stitches
+// - On-screen notation labels now type-aware: pure-DS segments show a plain count (e.g. "3"),
+//   mixed or SS/LSS/RSS segments show run-encoded label with middle-dot separator
+//   e.g. "2·7lss·7rss·2" instead of "18"
+// - buildSegmentLabel() replaces raw countStitchesInRange() in all 5 label render sites
+//   (circle no-picot, teardrop/chain no-picot, circle segmented, split ring, path segmented)
 // CHANGES IN v1.05:
 // - Split ring notation labels: A and B sections shown on correct curves
 // - Orphaned notation label ghost fix (stable React keys + <g> wrapper)
@@ -199,6 +227,9 @@
 // - Clean separation: solids on right, gradients on bottom
 // - Gradient picker matches DMC swatches (search, categories, pagination, preview)
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+
+// Collision-safe unique ID generator — replaces Date.now()+Math.random() everywhere.
+const generateId = (): string => crypto.randomUUID();
 
 // ── Tatting Icons (inlined) ─────────────────────────────────────────────
 // tatting-icons.tsx
@@ -634,7 +665,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     disclaimerDontShow: "Don't show again for this version",
     disclaimerCopyright: '© 2026 Melinda Kiss',
     disclaimerContinue: 'I Understand – Continue',
-    languagePickerLabel: 'Language / Nyelv',
+    languagePickerLabel: 'Language',
 
     // ── Top toolbar – buttons ────────────────────────────────────────────────
     menuFile: 'File',
@@ -660,6 +691,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     fileExportSvg: 'Export SVG',
     fileExportSvgTitle: 'Export as SVG (can be converted to PNG with external tools)',
     fileOutputNotation: 'Output notation to clipboard',
+    notationCopied: 'Notation copied to clipboard',
+    notationCopyFailed: 'Copy failed — check clipboard permissions',
     fileShowUnnumbered: 'Show Unnumbered',
 
     // ── Arrange menu ─────────────────────────────────────────────────────────
@@ -723,6 +756,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
     // ── Property bar labels ───────────────────────────────────────────────────
     propOrder: 'Order:',
+    propRWTooltip: 'Reverse Work — appends RW to notation output',
     propShape: 'Shape:',
     propSqueeze: 'Squeeze:',
     propNotation: 'Notation:',
@@ -828,6 +862,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
     // ── Help ──────────────────────────────────────────────────────────────────
     helpOpenTab: 'Open help in a new browser tab',
+    helpTitle: 'Help',
+    helpOpenInBrowser: '↗ Open in browser',
     helpWindowTitle: 'Tatting Pattern Designer Help',
 
     // ── Loading ───────────────────────────────────────────────────────────────
@@ -894,6 +930,16 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     beadCountLabel: 'Beads:',
     matBLabel: 'Mat B:',
     materialLabel: 'Material:',
+    matALabel: 'Mat A:',
+
+    // ── Property bar empty state ──────────────────────────────────────────────
+    propEmptyState: 'Select an element to edit its properties',
+    refImageOpacity: 'Opacity:',
+    refImageScale: 'Scale:',
+    refImageRotate: 'Rotate:',
+    refImageVisible: 'Visible',
+    refImageHidden: 'Hidden',
+    refImageRemove: 'Remove',
     regularPicotLabel: 'Regular picot',
     longPicotLabel: 'Long picot (auto: 2×)',
     shortPicotLabel: 'Short picot (auto: ½×)',
@@ -936,7 +982,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
     // ── Thread Properties: remaining hardcoded strings ────────────────────────
     thread20DSWorking: '20 DS working thread',
-    thread20DSCore: '20 DS core thread',
     threadRegularPicotLabel: 'Regular picot',
     threadJoinedPicotLabel: 'Joined picot',
     threadLongPicotLabel: 'Long picot (auto: 2×)',
@@ -1011,6 +1056,22 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     updateLastChecked: 'Last checked',
     updateNeverChecked: 'Never checked',
     updateCheckNow: 'Check now',
+
+    // ── File / project load errors ────────────────────────────────────────────
+    loadErrWrongFormat: 'Wrong file format — please select a .json file.',
+    loadErrTooLarge: 'Failed to load project: file too large (max 10MB).',
+    loadErrCorrupted: 'Failed to load project: corrupted file (invalid JSON).',
+    loadErrMissingElements: 'Failed to load project: unvalidated file (missing elements).',
+    loadErrInvalidElements: 'Failed to load project: {n} invalid element(s) found.',
+    loadSuccess: 'Load completed — {n} element(s) loaded.',
+    loadErrGeneric: 'Failed to load project: {msg}',
+    loadErrReadFailed: 'Failed to load project: error reading file.',
+
+    // ── Theme load / reset ────────────────────────────────────────────────────
+    loadThemeErrInvalid: 'Invalid theme file — expected a JSON object.',
+    loadThemeSuccess: 'Theme loaded.',
+    loadThemeErrJson: 'Failed to load theme: invalid JSON.',
+    themeResetSuccess: 'Theme reset to default.',
   },
 };
 
@@ -1142,6 +1203,14 @@ const WEDGE_SHAPES = {
     [-0.1023,  0.0463,  0.0500, 0.2002],  // bar (half width of DS)
     [-0.1023,  0.0463,  0.2128, 0.5229],  // post (same width as bar)
   ],
+  'lss': [
+    [-0.1023,  0.0463,  0.0500, 0.2002],
+    [-0.1023,  0.0463,  0.2128, 0.5229],
+  ],
+  'rss': [
+    [-0.1023,  0.0463,  0.0500, 0.2002],
+    [-0.1023,  0.0463,  0.2128, 0.5229],
+  ],
   'rds': [
     [-0.5933,  0.0798,  0.0500, 0.2002],  // wide bar
     [-0.5946, -0.4447,  0.2128, 0.5229],  // post 1
@@ -1261,6 +1330,8 @@ const TattingDesigner = () => {
   const [picotConnections, setPicotConnections] = useState([]); // NEW: joint picot connections
   const [selectedPicots, setSelectedPicots] = useState([]); // NEW: selected joint picots {elementId, picotId}
   const [showHelp, setShowHelp] = useState(false); // NEW: help modal
+  const [resolvedHelpUrl, setResolvedHelpUrl] = useState('./tatting-help.html');
+  const [helpUrlReady, setHelpUrlReady] = useState(false);
   const [showBeadLibrary, setShowBeadLibrary] = useState(false); // Bead Library panel
   const [selectedBeadId, setSelectedBeadId] = useState(null); // currently editing bead in panel
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm } | null
@@ -1396,6 +1467,29 @@ const TattingDesigner = () => {
   const needsHistoryPushRef = useRef(false);  // Flag to push history after interaction ends
   const pathDragStartRef = useRef(null);  // Store initial control points and position for smooth path editing
 
+  // Shared history push — used by the elements useEffect and by the mouseUp handler.
+  // Reads history from refs (always current), writes via setters (stable references).
+  const pushHistoryState = useCallback((els, conns) => {
+    const currentHistory = historyRef.current;
+    const currentIndex = historyIndexRef.current;
+    const currentState = currentHistory[currentIndex];
+
+    const newStateStr = JSON.stringify({ elements: els, connections: conns });
+    const oldStateStr = currentState ? JSON.stringify(currentState) : null;
+    if (oldStateStr === newStateStr) return;
+
+    const cloned = {
+      elements: JSON.parse(JSON.stringify(els)),
+      connections: JSON.parse(JSON.stringify(conns)),
+    };
+
+    const newHistory = currentHistory.slice(0, currentIndex + 1);
+    newHistory.push(cloned);
+    if (newHistory.length > 50) newHistory.shift();
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  }, []); // refs and state setters are stable — no deps needed
+
   // Keep history refs updated
   useEffect(() => {
     historyRef.current = history;
@@ -1458,52 +1552,12 @@ const TattingDesigner = () => {
 
   // Track history when elements or connections change
   useEffect(() => {
-    if (isUndoRedoRef.current) {
-      return; // Don't add during undo/redo
-    }
-    
-    // Skip during interactive operations (drag, rotate, path edit)
+    if (isUndoRedoRef.current) return; // Don't add during undo/redo
     if (isInteractingRef.current) {
-      needsHistoryPushRef.current = true; // Mark that we need to push after interaction ends
+      needsHistoryPushRef.current = true; // Push after interaction ends instead
       return;
     }
-    
-    // Get current history state from refs
-    const currentHistory = historyRef.current;
-    const currentIndex = historyIndexRef.current;
-    const currentState = currentHistory[currentIndex];
-    
-    // Check if the new state is different from current history state
-    const newStateStr = JSON.stringify({ elements, connections: picotConnections });
-    const oldStateStr = currentState ? JSON.stringify(currentState) : null;
-    
-    if (oldStateStr === newStateStr) {
-      return; // No change, don't add to history
-    }
-    
-    // Deep clone the state
-    const cloned = {
-      elements: JSON.parse(JSON.stringify(elements)),
-      connections: JSON.parse(JSON.stringify(picotConnections))
-    };
-    
-    // Remove any history after current index (user made new action after undo)
-    const newHistory = currentHistory.slice(0, currentIndex + 1);
-    
-    // Add new state
-    newHistory.push(cloned);
-    
-    console.log('History:', newHistory.length - 1, 'states');
-    
-    // Limit history to 50 states
-    if (newHistory.length > 50) {
-      newHistory.shift();
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
-    } else {
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
-    }
+    pushHistoryState(elements, picotConnections);
   }, [elements, picotConnections]); // Depend on both elements and connections
 
   // Auto-save to localStorage every 30 seconds
@@ -1521,6 +1575,10 @@ const TattingDesigner = () => {
   const picotConnectionsRef = useRef(picotConnections);
   const renderModeRef = useRef(renderMode);
   const patternNotesRef = useRef(patternNotes);
+  const materialsRef = useRef(materials);
+  const beadLibraryRef = useRef(beadLibrary);
+  const threadPresetsRef = useRef(threadPresets);
+  const activePresetIdRef = useRef(activePresetId);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
   // PERFORMANCE: Persistent notation-parse cache. Keyed by notation string.
   // Survives stitchCache rebuilds (e.g. dsWidth change) — only re-parses when notation text changes.
@@ -1545,6 +1603,10 @@ const TattingDesigner = () => {
     picotConnectionsRef.current = picotConnections;
     renderModeRef.current = renderMode;
     patternNotesRef.current = patternNotes;
+    materialsRef.current = materials;
+    beadLibraryRef.current = beadLibrary;
+    threadPresetsRef.current = threadPresets;
+    activePresetIdRef.current = activePresetId;
   });
   
   useEffect(() => {
@@ -1565,12 +1627,15 @@ const TattingDesigner = () => {
         customColors: customColorsRef.current,
         referenceImage: referenceImageRef.current,
         refImageProps: refImagePropsRef.current,
-        renderMode: renderModeRef.current
+        renderMode: renderModeRef.current,
+        patternNotes: patternNotesRef.current,
+        materials: materialsRef.current,
+        beadLibrary: beadLibraryRef.current,
+        activeThreadPreset: threadPresetsRef.current.find(p => p.id === activePresetIdRef.current) || threadPresetsRef.current[0] || null
       };
       
       try {
         localStorage.setItem('tatting-designer-autosave', JSON.stringify(projectData));
-        console.log('Auto-saved to localStorage');
       } catch (error) {
         console.error('Auto-save failed:', error);
       }
@@ -1579,7 +1644,7 @@ const TattingDesigner = () => {
     // Save immediately on mount if there are elements
     autoSave();
     
-    // Then save every 30 seconds - interval only created ONCE
+    // Then save every 3 minutes — interval only created ONCE
     const interval = setInterval(autoSave, 180000);
     
     return () => clearInterval(interval);
@@ -1612,6 +1677,18 @@ const TattingDesigner = () => {
               setProjectName(projectData.name || 'Untitled Pattern');
               setRenderMode(projectData.renderMode || 'schematic');
               setPatternNotes(projectData.patternNotes || '');
+              if (projectData.materials) setMaterials(projectData.materials);
+              if (projectData.activeThreadPreset) {
+                const preset = projectData.activeThreadPreset;
+                setThreadPresets(prev => {
+                  const exists = prev.find(p => p.id === preset.id);
+                  const updated = exists ? prev.map(p => p.id === preset.id ? preset : p) : [...prev, preset];
+                  localStorage.setItem('tcad_thread_presets', JSON.stringify(updated));
+                  return updated;
+                });
+                setActivePresetId(preset.id);
+                localStorage.setItem('tcad_active_preset_id', preset.id);
+              }
               setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
               setHistoryIndex(0);
             }
@@ -1735,11 +1812,9 @@ const TattingDesigner = () => {
         const allColors = [...data.solidColors, ...flatGradients];
         setDmcColors(allColors);
         const gradientGroups = [...new Set(flatGradients.map(g => g.group).filter(Boolean))];
-        console.log(`✅ Loaded ${data.solidColors.length} solid colors + ${flatGradients.length} gradients [${gradientGroups.join(', ')}] from dmc_colors.json`);
         
       } catch (error) {
         console.error('❌ Error loading DMC colors from external file:', error);
-        console.log('⚠️ Falling back to embedded sample colors');
         
         // Fallback to minimal embedded colors if external file fails
         const fallbackColors = [
@@ -1770,7 +1845,6 @@ const TattingDesigner = () => {
         ];
         
         setDmcColors(fallbackColors);
-        console.log('📦 Loaded', fallbackColors.length, 'fallback DMC colors (18 solid + 6 gradients) — place dmc_colors.json in public/ for full catalog');
       }
     };
     
@@ -1836,10 +1910,8 @@ const TattingDesigner = () => {
 
         if (Object.keys(langs).length > 0) {
           setExtraTranslations(langs);
-          console.log(`🌐 Loaded translations for: ${Object.keys(langs).join(', ')}`);
         }
       } catch (err) {
-        console.log('ℹ️ languages.json not found — using built-in English strings.');
       }
     };
     loadTranslations();
@@ -1862,7 +1934,6 @@ const TattingDesigner = () => {
           }
           return merged;
         });
-        console.log('🎨 tatting-theme.json loaded.');
       } catch {
         // No theme file present — use defaults, no problem.
       }
@@ -2281,6 +2352,8 @@ const TattingDesigner = () => {
     const STITCH_X_EXTENTS = {
       'ds':  { xMin: -0.2622, xMax:  0.0504 },
       'ss':  { xMin: -0.1036, xMax:  0.0463 },
+      'lss': { xMin: -0.1036, xMax:  0.0463 },
+      'rss': { xMin: -0.1036, xMax:  0.0463 },
       'rds': { xMin: -0.5946, xMax:  0.0798 },
     };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
@@ -2354,6 +2427,8 @@ const TattingDesigner = () => {
     const dsEquivalentWidth = {
       'ds': 1.0,
       'ss': 0.5,
+      'lss': 0.5,
+      'rss': 0.5,
       'rds': 2.0
     };
     const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
@@ -2363,6 +2438,8 @@ const TattingDesigner = () => {
     const STITCH_X_EXTENTS = {
       'ds':  { xMin: -0.2622, xMax:  0.0504 },
       'ss':  { xMin: -0.1023, xMax:  0.0463 },
+      'lss': { xMin: -0.1023, xMax:  0.0463 },
+      'rss': { xMin: -0.1023, xMax:  0.0463 },
       'rds': { xMin: -0.5946, xMax:  0.0798 },
     };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
@@ -2420,6 +2497,8 @@ const TattingDesigner = () => {
     const dsEquivalentWidth = {
       'ds': 1.0,
       'ss': 0.5,
+      'lss': 0.5,
+      'rss': 0.5,
       'rds': 2.0
     };
     const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
@@ -2428,6 +2507,8 @@ const TattingDesigner = () => {
     const STITCH_X_EXTENTS = {
       'ds':  { xMin: -0.2622, xMax:  0.0504 },
       'ss':  { xMin: -0.1023, xMax:  0.0463 },
+      'lss': { xMin: -0.1023, xMax:  0.0463 },
+      'rss': { xMin: -0.1023, xMax:  0.0463 },
       'rds': { xMin: -0.5946, xMax:  0.0798 },
     };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
@@ -2754,7 +2835,7 @@ const TattingDesigner = () => {
         // Handle BE — Bead Element marker: 1 DS, configured visually in Beading mode
         if (token.match(/^be$/i)) {
           picots.push({
-            id: Date.now() + Math.random(),
+            id: generateId(),
             stitchesBefore: pos,
             length: 'medium',
             isJoint: false,
@@ -2773,7 +2854,7 @@ const TattingDesigner = () => {
         if (beadedJointPicotMatch) {
           const beadSeq = beadedJointPicotMatch[1].toUpperCase();
           picots.push({
-            id: Date.now() + Math.random(),
+            id: generateId(),
             stitchesBefore: pos,
             length: 'medium',
             isJoint: true,
@@ -2789,7 +2870,7 @@ const TattingDesigner = () => {
         if (beadedPicotMatch) {
           const beadSeq = beadedPicotMatch[1].toUpperCase();
           picots.push({
-            id: Date.now() + Math.random(),
+            id: generateId(),
             stitchesBefore: pos,
             length: 'medium',
             isJoint: false,
@@ -2806,7 +2887,7 @@ const TattingDesigner = () => {
         if (suspendedBeadMatch) {
           const beadSeq = suspendedBeadMatch[1].toUpperCase();
           picots.push({
-            id: Date.now() + Math.random(),
+            id: generateId(),
             stitchesBefore: pos,
             length: 'medium',
             isJoint: false,
@@ -2821,7 +2902,7 @@ const TattingDesigner = () => {
         const bcpPlainMatch = token.match(/^bcp:([YZVyzv])$/i);
         if (bcpPlainMatch) {
           picots.push({
-            id: Date.now() + Math.random(),
+            id: generateId(),
             stitchesBefore: pos,
             length: 'medium',
             isJoint: false,
@@ -2839,7 +2920,7 @@ const TattingDesigner = () => {
           const coreSize = bcpMatch[1].toUpperCase();
           const beadSeq = bcpMatch[2].toUpperCase();
           picots.push({
-            id: Date.now() + Math.random(),
+            id: generateId(),
             stitchesBefore: pos,
             length: 'medium',
             isJoint: false,
@@ -2873,7 +2954,7 @@ const TattingDesigner = () => {
           const beads = expandSeq(rawSeq);
           beads.forEach((size, idx) => {
             picots.push({
-              id: Date.now() + Math.random() + idx,
+              id: generateId(),
               stitchesBefore: pos + idx,      // each bead at its own DS position
               length: 'medium',
               isJoint: false,
@@ -2886,7 +2967,7 @@ const TattingDesigner = () => {
           return pos + beads.length;           // advance path by bead count
         }
 
-        const tokenMatch = token.match(/^(\d+)?\s*(rds|ds|ss|sp|cp|p|lp|jp|jpg|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|jPg|jpG|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|SS|P)$/i);
+        const tokenMatch = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|sp|cp|p|lp|jp|jpg|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|jPg|jpG|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS|P)$/i);
         if (!tokenMatch) {
           if (!silent) setNotationError('Unknown element: ' + token);
           hasInvalidToken = true;
@@ -2898,7 +2979,7 @@ const TattingDesigner = () => {
 
         if (el === 'ds') return pos + num;
         if (el === 'rds') return pos + num * 2; // Reinforced DS counts as 2 DS
-        if (el === 'ss') return pos + num * 0.5;
+        if (el === 'ss' || el === 'lss' || el === 'rss') return pos + num * 0.5;
 
         let size = 'medium';
         let isJoint = false;
@@ -2946,7 +3027,7 @@ const TattingDesigner = () => {
 
         for (let i = 0; i < num; i++) {
           picots.push({ 
-            id: Date.now() + Math.random(), 
+            id: generateId(), 
             stitchesBefore: pos, 
             length: size,
             isJoint: isJoint,       // Joint picot (for connections)
@@ -3029,6 +3110,197 @@ const TattingDesigner = () => {
   };
 
   // Helper to count actual stitches (not DS equivalent) from notation
+  // Build a compact on-screen label for a notation segment (between picots).
+  // For pure-DS segments → returns the stitch count as a string (e.g. "3").
+  // For segments containing SS / LSS / RSS → returns a run-encoded string
+  // using middle-dot as separator (e.g. "2·7lss·7rss·2") so type is visible.
+  const buildSegmentLabel = (notation, startDS, endDS) => {
+    try {
+      const pattern = notation.split(':').slice(1).join(':').trim();
+      if (!pattern) return '';
+
+      // Tokenise (respects parentheses)
+      const parts = [];
+      let current = '';
+      let depth = 0;
+      for (let char of pattern) {
+        if (char === '(') depth++;
+        if (char === ')') depth--;
+        if ((char === '-' || char === '.') && depth === 0) {
+          if (current.trim()) parts.push(current.trim());
+          current = '';
+        } else { current += char; }
+      }
+      if (current.trim()) parts.push(current.trim());
+
+      // Collect runs: [{type, count}]
+      const runs = [];
+      let dsPosition = 0;
+
+      const addRun = (type, n) => {
+        if (runs.length > 0 && runs[runs.length - 1].type === type) {
+          runs[runs.length - 1].count += n;
+        } else {
+          runs.push({ type, count: n });
+        }
+      };
+
+      const processToken = (token) => {
+        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+        if (repeatMatch) {
+          const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
+          const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+          for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
+          return;
+        }
+        // Skip zero-width tokens
+        if (token.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) return;
+        if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
+        if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
+        if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
+        if (token.match(/^be$/i)) { dsPosition += 1; return; }
+        const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
+        if (coreBeadMatch) {
+          const seq = coreBeadMatch[1].toUpperCase();
+          let n = 0, i = 0;
+          while (i < seq.length) {
+            let cnt = 1;
+            if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
+            if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
+          }
+          dsPosition += n;
+          return;
+        }
+        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+        if (!match) return;
+        const num = parseInt(match[1]) || 1;
+        const type = match[2].toLowerCase();
+        const advance = (type === 'rds') ? 2 : (type === 'ds') ? 1 : 0.5; // ss/lss/rss = 0.5
+
+        for (let i = 0; i < num; i++) {
+          const stitchStart = dsPosition;
+          const stitchEnd = dsPosition + advance;
+          if (stitchEnd > startDS && stitchStart < endDS) {
+            addRun(type, 1);
+          }
+          dsPosition = stitchEnd;
+        }
+      };
+
+      for (let part of parts) processToken(part);
+
+      if (runs.length === 0) return '';
+
+      // If all runs are pure DS (or RDS), show a plain total count
+      const allBasic = runs.every(r => r.type === 'ds' || r.type === 'rds');
+      if (allBasic) {
+        return String(runs.reduce((s, r) => s + r.count, 0));
+      }
+
+      // Mixed / SS / LSS / RSS — show type-annotated runs
+      return runs.map(r => {
+        if (r.type === 'ds') return String(r.count);
+        if (r.type === 'rds') return `${r.count}rds`;
+        if (r.type === 'ss') return `${r.count}ss`;
+        if (r.type === 'lss') return `${r.count}lss`;
+        if (r.type === 'rss') return `${r.count}rss`;
+        return String(r.count);
+      }).join('·');
+    } catch (err) {
+      console.error('buildSegmentLabel error:', err);
+      return '';
+    }
+  };
+
+  // Returns [{label, midDS}] — one entry per contiguous same-type run within [startDS, endDS).
+  // Used to position each run as its own label along the path.
+  const getSegmentRuns = (notation, startDS, endDS) => {
+    try {
+      const pattern = notation.split(':').slice(1).join(':').trim();
+      if (!pattern) return [];
+
+      // Tokenise (respects parentheses — same logic as buildSegmentLabel)
+      const parts = [];
+      let current = '';
+      let depth = 0;
+      for (let char of pattern) {
+        if (char === '(') depth++;
+        if (char === ')') depth--;
+        if ((char === '-' || char === '.') && depth === 0) {
+          if (current.trim()) parts.push(current.trim());
+          current = '';
+        } else { current += char; }
+      }
+      if (current.trim()) parts.push(current.trim());
+
+      // Accumulate runs: [{type, count, runStartDS, runEndDS}]
+      const runs = [];
+      let dsPosition = 0;
+
+      const addStitch = (type, stitchStart, stitchEnd) => {
+        if (stitchEnd <= startDS || stitchStart >= endDS) return; // outside range
+        const last = runs[runs.length - 1];
+        if (last && last.type === type && Math.abs(last.runEndDS - stitchStart) < 1e-9) {
+          last.count++;
+          last.runEndDS = stitchEnd;
+        } else {
+          runs.push({ type, count: 1, runStartDS: stitchStart, runEndDS: stitchEnd });
+        }
+      };
+
+      const processToken = (token) => {
+        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+        if (repeatMatch) {
+          const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
+          const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+          for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
+          return;
+        }
+        if (token.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) return;
+        if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
+        if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
+        if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
+        if (token.match(/^be$/i)) { dsPosition += 1; return; }
+        const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
+        if (coreBeadMatch) {
+          const seq = coreBeadMatch[1].toUpperCase();
+          let n = 0, i = 0;
+          while (i < seq.length) {
+            let cnt = 1;
+            if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
+            if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
+          }
+          dsPosition += n;
+          return;
+        }
+        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+        if (!match) return;
+        const num = parseInt(match[1]) || 1;
+        const type = match[2].toLowerCase();
+        const advance = type === 'rds' ? 2 : type === 'ds' ? 1 : 0.5;
+        for (let i = 0; i < num; i++) {
+          addStitch(type, dsPosition, dsPosition + advance);
+          dsPosition += advance;
+        }
+      };
+
+      for (let part of parts) processToken(part);
+
+      return runs.map(r => ({
+        label: r.type === 'ds'  ? String(r.count)
+             : r.type === 'rds' ? `${r.count}rds`
+             : `${r.count}${r.type}`,            // ss / lss / rss
+        midDS:    (r.runStartDS + r.runEndDS) / 2,
+        startDS:  r.runStartDS,
+        endDS:    r.runEndDS,
+      }));
+    } catch (err) {
+      console.error('getSegmentRuns error:', err);
+      return [];
+    }
+  };
+
+
   const countActualStitches = (notation) => {
     let count = 0;
     
@@ -3079,7 +3351,7 @@ const TattingDesigner = () => {
         if (token.match(/^bcp:/i)) return; // bcp: — core+picot bead, adds to path but not display count
         
         // Match stitch tokens
-        const match = token.match(/^(\d+)?\s*(rds|ds|ss|RDS|Rds|rDs|DS|Ds|dS|SS)$/i);
+        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
         if (match) {
           const num = parseInt(match[1]) || 1;
           count += num; // Count actual stitches, not DS equivalent
@@ -3165,7 +3437,7 @@ const TattingDesigner = () => {
         }
         
         // Match stitch tokens
-        const match = token.match(/^(\d+)?\s*(rds|ds|ss|RDS|Rds|rDs|DS|Ds|dS|SS)$/i);
+        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
         if (match) {
           const num = parseInt(match[1]) || 1;
           const type = match[2].toLowerCase();
@@ -3177,7 +3449,7 @@ const TattingDesigner = () => {
             // Calculate DS span for this stitch
             if (type === 'ds') stitchEndDS = dsPosition + 1;
             else if (type === 'rds') stitchEndDS = dsPosition + 2;
-            else if (type === 'ss') stitchEndDS = dsPosition + 0.5;
+            else if (type === 'ss' || type === 'lss' || type === 'rss') stitchEndDS = dsPosition + 0.5;
             
             // Check if this stitch overlaps with the range
             if (stitchEndDS > startDS && stitchStartDS < endDS) {
@@ -3236,7 +3508,7 @@ const TattingDesigner = () => {
         }
         
         // Match stitch tokens
-        const match = part.match(/^(\d+)?\s*(rds|ds|ss|RDS|Rds|rDs|DS|Ds|dS|SS)$/i);
+        const match = part.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
         if (match) {
           const count = parseInt(match[1]) || 1;
           const type = match[2].toLowerCase();
@@ -3253,8 +3525,15 @@ const TattingDesigner = () => {
               dsPosition += 1;
             } else if (type === 'ss') {
               // SS: 2 stitches take 1 DS position
-              // Mark this position as needing 2 SS
               stitchMap[dsPosition] = ['ss', 'ss'];
+              dsPosition += 0.5;
+            } else if (type === 'lss') {
+              // LSS: same size as SS, left-leaning variant
+              stitchMap[dsPosition] = ['lss', 'lss'];
+              dsPosition += 0.5;
+            } else if (type === 'rss') {
+              // RSS: same size as SS, right-leaning variant
+              stitchMap[dsPosition] = ['rss', 'rss'];
               dsPosition += 0.5;
             }
           }
@@ -3378,6 +3657,47 @@ const TattingDesigner = () => {
   const showLoadMsg = (type, text) => {
     setLoadMsg({ type, text });
     setTimeout(() => setLoadMsg(null), 4000);
+  };
+
+  // Clipboard helper — navigator.clipboard is blocked in some WebViews (e.g. Tauri Android)
+  // Falls back to execCommand which works everywhere
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showLoadMsg('success', t('notationCopied'));
+      }).catch(() => {
+        // Fallback
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showLoadMsg('success', t('notationCopied'));
+        } catch {
+          showLoadMsg('error', t('notationCopyFailed'));
+        }
+      });
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showLoadMsg('success', t('notationCopied'));
+      } catch {
+        showLoadMsg('error', t('notationCopyFailed'));
+      }
+    }
   };
 
   const addLine = useCallback(() => {
@@ -3786,13 +4106,12 @@ const TattingDesigner = () => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length < 2) return; // Need at least 2 elements to group
     
-    const groupId = Date.now() + Math.random(); // Unique group ID
+    const groupId = generateId(); // Unique group ID
     
     setElements(prev => prev.map(el => 
       currentSelectedIds.includes(el.id) ? { ...el, groupId } : el
     ));
     
-    console.log('Grouped', currentSelectedIds.length, 'elements with ID:', groupId);
   }, []); // No dependencies - uses refs
 
   const ungroupSelected = useCallback(() => {
@@ -3807,7 +4126,6 @@ const TattingDesigner = () => {
       return el;
     }));
     
-    console.log('Ungrouped', currentSelectedIds.length, 'elements');
   }, []); // No dependencies - uses refs
 
   const undo = useCallback(() => {
@@ -3821,7 +4139,6 @@ const TattingDesigner = () => {
       setHistoryIndex(newIndex);
       setElements(JSON.parse(JSON.stringify(state.elements)));
       setPicotConnections(JSON.parse(JSON.stringify(state.connections)));
-      console.log('Undo to state', newIndex);
       setTimeout(() => { isUndoRedoRef.current = false; }, 0);
     }
   }, []); // No dependencies - uses refs
@@ -3837,7 +4154,6 @@ const TattingDesigner = () => {
       setHistoryIndex(newIndex);
       setElements(JSON.parse(JSON.stringify(state.elements)));
       setPicotConnections(JSON.parse(JSON.stringify(state.connections)));
-      console.log('Redo to state', newIndex);
       setTimeout(() => { isUndoRedoRef.current = false; }, 0);
     }
   }, []); // No dependencies - uses refs
@@ -3848,70 +4164,77 @@ const TattingDesigner = () => {
       const selectedElements = elements.filter(el => selectedIds.includes(el.id));
       const cloned = JSON.parse(JSON.stringify(selectedElements)); // Deep clone
       setClipboard(cloned);
-      console.log('Copied:', cloned.length, 'elements');
     }
   };
 
-  // Paste elements from clipboard with offset
-  const pasteFromClipboard = () => {
-    if (clipboard.length === 0) return;
-    
+  // Paste elements from clipboard with offset — canonical paste implementation.
+  // Ctrl+V keyboard shortcut calls this directly so behaviour is always identical.
+  const pasteFromClipboard = useCallback(() => {
+    const currentClipboard = clipboard;
+    if (currentClipboard.length === 0) return;
+
     const offset = 30;
-    
-    // Create a map of old groupIds to new groupIds
+
+    // Map old groupIds → new groupIds
     const groupIdMap = new Map();
-    clipboard.forEach(el => {
+    currentClipboard.forEach(el => {
       if (el.groupId && !groupIdMap.has(el.groupId)) {
-        groupIdMap.set(el.groupId, Date.now() + Math.random());
+        groupIdMap.set(el.groupId, generateId());
       }
     });
-    
-    // Create a map of old element IDs to new element IDs
+
+    // Map old element IDs → new element IDs (needed to remap picot connections)
     const elementIdMap = new Map();
-    
-    const newElements = clipboard.map(el => {
-      const newEl = JSON.parse(JSON.stringify(el)); // Deep clone
-      const newId = Date.now() + Math.random();
+
+    const newElements = currentClipboard.map(el => {
+      const newEl = JSON.parse(JSON.stringify(el));
+      const newId = generateId();
       elementIdMap.set(el.id, newId);
       newEl.id = newId;
-      
-      // Preserve group membership with new groupId
-      if (el.groupId) {
-        newEl.groupId = groupIdMap.get(el.groupId);
-      }
-      
+
+      if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+
       // Offset position
       newEl.center.x += offset;
       newEl.center.y += offset;
-      
-      // Update path coordinates
+
+      // Offset all path coordinates
       if (newEl.paths) {
         newEl.paths = newEl.paths.map(path => {
-          const newPath = { ...path };
-          newPath.x += offset;
-          newPath.y += offset;
-          if (path.controlX !== undefined) newPath.controlX += offset;
-          if (path.controlY !== undefined) newPath.controlY += offset;
-          if (path.control1X !== undefined) newPath.control1X += offset;
-          if (path.control1Y !== undefined) newPath.control1Y += offset;
-          if (path.control2X !== undefined) newPath.control2X += offset;
-          if (path.control2Y !== undefined) newPath.control2Y += offset;
-          if (path.endX !== undefined) newPath.endX += offset;
-          if (path.endY !== undefined) newPath.endY += offset;
-          return newPath;
+          const p = { ...path };
+          p.x += offset;
+          p.y += offset;
+          if (path.endX  !== undefined) { p.endX  += offset; p.endY  += offset; }
+          if (path.controlX  !== undefined) { p.controlX  += offset; p.controlY  += offset; }
+          if (path.control1X !== undefined) { p.control1X += offset; p.control1Y += offset; }
+          if (path.control2X !== undefined) { p.control2X += offset; p.control2Y += offset; }
+          return p;
         });
       }
-      
+
       // Clear order number to avoid conflicts
       delete newEl.orderNumber;
-      
       return newEl;
     });
-    
+
+    // Preserve picot connections — but only for connections where ALL referenced
+    // elements are in the clipboard (cross-clipboard connections make no sense).
+    const clipboardIds = new Set(currentClipboard.map(el => el.id));
+    const relevantConnections = picotConnectionsRef.current.filter(conn =>
+      conn.picots.every(p => clipboardIds.has(p.elementId))
+    );
+    const newConnections = relevantConnections.map(conn => ({
+      id: generateId(),
+      picots: conn.picots.map(p => ({
+        elementId: elementIdMap.get(p.elementId),
+        picotId: p.picotId,
+      })),
+    }));
+
     setElements(prev => [...prev, ...newElements]);
+    setPicotConnections(prev => [...prev, ...newConnections]);
     setSelectedIds(newElements.map(el => el.id));
-    console.log('Pasted:', newElements.length, 'elements');
-  };
+  }, [clipboard]); // clipboard from state; picotConnections read via ref (always current)
 
   // Duplicate in place (no offset) - for creating flower patterns
   const duplicateInPlace = () => {
@@ -3920,20 +4243,17 @@ const TattingDesigner = () => {
     if (currentSelectedIds.length === 0) return;
 
     const selectedElements = currentElements.filter(e => currentSelectedIds.includes(e.id));
-    // Create a map of old groupIds to new groupIds
     const groupIdMap = new Map();
     selectedElements.forEach(el => {
       if (el.groupId && !groupIdMap.has(el.groupId)) {
-        groupIdMap.set(el.groupId, Date.now() + Math.random());
+        groupIdMap.set(el.groupId, generateId());
       }
     });
     
     const newElements = selectedElements.map(el => {
       const newEl = JSON.parse(JSON.stringify(el)); // Deep clone
-      const newId = Date.now() + Math.random();
-      newEl.id = newId;
+      newEl.id = generateId();
       
-      // Preserve group membership with new groupId
       if (el.groupId) {
         newEl.groupId = groupIdMap.get(el.groupId);
       }
@@ -4016,7 +4336,6 @@ const TattingDesigner = () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    console.log('Project saved:', finalName);
   }, [saveDialogName, elements, picotConnections, camera, zoom, dsWidth, bgColor, gridEnabled, customColors, referenceImage, refImageProps, renderMode, patternNotes, materials]);
 
   // Load project from JSON file
@@ -4027,7 +4346,7 @@ const TattingDesigner = () => {
     // FILE VALIDATION
     // 1. Check file type
     if (!file.name.toLowerCase().endsWith('.json')) {
-      showLoadMsg('error', 'Wrong file format — please select a .json file.');
+      showLoadMsg('error', t('loadErrWrongFormat'));
       e.target.value = '';
       return;
     }
@@ -4035,7 +4354,7 @@ const TattingDesigner = () => {
     // 2. Check file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      showLoadMsg('error', 'Failed to load project: file too large (max 10MB).');
+      showLoadMsg('error', t('loadErrTooLarge'));
       e.target.value = '';
       return;
     }
@@ -4043,7 +4362,6 @@ const TattingDesigner = () => {
     // 3. Check MIME type
     if (file.type && file.type !== 'application/json' && file.type !== 'text/json') {
       // Allow empty type (some browsers don't set it for .json)
-      console.warn('⚠️ Unexpected MIME type:', file.type, '(continuing anyway)');
     }
     
     const reader = new FileReader();
@@ -4054,47 +4372,42 @@ const TattingDesigner = () => {
         try {
           projectData = JSON.parse(event.target.result);
         } catch (parseError) {
-          showLoadMsg('error', 'Failed to load project: corrupted file (invalid JSON).');
+          showLoadMsg('error', t('loadErrCorrupted'));
           return;
         }
         
         // 5. Validate it's a tatting project (must have elements array)
         if (!projectData.elements || !Array.isArray(projectData.elements)) {
-          showLoadMsg('error', 'Failed to load project: unvalidated file (missing elements).');
+          showLoadMsg('error', t('loadErrMissingElements'));
           return;
         }
         
         // 6. Validate elements structure
         const invalidElements = projectData.elements.filter((el, index) => {
           if (!el.id || !el.type || !el.paths || !Array.isArray(el.paths)) {
-            console.error(`Invalid element at index ${index}:`, el);
             return true;
           }
           if (el.type !== 'ring' && el.type !== 'chain' && el.type !== 'line') {
-            console.error(`Invalid element type at index ${index}:`, el.type);
             return true;
           }
           return false;
         });
         
         if (invalidElements.length > 0) {
-          showLoadMsg('error', `Failed to load project: ${invalidElements.length} invalid element(s) found.`);
+          showLoadMsg('error', t('loadErrInvalidElements').replace('{n}', String(invalidElements.length)));
           return;
         }
         
         // 7. Validate data types for optional fields
         if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
-          console.warn('⚠️ Invalid camera data, using defaults');
           projectData.camera = { x: 960, y: 540 };
         }
         
         if (projectData.zoom && (typeof projectData.zoom !== 'number' || projectData.zoom <= 0)) {
-          console.warn('⚠️ Invalid zoom data, using default');
           projectData.zoom = 1;
         }
         
         if (projectData.picotConnections && !Array.isArray(projectData.picotConnections)) {
-          console.warn('⚠️ Invalid picotConnections data, using empty array');
           projectData.picotConnections = [];
         }
         
@@ -4130,18 +4443,17 @@ const TattingDesigner = () => {
         setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
         setHistoryIndex(0);
         
-        console.log('✅ Project loaded successfully:', projectData.name || 'Untitled');
         // Show success toast AFTER all state updates
-        setTimeout(() => showLoadMsg('success', `Load completed — ${(projectData.elements || []).length} element(s) loaded.`), 50);
+        const count = (projectData.elements || []).length;
+        setTimeout(() => showLoadMsg('success', t('loadSuccess').replace('{n}', String(count))), 50);
         
       } catch (error) {
-        console.error('❌ Error loading project:', error);
-        showLoadMsg('error', `Failed to load project: ${error.message}`);
+        showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
       }
     };
     
     reader.onerror = () => {
-      showLoadMsg('error', 'Failed to load project: error reading file.');
+      showLoadMsg('error', t('loadErrReadFailed'));
     };
     
     reader.readAsText(file);
@@ -4159,7 +4471,7 @@ const TattingDesigner = () => {
       try {
         const parsed = JSON.parse(event.target.result);
         if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-          showLoadMsg('error', 'Invalid theme file — expected a JSON object.');
+          showLoadMsg('error', t('loadThemeErrInvalid'));
           return;
         }
         // Merge: only accept keys that exist in DEFAULT_THEME
@@ -4168,9 +4480,9 @@ const TattingDesigner = () => {
           if (typeof parsed[key] === 'string') merged[key] = parsed[key];
         }
         setTheme(merged);
-        showLoadMsg('success', 'Theme loaded.');
+        showLoadMsg('success', t('loadThemeSuccess'));
       } catch {
-        showLoadMsg('error', 'Failed to load theme: invalid JSON.');
+        showLoadMsg('error', t('loadThemeErrJson'));
       }
       e.target.value = '';
     };
@@ -4186,74 +4498,104 @@ const TattingDesigner = () => {
     if (!svgElement) return;
     
     // Clone the SVG
-    const clonedSvg = svgElement.cloneNode(true);
-    
-    // Calculate bounds of all elements
+    const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+
+    // ── Step 1: Strip all UI-only elements ─────────────────────────────────
+    // Remove background grid
+    clonedSvg.querySelectorAll('[fill="url(#grid)"]').forEach(n => n.remove());
+
+    // Remove selection overlays: any stroke="#3B82F6" element (selection rings,
+    // bounding box rect, selection path overlays, snap indicator rings).
+    // These are never part of the actual design.
+    clonedSvg.querySelectorAll('[stroke="#3B82F6"]').forEach(n => n.remove());
+
+    // Remove snap indicators and other data-ui marked elements
+    clonedSvg.querySelectorAll('[data-ui]').forEach(n => n.remove());
+
+    // Remove bezier control-point helper lines (gray dashed editing handles)
+    clonedSvg.querySelectorAll('[stroke="#888"]').forEach(n => n.remove());
+
+    // Remove glow filters from elements (red-glow = invalid notation highlight,
+    // pink-glow = search highlight — neither belongs in export)
+    clonedSvg.querySelectorAll('[filter]').forEach(n => n.removeAttribute('filter'));
+
+    // Remove the dark background color from the SVG root — use white for export
+    clonedSvg.style.backgroundColor = 'white';
+    clonedSvg.style.userSelect = '';
+
+    // Remove the camera transform: we'll use viewBox instead
+    // Find the direct-child camera group — NOT querySelector('g') which hits
+    // the first <g id="ds-stitch"> inside <defs> first.
+    const mainGroup = Array.from(clonedSvg.children).find(
+      (el) => el.tagName.toLowerCase() === 'g'
+    ) as SVGGElement | undefined;
+    if (mainGroup) mainGroup.removeAttribute('transform');
+
+    // ── Step 2: Calculate tight bounds over all elements ───────────────────
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    const expandBounds = (x: number, y: number) => {
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    };
+
     elements.forEach(el => {
-      el.paths.forEach(path => {
+      if (el.isClosed && el.shapeStyle === 'circle' && el.center) {
+        // Circles: bound by center ± radius
+        const circ = el.stitchCount * dsWidth;
+        const r = circ / (2 * Math.PI);
+        expandBounds(el.center.x - r, el.center.y - r);
+        expandBounds(el.center.x + r, el.center.y + r);
+      }
+      (el.paths || []).forEach(path => {
         const points = sampleBezierPath(path, 20);
-        points.forEach(pt => {
-          minX = Math.min(minX, pt.x);
-          minY = Math.min(minY, pt.y);
-          maxX = Math.max(maxX, pt.x);
-          maxY = Math.max(maxY, pt.y);
-        });
+        points.forEach(pt => expandBounds(pt.x, pt.y));
+      });
+      // Include picot arm tips
+      (el.picots || []).forEach(p => {
+        const pos = getPicotPosition(el, p, false);
+        if (pos) expandBounds(pos.x, pos.y);
       });
     });
     
-    // Add padding
-    const padding = 50;
-    minX -= padding;
-    minY -= padding;
-    maxX += padding;
-    maxY += padding;
+    // Fallback if canvas is empty
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 200; maxY = 200; }
+
+    // ── Step 3: Set viewBox to tight content bounds + padding ──────────────
+    const padding = 30;
+    minX -= padding; minY -= padding;
+    maxX += padding; maxY += padding;
     
     const width = maxX - minX;
     const height = maxY - minY;
     
-    // Set viewBox to show only the design
     clonedSvg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`);
-    clonedSvg.setAttribute('width', width);
-    clonedSvg.setAttribute('height', height);
-    
-    // Remove the transform from the main group to use viewBox instead
-    const mainGroup = clonedSvg.querySelector('g');
-    if (mainGroup) {
-      mainGroup.removeAttribute('transform');
-    }
-    
-    // Serialize to string
-    const serializer = new XMLSerializer();
-    let svgString = serializer.serializeToString(clonedSvg);
+    clonedSvg.setAttribute('width', String(Math.round(width)));
+    clonedSvg.setAttribute('height', String(Math.round(height)));
     
     // Append pattern notes below the design if present
     if (patternNotes && patternNotes.trim()) {
       const noteLines = patternNotes.trim().split('\n');
       const lineHeight = 20;
-      const notesY = maxY + 10; // Start just below pattern padding
+      const notesY = maxY + 10;
       const notesHeight = noteLines.length * lineHeight + 40;
-      // Expand SVG height to accommodate notes
       const newHeight = height + notesHeight;
-      clonedSvg.setAttribute('height', newHeight);
+      clonedSvg.setAttribute('height', String(Math.round(newHeight)));
       clonedSvg.setAttribute('viewBox', `${minX} ${minY} ${width} ${newHeight}`);
-      // Build text elements
       const notesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      // Header
       const header = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      header.setAttribute('x', minX + padding);
-      header.setAttribute('y', notesY + 20);
+      header.setAttribute('x', String(minX + padding));
+      header.setAttribute('y', String(notesY + 20));
       header.setAttribute('font-family', 'sans-serif');
       header.setAttribute('font-size', '14');
       header.setAttribute('font-weight', 'bold');
       header.setAttribute('fill', '#333');
       header.textContent = 'Notes:';
       notesGroup.appendChild(header);
-      // Note lines
       noteLines.forEach((line, i) => {
         const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        t.setAttribute('x', minX + padding);
-        t.setAttribute('y', notesY + 44 + i * lineHeight);
+        t.setAttribute('x', String(minX + padding));
+        t.setAttribute('y', String(notesY + 44 + i * lineHeight));
         t.setAttribute('font-family', 'sans-serif');
         t.setAttribute('font-size', '13');
         t.setAttribute('fill', '#333');
@@ -4262,6 +4604,10 @@ const TattingDesigner = () => {
       });
       clonedSvg.appendChild(notesGroup);
     }
+
+    // Serialize AFTER all DOM mutations (including notes)
+    const serializer = new XMLSerializer();
+    let svgString = serializer.serializeToString(clonedSvg);
 
     // Add XML declaration
     svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
@@ -4277,7 +4623,6 @@ const TattingDesigner = () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    console.log('SVG exported:', projectName);
   }, [elements, projectName]);
 
   // Generate pattern text from ordered elements
@@ -4399,18 +4744,14 @@ const TattingDesigner = () => {
           const typeLabel = el.type === 'ring' ? (el.isSplitRing ? 'SR' : 'R') : 'CH';
           const hint = el.notation
             ? ' (' + el.notation.replace(/^(r|c|sr):\s*/i, '').slice(0, 35) + ')' : '';
-          return `  • ${typeLabel}${hint}`;
+          return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
         });
         fallbackHeader = `⚠ Some elements don't have an assigned order number:\n${list.join('\n')}`;
       } else {
         // Truly empty canvas — nothing to estimate, exit early
         const notesBlock = patternNotes && patternNotes.trim()
           ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
-        navigator.clipboard.writeText('No objects on canvas.' + notesBlock).then(() => {
-          showLoadMsg('success', 'Notation copied to clipboard');
-        }).catch(() => {
-          showLoadMsg('error', 'Copy failed — check browser clipboard permissions');
-        });
+        copyToClipboard('No objects on canvas.' + notesBlock);
         return;
       }
     }
@@ -4470,7 +4811,7 @@ const TattingDesigner = () => {
         }
       }
       
-      return `${item.rawOrder}${dupWarning}. ${annotated}`;
+      return `${item.rawOrder}${dupWarning}. ${annotated}${el.rw ? ' RW' : ''}`;
     });
 
     if (dupNums.length > 0) {
@@ -4494,7 +4835,7 @@ const TattingDesigner = () => {
             const hint = el.notation
               ? ' (' + el.notation.replace(/^(r|c|sr):\s*/i, '').slice(0, 35) + (el.notation.length > 40 ? '…' : '') + ')'
               : '';
-            return `  • ${typeLabel}${hint}`;
+            return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
           });
           return `\n\n⚠ Some elements don't have an assigned order number:\n${list.join('\n')}`;
         })()
@@ -4678,6 +5019,7 @@ const TattingDesigner = () => {
     };
 
     const beadTotals = { Y: 0, Z: 0, V: 0 };
+    const namedBeadCounts = new Map(); // beadId → { name, count }
 
     for (const el of elements) {
       // Beads on picots (bc, bcp, bp, bp1-5, bjp, sb)
@@ -4701,25 +5043,24 @@ const TattingDesigner = () => {
       if (el.type === 'line' && el.lineBeads) {
         addBeads(beadTotals, countBeadsInSeqObj(el.lineBeads));
       }
-      // BE beads — count from bead library
+      // BE beads — count by size AND by named bead from library
       for (const p of (el.picots || [])) {
         if (p.beadType !== 'be') continue;
-        for (const beadId of (p.coreBeads || [])) {
-          if (!beadId) continue;
+        const countNamedBead = (beadId) => {
+          if (!beadId) return;
           const b = beadLibrary.find(b => b.id === beadId);
-          if (b) {
-            const sz = b.size === 'S' ? 'Y' : b.size === 'M' ? 'Z' : b.size === 'L' ? 'V' : b.size;
-            if (sz in beadTotals) beadTotals[sz]++;
+          if (!b) return;
+          // Size total
+          const sz = b.size === 'S' ? 'Y' : b.size === 'M' ? 'Z' : b.size === 'L' ? 'V' : b.size;
+          if (sz in beadTotals) beadTotals[sz]++;
+          // Named total
+          if (!namedBeadCounts.has(beadId)) {
+            namedBeadCounts.set(beadId, { name: b.name, count: 0 });
           }
-        }
-        for (const beadId of (p.picotBeads || [])) {
-          if (!beadId) continue;
-          const b = beadLibrary.find(b => b.id === beadId);
-          if (b) {
-            const sz = b.size === 'S' ? 'Y' : b.size === 'M' ? 'Z' : b.size === 'L' ? 'V' : b.size;
-            if (sz in beadTotals) beadTotals[sz]++;
-          }
-        }
+          namedBeadCounts.get(beadId).count++;
+        };
+        for (const beadId of (p.coreBeads || [])) countNamedBead(beadId);
+        for (const beadId of (p.picotBeads || [])) countNamedBead(beadId);
       }
     }
 
@@ -4728,8 +5069,15 @@ const TattingDesigner = () => {
       beadTotals.Z > 0 ? `Z (medium) × ${beadTotals.Z}` : null,
       beadTotals.V > 0 ? `V (large) × ${beadTotals.V}` : null,
     ].filter(Boolean);
+
+    const namedEntries = [...namedBeadCounts.values()]
+      .sort((a, b) => b.count - a.count) // most-used first
+      .map(({ name, count }) => `  ${name} × ${count}`);
+
     const beadBlock = beadEntries.length > 0
-      ? `\n\n--- Beads ---\n` + beadEntries.join('\n')
+      ? `\n\n--- Beads ---\n` +
+        beadEntries.join('\n') +
+        (namedEntries.length > 0 ? `\n\nNamed beads (BE):\n` + namedEntries.join('\n') : '')
       : '';
 
     const mmToM = (mm) => (mm / 1000).toFixed(2);
@@ -4759,12 +5107,7 @@ const TattingDesigner = () => {
       ? fallbackHeader + (threadBlock ? threadBlock : '') + beadBlock + notesBlock
       : patternLines.join('\n') + unnumberedBlock + notesBlock + threadBlock + beadBlock);
 
-    navigator.clipboard.writeText(patternText).then(() => {
-      showLoadMsg('success', 'Notation copied to clipboard');
-    }).catch(err => {
-      console.error('Failed to copy:', err);
-      showLoadMsg('error', 'Copy failed — check browser clipboard permissions');
-    });
+    copyToClipboard(patternText);
   }, [elements, picotConnections, patternNotes, threadPresets, activePresetId, materials, dsWidth]);
 
   // Export as PNG
@@ -4772,25 +5115,22 @@ const TattingDesigner = () => {
   // Join selected joint picots with a connection
   const joinSelectedPicots = useCallback(() => {
     if (selectedPicots.length < 2) {
-      console.log('Need at least 2 joint picots to join');
       return;
     }
     
     // Create a new connection
     const connection = {
-      id: Date.now() + Math.random(),
+      id: generateId(),
       picots: [...selectedPicots] // Array of {elementId, picotId}
     };
     
     setPicotConnections(prev => [...prev, connection]);
     setSelectedPicots([]); // Clear selection after joining
-    console.log('Joined', selectedPicots.length, 'picots');
   }, [selectedPicots]); // Dependency: selectedPicots for creating connection
 
   // Break connections for selected joint picots
   const breakSelectedPicots = useCallback(() => {
     if (selectedPicots.length === 0) {
-      console.log('No picots selected to break');
       return;
     }
     
@@ -4802,7 +5142,6 @@ const TattingDesigner = () => {
     }));
     
     setSelectedPicots([]); // Clear selection after breaking
-    console.log('Broke connections for selected picots');
   }, [selectedPicots]); // Dependency: selectedPicots for filtering
 
 
@@ -4857,6 +5196,22 @@ const TattingDesigner = () => {
     }
     
     return closest;
+  };
+
+  // For chains the stored `center` becomes stale after the path is bent with the
+  // chain editor. Always compute the pivot as the midpoint between the first path's
+  // start and the last path's end so +90 / -90 rotation is predictable regardless
+  // of how the chain has been reshaped.
+  const getElementPivot = (el) => {
+    if ((el.type === 'chain' || el.type === 'teardrop') && el.paths && el.paths.length > 0) {
+      const first = el.paths[0];
+      const last  = el.paths[el.paths.length - 1];
+      return {
+        x: (first.x + last.endX) / 2,
+        y: (first.y + last.endY) / 2,
+      };
+    }
+    return { x: el.center.x, y: el.center.y };
   };
 
   const getBoundingBox = (ids) => {
@@ -4940,15 +5295,12 @@ const TattingDesigner = () => {
     const bbox = getBoundingBox(allIds);
     if (!bbox) return;
     
-    console.log('Fit All - BBox:', bbox);
-    console.log('Fit All - Elements:', elements.length);
     
     // Get actual canvas dimensions
     const rect = canvasRef.current.getBoundingClientRect();
     const canvasWidth = rect.width;
     const canvasHeight = rect.height;
     
-    console.log('Fit All - Canvas size:', canvasWidth, 'x', canvasHeight);
     
     // Minimal padding - 25px
     const padding = 25;
@@ -4961,7 +5313,6 @@ const TattingDesigner = () => {
     // Don't zoom in too much or too little
     newZoom = Math.max(0.3, Math.min(3, newZoom));
     
-    console.log('Fit All - New zoom:', newZoom, 'Pattern center:', bbox.centerX, bbox.centerY);
     
     // Camera is a translate offset, not a center point!
     // Transform is: translate(camera.x, camera.y) scale(zoom)
@@ -4970,12 +5321,10 @@ const TattingDesigner = () => {
     const cameraX = (canvasWidth / 2) - (bbox.centerX * newZoom);
     const cameraY = (canvasHeight / 2) - (bbox.centerY * newZoom);
     
-    console.log('Fit All - Camera offset:', cameraX, cameraY);
     
     setZoom(newZoom);
     setCamera({ x: cameraX, y: cameraY });
     
-    console.log('Fit All - Applied!');
   };
 
   // Zoom toward the center of the screen by a delta amount.
@@ -5042,7 +5391,8 @@ const TattingDesigner = () => {
     const world = screenToWorld(e.clientX, e.clientY);
 
     // Check for rotation handles and pivot FIRST (when select tool active and elements selected)
-    if (currentTool === 'select' && selectedIds.length > 0) {
+    // Disabled in picotJoin / beading modes — only picots/beads are interactive there.
+    if (currentTool === 'select' && selectedIds.length > 0 && activeMode !== 'picotJoin' && activeMode !== 'beading') {
       const bbox = getBoundingBox(selectedIds);
       if (bbox) {
         const pivotX = bbox.centerX + pivotOffset.x;
@@ -5196,6 +5546,12 @@ const TattingDesigner = () => {
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
     } else if (currentTool === 'select') {
+      // In picotJoin / beading modes, element selection and dragging are disabled —
+      // only picots and beads are interactive in those modes.
+      if (activeMode === 'picotJoin' || activeMode === 'beading') {
+        setSelectionBox({ x: world.x, y: world.y, width: 0, height: 0 });
+        return;
+      }
       const clicked = findClosestElement(world.x, world.y);
       if (clicked) {
         // Check if clicked element is part of a group
@@ -6339,40 +6695,7 @@ const TattingDesigner = () => {
     
     // If we were interacting and changes were made, push to history
     if (isInteractingRef.current && needsHistoryPushRef.current) {
-      // Get current history state from refs
-      const currentHistory = historyRef.current;
-      const currentIndex = historyIndexRef.current;
-      const currentState = currentHistory[currentIndex];
-      
-      // Check if the new state is different from current history state
-      const newStateStr = JSON.stringify({ elements, connections: picotConnections });
-      const oldStateStr = currentState ? JSON.stringify(currentState) : null;
-      
-      if (oldStateStr !== newStateStr) {
-        // Deep clone the state
-        const cloned = {
-          elements: JSON.parse(JSON.stringify(elements)),
-          connections: JSON.parse(JSON.stringify(picotConnections))
-        };
-        
-        // Remove any history after current index
-        const newHistory = currentHistory.slice(0, currentIndex + 1);
-        
-        // Add new state
-        newHistory.push(cloned);
-        
-        console.log('History:', newHistory.length - 1, 'states');
-        
-        // Limit history to 50 states
-        if (newHistory.length > 50) {
-          newHistory.shift();
-          setHistory(newHistory);
-          setHistoryIndex(newHistory.length - 1);
-        } else {
-          setHistory(newHistory);
-          setHistoryIndex(newHistory.length - 1);
-        }
-      }
+      pushHistoryState(elements, picotConnections);
     }
     
     // Reset interaction flags
@@ -6541,87 +6864,15 @@ const TattingDesigner = () => {
           const selectedElements = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
           const cloned = JSON.parse(JSON.stringify(selectedElements)); // Deep clone
           setClipboard(cloned);
-          console.log('Copied:', cloned.length, 'elements');
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
-        // Paste elements with offset using current clipboard state
-        if (clipboard.length > 0) {
-          const offset = 30;
-          
-          // Create a map of old groupIds to new groupIds
-          const groupIdMap = new Map();
-          clipboard.forEach(el => {
-            if (el.groupId && !groupIdMap.has(el.groupId)) {
-              groupIdMap.set(el.groupId, Date.now() + Math.random());
-            }
-          });
-          
-          // Create a map of old element IDs to new element IDs
-          const elementIdMap = new Map();
-          
-          const newElements = clipboard.map(el => {
-            const newEl = JSON.parse(JSON.stringify(el)); // Deep clone
-            const newId = Date.now() + Math.random();
-            elementIdMap.set(el.id, newId);
-            newEl.id = newId;
-            
-            // Preserve group membership with new groupId
-            if (el.groupId) {
-              newEl.groupId = groupIdMap.get(el.groupId);
-            }
-            
-            newEl.center = { x: el.center.x + offset, y: el.center.y + offset };
-            newEl.paths = el.paths.map(path => {
-              const newPath = { ...path };
-              newPath.x = path.x + offset;
-              newPath.y = path.y + offset;
-              newPath.endX = path.endX + offset;
-              newPath.endY = path.endY + offset;
-              if (path.type === 'cubic') {
-                newPath.control1X = path.control1X + offset;
-                newPath.control1Y = path.control1Y + offset;
-                newPath.control2X = path.control2X + offset;
-                newPath.control2Y = path.control2Y + offset;
-              } else {
-                newPath.controlX = path.controlX + offset;
-                newPath.controlY = path.controlY + offset;
-              }
-              return newPath;
-            });
-            
-            // Clear order number to avoid conflicts
-            delete newEl.orderNumber;
-            
-            return newEl;
-          });
-          
-          // Handle picot connections: only preserve if ALL connected elements are in clipboard
-          const clipboardElementIds = clipboard.map(el => el.id);
-          const relevantConnections = picotConnections.filter(conn => {
-            // Check if all picots in this connection belong to clipboard elements
-            return conn.picots.every(p => clipboardElementIds.includes(p.elementId));
-          });
-          
-          // Create new connections with updated element IDs
-          const newConnections = relevantConnections.map(conn => ({
-            id: Date.now() + Math.random(),
-            picots: conn.picots.map(p => ({
-              elementId: elementIdMap.get(p.elementId),
-              picotId: p.picotId // Picot IDs stay the same since they're generated with the element
-            }))
-          }));
-          
-          setElements(prev => [...prev, ...newElements]);
-          setPicotConnections(prev => [...prev, ...newConnections]);
-          setSelectedIds(newElements.map(el => el.id));
-          console.log('Pasted:', newElements.length, 'elements', newConnections.length, 'connections');
-        }
+        pasteFromClipboard();
       }
     };
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [clipboard]);
+  }, [clipboard, pasteFromClipboard]);
 
   const updateNotation = (notation, notationB = null, elementId = null) => {
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
@@ -8044,58 +8295,22 @@ const TattingDesigner = () => {
         const targetCircumference = element.stitchCount * dsWidth;
         const radius = targetCircumference / (2 * Math.PI);
         const labelsInside = element.labelsInside;
-        
-        // Position: inside (default), onPath, or outside
-        let textY;
+        let textRadius;
         if (labelsInside === 'onPath') {
-          textY = element.center.y - radius - 8; // On the path (slightly above top)
+          textRadius = radius + 8;
         } else if (labelsInside === false) {
-          textY = element.center.y + radius + 25; // Outside
+          textRadius = radius + 25;
         } else {
-          textY = element.center.y; // Inside (default)
+          textRadius = radius * 0.65;
         }
-        
-        return (
-          <text
-            x={element.center.x}
-            y={textY}
-            fill="white"
-            fontSize={notationFS}
-            fontWeight="bold"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            stroke="#000000"
-            strokeWidth="4"
-            strokeLinejoin="round"
-            paintOrder="stroke"
-          >
-            {actualStitchCount === 0 ? null : actualStitchCount}
-          </text>
-        );
-      } else if (element.isSplitRing) {
-        // Split ring no-picot: show section A count on left curve, section B count on right curve
-        if (!element.paths || element.paths.length < 2) return null;
-        const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
-        const countA = countActualStitches(element.notation || '');
-        const countB = countActualStitches(`sr: ${element.notationB || '5ds'}`);
-        const labelsInside = element.labelsInside;
-        const offset = labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14;
-        const labels = [];
-        // Place each count at midpoint of its respective path, offset outward
-        for (const [pathIdx, count] of [[0, countA], [1, countB]]) {
-          const p = element.paths[pathIdx];
-          const t = 0.5;
-          let mx, my, mdx, mdy;
-          mx = (1-t)*(1-t)*(1-t)*p.x + 3*(1-t)*(1-t)*t*p.control1X + 3*(1-t)*t*t*p.control2X + t*t*t*p.endX;
-          my = (1-t)*(1-t)*(1-t)*p.y + 3*(1-t)*(1-t)*t*p.control1Y + 3*(1-t)*t*t*p.control2Y + t*t*t*p.endY;
-          mdx = 3*(1-t)*(1-t)*(p.control1X-p.x) + 6*(1-t)*t*(p.control2X-p.control1X) + 3*t*t*(p.endX-p.control2X);
-          mdy = 3*(1-t)*(1-t)*(p.control1Y-p.y) + 6*(1-t)*t*(p.control2Y-p.control1Y) + 3*t*t*(p.endY-p.control2Y);
-          const perpAngle = Math.atan2(mdy, mdx) - Math.PI / 2;
-          labels.push(
+        const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
+        return runs.map((run, j) => {
+          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
+          return (
             <text
-              key={`label-${element.id}-sr${pathIdx}`}
-              x={mx + Math.cos(perpAngle) * offset}
-              y={my + Math.sin(perpAngle) * offset}
+              key={`label-${element.id}-np-${j}`}
+              x={element.center.x + Math.cos(angleMid) * textRadius}
+              y={element.center.y + Math.sin(angleMid) * textRadius}
               fill="white"
               fontSize={notationFS}
               fontWeight="bold"
@@ -8106,79 +8321,89 @@ const TattingDesigner = () => {
               strokeLinejoin="round"
               paintOrder="stroke"
             >
-              {count}
+              {run.label}
             </text>
           );
-        }
-        return labels;
+        });
+      } else if (element.isSplitRing) {
+        // Split ring no-picot: runs of A on path[0], runs of B on path[1]
+        if (!element.paths || element.paths.length < 2) return null;
+        const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
+        const stitchCountB = element.stitchCount - splitPos;
+        const labelsInside = element.labelsInside;
+        const offset = labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14;
+        const labels = [];
+
+        const placeRunsOnPath = (runs, pathCurve, sectionStitchCount, keyPfx) => {
+          const sampleSet = [sampleBezierPath(pathCurve, 20)];
+          const lenSet = [calculatePathLength(sampleSet[0])];
+          const totalLen = lenSet[0];
+          runs.forEach((run, j) => {
+            const dist = (run.midDS / sectionStitchCount) * totalLen;
+            const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
+            const perpAngle = angle - Math.PI / 2;
+            labels.push(
+              <text
+                key={`${keyPfx}-${j}`}
+                x={x + Math.cos(perpAngle) * offset}
+                y={y + Math.sin(perpAngle) * offset}
+                fill="white"
+                fontSize={notationFS}
+                fontWeight="bold"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                stroke="#000000"
+                strokeWidth="4"
+                strokeLinejoin="round"
+                paintOrder="stroke"
+              >
+                {run.label}
+              </text>
+            );
+          });
+        };
+
+        const runsA = getSegmentRuns(element.notation || '', 0, splitPos);
+        const runsB = getSegmentRuns(`sr: ${element.notationB || '5ds'}`, 0, stitchCountB);
+        if (element.paths[0]) placeRunsOnPath(runsA, element.paths[0], splitPos, `label-${element.id}-srnp0`);
+        if (element.paths[1]) placeRunsOnPath(runsB, element.paths[1], stitchCountB, `label-${element.id}-srnp1`);
+        return labels.length > 0 ? labels : null;
       } else {
-        // For teardrops and chains with no picots: respect labelsInside toggle
-        // Sample the path midpoint and offset perpendicular to the curve
+        // For teardrops and chains with no picots: one label per stitch-type run
         if (!element.paths || element.paths.length === 0) return null;
-
-        let totalLength = 0;
-        const pathLengths = [];
-        for (let path of element.paths) {
-          const points = sampleBezierPath(path, 20);
-          const len = calculatePathLength(points);
-          pathLengths.push(len);
-          totalLength += len;
-        }
-
-        const targetDist = totalLength * 0.5;
-        let accum = 0, pathIndex = 0, localT = 0.5;
-        for (let j = 0; j < pathLengths.length; j++) {
-          if (accum + pathLengths[j] >= targetDist) {
-            pathIndex = j;
-            localT = pathLengths[j] > 0 ? (targetDist - accum) / pathLengths[j] : 0.5;
-            break;
-          }
-          accum += pathLengths[j];
-        }
-
-        const midPath = element.paths[pathIndex];
-        const t = localT;
-        let mx, my, mdx, mdy;
-        if (midPath.type === 'cubic') {
-          mx = (1-t)*(1-t)*(1-t)*midPath.x + 3*(1-t)*(1-t)*t*midPath.control1X + 3*(1-t)*t*t*midPath.control2X + t*t*t*midPath.endX;
-          my = (1-t)*(1-t)*(1-t)*midPath.y + 3*(1-t)*(1-t)*t*midPath.control1Y + 3*(1-t)*t*t*midPath.control2Y + t*t*t*midPath.endY;
-          mdx = 3*(1-t)*(1-t)*(midPath.control1X - midPath.x) + 6*(1-t)*t*(midPath.control2X - midPath.control1X) + 3*t*t*(midPath.endX - midPath.control2X);
-          mdy = 3*(1-t)*(1-t)*(midPath.control1Y - midPath.y) + 6*(1-t)*t*(midPath.control2Y - midPath.control1Y) + 3*t*t*(midPath.endY - midPath.control2Y);
-        } else {
-          mx = (1-t)*(1-t)*midPath.x + 2*(1-t)*t*midPath.controlX + t*t*midPath.endX;
-          my = (1-t)*(1-t)*midPath.y + 2*(1-t)*t*midPath.controlY + t*t*midPath.endY;
-          mdx = 2*(1-t)*(midPath.controlX - midPath.x) + 2*t*(midPath.endX - midPath.controlX);
-          mdy = 2*(1-t)*(midPath.controlY - midPath.y) + 2*t*(midPath.endY - midPath.controlY);
-        }
-
-        const perpAngle = Math.atan2(mdy, mdx) - Math.PI / 2;
+        const allSamplesNP = element.paths.map(p => sampleBezierPath(p, 20));
+        const pathLengthsNP = allSamplesNP.map(s => calculatePathLength(s));
+        const totalLengthNP = pathLengthsNP.reduce((a, b) => a + b, 0);
         const labelsInside = element.labelsInside;
         let offset;
-        if (labelsInside === 'onPath') {
-          offset = 8;
-        } else if (labelsInside === false) {
-          offset = element.isClosed ? 25 : 25;
-        } else {
-          offset = element.isClosed ? -15 : -15;
-        }
+        if (labelsInside === 'onPath') { offset = 8; }
+        else if (labelsInside === false) { offset = element.isClosed ? 25 : 25; }
+        else { offset = element.isClosed ? -15 : -15; }
 
-        return (
-          <text
-            x={mx + Math.cos(perpAngle) * offset}
-            y={my + Math.sin(perpAngle) * offset}
-            fill="white"
-            fontSize={notationFS}
-            fontWeight="bold"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            stroke="#000000"
-            strokeWidth="4"
-            strokeLinejoin="round"
-            paintOrder="stroke"
-          >
-            {actualStitchCount === 0 ? null : actualStitchCount}
-          </text>
-        );
+        const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
+        return runs.map((run, j) => {
+          const targetDist = (run.midDS / element.stitchCount) * totalLengthNP;
+          const { x, y, angle: rawAngle } = getPointAndAngleAtDistanceFast(allSamplesNP, pathLengthsNP, targetDist);
+          const perpAngle = rawAngle - Math.PI / 2;
+          return (
+            <text
+              key={`label-${element.id}-np-${j}`}
+              x={x + Math.cos(perpAngle) * offset}
+              y={y + Math.sin(perpAngle) * offset}
+              fill="white"
+              fontSize={notationFS}
+              fontWeight="bold"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              stroke="#000000"
+              strokeWidth="4"
+              strokeLinejoin="round"
+              paintOrder="stroke"
+            >
+              {run.label}
+            </text>
+          );
+        });
       }
     }
 
@@ -8214,29 +8439,29 @@ const TattingDesigner = () => {
         textRadius = radius * 0.65; // Inside (default)
       }
       
-      return segments.map((seg, i) => {
-        const angleMid = ((seg.start + seg.count / 2) / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
-        const actualCount = countStitchesInRange(element.notation || '', seg.start, seg.start + seg.count);
-        
-        if (actualCount === 0) return null;
-        return (
-          <text
-            key={`label-${element.id}-${i}`}
-            x={element.center.x + Math.cos(angleMid) * textRadius}
-            y={element.center.y + Math.sin(angleMid) * textRadius}
-            fill="white"
-            fontSize={notationFS}
-            fontWeight="bold"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            stroke="#000000"
-            strokeWidth="4"
-            strokeLinejoin="round"
-            paintOrder="stroke"
-          >
-            {actualCount}
-          </text>
-        );
+      return segments.flatMap((seg, i) => {
+        const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
+        return runs.map((run, j) => {
+          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
+          return (
+            <text
+              key={`label-${element.id}-${i}-${j}`}
+              x={element.center.x + Math.cos(angleMid) * textRadius}
+              y={element.center.y + Math.sin(angleMid) * textRadius}
+              fill="white"
+              fontSize={notationFS}
+              fontWeight="bold"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              stroke="#000000"
+              strokeWidth="4"
+              strokeLinejoin="round"
+              paintOrder="stroke"
+            >
+              {run.label}
+            </text>
+          );
+        });
       });
     }
 
@@ -8275,28 +8500,30 @@ const TattingDesigner = () => {
         const lenSet = [calculatePathLength(sampleSet[0])];
         const totalLen = lenSet[0];
         segs.forEach((seg, i) => {
-          const dist = ((seg.start + seg.count / 2) / sectionStitchCount) * totalLen;
-          const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
-          const perpAngle = angle - Math.PI / 2;
-          const actualCount = countStitchesInRange(sectionNotation, seg.start, seg.start + seg.count);
-          labels.push(
-            <text
-              key={`label-${element.id}-sr${sectionId}-${i}`}
-              x={x + Math.cos(perpAngle) * offset}
-              y={y + Math.sin(perpAngle) * offset}
-              fill="white"
-              fontSize={notationFS}
-              fontWeight="bold"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              stroke="#000000"
-              strokeWidth="4"
-              strokeLinejoin="round"
-              paintOrder="stroke"
-            >
-              {actualCount}
-            </text>
-          );
+          const runs = getSegmentRuns(sectionNotation, seg.start, seg.start + seg.count);
+          runs.forEach((run, j) => {
+            const dist = (run.midDS / sectionStitchCount) * totalLen;
+            const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
+            const perpAngle = angle - Math.PI / 2;
+            labels.push(
+              <text
+                key={`label-${element.id}-sr${sectionId}-${i}-${j}`}
+                x={x + Math.cos(perpAngle) * offset}
+                y={y + Math.sin(perpAngle) * offset}
+                fill="white"
+                fontSize={notationFS}
+                fontWeight="bold"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                stroke="#000000"
+                strokeWidth="4"
+                strokeLinejoin="round"
+                paintOrder="stroke"
+              >
+                {run.label}
+              </text>
+            );
+          });
         });
       };
 
@@ -8311,43 +8538,37 @@ const TattingDesigner = () => {
     const pathLengths = allSamplesL.map(s => calculatePathLength(s));
     const totalLength = pathLengths.reduce((a, b) => a + b, 0);
 
-    return segments.map((seg, i) => {
-      // Position label at midpoint of the segment using pre-sampled data
-      const targetDist = ((seg.start + seg.count / 2) / element.stitchCount) * totalLength;
-      const actualCount = countStitchesInRange(element.notation || '', seg.start, seg.start + seg.count);
+    const labelsInside = element.labelsInside;
+    let offset;
+    if (labelsInside === 'onPath') { offset = 8; }
+    else if (labelsInside === false) { offset = element.isClosed ? 25 : 25; }
+    else { offset = element.isClosed ? -15 : -15; }
 
-      const { x, y, angle: rawAngle } = getPointAndAngleAtDistanceFast(allSamplesL, pathLengths, targetDist);
-      const perpAngle = rawAngle - Math.PI / 2;
-      const labelsInside = element.labelsInside;
-      
-      // Position: inside, onPath, or outside
-      let offset;
-      if (labelsInside === 'onPath') {
-        offset = 8; // On path (slightly above the path line)
-      } else if (labelsInside === false) {
-        offset = element.isClosed ? 25 : 25; // Outside
-      } else {
-        offset = element.isClosed ? -15 : -15; // Inside (default)
-      }
-      
-      return (
-        <text
-          key={`label-${element.id}-${i}`}
-          x={x + Math.cos(perpAngle) * offset}
-          y={y + Math.sin(perpAngle) * offset}
-          fill="white"
-          fontSize={notationFS}
-          fontWeight="bold"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          stroke="#000000"
-          strokeWidth="4"
-          strokeLinejoin="round"
-          paintOrder="stroke"
-        >
-          {actualCount}
-        </text>
-      );
+    return segments.flatMap((seg, i) => {
+      const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
+      return runs.map((run, j) => {
+        const targetDist = (run.midDS / element.stitchCount) * totalLength;
+        const { x, y, angle: rawAngle } = getPointAndAngleAtDistanceFast(allSamplesL, pathLengths, targetDist);
+        const perpAngle = rawAngle - Math.PI / 2;
+        return (
+          <text
+            key={`label-${element.id}-${i}-${j}`}
+            x={x + Math.cos(perpAngle) * offset}
+            y={y + Math.sin(perpAngle) * offset}
+            fill="white"
+            fontSize={notationFS}
+            fontWeight="bold"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            stroke="#000000"
+            strokeWidth="4"
+            strokeLinejoin="round"
+            paintOrder="stroke"
+          >
+            {run.label}
+          </text>
+        );
+      });
     });
   };
 
@@ -8364,23 +8585,6 @@ const TattingDesigner = () => {
   const gradientColors = useMemo(() => {
     return dmcColors.filter(c => c.type === 'gradient');
   }, [dmcColors]);
-
-  // PERFORMANCE OPTIMIZATION: Memoize color filtering (expensive operation)
-  const filteredSolidColors = useMemo(() => {
-    return solidColors.filter(color => {
-      // Search filter
-      if (dmcSearchTerm) {
-        const search = dmcSearchTerm.toLowerCase();
-        if (!color.id.toLowerCase().includes(search) && 
-            !color.name.toLowerCase().includes(search)) {
-          return false;
-        }
-      }
-      
-      // Category filter (implemented in render, but we can pre-filter here later)
-      return true;
-    });
-  }, [solidColors, dmcSearchTerm]);
 
   // PERFORMANCE OPTIMIZATION: Memoize bounding box calculation
   const selectedBoundingBox = useMemo(() => {
@@ -8437,9 +8641,7 @@ const TattingDesigner = () => {
   };
 
   // PERFORMANCE OPTIMIZATION: Memoize rotation handles visibility
-  const shouldShowRotationHandles = useMemo(() => {
-    return isShiftHeld || showRotationHandles;
-  }, [isShiftHeld, showRotationHandles]);
+  const shouldShowRotationHandles = isShiftHeld || showRotationHandles;
 
   // PERFORMANCE OPTIMIZATION: Debounced search for DMC colors
   // Prevents expensive filtering on every keystroke
@@ -8482,6 +8684,31 @@ const TattingDesigner = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [showColorPicker, showMaterialsPanel, showHelp, showBeadLibrary, showSaveDialog, showThreadProperties, currentTool, activeMode, renderMode]);
+
+  // Resolve the correct help URL whenever the help modal opens or language changes.
+  // Fetches the localised file and checks the body — Vite/SPA dev servers return
+  // index.html (200 OK, text/html) for missing files, so we must read the content
+  // and confirm it is NOT the app shell before using the localised URL.
+  useEffect(() => {
+    if (!showHelp) { setHelpUrlReady(false); return; }
+    const localUrl = language === 'en' ? './tatting-help.html' : `./tatting-help_${language}.html`;
+    if (language === 'en') {
+      setResolvedHelpUrl(localUrl);
+      setHelpUrlReady(true);
+      return;
+    }
+    setHelpUrlReady(false);
+    fetch(localUrl)
+      .then(res => res.text())
+      .then(text => {
+        // SPA fallback index.html always has id="root" and Vite's module script.
+        // A real static help file never will.
+        const isAppShell = text.includes('id="root"') || text.includes('<script type="module"');
+        setResolvedHelpUrl(isAppShell ? './tatting-help.html' : localUrl);
+        setHelpUrlReady(true);
+      })
+      .catch(() => { setResolvedHelpUrl('./tatting-help.html'); setHelpUrlReady(true); });
+  }, [showHelp, language]);
 
   // Update filteredSolidColors to use debounced search
   const filteredSolidColorsDebounced = useMemo(() => {
@@ -9130,9 +9357,9 @@ const TattingDesigner = () => {
           .ui-large .top-toolbar-scalable   { transform: scale(0.85) !important; }
         }
       `}</style>
-      <div className={`w-full h-screen flex flex-col${uiScale === 'large' ? ' ui-large' : ''}`} style={{ backgroundColor: bgColor }}>
-      {/* Two-row header */}
-      <div className="bg-gray-800 text-white">
+      <div className={`w-full h-screen flex flex-col select-none${uiScale === 'large' ? ' ui-large' : ''}`} style={{ backgroundColor: bgColor }}>
+      {/* Two-row header — paddingTop pushes content below the Android status bar on edge-to-edge WebViews */}
+      <div className="bg-gray-800 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         {/* Row 1: Main Commands */}
         <div className="top-row-buttons min-h-12 flex flex-wrap items-center px-4 mobile-no-padding gap-1 md:gap-4 border-b border-gray-700 py-1 md:py-2">
           {/* File operations dropdown menu */}
@@ -9289,38 +9516,41 @@ const TattingDesigner = () => {
             </div>
           ) : activeMode === 'picotJoin' ? (
             /* ── Picot Edit mode property bar ───────────────────────────── */
-            <div className="flex items-center gap-3 flex-wrap w-full py-1 top-toolbar-scalable">
-              {/* Mode banner */}
-              <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-blue-700 border border-blue-400">
-                <IconJoinPicots size={16} />
-                <span className="font-bold text-sm text-white tracking-wide">{t('modePicotJoinTitle')}</span>
+            <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
+              {/* Row 1: mode banner + hint + exit */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-blue-700 border border-blue-400">
+                  <IconJoinPicots size={16} />
+                  <span className="font-bold text-sm text-white tracking-wide">{t('modePicotJoinTitle')}</span>
+                </div>
+                <span className="text-gray-400 text-xs">{t('modePicotJoinSub')}</span>
+                <div className="ml-auto">
+                  <button
+                    onClick={() => { setActiveMode(null); setShowJoinTip(false); }}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
+                    title={t('toolExitPicotEdit')}
+                  >
+                    ✕ {t('picotExitBtn')}
+                  </button>
+                </div>
               </div>
-              <span className="text-gray-400 text-xs">{t('modePicotJoinSub')}</span>
-              <div className="flex items-center gap-1 ml-2">
+              {/* Row 2: Join / Cut — bigger, prominent */}
+              <div className="flex items-center gap-2">
                 <button
                   onClick={joinSelectedPicots}
                   disabled={selectedPicots.length < 2}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium"
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-base font-bold"
                   title={t('toolJoinPicots')}
                 >
-                  <IconLink size={16} /> {t('picotJoinBtn')}
+                  <IconLink size={20} /> {t('picotJoinBtn')}
                 </button>
                 <button
                   onClick={breakSelectedPicots}
                   disabled={selectedPicots.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium"
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-base font-bold"
                   title={t('toolBreakPicots')}
                 >
-                  <IconUnlink size={16} /> {t('picotCutBtn')}
-                </button>
-              </div>
-              <div className="ml-auto">
-                <button
-                  onClick={() => { setActiveMode(null); setShowJoinTip(false); }}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                  title={t('toolExitPicotEdit')}
-                >
-                  ✕ {t('picotExitBtn')}
+                  <IconUnlink size={20} /> {t('picotCutBtn')}
                 </button>
               </div>
             </div>
@@ -9661,9 +9891,9 @@ const TattingDesigner = () => {
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
                       
-                      const cx = el.center.x;
-                      const cy = el.center.y;
-                      
+                      const pivot = getElementPivot(el);
+                      const cx = pivot.x;
+                      const cy = pivot.y;
                       const newPaths = el.paths.map(path => {
                         const rotatePoint = (px, py) => {
                           const dx = px - cx;
@@ -9699,7 +9929,9 @@ const TattingDesigner = () => {
                         }
                       });
                       
-                      return { ...el, paths: newPaths, rotation: newRotation };
+                      const newPivot = getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation,
+                               center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -9724,9 +9956,9 @@ const TattingDesigner = () => {
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
                       
-                      const cx = el.center.x;
-                      const cy = el.center.y;
-                      
+                      const pivot = getElementPivot(el);
+                      const cx = pivot.x;
+                      const cy = pivot.y;
                       const newPaths = el.paths.map(path => {
                         const rotatePoint = (px, py) => {
                           const dx = px - cx;
@@ -9762,7 +9994,9 @@ const TattingDesigner = () => {
                         }
                       });
                       
-                      return { ...el, paths: newPaths, rotation: newRotation };
+                      const newPivot = getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation,
+                               center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
@@ -9782,9 +10016,9 @@ const TattingDesigner = () => {
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
                       
-                      const cx = el.center.x;
-                      const cy = el.center.y;
-                      
+                      const pivot = getElementPivot(el);
+                      const cx = pivot.x;
+                      const cy = pivot.y;
                       const newPaths = el.paths.map(path => {
                         const rotatePoint = (px, py) => {
                           const dx = px - cx;
@@ -9820,7 +10054,9 @@ const TattingDesigner = () => {
                         }
                       });
                       
-                      return { ...el, paths: newPaths, rotation: newRotation };
+                      const newPivot = getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation,
+                               center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -10326,7 +10562,23 @@ const TattingDesigner = () => {
                   placeholder="#"
                 />
               </div>
-              
+
+              {/* RW toggle — Reverse Work */}
+              <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
+                <button
+                  onClick={() => {
+                    setElements(prev => prev.map(el =>
+                      el.id === selectedElement.id ? { ...el, rw: !el.rw } : el
+                    ));
+                    needsHistoryPushRef.current = true;
+                  }}
+                  className={`px-2 py-1 rounded text-xs font-bold ${selectedElement.rw ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                  title={t('propRWTooltip')}
+                >
+                  RW
+                </button>
+              </div>
+
               {/* Ring-specific properties */}
               {selectedElement.isClosed && (
                 <>
@@ -10427,7 +10679,7 @@ const TattingDesigner = () => {
                     </div>
                   ) : (
                     /* Regular ring: single squeeze slider */
-                    <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
+                    <div className={`flex items-center gap-0.5 md:gap-2 top-toolbar-scalable${selectedElement.shapeStyle === 'circle' ? ' opacity-40 pointer-events-none' : ''}`}>
                       <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueeze')}</label>
                       <input
                         type="range" min="-0.5" max="0.5" step="0.1"
@@ -10448,6 +10700,7 @@ const TattingDesigner = () => {
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
                         onTouchEnd={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
                         className="w-24"
+                        disabled={selectedElement.shapeStyle === 'circle'}
                       />
                       <span className="text-xs text-gray-400 w-8">{(selectedElement.squeeze || 0).toFixed(1)}</span>
                       <button
@@ -10463,6 +10716,7 @@ const TattingDesigner = () => {
                         }}
                         className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
                         title={t('propResetSqueeze')}
+                        disabled={selectedElement.shapeStyle === 'circle'}
                       >{t('propResetBtn')}</button>
                     </div>
                   )}
@@ -10473,7 +10727,9 @@ const TattingDesigner = () => {
               {/* Material assignment dropdown — end of property bar */}
               <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
               <div className="flex items-center gap-1 top-toolbar-scalable">
-                <label className="text-xs text-gray-400 hide-label-mobile">{t('materialLabel')}</label>
+                <label className="text-xs text-gray-400 hide-label-mobile">
+                  {selectedElement.isSplitRing ? t('matALabel') : t('materialLabel')}
+                </label>
                 <select
                   value={selectedElement.materialId || 'default'}
                   onChange={(e) => {
@@ -11182,7 +11438,7 @@ const TattingDesigner = () => {
             {/* Empty-state placeholder: keeps bar visually non-blank and stabilises layout */}
             {!selectedElement && selectedIds.length === 0 && currentTool !== 'image' && (
               <span style={{color:'#4b5563', fontSize:'0.75rem', padding:'0.25rem 0.5rem', userSelect:'none'}}>
-                Select an element to edit its properties
+                {t('propEmptyState')}
               </span>
             )}
             
@@ -11197,7 +11453,7 @@ const TattingDesigner = () => {
                   title={t('propUploadImage')}
                 >
                   <IconLoad size={18} />
-                  <span className="text-sm hide-label-mobile">Upload Image</span>
+                  <span className="text-sm hide-label-mobile">{t('refImageUpload')}</span>
                 </button>
               </div>
               
@@ -11205,7 +11461,7 @@ const TattingDesigner = () => {
                 <>
                   {/* Opacity slider */}
                   <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                    <label className="text-xs text-gray-400 hide-label-mobile">Opacity:</label>
+                    <label className="text-xs text-gray-400 hide-label-mobile">{t('refImageOpacity')}</label>
                     <input
                       type="range"
                       min="0"
@@ -11220,7 +11476,7 @@ const TattingDesigner = () => {
                   
                   {/* Scale slider */}
                   <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                    <label className="text-xs text-gray-400 hide-label-mobile">Scale:</label>
+                    <label className="text-xs text-gray-400 hide-label-mobile">{t('refImageScale')}</label>
                     <input
                       type="range"
                       min="0.1"
@@ -11235,7 +11491,7 @@ const TattingDesigner = () => {
                   
                   {/* Rotation slider */}
                   <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                    <label className="text-xs text-gray-400 hide-label-mobile">Rotate:</label>
+                    <label className="text-xs text-gray-400 hide-label-mobile">{t('refImageRotate')}</label>
                     <input
                       type="range"
                       min="0"
@@ -11255,7 +11511,7 @@ const TattingDesigner = () => {
                     title={t('propToggleVisibility')}
                   >
                     <IconEyeOn size={18} />
-                    <span className="text-xs hide-label-mobile">{refImageProps.visible ? 'Visible' : 'Hidden'}</span>
+                    <span className="text-xs hide-label-mobile">{refImageProps.visible ? t('refImageVisible') : t('refImageHidden')}</span>
                   </button>
                   
                   {/* Remove button */}
@@ -11265,7 +11521,7 @@ const TattingDesigner = () => {
                     title={t('propRemoveImage')}
                   >
                     <IconDelete size={18} />
-                    <span className="text-xs hide-label-mobile">Remove</span>
+                    <span className="text-xs hide-label-mobile">{t('refImageRemove')}</span>
                   </button>
                 </>
               )}
@@ -11586,7 +11842,8 @@ const TattingDesigner = () => {
           className="absolute bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 px-4 py-2 z-10 pointer-events-none"
           style={{ 
             fontSize: '12px',
-            fontFamily: 'monospace'
+            fontFamily: 'monospace',
+            paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))'
           }}
         >
           <div className="flex flex-wrap items-center justify-between gap-2 text-gray-300">
@@ -11959,10 +12216,10 @@ const TattingDesigner = () => {
                             stroke={lineColor} strokeWidth={lineWidth} strokeLinecap="round" />
                         </g>
                       ))}
-                      {/* Beads at center or center dot */}
+                      {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
                       {beadSeqForConnR
                         ? renderClusteredBeads(`conn-r-${conn.id}`, cx, cy, beadSeqForConnR)
-                        : <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke="black" strokeWidth="1" />
+                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke="black" strokeWidth="1" />
                       }
                     </g>
                   );
@@ -11986,10 +12243,10 @@ const TattingDesigner = () => {
                           strokeDasharray="5,5" opacity="0.7"
                         />
                       ))}
-                      {/* Beads at center or center dot */}
+                      {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
                       {beadSeqForConn
                         ? renderClusteredBeads(`conn-${conn.id}`, cx, cy, beadSeqForConn)
-                        : <circle cx={cx} cy={cy} r={4/zoom} fill={theme.connectionDot} opacity="0.9" />
+                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={4/zoom} fill={theme.connectionDot} opacity="0.9" />
                       }
                     </g>
                   );
@@ -12766,7 +13023,7 @@ const TattingDesigner = () => {
                 
                 if (path.type === 'cubic') {
                   return (
-                    <>
+                    <g data-ui="1">
                       {/* Start point - green */}
                       <circle cx={path.x} cy={path.y} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
                       <circle cx={path.x} cy={path.y} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
@@ -12786,7 +13043,7 @@ const TattingDesigner = () => {
                       {/* Helper lines */}
                       <line x1={path.x} y1={path.y} x2={path.control1X} y2={path.control1Y} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
                       <line x1={path.control2X} y1={path.control2Y} x2={path.endX} y2={path.endY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                    </>
+                    </g>
                   );
                 }
                 return null;
@@ -12800,7 +13057,7 @@ const TattingDesigner = () => {
                   .map(el => {
                     const points = getSnapPoints(el);
                     return points.map((point, i) => (
-                      <g key={`snap-${el.id}-${i}`} opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.15 : 1}>
+                      <g key={`snap-${el.id}-${i}`} data-ui="1" opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.15 : 1}>
                         {/* Outer circle for visibility - fixed screen size */}
                         <circle 
                           cx={point.x} 
@@ -12824,6 +13081,7 @@ const TattingDesigner = () => {
 
               {selectionBox && (
                 <rect
+                  data-ui="1"
                   x={Math.min(selectionBox.x, selectionBox.x + selectionBox.width)}
                   y={Math.min(selectionBox.y, selectionBox.y + selectionBox.height)}
                   width={Math.abs(selectionBox.width)}
@@ -12848,7 +13106,7 @@ const TattingDesigner = () => {
                 const shouldShowRotationHandles = isShiftHeld || showRotationHandles;
                 
                 return (
-                  <>
+                  <g data-ui="1">
                     {/* Bounding box */}
                     <rect
                       x={bbox.x}
@@ -12901,7 +13159,7 @@ const TattingDesigner = () => {
                         />
                       </>
                     )}
-                  </>
+                  </g>
                 );
               })()}
             </g>
@@ -12918,37 +13176,27 @@ const TattingDesigner = () => {
           >
             {/* Header */}
             <div className="flex justify-between items-center p-3 md:p-4 border-b border-gray-700 flex-shrink-0">
-              <h2 className="text-white text-lg md:text-xl font-bold">Help</h2>
+              <h2 className="text-white text-lg md:text-xl font-bold">{t('helpTitle')}</h2>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    const helpUrl = language === 'en'
-                      ? './tatting-help.html'
-                      : `./tatting-help_${language}.html`;
-                    window.open(helpUrl, '_blank');
-                  }}
+                  onClick={() => window.open(resolvedHelpUrl, '_blank')}
                   className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded"
                   title={t('helpOpenTab')}
-                >↗ Open in browser</button>
+                >{t('helpOpenInBrowser')}</button>
                 <button onClick={() => setShowHelp(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
               </div>
             </div>
-            {/* Help content — language-aware, falls back to English */}
-            {(() => {
-              const helpUrl = language === 'en'
-                ? './tatting-help.html'
-                : `./tatting-help_${language}.html`;
-              return (
-                <iframe
-                  key={helpUrl}
-                  src={helpUrl}
-                  onError={(e) => { if (language !== 'en') (e.target as HTMLIFrameElement).src = './tatting-help.html'; }}
+            {/* Help content — language-aware, falls back to English if localised file missing */}
+            {helpUrlReady
+              ? <iframe
+                  key={resolvedHelpUrl}
+                  src={resolvedHelpUrl}
                   className="flex-1 w-full rounded-b-lg"
                   style={{ border: 'none', minHeight: 0 }}
                   title={t('helpWindowTitle')}
                 />
-              );
-            })()}
+              : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
+            }
           </div>
         </div>
       )}
@@ -13909,7 +14157,7 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
             <span className="text-gray-300 text-base w-4 text-center flex-shrink-0">ℹ</span><span>{t('helpMenuAbout')}</span>
           </button>
-          <button onClick={() => { window.open('https://ko-fi.com/YOUR_KOFI_NAME', '_blank'); setShowHelpMenu(false); }}
+          <button onClick={() => { window.open('https://ko-fi.com/savarosacraft', '_blank'); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
             <span className="text-red-400 w-4 text-center flex-shrink-0">♥</span><span>{t('helpMenuKofi')}</span>
           </button>
@@ -13927,7 +14175,7 @@ const TattingDesigner = () => {
       <>
         <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 10002 }} onClick={() => setShowAbout(false)} />
         <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-          style={{ zIndex: 10003, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 95vw)', maxHeight: '85dvh', overflowY: 'auto' }}>
+          style={{ zIndex: 10003, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 95vw)', maxHeight: '95dvh', overflowY: 'auto' }}>
 
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600">
@@ -13960,7 +14208,7 @@ const TattingDesigner = () => {
             </button>
 
             {/* Ko-fi */}
-            <button onClick={() => window.open('https://ko-fi.com/YOUR_KOFI_NAME', '_blank')}
+            <button onClick={() => window.open('https://ko-fi.com/savarosacraft', '_blank')}
               className="w-full py-2 rounded-lg bg-red-900 hover:bg-red-800 text-white text-sm flex items-center justify-center gap-2 border border-red-700">
               <span>♥</span><span>{t('helpMenuKofi')}</span>
             </button>
@@ -14505,7 +14753,7 @@ const TattingDesigner = () => {
             <span>{t('viewLoadTheme')}</span>
           </button>
           <button
-            onClick={() => { setTheme(DEFAULT_THEME); setShowOptionsMenu(false); showLoadMsg('success', 'Theme reset to default.'); }}
+            onClick={() => { setTheme(DEFAULT_THEME); setShowOptionsMenu(false); showLoadMsg('success', t('themeResetSuccess')); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
             <span className="text-base">↩️</span>
@@ -14558,7 +14806,7 @@ const TattingDesigner = () => {
                   value={mat.name}
                   disabled={mat.id === 'default'}
                   onChange={(e) => setMaterials(prev => prev.map((m, i) => i === idx ? { ...m, name: e.target.value } : m))}
-                  className="flex-1 min-w-0 bg-gray-600 text-white px-2 py-1 rounded text-sm border border-gray-500 disabled:opacity-50"
+                  className="flex-1 min-w-0 bg-gray-600 text-white px-2 py-1 rounded text-sm border border-gray-400 focus:border-blue-400 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{minWidth:'80px'}}
                 />
 
@@ -14675,19 +14923,19 @@ const TattingDesigner = () => {
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
                   {activeBead ? (
-                    <div className="flex items-center gap-2 flex-1 min-w-0 group">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       <div
                         className="w-4 h-4 rounded-full flex-shrink-0"
                         style={{ backgroundColor: activeBead.color }}
                       />
                       <input
-                        className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-transparent group-hover:border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
+                        className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
                         value={activeBead.name}
                         onChange={e => updateBead(activeBead.id, { name: e.target.value })}
                         placeholder="Bead name"
                         title={t('clickToRename')}
                       />
-                      <span className="text-gray-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">✎</span>
+                      <span className="text-gray-500 text-xs flex-shrink-0">✎</span>
                     </div>
                   ) : (
                     <span className="text-gray-400 text-sm">{t('beadSelectPrompt')}</span>
@@ -14878,7 +15126,7 @@ const TattingDesigner = () => {
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
                   <input
-                    className="bg-transparent text-white font-semibold text-base border-b border-transparent hover:border-gray-400 focus:border-blue-400 outline-none"
+                    className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
                     value={activePreset.name}
                     onChange={e => updatePreset(activePreset.id, { name: e.target.value })}
                     placeholder="Preset name"
