@@ -291,5 +291,8 @@
   "propSqueezeSq": "",
   "propSqueezeCA": "",
   "propsqueezeCB": "",
-  "propResetBtn": ""
+  "propResetBtn": "",
+  "propRWTooltip": "",
+  "notationCopied": "",
+  "notationCopyFailed": ""
 }

@@ -291,5 +291,8 @@
   "propSqueezeSq": "Sq:",
   "propSqueezeCA": "CA:",
   "propsqueezeCB": "CB:",
-  "propResetBtn": "Reset"
+  "propResetBtn": "Reset",
+  "propRWTooltip": "Reverse Work — appends RW to notation output",
+  "notationCopied": "Notation copied to clipboard",
+  "notationCopyFailed": "Copy failed — check clipboard permissions"
 }
