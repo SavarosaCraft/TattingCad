@@ -25,6 +25,9 @@ jobs:
       - name: Install frontend deps
         run: npm install
 
+      - name: Make binaries executable
+        run: chmod +x node_modules/.bin/tauri node_modules/.bin/vite
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
@@ -37,3 +40,4 @@ jobs:
           path: |
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/macos/*.app
+
