@@ -12,21 +12,23 @@
       background: #111827;
       color: #d1d5db;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+    }
+
+    /* ── Fixed top bar ── */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
     }
 
     /* ── Header ── */
     header {
       background: #1f2937;
       border-bottom: 1px solid #374151;
-      padding: 1rem 1.5rem;
+      padding: 0.75rem 1.5rem;
       display: flex;
       align-items: center;
       gap: 1rem;
-      position: sticky;
-      top: 0;
-      z-index: 10;
     }
     header h1 { font-size: 1.2rem; font-weight: 700; color: #fff; }
     header span { font-size: 0.85rem; color: #6b7280; }
@@ -38,9 +40,6 @@
       display: flex;
       overflow-x: auto;
       scrollbar-width: none;
-      position: sticky;
-      top: 57px;
-      z-index: 9;
     }
     nav::-webkit-scrollbar { display: none; }
     nav button {
@@ -61,11 +60,11 @@
 
     /* ── Content ── */
     main {
-      flex: 1;
       max-width: 860px;
       width: 100%;
       margin: 0 auto;
       padding: 2rem 1.25rem 4rem;
+      padding-top: calc(92px + 2rem);
     }
 
     .tab-panel { display: none; }
@@ -126,6 +125,38 @@
     .tool-desc { color: #9ca3af; font-size: 0.85rem; padding-left: 0.75rem; line-height: 1.6; }
     .tool-desc ul { padding-left: 1.25rem; margin-top: 0.3rem; }
     .tool-desc li { margin-bottom: 0.2rem; }
+
+    /* ── Shortcut groups ── */
+    .shortcut-group { margin-bottom: 1.25rem; }
+    .shortcut-group-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #60a5fa;
+      margin-bottom: 0.5rem;
+    }
+    .shortcut-note {
+      font-size: 0.78rem;
+      color: #6b7280;
+      font-style: italic;
+      margin-bottom: 0.75rem;
+    }
+    .escape-note {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.83rem;
+      color: #d1d5db;
+      margin-top: 0.5rem;
+    }
+    .escape-note ol {
+      padding-left: 1.25rem;
+      margin-top: 0.4rem;
+      line-height: 2;
+      color: #9ca3af;
+    }
 
     /* ── Shortcut grid ── */
     .shortcut-grid {
@@ -213,19 +244,58 @@
 
     /* ── Print ── */
     @media print {
-      header, nav { position: static; }
+      #topbar { position: static; }
+      main { padding-top: 1rem; }
       .tab-panel { display: block !important; page-break-before: always; }
       .tab-panel:first-of-type { page-break-before: avoid; }
-      body { background: #fff; color: #111; }
-      .card { border: 1px solid #ccc; background: #f9f9f9; }
-      .codeblock { background: #f3f4f6; color: #166534; }
-      kbd { background: #e5e7eb; }
-      .code-inline { background: #e5e7eb; color: #065f46; }
+
+      body, main { background: #fff !important; color: #111 !important; }
+      header { background: #fff !important; border-bottom: 1px solid #ccc !important; }
+      header h1 { color: #111 !important; }
+      header span { color: #555 !important; }
+      nav { display: none; }
+
+      h2, h3, h4 { color: #111 !important; }
+      p, li, div { color: #222 !important; }
+      .muted  { color: #555 !important; }
+      .light  { color: #222 !important; }
+      .white  { color: #111 !important; }
+      .green  { color: #166534 !important; }
+      .yellow { color: #92400e !important; }
+      .blue   { color: #1d4ed8 !important; }
+      .purple { color: #6d28d9 !important; }
+      .tool-name, .feature-name, .notation-label { color: #111 !important; }
+      .tool-desc, .feature-body, .notation-rows { color: #333 !important; }
+      .muted, .step-body p, .e-desc { color: #555 !important; }
+
+      .card { border: 1px solid #bbb !important; background: #f9f9f9 !important; }
+      .card-blue  { border-color: #93c5fd !important; background: #eff6ff !important; }
+      .card-green { border-color: #6ee7b7 !important; background: #f0fdf4 !important; }
+
+      .codeblock { background: #f3f4f6 !important; color: #166534 !important; }
+      .codeblock .hl  { color: #92400e !important; }
+      .codeblock .dim { color: #6b7280 !important; }
+      .codeblock .bl  { color: #1d4ed8 !important; }
+
+      kbd { background: #e5e7eb !important; border-color: #9ca3af !important; color: #111 !important; }
+      .code-inline { background: #e5e7eb !important; color: #065f46 !important; }
+      .bead-tag { background: #dbeafe !important; color: #1e40af !important; }
+
+      .shortcut-group-title { color: #1d4ed8 !important; }
+      .escape-note { background: #f3f4f6 !important; color: #374151 !important; border-color: #d1d5db !important; }
+      .escape-note ol { color: #374151 !important; }
+
+      .theme-table .k { color: #1d4ed8 !important; }
+      .theme-table .v { color: #374151 !important; }
+
+      .step-num { background: #2563eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .pro-tips .check { color: #166534 !important; }
     }
   </style>
 </head>
 <body>
 
+<div id="topbar">
 <header>
   <div>
     <h1>🧵 Tatting Pattern Designer</h1>
@@ -245,6 +315,7 @@
   <button onclick="show('tips',this)">💡 Tips</button>
   <button onclick="show('beads',this)">🪩 Beads</button>
 </nav>
+</div>
 
 <main>
 
@@ -327,94 +398,191 @@
 <!-- ══════════════════════════════ SHORTCUTS ══════════════════════════════ -->
 <section id="tab-shortcuts" class="tab-panel">
   <h2>Keyboard Shortcuts</h2>
-  <div class="shortcut-grid">
-    <div><kbd>Ctrl+N</kbd> New canvas</div>
-    <div><kbd>Ctrl+S</kbd> Save project</div>
-    <div><kbd>Ctrl+Z</kbd> Undo</div>
-    <div><kbd>Shift+Z</kbd> Redo</div>
-    <div><kbd>Ctrl+A</kbd> Select all</div>
-    <div><kbd>Ctrl+C</kbd> Copy</div>
-    <div><kbd>Ctrl+V</kbd> Paste</div>
-    <div><kbd>D</kbd> Duplicate in place</div>
-    <div><kbd>Delete</kbd> Delete selected</div>
-    <div><kbd>Ctrl+G</kbd> Group selection</div>
-    <div><kbd>Shift+G</kbd> Ungroup</div>
-    <div><kbd>Tab</kbd> Toggle Pan/Select</div>
-    <div><kbd>V</kbd> Toggle Realistic view</div>
-    <div><kbd>Escape</kbd> Exit realistic view</div>
-    <div><kbd>F</kbd> Fit all to view</div>
-    <div><kbd>+</kbd> Zoom in</div>
-    <div><kbd>-</kbd> Zoom out</div>
-    <div><kbd>Shift (hold)</kbd> Ortho lock + rotation handles</div>
-    <div><kbd>Middle-click drag</kbd> Pan canvas</div>
+  <p class="shortcut-note">All shortcuts are disabled when the cursor is inside a text input or textarea.</p>
+
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">File &amp; History</div>
+    <div class="shortcut-grid">
+      <div><kbd>Ctrl+N</kbd> New canvas</div>
+      <div><kbd>Ctrl+S</kbd> Save project</div>
+      <div><kbd>Ctrl+Z</kbd> Undo</div>
+      <div><kbd>Shift+Z</kbd> Redo</div>
+    </div>
+  </div>
+
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Selection &amp; Editing</div>
+    <div class="shortcut-grid">
+      <div><kbd>Ctrl+A</kbd> Select all elements</div>
+      <div><kbd>Ctrl+C</kbd> Copy selected (or copy BE config in Beading mode)</div>
+      <div><kbd>Ctrl+X</kbd> Cut selected (or cut BE config in Beading mode)</div>
+      <div><kbd>Ctrl+V</kbd> Paste (or paste BE config in Beading mode)</div>
+      <div><kbd>D</kbd> Duplicate in place</div>
+      <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> Delete selected</div>
+      <div><kbd>Ctrl+G</kbd> Group selected</div>
+      <div><kbd>Shift+G</kbd> Ungroup selected</div>
+    </div>
+  </div>
+
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Navigation &amp; View</div>
+    <div class="shortcut-grid">
+      <div><kbd>Tab</kbd> Toggle Pan / Select tool</div>
+      <div><kbd>F</kbd> Fit all elements in view</div>
+      <div><kbd>+</kbd> / <kbd>=</kbd> Zoom in</div>
+      <div><kbd>-</kbd> Zoom out</div>
+      <div><kbd>V</kbd> Toggle Schematic / Realistic render</div>
+      <div><kbd>Shift (hold)</kbd> Show rotation handles on selected</div>
+    </div>
+  </div>
+
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Adding Elements <span style="font-weight:400; color:#6b7280;">(disabled in Picot Join or Beading mode)</span></div>
+    <div class="shortcut-grid">
+      <div><kbd>Shift+R</kbd> Add Ring</div>
+      <div><kbd>Shift+C</kbd> Add Chain</div>
+      <div><kbd>Shift+S</kbd> Add Split Ring</div>
+      <div><kbd>Shift+L</kbd> Toggle Line tool</div>
+    </div>
+  </div>
+
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Modes <span style="font-weight:400; color:#6b7280;">(mutually exclusive — activating one exits the other)</span></div>
+    <div class="shortcut-grid">
+      <div><kbd>Shift+J</kbd> Toggle Picot Join mode</div>
+      <div><kbd>Shift+B</kbd> Toggle Beading mode</div>
+    </div>
+  </div>
+
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Escape — closes / exits in this priority order</div>
+    <div class="escape-note">
+      <ol>
+        <li>Realistic render mode → back to Schematic</li>
+        <li>Color picker</li>
+        <li>Materials panel</li>
+        <li>About dialog</li>
+        <li>Help menu</li>
+        <li>Help panel</li>
+        <li>Bead library</li>
+        <li>Polar grid panel</li>
+        <li>Save dialog</li>
+        <li>Thread properties</li>
+        <li>Picot Join mode</li>
+        <li>Beading mode</li>
+        <li>Ruler tool (clears current measurement)</li>
+      </ol>
+    </div>
   </div>
 </section>
 
 <!-- ══════════════════════════════ NOTATION ══════════════════════════════ -->
 <section id="tab-notation" class="tab-panel">
   <h2>Notation Syntax</h2>
+  <p style="margin-bottom:1rem; font-size:0.875rem;">All notation is <strong>case-insensitive</strong>. Tokens are separated by <code class="code-inline">-</code> or <code class="code-inline">.</code> — both are accepted everywhere.</p>
 
+  <!-- Element prefixes -->
   <div class="notation-section">
-    <div class="notation-label">Basic Ring / Chain</div>
+    <div class="notation-label">Element type prefixes</div>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">Every notation string must start with one of these prefixes followed by <code class="code-inline">:</code></p>
     <div class="notation-rows">
-      <div><code class="code-inline">r: 20ds</code> &nbsp;Ring with 20 double stitches</div>
-      <div><code class="code-inline">c: 10ds</code> &nbsp;Chain with 10 double stitches</div>
+      <div><code class="code-inline">r:</code> &nbsp;Ring</div>
+      <div><code class="code-inline">c:</code> &nbsp;Chain</div>
+      <div><code class="code-inline">sr:</code> &nbsp;Split Ring</div>
+      <div><code class="code-inline">jk:</code> &nbsp;Josephine Knot <span class="muted">(parsed as ring, reserved prefix)</span></div>
+      <div><code class="code-inline">fr:</code> &nbsp;Floating Ring <span class="muted">(parsed as ring, reserved prefix)</span></div>
+    </div>
+    <div class="codeblock" style="margin-top:0.5rem;">r: 5ds-p-5ds</div>
+  </div>
+
+  <!-- Stitch tokens -->
+  <div class="notation-section">
+    <div class="notation-label">Stitch tokens</div>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;"><code class="code-inline">N</code> is always optional and defaults to 1.</p>
+    <div class="notation-rows">
+      <div><code class="code-inline">Nds</code> &nbsp;Double stitch(es) — path length N. <code class="code-inline">ds</code> alone = 1.</div>
+      <div><code class="code-inline">Nss</code> &nbsp;Single stitch(es) — path length N × 0.5</div>
+      <div><code class="code-inline">Nlss</code> &nbsp;Left single stitch(es) — same path size as ss, stored as distinct type</div>
+      <div><code class="code-inline">Nrss</code> &nbsp;Right single stitch(es) — same path size as ss, stored as distinct type</div>
+      <div><code class="code-inline">Nrds</code> &nbsp;Reinforced double stitch(es) — path length N × 2</div>
     </div>
   </div>
 
+  <!-- Picot tokens -->
   <div class="notation-section">
-    <div class="notation-label">Separators</div>
+    <div class="notation-label">Picot tokens</div>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">Picots do <em>not</em> advance the stitch counter. <code class="code-inline">N</code> before any picot repeats it: <code class="code-inline">3p</code> = three picots at the same position.</p>
     <div class="notation-rows">
-      <div>Use <code class="code-inline">-</code> (dash) or <code class="code-inline">.</code> (dot) between tokens — both are identical.</div>
-      <div><code class="code-inline">r: 5ds-p-5ds</code> &nbsp;= &nbsp;<code class="code-inline">r: 5ds.p.5ds</code></div>
-    </div>
-  </div>
-
-  <div class="notation-section">
-    <div class="notation-label">With Picots</div>
-    <div class="notation-rows">
-      <div><code class="code-inline">r: 10ds-p-10ds</code> &nbsp;Ring with picot at 10 stitches</div>
-      <div><code class="code-inline">r: 5ds-jp-5ds</code> &nbsp;Ring with joint picot (green → yellow when connected)</div>
-    </div>
-  </div>
-
-  <div class="notation-section">
-    <div class="notation-label">Picot Types</div>
-    <div class="notation-rows">
-      <div><code class="code-inline">p</code> &nbsp;Medium picot (default)</div>
-      <div><code class="code-inline">sp</code> &nbsp;Small picot</div>
+      <div><code class="code-inline">p</code> &nbsp;Regular picot (medium length)</div>
+      <div><code class="code-inline">sp</code> or <code class="code-inline">cp</code> &nbsp;Small picot</div>
       <div><code class="code-inline">lp</code> &nbsp;Large picot</div>
-      <div><code class="code-inline">jp</code> &nbsp;Joint picot — green (free), yellow (connected), pink (selected)</div>
-      <div><code class="code-inline">jpg</code> &nbsp;Guide joined picot — green arm, snap point + joinable</div>
-      <div><code class="code-inline">gp</code> &nbsp;Guide point — yellow-green diamond on path, snap anchor, no arm</div>
+      <div><code class="code-inline">jp</code> &nbsp;Join picot — marks a connection point between elements. Green (free) → yellow (connected) → pink (selected)</div>
+      <div><code class="code-inline">jpg</code> &nbsp;Guide join picot — rendered as a green arm; selectable in join tool and acts as snap point</div>
+      <div><code class="code-inline">gp</code> &nbsp;Guide point — yellow-green diamond on path, snap anchor, no arm rendered</div>
     </div>
   </div>
 
+  <!-- Repeat groups -->
   <div class="notation-section">
-    <div class="notation-label">Repeats</div>
+    <div class="notation-label">Repeat groups</div>
     <div class="notation-rows">
-      <div><code class="code-inline">r: 3ds-4*(p-2ds)</code> &nbsp;Repeat (p-2ds) four times</div>
-      <div><code class="code-inline">r: 5*(3ds-p)</code> &nbsp;Repeat (3ds-p) five times</div>
+      <div><code class="code-inline">Nx(...)</code> &nbsp;Repeat contents N times — <code class="code-inline">3x(jp-3ds)</code> expands to <code class="code-inline">jp-3ds-jp-3ds-jp-3ds</code></div>
+      <div><code class="code-inline">(...)xN</code> &nbsp;Same — both orders accepted</div>
+    </div>
+    <div class="codeblock" style="margin-top:0.5rem;">
+      r: 3x(jp-3ds)  &nbsp;<span class="dim">← same as jp-3ds-jp-3ds-jp-3ds</span><br>
+      r: 5*(3ds-p)   &nbsp;<span class="dim">← * also works as repeat operator</span>
     </div>
   </div>
 
+  <!-- Split ring -->
   <div class="notation-section">
     <div class="notation-label">Split Ring</div>
     <div class="notation-rows">
       <div>A split ring uses two notation fields — Side A and Side B.</div>
-      <div class="codeblock">
-        <span class="bl">Side A:</span> sr: 5ds-p-5ds<br>
-        <span class="bl">Side B:</span> 3ds-jp-3ds &nbsp;<span class="dim">← no sr: prefix</span>
-      </div>
+    </div>
+    <div class="codeblock" style="margin-top:0.5rem;">
+      <span class="bl">Side A:</span> sr: 5ds-p-5ds<br>
+      <span class="bl">Side B:</span> 3ds-jp-3ds &nbsp;<span class="dim">← no sr: prefix on Side B</span>
     </div>
   </div>
 
+  <!-- Separators -->
   <div class="notation-section">
-    <div class="notation-label">Examples</div>
+    <div class="notation-label">Separators</div>
+    <div class="notation-rows">
+      <div>Use <code class="code-inline">-</code> (dash) or <code class="code-inline">.</code> (dot) — they are identical.</div>
+      <div><code class="code-inline">r: 5ds-p-5ds</code> &nbsp;= &nbsp;<code class="code-inline">r: 5ds.p.5ds</code></div>
+    </div>
+  </div>
+
+  <!-- Pattern output format -->
+  <div class="notation-section">
+    <div class="notation-label">Pattern export format</div>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">When exported, notation is rebuilt from picot data. Join picots include inline connection references:</p>
     <div class="codeblock">
-      r: 4ds-p-4ds-p-4ds-p-4ds<br>
-      c: 5ds-jp-5ds<br>
-      r: 5*(3ds-p)-3ds
+      r: 3ds-<span class="hl">jp//r3//</span>-3ds &nbsp;<span class="dim">← connected to ring 3</span><br>
+      r: 3ds-<span class="hl">jp//r3//r11//r15//</span>-3ds &nbsp;<span class="dim">← connected to rings 3, 11 and 15</span><br>
+      r: 3ds-<span class="hl">jp(?)</span>-3ds &nbsp;<span class="dim">← join picot with no connection yet</span><br>
+      r: 3ds-<span class="hl">bjp//r3//</span>-3ds &nbsp;<span class="dim">← beaded join picot with connection</span>
+    </div>
+  </div>
+
+  <!-- Examples -->
+  <div class="notation-section">
+    <div class="notation-label">Worked examples</div>
+    <div class="codeblock">
+      r: 5ds-p-5ds-p-5ds-p-5ds &nbsp;&nbsp;&nbsp;<span class="dim">Ring, 15 ds, 3 medium picots</span><br>
+      r: 3ds-jp-3ds-jp-3ds-jp-3ds &nbsp;<span class="dim">Ring, 12 ds, 3 join picots</span><br>
+      r: 3x(jp-3ds) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Same using repeat group</span><br>
+      c: 5ds-sp-3ds-lp-3ds-sp-5ds &nbsp;<span class="dim">Chain with small/large/small picots</span><br>
+      sr: 5ds-jp-5ds-jp-5ds &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Split ring with 2 join picots</span><br>
+      r: 5ds-be-5ds-be-5ds &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Ring with 2 bead element placeholders</span><br>
+      r: 4ds-bc:3Y-4ds &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Ring with 3 inline small core beads</span><br>
+      r: 4ds-bp:YZY-4ds &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Ring with beaded picot (Y-Z-Y cluster)</span><br>
+      r: 2ds-3p-2ds-jp-2ds-3p-2ds &nbsp;<span class="dim">Mix of regular and join picots</span><br>
+      r: 5ds-p-2rds-p-5ds &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Mix of DS and reinforced DS</span><br>
+      r: 5ss-p-5ss &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">Ring using single stitches</span>
     </div>
   </div>
 </section>
