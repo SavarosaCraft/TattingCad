@@ -234,6 +234,26 @@
     .essentials .e-name { font-weight: 600; color: #fff; }
     .essentials .e-desc { color: #d1d5db; }
 
+    /* ── Polar grid diagram ── */
+    .pg-diagram {
+      display: flex; align-items: center; justify-content: center;
+      background: #111827; border-radius: 8px; padding: 1rem;
+      margin: 0.75rem 0;
+    }
+    .pg-label-row {
+      display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem;
+      font-size: 0.82rem; margin-bottom: 0.6rem;
+    }
+    .pg-pill {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      background: #1f2937; border: 1px solid #374151; border-radius: 4px;
+      padding: 0.2rem 0.55rem; font-size: 0.8rem; color: #d1d5db;
+    }
+    .pg-pill .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .pg-row { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.875rem; }
+    .pg-field { background: #374151; border-radius: 4px; padding: 0.1rem 0.45rem; font-family: monospace; font-size: 0.78rem; color: #e5e7eb; white-space: nowrap; }
+    .pg-icon-btn { display: inline-flex; align-items: center; gap: 0.3rem; background: #1f2937; border: 1px solid #374151; border-radius: 4px; padding: 0.15rem 0.5rem; font-size: 0.78rem; color: #d1d5db; }
+
     /* ── Responsive ── */
     @media (max-width: 540px) {
       .shortcut-grid { grid-template-columns: 1fr; }
@@ -289,6 +309,9 @@
       .theme-table .v { color: #374151 !important; }
 
       .step-num { background: #2563eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .pg-field { background: #e5e7eb !important; color: #111 !important; }
+      .pg-pill, .pg-icon-btn { background: #f3f4f6 !important; border-color: #d1d5db !important; color: #111 !important; }
+      .pg-diagram { background: #f9fafb !important; }
       .pro-tips .check { color: #166534 !important; }
     }
   </style>
@@ -314,6 +337,7 @@
   <button onclick="show('features',this)">🎨 Features</button>
   <button onclick="show('tips',this)">💡 Tips</button>
   <button onclick="show('beads',this)">🪩 Beads</button>
+  <button onclick="show('polargrid',this)">🔵 Polar Grid</button>
 </nav>
 </div>
 
@@ -875,6 +899,170 @@
   </div>
 
   <p style="font-size:0.8rem; color:#6b7280; font-style:italic; margin-top:1rem;">💡 A printable PDF quick-reference for bead notation is planned for a future update.</p>
+</section>
+
+<!-- ══════════════════════════════ POLAR GRID ══════════════════════════════ -->
+<section id="tab-polargrid" class="tab-panel">
+  <h2>Polar Grids</h2>
+  <p class="light" style="margin-bottom:1.25rem; font-size:0.875rem;">
+    A polar grid is a set of concentric circles with evenly-spaced "spoke" snap points on each circle.
+    It helps you place elements at exact distances and angles — perfect for rosettes, doily rounds, and any repeating radial pattern.
+  </p>
+
+  <div class="pg-diagram">
+    <svg viewBox="-110 -110 220 220" width="200" height="200" style="overflow:visible">
+      <!-- rings -->
+      <circle cx="0" cy="0" r="45"  fill="none" stroke="#3b82f6" stroke-width="0.8" stroke-opacity="0.5"/>
+      <circle cx="0" cy="0" r="80"  fill="none" stroke="#3b82f6" stroke-width="0.8" stroke-opacity="0.5"/>
+      <!-- spokes (12 divisions) -->
+      <line x1="0" y1="0" x2="0"   y2="-95" stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="47"  y2="-82" stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="82"  y2="-47" stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="95"  y2="0"   stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="82"  y2="47"  stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="47"  y2="82"  stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="0"   y2="95"  stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="-47" y2="82"  stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="-82" y2="47"  stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="-95" y2="0"   stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="-82" y2="-47" stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <line x1="0" y1="0" x2="-47" y2="-82" stroke="#3b82f6" stroke-width="0.5" stroke-opacity="0.3"/>
+      <!-- snap dots on inner ring -->
+      <circle cx="0"   cy="-45" r="2.5" fill="#60a5fa"/>
+      <circle cx="22"  cy="-39" r="2.5" fill="#60a5fa"/>
+      <circle cx="39"  cy="-22" r="2.5" fill="#60a5fa"/>
+      <circle cx="45"  cy="0"   r="2.5" fill="#60a5fa"/>
+      <circle cx="39"  cy="22"  r="2.5" fill="#60a5fa"/>
+      <circle cx="22"  cy="39"  r="2.5" fill="#60a5fa"/>
+      <circle cx="0"   cy="45"  r="2.5" fill="#60a5fa"/>
+      <circle cx="-22" cy="39"  r="2.5" fill="#60a5fa"/>
+      <circle cx="-39" cy="22"  r="2.5" fill="#60a5fa"/>
+      <circle cx="-45" cy="0"   r="2.5" fill="#60a5fa"/>
+      <circle cx="-39" cy="-22" r="2.5" fill="#60a5fa"/>
+      <circle cx="-22" cy="-39" r="2.5" fill="#60a5fa"/>
+      <!-- center -->
+      <circle cx="0" cy="0" r="4" fill="none" stroke="#60a5fa" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="1.5" fill="#60a5fa"/>
+      <!-- labels -->
+      <text x="50" y="-47" font-size="8" fill="#9ca3af">r = 45</text>
+      <text x="85" y="-82" font-size="8" fill="#9ca3af">r = 80</text>
+      <text x="6"  y="-50" font-size="7" fill="#60a5fa">snap dot</text>
+    </svg>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="green">Step 1 — Open the Polar Grids panel</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      Click the <strong>Polar Grid button</strong> in the right-side toolbar (looks like concentric circles 🔵), or find it in the <strong>Arrange menu → Polar Grid</strong>.
+      A panel opens with a grid list on the left and the editor on the right.
+    </p>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="green">Step 2 — Create a grid</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      Click <span class="pg-field">+ Add Grid</span>. A new grid appears in the list with a default name. Click the name field at the top of the editor and type something meaningful — e.g. <em>"Round 1"</em> or <em>"Main rosette"</em>.
+    </p>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="green">Step 3 — Position the center</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      The <strong>Center X / Y</strong> fields set where the middle of the grid sits on your canvas.
+      For most patterns, leave it at <code class="code-inline">0, 0</code> (the canvas origin). Click the <span class="pg-field">⌖</span> button to reset it back to origin at any time.
+    </p>
+    <p style="margin-top:0.4rem; font-size:0.82rem; color:#9ca3af;">
+      💡 You can type any number directly — useful if you want a secondary grid centred on a specific element.
+    </p>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="green">Step 4 — Add rings</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      Click <span class="pg-field">+ Add Ring</span>. Each ring has two settings:
+    </p>
+    <div style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.5rem; padding-left:0.5rem;">
+      <div class="pg-row">
+        <span class="pg-field">r</span>
+        <span><strong>Radius</strong> — how far this circle is from the center, in canvas units. The panel shows the approximate real-world size in mm next to it (based on your thread settings). Start with something like <strong>100</strong> for a first ring, then <strong>200</strong> for a second.</span>
+      </div>
+      <div class="pg-row">
+        <span class="pg-field">÷</span>
+        <span><strong>Divisions</strong> — how many equally-spaced snap points sit on this ring. <strong>6</strong> gives you a hexagon, <strong>8</strong> an octagon, <strong>12</strong> a clock face. The spokes and dots update live on the canvas as you type.</span>
+      </div>
+    </div>
+    <p style="margin-top:0.6rem; font-size:0.82rem; color:#9ca3af;">
+      Add as many rings as your pattern needs — one per round in a doily, for example.
+    </p>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="green">Step 5 — Adjust color and opacity</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      In the header of the editor, the <strong>color swatch</strong> (circle) lets you pick a grid color — handy if you have multiple grids and want to tell them apart at a glance.
+      The <strong>opacity slider</strong> next to it controls how faint or vivid the grid lines appear. Slide it down if the grid is distracting while you work.
+    </p>
+  </div>
+
+  <!-- Step 6 - Snap & visibility -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="green">Step 6 — Snap and visibility per ring</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      Each ring row has two small toggle buttons on the right:
+    </p>
+    <div style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.4rem; padding-left:0.5rem; font-size:0.875rem;">
+      <div><span class="pg-icon-btn">👁</span> &nbsp;<strong>Visible</strong> — shows or hides this specific ring's circle and dots on the canvas. Hidden rings still snap if snap is on.</div>
+      <div><span class="pg-icon-btn">🧲</span> &nbsp;<strong>Snap</strong> — when active (blue), elements will snap to this ring's dots when you drag them nearby. Turn it off for rings you only want as a visual guide.</div>
+    </div>
+    <p style="margin-top:0.5rem; font-size:0.82rem; color:#9ca3af;">
+      The <strong>Visible</strong> checkbox at the top of the editor hides or shows the entire grid at once.
+    </p>
+  </div>
+
+  <!-- Angular offset -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="yellow">Angular offset (optional)</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      The <span class="pg-field">Offset°</span> field rotates all spokes of the grid by that many degrees. Useful when your pattern's first element doesn't sit at 12 o'clock.
+      Each individual ring also has its own <span class="pg-field">⟳°</span> offset that is <em>added on top</em> of the global one — so you can stagger rings relative to each other (e.g. offset ring 2 by 15° so its snap points fall between ring 1's).
+    </p>
+  </div>
+
+  <!-- Assigning a grid to elements -->
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h4 class="blue">Assigning a grid to elements (Polar Grid pivot)</h4>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      Once you've created grids, you can tell each element which grid to use as its <strong>rotation and flip center</strong>.
+      Select an element, open the properties bar, and look for the <strong>Polar Grid</strong> dropdown — pick your grid from the list.
+    </p>
+    <p style="margin-top:0.4rem; font-size:0.875rem;">
+      When a grid is assigned, rotating or flipping that element will pivot around the grid's center instead of the element's own center.
+      This is what lets you duplicate a motif and rotate it into perfect radial position.
+    </p>
+    <div class="card card-blue" style="margin-top:0.6rem;">
+      <p style="font-size:0.82rem;">
+        <strong>Typical workflow:</strong> Design one repeat → assign the grid → duplicate in place (<kbd>D</kbd>) → type a rotation angle → press Enter → repeat until the circle is complete.
+      </p>
+    </div>
+  </div>
+
+  <!-- Tips -->
+  <div class="card card-green">
+    <h4 class="green">💡 Quick tips</h4>
+    <ul class="pro-tips" style="margin-top:0.5rem;">
+      <li><span class="check">✓</span><span>Grids are <strong>saved globally</strong> — they persist across projects. You don't need to recreate them every time.</span></li>
+      <li><span class="check">✓</span><span>You can have <strong>multiple grids</strong> open at once — e.g. one for the inner round and one for the outer round of a doily.</span></li>
+      <li><span class="check">✓</span><span>The <strong>mm size hint</strong> next to each radius updates if you change thread settings in Thread Properties — use it to match a real-world pattern size.</span></li>
+      <li><span class="check">✓</span><span>If snap feels "too sticky", lower the number of divisions on a ring or turn snap off for rings you're not actively working with.</span></li>
+      <li><span class="check">✓</span><span>Press <strong>Escape</strong> or click outside the panel to close it without losing any settings.</span></li>
+    </ul>
+  </div>
+
 </section>
 
 </main>

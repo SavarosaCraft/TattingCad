@@ -33,10 +33,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-"resources": [ 
-"../dist/*.json",
-"../dist/*.md", 
-"../dist/*.html" 
-]
+    "resources": [
+      "../dist/*.json",
+      "../dist/*.md",
+      "../dist/*.html"
+    ]
+  },
+  "plugins": {
+    "window-state": null
   }
 }

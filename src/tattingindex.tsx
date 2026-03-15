@@ -182,7 +182,7 @@
 // - Text labels smaller on mobile (0.65rem) to fit more content
 // FIXED (v92.5.1):
 // - Picots now stay on the same side of the curve when flipping
-// - Flipping toggles labelsInside property (inside becomes outside and vice versa)
+// - Label offset: labelsInside (3-state) replaced by labelOffset (number, px, default 8)
 // - When you flip a curve, its "handedness" changes, so we toggle the label side
 // - Works for both rings and chains, circles and teardrops
 // NEW (v92.4):
@@ -227,6 +227,8 @@
 // - Clean separation: solids on right, gradients on bottom
 // - Gradient picker matches DMC swatches (search, categories, pagination, preview)
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
+import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 
 // Collision-safe unique ID generator — replaces Date.now()+Math.random() everywhere.
 const generateId = (): string => crypto.randomUUID();
@@ -720,16 +722,38 @@ const LANGUAGES_FALLBACK: Record<string, string> = {
 
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   en: {
-    // ── Startup / Disclaimer ────────────────────────────────────────────────
-    disclaimerTitle: 'Pre-Release Test Version',
-    disclaimerVersion: 'Version 0.9.94',
-    disclaimerBody2: 'Feature-ready. If you experience any bugs or unexpected behavior, please let me know.',
-    disclaimerBody3: 'Save often — but no major issues are expected.',
-    disclaimerBody4: 'Use at your own risk.',
-    disclaimerDontShow: "Don't show again for this version",
-    disclaimerCopyright: '© 2026 Melinda Kiss',
-    disclaimerContinue: 'I Understand – Continue',
+
     languagePickerLabel: 'Language',
+
+    // ── Splash screen ────────────────────────────────────────────────────────
+    splashNewProject: 'New Project',
+    splashLoadProject: 'Load Project',
+    splashResume: 'Resume: {name}',
+    splashNoAutosave: 'No Autosave',
+    splashGettingStarted: 'Getting Started',
+    splashTipPrev: 'Previous tip',
+    splashTipNext: 'Next tip',
+    splashUpdateOverlayTitle: 'Have you checked for updates?',
+    splashUpdateOverlayBody: 'You are on v{version} — click to check',
+    splashUpdatePopupTitle: 'Check for updates',
+    splashUpdatePopupBody: "You're on v{version}. Visit the releases page to see if a newer version is available.",
+    splashUpdatePopupOpen: 'Open Releases Page',
+    splashUpdatePopupDismiss: 'Dismiss for this version',
+    splashTip01: 'Duplicate in place first (D), then rotate around your polar grid for flower patterns.',
+    splashTip02: 'The notation field understands repeats — try r: 4x(3ds-p) instead of writing it out.',
+    splashTip03: 'Zoom with the scroll wheel; hold Space and drag to pan without switching tools.',
+    splashTip04: "Order numbers follow your thread path — number elements in the sequence you'll tat them.",
+    splashTip05: 'Materials carry color and gradient settings — change one material to update all linked elements.',
+    splashTip06: 'Polar Array (Arrange menu) places N copies at equal angles around a grid center automatically.',
+    splashTip07: 'Picot length affects spacing — try shorter picots if a joining area looks crowded.',
+    splashTip08: "Split rings have independent A and B notation — the two stitch counts don't need to match.",
+    splashTip09: 'Press Escape repeatedly to walk back through modes to a safe deselected state.',
+    splashTip10: 'The Ruler tool reads in millimetres — set DS width in Thread Properties first for accuracy.',
+    splashTip11: 'Flip H/V also reverses the notation automatically so stitch sequence stays correct.',
+    splashTip12: 'Schematic and Realistic are display modes, not separate tools — switch any time.',
+    splashTip13: 'Name your polar grids in the panel — useful when a pattern has inner and outer grids.',
+    splashTip14: 'Save all your projects in one folder — TattingCAD builds a visual recent projects browser automatically.',
+    splashTip15: 'Export SVG then open it in Inkscape, Illustrator, or any browser to save as PNG at any size.',
 
     // ── Top toolbar – buttons ────────────────────────────────────────────────
     menuFile: 'File',
@@ -738,7 +762,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     menuArrangeTitle: 'Arrange (Duplicate & Align)',
     menuOptions: 'Options',
     menuOptionsTitle: 'Options',
-    menuHelp: 'Help & Quick Reference',
     renderSchematic: 'Schematic',
     renderRealistic: 'Realistic',
     renderToggleTitle: 'Toggle realistic stitch rendering (Press V)',
@@ -752,13 +775,27 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     // ── File menu ────────────────────────────────────────────────────────────
     fileNew: 'New',
     fileSave: 'Save Project',
+    fileSaveAs: 'Save As…',
     fileLoad: 'Load Project',
     fileExportSvg: 'Export SVG',
-    fileExportSvgTitle: 'Export as SVG (can be converted to PNG with external tools)',
+    fileExportSvgTitle: 'Export the current pattern as an SVG vector file',
     fileOutputNotation: 'Output notation to clipboard',
     notationCopied: 'Notation copied to clipboard',
     notationCopyFailed: 'Copy failed — check clipboard permissions',
     fileShowUnnumbered: 'Show Unnumbered',
+    viewTattingOrder: 'Tatting Order…',
+    tattingOrderTitle: 'TATTING ORDER MODE',
+    tattingOrderSub: 'Select an element to assign its order number',
+    tattingOrderProgress: '{numbered} / {total} numbered',
+    tattingOrderAssignNext: 'Assign Next',
+    tattingOrderClear: 'Clear',
+    tattingOrderExitBtn: 'Exit Mode',
+    tattingOrderExitWarning: '{n} element(s) still unnumbered',
+    tattingOrderConflictTitle: 'Number already taken',
+    tattingOrderConflictSwap: 'Swap',
+    tattingOrderConflictShift: 'Shift all higher numbers up',
+    tattingOrderConflictCancel: 'Cancel',
+    tattingOrderNumberLabel: 'Order #',
 
     // ── Arrange menu ─────────────────────────────────────────────────────────
     arrangeDuplicate: 'Duplicate in Place',
@@ -771,6 +808,35 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     arrangeAlignBottom: 'Align Bottom',
     arrangePolarHeader: 'Polar Grid',
     arrangeCenterToPolarGrid: 'Center to Polar Grid',
+    arrangePolarArray: 'Polar Array…',
+    polarArrayTitle: 'Polar Array',
+    polarArrayCount: 'Total copies (including original)',
+    polarArrayAngle: 'Fill angle (degrees)',
+    polarArrayPivot: 'Pivot point',
+    polarArrayPivotSelection: 'Selection center',
+    polarArrayApply: 'Apply Array',
+    polarArrayPeekHint: 'Hold to peek at canvas',
+    arrangeArrayHeader: 'Array',
+    arrangeLinearArray: 'Linear Array…',
+    arrangeSpiralArray: 'Spiral Array…',
+    linearArrayTitle: 'Linear Array',
+    linearArrayCount: 'Total copies (including original)',
+    linearArrayDirection: 'Direction',
+    linearArraySpacing: 'Spacing (center to center)',
+    linearArrayRotStep: 'Rotation per step (°)',
+    linearArrayApply: 'Apply Array',
+    linearArrayPeekHint: 'Hold to peek at canvas',
+    spiralArrayTitle: 'Spiral Array',
+    spiralArrayCount: 'Total copies (including original)',
+    spiralArrayType: 'Spiral type',
+    spiralArrayArchimedean: 'Uniform gap (Archimedean)',
+    spiralArrayGeometric: 'Growing gap (Geometric)',
+    spiralArrayGap: 'Gap between turns',
+    spiralArrayAngleStep: 'Angle per copy (°)',
+    spiralArrayGrowth: 'Growth factor per step',
+    spiralArrayRotate: 'Rotate elements to follow spiral',
+    spiralArrayApply: 'Apply Array',
+    spiralArrayPeekHint: 'Hold to peek at canvas',
 
     // ── Options menu ─────────────────────────────────────────────────────────
     optionsBgColor: 'Background Color',
@@ -779,7 +845,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     optionsSizeMedium: 'Medium',
     optionsSizeLarge: 'Large',
     optionsGrid: 'Show Grid',
-    optionsSnap: 'Snap to Grid',
+    optionsSnap: 'Snap to Point',
 
     // ── Left toolbar ─────────────────────────────────────────────────────────
     toolOrthoLock: 'Ortho lock: constrain movement to X or Y axis (or hold Shift)',
@@ -830,8 +896,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     propRWTooltip: 'Reverse Work — appends RW to notation output',
     propShape: 'Shape:',
     propSqueeze: 'Squeeze:',
-    propNotation: 'Notation:',
-    propRotation: 'Rotation',
     propFlipH: 'Flip Horizontal (Vertical Mirror)',
     propFlipV: 'Flip Vertical (Horizontal Mirror)',
     propNotationPos: 'Toggle notation position: inside → on path → outside',
@@ -848,12 +912,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     propFlipGroupV: 'Flip Group Vertical',
 
     // ── Help modal tabs ───────────────────────────────────────────────────────
-    helpTabQuickstart: 'Quick Start',
-    helpTabShortcuts: 'Shortcuts',
-    helpTabNotation: 'Notation',
-    helpTabTools: 'Tools',
-    helpTabFeatures: 'Features',
-    helpTabTips: 'Tips',
 
     // ── View menu ────────────────────────────────────────────────────────────
     menuView: 'View',
@@ -1031,6 +1089,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     refImageVisible: 'Visible',
     refImageHidden: 'Hidden',
     refImageRemove: 'Remove',
+    refImageUpload: 'Upload Image',
     regularPicotLabel: 'Regular picot',
     longPicotLabel: 'Long picot (auto: 2×)',
     shortPicotLabel: 'Short picot (auto: ½×)',
@@ -1111,7 +1170,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     // ── BE copy / cut in beading mode ────────────────────────────────────────
     beCopySetup: 'Copy bead setup',
     beCutSetup: 'Cut bead setup (copy then reset)',
-    bePasteSetup: 'Paste bead setup',
 
     // ── Realistic mode property bar ───────────────────────────────────────────
     realisticSwitchToSchematic: 'Switch to Schematic',
@@ -1136,6 +1194,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     // ── Help / About dropdown ─────────────────────────────────────────────────
     menuHelpDropdown: 'Help & Info',
     helpMenuHelp: 'Help & Quick Reference',
+    helpMenuUiGuide: 'UI Reference Guide',
     helpMenuAbout: 'About TattingCAD',
     helpMenuKofi: 'Support on Ko-fi ♥',
     helpMenuCheckUpdate: 'Check for Updates',
@@ -1151,16 +1210,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     aboutClose: 'Close',
 
     // ── Update checker ────────────────────────────────────────────────────────
-    updateAvailable: 'Update available',
     updateCurrentVersion: 'You are on v{current}',
-    updateDownload: 'Download',
-    updateDismiss: 'Dismiss',
-    updateChecking: 'Checking for updates…',
-    updateUpToDate: 'You are up to date (v{current})',
-    updateError: 'Could not reach update server',
-    updateLastChecked: 'Last checked',
-    updateNeverChecked: 'Never checked',
-    updateCheckNow: 'Check now',
+    updateCheckNow: 'Open releases page',
 
     // ── File / project load errors ────────────────────────────────────────────
     loadErrWrongFormat: 'Wrong file format — please select a .json file.',
@@ -1177,6 +1228,19 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     loadThemeSuccess: 'Theme loaded.',
     loadThemeErrJson: 'Failed to load theme: invalid JSON.',
     themeResetSuccess: 'Theme reset to default.',
+
+    // ── Recent Projects ───────────────────────────────────────────────────────
+    recentProjectsTitle: 'Recent Projects',
+    recentProjectsEmpty: 'No recent projects yet.',
+    recentProjectsEmptyHint: 'Save your first project to see it here.',
+    recentProjectsBrowse: 'Browse for file…',
+    recentProjectsLoadBtn: 'Load',
+    recentProjectsDeleteBtn: 'Remove from recents',
+    recentProjectsSaved: 'Saved {date}',
+    recentProjectsLoadConfirmTitle: 'Discard current project?',
+    recentProjectsLoadConfirmBody: 'Loading a project will replace the current canvas. Any unsaved changes will be lost.',
+    recentProjectsLoadConfirmOk: 'Load anyway',
+    recentProjectsLoadConfirmCancel: 'Cancel',
   },
 };
 
@@ -1347,6 +1411,24 @@ const loadThreadPresets = () => {
   return [{ ...DEFAULT_THREAD_PRESET }];
 };
 
+// Open an external URL in the system browser.
+// In a compiled Tauri app window.open() is blocked — use Tauri's opener plugin instead.
+// Falls back to window.open() when running in a normal browser (dev mode / web build).
+const openExternal = (url: string) => {
+  try {
+    const w = window as any;
+    if (w.__TAURI__?.opener?.openUrl) {
+      w.__TAURI__.opener.openUrl(url);          // Tauri v2 (opener plugin)
+    } else if (w.__TAURI__?.shell?.open) {
+      w.__TAURI__.shell.open(url);              // Tauri v1 (shell plugin)
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');  // plain browser fallback
+    }
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+};
+
 const loadActivePresetId = () => {
   try { return localStorage.getItem('tcad_active_preset_id') || 'default'; } catch { return 'default'; }
 };
@@ -1355,7 +1437,11 @@ const loadActivePresetId = () => {
 const loadPolarGrids = () => {
   try {
     const saved = localStorage.getItem('tcad_polar_grids');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const grids = JSON.parse(saved);
+      // Always start hidden — user turns on what they need per project
+      return grids.map(g => ({ ...g, visible: false }));
+    }
   } catch {}
   return [];
 };
@@ -1436,7 +1522,9 @@ const TattingDesigner = () => {
   const [gridEnabled, setGridEnabled] = useState(true);
   const [loadMsg, setLoadMsg] = useState(null); // { type: 'success'|'error', text: string }
   const [currentTool, setCurrentTool] = useState('pan'); // 'pan' | 'select' | 'path' | 'line' | 'picotJoin' | 'beading' | 'image'
-  const [activeMode, setActiveMode] = useState(null); // 'picotJoin' | 'beading' | null — persists across pan/select tool switches
+  const [activeMode, setActiveMode] = useState(null); // 'picotJoin' | 'beading' | 'tattingOrder' | null — persists across pan/select tool switches
+  const [tattingOrderConflict, setTattingOrderConflict] = useState<{ newNum: number; existingElId: string; targetElId: string } | null>(null);
+  const [tattingOrderInput, setTattingOrderInput] = useState('');
   const [bgColor, setBgColor] = useState<string>(() => {
     try { return localStorage.getItem('tcad_bg_color') || '#1F2937'; } catch { return '#1F2937'; }
   });
@@ -1453,11 +1541,15 @@ const TattingDesigner = () => {
   const [pickerColor, setPickerColor] = useState('#FFFFFF');
   const [clipboard, setClipboard] = useState([]); // NEW: for copy/paste
   const [projectName, setProjectName] = useState('Untitled Pattern'); // NEW: for save/load
+  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null); // Tauri: path of currently open file
   const [picotConnections, setPicotConnections] = useState([]); // NEW: joint picot connections
   const [selectedPicots, setSelectedPicots] = useState([]); // NEW: selected joint picots {elementId, picotId}
   const [showHelp, setShowHelp] = useState(false); // NEW: help modal
   const [resolvedHelpUrl, setResolvedHelpUrl] = useState('./tatting-help.html');
   const [helpUrlReady, setHelpUrlReady] = useState(false);
+  const [showUiGuide, setShowUiGuide] = useState(false);
+  const [resolvedUiGuideUrl, setResolvedUiGuideUrl] = useState('./tatting-ui-guide.html');
+  const [uiGuideUrlReady, setUiGuideUrlReady] = useState(false);
   const [showBeadLibrary, setShowBeadLibrary] = useState(false); // Bead Library panel
   const [selectedBeadId, setSelectedBeadId] = useState(null); // currently editing bead in panel
   const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm } | null
@@ -1510,19 +1602,77 @@ const TattingDesigner = () => {
   const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0 }); // NEW: for pinch-to-zoom
   const [showSaveDialog, setShowSaveDialog] = useState(false); // NEW: save dialog modal
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
+  const [showRecentProjectsDialog, setShowRecentProjectsDialog] = useState(false);
+  const [showRecentLoadConfirm, setShowRecentLoadConfirm] = useState(false);
+  const [pendingRecentLoad, setPendingRecentLoad] = useState<(() => void) | null>(null);
   const [showLoadConfirmDialog, setShowLoadConfirmDialog] = useState(false);
+  const [showPolarArrayDialog, setShowPolarArrayDialog] = useState(false);
+  const [polarArrayPeek, setPolarArrayPeek] = useState(false);
+  const [polarArrayCount, setPolarArrayCount] = useState(6);
+  const [polarArrayAngle, setPolarArrayAngle] = useState(360);
+  const [polarArrayPivotId, setPolarArrayPivotId] = useState<string | 'selection' | null>(null);
+
+  // Linear array state
+  const [showLinearArrayDialog, setShowLinearArrayDialog] = useState(false);
+  const [linearArrayPeek, setLinearArrayPeek] = useState(false);
+  const [linearArrayCount, setLinearArrayCount] = useState(4);
+  const [linearArrayAngle, setLinearArrayAngle] = useState(0);       // 0=H, 90=V, custom
+  const [linearArraySpacing, setLinearArraySpacing] = useState(60);  // center-to-center px
+  const [linearArrayRotStep, setLinearArrayRotStep] = useState(0);   // rotation per step, degrees
+
+  // Spiral array state
+  const [showSpiralArrayDialog, setShowSpiralArrayDialog] = useState(false);
+  const [spiralArrayPeek, setSpiralArrayPeek] = useState(false);
+  const [spiralArrayCount, setSpiralArrayCount] = useState(8);
+  const [spiralArrayType, setSpiralArrayType] = useState<'archimedean' | 'geometric'>('archimedean');
+  const [spiralArrayGap, setSpiralArrayGap] = useState(40);          // Archimedean: gap added per step
+  const [spiralArrayGrowth, setSpiralArrayGrowth] = useState(1.2);   // Geometric: growth factor per step
+  const [spiralArrayRotate, setSpiralArrayRotate] = useState(true);  // rotate to follow spiral
+  const [spiralArrayAngleStep, setSpiralArrayAngleStep] = useState(30); // degrees per copy (fixed, not 360/count)
   const [showJoinTip, setShowJoinTip] = useState(() => localStorage.getItem('tcad_seen_join_tip') !== '1');
   const [saveDialogName, setSaveDialogName] = useState(''); // NEW: temp name in save dialog
   const APP_VERSION = '0.9.98';
-  const [showDisclaimer, setShowDisclaimer] = useState(() => {
-    // Show if user hasn't dismissed this exact version yet
-    return localStorage.getItem('tcad_seen_version') !== APP_VERSION;
-  });
+
   const [showFileMenu, setShowFileMenu] = useState(false); // NEW: file operations dropdown menu
-  const [updateNotice, setUpdateNotice] = useState<{version: string, url: string} | null>(null);
+
+  // Update reminder: only after 90 days since install — evaluated once, stored here for the splash to read.
+  const updateReminderDue = (() => {
+    if (!localStorage.getItem('tcad_install_date')) {
+      localStorage.setItem('tcad_install_date', String(Date.now()));
+      return false;
+    }
+    const installDate = parseInt(localStorage.getItem('tcad_install_date') || '0', 10);
+    const daysSinceInstall = (Date.now() - installDate) / (1000 * 60 * 60 * 24);
+    if (daysSinceInstall < 90) return false;
+    return localStorage.getItem('tcad_update_seen') !== APP_VERSION;
+  })();
+  const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false); // Now lives inside splash only
+
+  // Splash screen — shown on every launch, absorbs autosave prompt + update reminder
+  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [showUpdatePopup, setShowUpdatePopup] = useState<boolean>(false);
+
+  // Autosave metadata — parsed once for the splash button label, not yet loaded
+  const splashAutosave = (() => {
+    try {
+      const saved = localStorage.getItem('tatting-designer-autosave');
+      if (!saved) return null;
+      const d = JSON.parse(saved);
+      if (!d.elements || d.elements.length === 0) return null;
+      return { name: d.name || 'Untitled', date: d.autoSaved ? new Date(d.autoSaved).toLocaleString() : '' };
+    } catch { return null; }
+  })();
+
+  // Tips — navigable with prev/next (plain keys, resolved via t() at render time)
+  const SPLASH_TIP_KEYS = [
+    'splashTip01', 'splashTip02', 'splashTip03', 'splashTip04', 'splashTip05',
+    'splashTip06', 'splashTip07', 'splashTip08', 'splashTip09', 'splashTip10',
+    'splashTip11', 'splashTip12', 'splashTip13', 'splashTip14', 'splashTip15',
+  ];
+  const [splashTipIndex, setSplashTipIndex] = useState<number>(() => Math.floor(Math.random() * SPLASH_TIP_KEYS.length));
+
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
-  const [updateCheckStatus, setUpdateCheckStatus] = useState<'idle'|'checking'|'uptodate'|'error'>('idle');
   const [showArrangeMenu, setShowArrangeMenu] = useState(false); // Arrange menu (align/duplicate)
   const [groupRotationInput, setGroupRotationInput] = useState(''); // Temporary input for group rotation
   const [singleRotationInput, setSingleRotationInput] = useState(''); // Temporary input for single-element rotation
@@ -1788,62 +1938,57 @@ const TattingDesigner = () => {
     return () => clearInterval(interval);
   }, []); // Empty deps - only runs once on mount!
 
-  // Load auto-saved project on mount
-  useEffect(() => {
+  // Load auto-saved project — called by splash button, not auto-triggered
+  const loadFromAutosave = () => {
     try {
       const saved = localStorage.getItem('tatting-designer-autosave');
-      if (saved) {
-        const projectData = JSON.parse(saved);
-        
-        // Only auto-load if we have no elements yet
-        if (elements.length === 0 && projectData.elements && projectData.elements.length > 0) {
-          setConfirmDialog({
-            message: `Found auto-saved project "${projectData.name}" from ${new Date(projectData.autoSaved).toLocaleString()}. Load it?`,
-            confirmLabel: 'Load',
-            onConfirm: () => {
-              setElements(projectData.elements || []);
-              setPicotConnections(projectData.picotConnections || []);
-              setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
-              setZoom(projectData.zoom || 1);
-              setDsWidth(projectData.dsWidth || 10);
-              if (projectData.beadLibrary) setBeadLibrary(projectData.beadLibrary);
-              if (Array.isArray(projectData.polarGrids)) {
-                setPolarGrids(prev => {
-                  const existing = new Set(prev.map(g => g.id));
-                  return [...prev, ...projectData.polarGrids.filter(g => !existing.has(g.id))];
-                });
-              }
-              if (projectData.selectedPolarGridId) setSelectedPolarGridId(projectData.selectedPolarGridId);
-              setBgColor(projectData.bgColor || '#1F2937');
-              setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
-              setCustomColors(projectData.customColors || []);
-              setReferenceImage(projectData.referenceImage || null);
-              setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-              setProjectName(projectData.name || 'Untitled Pattern');
-              setRenderMode(projectData.renderMode || 'schematic');
-              setPatternNotes(projectData.patternNotes || '');
-              if (projectData.materials) setMaterials(projectData.materials);
-              if (projectData.activeThreadPreset) {
-                const preset = projectData.activeThreadPreset;
-                setThreadPresets(prev => {
-                  const exists = prev.find(p => p.id === preset.id);
-                  const updated = exists ? prev.map(p => p.id === preset.id ? preset : p) : [...prev, preset];
-                  localStorage.setItem('tcad_thread_presets', JSON.stringify(updated));
-                  return updated;
-                });
-                setActivePresetId(preset.id);
-                localStorage.setItem('tcad_active_preset_id', preset.id);
-              }
-              setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
-              setHistoryIndex(0);
-            }
-          });
-        }
+      if (!saved) return;
+      const projectData = JSON.parse(saved);
+      if (!projectData.elements || projectData.elements.length === 0) return;
+      // Migrate legacy labelsInside → labelOffset
+      setElements((projectData.elements || []).map(el =>
+        'labelsInside' in el && !('labelOffset' in el)
+          ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
+          : el
+      ));
+      setPicotConnections(projectData.picotConnections || []);
+      setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
+      setZoom(projectData.zoom || 1);
+      setDsWidth(projectData.dsWidth || 10);
+      if (projectData.beadLibrary) setBeadLibrary(projectData.beadLibrary);
+      if (Array.isArray(projectData.polarGrids)) {
+        setPolarGrids(prev => {
+          const existing = new Set(prev.map(g => g.id));
+          return [...prev, ...projectData.polarGrids.filter(g => !existing.has(g.id))];
+        });
       }
+      if (projectData.selectedPolarGridId) setSelectedPolarGridId(projectData.selectedPolarGridId);
+      setBgColor(projectData.bgColor || '#1F2937');
+      setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
+      setCustomColors(projectData.customColors || []);
+      setReferenceImage(projectData.referenceImage || null);
+      setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
+      setProjectName(projectData.name || 'Untitled Pattern');
+      setRenderMode(projectData.renderMode || 'schematic');
+      setPatternNotes(projectData.patternNotes || '');
+      if (projectData.materials) setMaterials(projectData.materials);
+      if (projectData.activeThreadPreset) {
+        const preset = projectData.activeThreadPreset;
+        setThreadPresets(prev => {
+          const exists = prev.find(p => p.id === preset.id);
+          const updated = exists ? prev.map(p => p.id === preset.id ? preset : p) : [...prev, preset];
+          localStorage.setItem('tcad_thread_presets', JSON.stringify(updated));
+          return updated;
+        });
+        setActivePresetId(preset.id);
+        localStorage.setItem('tcad_active_preset_id', preset.id);
+      }
+      setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
+      setHistoryIndex(0);
     } catch (error) {
       console.error('Error loading auto-save:', error);
     }
-  }, []);
+  };
 
   // Clear group rotation input when selection changes
   useEffect(() => {
@@ -2085,47 +2230,6 @@ const TattingDesigner = () => {
     };
     loadExternalTheme();
   }, []);
-  // Check for updates via GitHub Releases API — at most once every 6 months.
-  // Only fires if the repo is reachable. Never blocks the app. Silently ignored if offline.
-  // localStorage keys:
-  //   tcad_update_last_check  — ISO timestamp of last successful API call
-  //   tcad_update_seen        — version tag the user has already been notified about
-  useEffect(() => {
-    const REPO = 'SavarosaCraft/TattingCad';
-    const SIX_MONTHS_MS = 1000 * 60 * 60 * 24 * 183;
-
-    const lastCheck = localStorage.getItem('tcad_update_last_check');
-    const now = Date.now();
-    if (lastCheck && now - parseInt(lastCheck, 10) < SIX_MONTHS_MS) return;
-
-    const check = async () => {
-      try {
-        const res = await fetch(
-          `https://api.github.com/repos/${REPO}/releases/latest`,
-          { headers: { Accept: 'application/vnd.github+json' } }
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        const latestTag: string = data.tag_name ?? '';          // e.g. "v1.2.0"
-        const latestUrl: string = data.html_url ?? '';
-        localStorage.setItem('tcad_update_last_check', String(now));
-        if (!latestTag) return;
-
-        // Compare: strip leading 'v', compare against APP_VERSION
-        const latestClean = latestTag.replace(/^v/i, '');
-        if (latestClean === APP_VERSION) return;                 // Already up to date
-
-        const alreadySeen = localStorage.getItem('tcad_update_seen');
-        if (alreadySeen === latestTag) return;                   // User already notified
-
-        setUpdateNotice({ version: latestTag, url: latestUrl });
-      } catch {
-        // Offline or API rate-limited — silently skip.
-      }
-    };
-    check();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   React.useEffect(() => {
     if (notesTextareaRef.current && notesTextareaRef.current !== document.activeElement) {
       notesTextareaRef.current.value = patternNotes;
@@ -2360,20 +2464,23 @@ const TattingDesigner = () => {
     const totalLength = pathLengths.reduce((a, b) => a + b, 0);
     
     for (let i = 0; i < stitchCount; i++) {
-      const position = (i + 0.5) / stitchCount;
+      const type = stitchTypeMap[i] || 'ds';
+      if (type === 'rds-cont') continue; // second DS slot of RDS — skip
+
+      // RDS spans 2 DS slots: sample at midpoint of the full span
+      const position = type === 'rds' ? (i + 1) / stitchCount : (i + 0.5) / stitchCount;
       const distance = position * totalLength;
       const { x, y, angle } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, distance);
       
       const startDist = (i / stitchCount) * totalLength;
-      const endDist = ((i + 1) / stitchCount) * totalLength;
+      const endDist = ((i + (type === 'rds' ? 2 : 1)) / stitchCount) * totalLength;
       const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, startDist);
       const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, endDist);
       
       const _matEC = getElementColor(element);
       const color = _matEC.isGradient ? getGradientColorAtPosition(_matEC.id, position) : (_matEC.color || element.color);
-      const type = stitchTypeMap[i] || 'ds';
       
-      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
+      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type, dsPosition: i });
     }
     
     // Return stitches + the pre-sampled path data so the render can reuse it
@@ -2446,8 +2553,13 @@ const TattingDesigner = () => {
     const stitchTypeMap = getStitchTypes(element.notation || '');
     
     for (let i = 0; i < stitchCount; i++) {
-      // Offset by half a stitch so first stitch is centered, not starting at edge
-      const position = (i + 0.5) / stitchCount;
+      // Get stitch type for this DS position - default to 'ds'
+      // May be an array for SS (2 stitches per DS position)
+      const type = stitchTypeMap[i] || 'ds';
+      if (type === 'rds-cont') continue; // second DS slot of an RDS — skip, already covered by the first slot
+      
+      // RDS spans 2 DS slots: center it between slot i and i+1
+      const position = type === 'rds' ? (i + 1) / stitchCount : (i + 0.5) / stitchCount;
       const angle = position * Math.PI * 2 + rotation;
       const x = element.center.x + Math.cos(angle) * radius;
       const y = element.center.y + Math.sin(angle) * radius;
@@ -2461,11 +2573,7 @@ const TattingDesigner = () => {
         color = ec.color;
       }
       
-      // Get stitch type for this DS position - default to 'ds'
-      // May be an array for SS (2 stitches per DS position)
-      const type = stitchTypeMap[i] || 'ds';
-      
-      stitches.push({ x, y, angle: tangentAngle, centerPolarAngle: angle, color, type });
+      stitches.push({ x, y, angle: tangentAngle, centerPolarAngle: angle, color, type, dsPosition: i });
     }
     
     return stitches;
@@ -2497,8 +2605,9 @@ const TattingDesigner = () => {
     // centerPolarAngle is the polar angle of this stitch's midpoint from ring center
     const centerPolarAngle = stitch.centerPolarAngle;
 
-    // Angular half-span for one full stitch
-    const halfArc = Math.PI / el.stitchCount; // = (2π/N) / 2
+    // Angular half-span for this stitch type (RDS = 2 DS slots wide)
+    const dsEquivWidth = { 'ds': 1.0, 'ss': 0.5, 'lss': 0.5, 'rss': 0.5, 'rds': 2.0 };
+    const halfArc = (Math.PI / el.stitchCount) * (dsEquivWidth[stitchType] || 1.0);
 
     // The WEDGE_SHAPES x-extents of the DS/SS/RDS base symbol
     // These are the leftmost and rightmost x coords across ALL rects for this type
@@ -2623,6 +2732,7 @@ const TattingDesigner = () => {
       
       const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
       const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
+      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
 
       // Build closed path: outer curve forward, inner curve backward
       let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
@@ -2689,6 +2799,7 @@ const TattingDesigner = () => {
       
       const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
       const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
+      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
 
       let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
       for (let j = 1; j < outerSlice.length; j++) {
@@ -3668,9 +3779,10 @@ const TattingDesigner = () => {
           
           for (let i = 0; i < count; i++) {
             if (type === 'rds') {
-              // RDS takes 2 DS positions, both render as RDS
+              // RDS takes 2 DS positions. Only the first is rendered (as a double-wide stitch);
+              // the second is a continuation marker so the cache builder can skip it.
               stitchMap[dsPosition] = 'rds';
-              stitchMap[dsPosition + 1] = 'rds';
+              stitchMap[dsPosition + 1] = 'rds-cont';
               dsPosition += 2;
             } else if (type === 'ds') {
               // DS takes 1 position
@@ -3718,7 +3830,7 @@ const TattingDesigner = () => {
       picots: [{ id: Date.now() + 1, stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
       orderNumber: null,
       notation: 'r: 6ds-p-6ds',
-      labelsInside: true,
+      labelOffset: 8,
       squeeze: squeeze,
       picotSideMultiplier: 1,
       ...pathData
@@ -3748,7 +3860,7 @@ const TattingDesigner = () => {
       orderNumber: null,
       notation: 'sr: 3ds-p-3ds',
       notationB: '3ds-p-3ds',
-      labelsInside: true,
+      labelOffset: 8,
       squeeze: 0.25,
       squeezeCA: 0.75,
       squeezeCB: 0.75,
@@ -3802,7 +3914,7 @@ const TattingDesigner = () => {
       color: '#FFFFFF',
       picots: [{ id: now + 1, stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
       notation: 'c: 6ds-p-6ds',
-      labelsInside: true,
+      labelOffset: 8,
       picotSideMultiplier: 1
     }]);
   }, [dsWidth, camera, zoom]);
@@ -4158,6 +4270,40 @@ const TattingDesigner = () => {
     }));
   };
 
+  // Rotate a single selected element by an arbitrary delta — used by ±1° nudge buttons
+  // and can be reused by any other single-element rotation trigger.
+  const applySingleRotationDelta = useCallback((elId: string, delta: number) => {
+    if (delta === 0) return;
+    const rad = delta * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    setElements(prev => prev.map(el => {
+      if (el.id !== elId) return el;
+      const polarPivot = getPolarPivot([el.id]);
+      const pivot = polarPivot || getElementPivot(el);
+      const cx = pivot.x, cy = pivot.y;
+      const rotatePt = (px, py) => {
+        const dx = px - cx, dy = py - cy;
+        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+      };
+      const newPaths = el.paths.map(path => {
+        if (path.type === 'cubic') {
+          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY);
+          const c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
+          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+        } else {
+          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
+          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
+        }
+      });
+      const newRotation = (el.rotation || 0) + delta;
+      const newPivot = polarPivot
+        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+        : getElementPivot({ ...el, paths: newPaths });
+      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
+    }));
+    needsHistoryPushRef.current = true;
+  }, []);
+
   // PERFORMANCE: O(1) element lookup by id — replaces elements.find(e => e.id === x) everywhere
   // Defined early because it is used in event handlers and callbacks throughout the component.
   const elementById = useMemo(() => new Map(elements.map(e => [e.id, e])), [elements]);
@@ -4482,7 +4628,326 @@ const TattingDesigner = () => {
     setSelectedIds(newElements.map(el => el.id));
   };
 
-  // Save project as JSON file
+  // Polar Array — duplicate selected elements N times evenly around a pivot point.
+  // count = total copies INCLUDING the original. fillAngle = arc to fill (360 = full circle).
+  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null) => {
+    const currentSelectedIds = selectedIdsRef.current;
+    const currentElements = elementsRef.current;
+    if (currentSelectedIds.length === 0 || count < 2) return;
+
+    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+
+    // Determine pivot point
+    let pivotX: number, pivotY: number;
+    if (pivotId && pivotId !== 'selection') {
+      const grid = polarGrids.find(g => g.id === pivotId);
+      pivotX = grid ? grid.center.x : selectedEls.reduce((s, e) => s + e.center.x, 0) / selectedEls.length;
+      pivotY = grid ? grid.center.y : selectedEls.reduce((s, e) => s + e.center.y, 0) / selectedEls.length;
+    } else {
+      pivotX = selectedEls.reduce((s, e) => s + e.center.x, 0) / selectedEls.length;
+      pivotY = selectedEls.reduce((s, e) => s + e.center.y, 0) / selectedEls.length;
+    }
+
+    const stepDeg = fillAngle / count;
+    const newElements = [];
+
+    // Start from copy #1 (original stays as-is), generate copies 1..count-1
+    for (let i = 1; i < count; i++) {
+      const angleDeg = stepDeg * i;
+      const rad = angleDeg * Math.PI / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+
+      // Build groupId mapping so each copy's group integrity is preserved
+      const groupIdMap = new Map<string, string>();
+      selectedEls.forEach(el => {
+        if (el.groupId && !groupIdMap.has(el.groupId)) {
+          groupIdMap.set(el.groupId, generateId());
+        }
+      });
+
+      selectedEls.forEach(el => {
+        const newEl = JSON.parse(JSON.stringify(el));
+        newEl.id = generateId();
+        delete newEl.orderNumber;
+
+        // Remap group id
+        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+
+        // Link to the chosen polar grid
+        if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
+
+        // Rotate center around pivot
+        const dx = el.center.x - pivotX;
+        const dy = el.center.y - pivotY;
+        newEl.center = {
+          x: pivotX + dx * cos - dy * sin,
+          y: pivotY + dx * sin + dy * cos,
+        };
+
+        // Rotate element's own rotation angle
+        newEl.rotation = ((el.rotation || 0) + angleDeg) % 360;
+
+        // Rotate path control points if present
+        if (newEl.paths) {
+          newEl.paths = newEl.paths.map(p => {
+            const rotPt = (px, py) => {
+              const rx = px - pivotX, ry = py - pivotY;
+              return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+            };
+            const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+            if (p.type === 'cubic') {
+              const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+            } else {
+              const c = rotPt(p.controlX, p.controlY);
+              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+            }
+          });
+        }
+
+        newElements.push(newEl);
+      });
+    }
+
+    // Also link originals to the chosen grid if a grid was selected
+    if (pivotId && pivotId !== 'selection') {
+      setElements(prev => [
+        ...prev.map(el => currentSelectedIds.includes(el.id) ? { ...el, polarRotationGridId: pivotId } : el),
+        ...newElements,
+      ]);
+    } else {
+      setElements(prev => [...prev, ...newElements]);
+    }
+
+    // Select all — originals + new copies
+    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+  };
+
+  // Linear Array — duplicate N times along a direction with optional per-step rotation.
+  // Helper: rotate an element's baked path points around a center by deltaDeg degrees.
+  // For split rings and teardrops, regenerates paths from scratch then applies absolute rotation.
+  // Returns new paths array.
+  const rotatePathsAroundCenter = (paths, cx: number, cy: number, deltaDeg: number, el?: any, absoluteRot?: number) => {
+    if (!paths || deltaDeg === 0) return paths;
+    // For split rings: regenerate at new center with absolute rotation
+    if (el?.isSplitRing && el?.splitPosition !== undefined && absoluteRot !== undefined) {
+      const pathData = createSplitRingPath(cx, cy, el.stitchCount * dsWidth, el.splitPosition, el.stitchCount - el.splitPosition, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
+      const r = absoluteRot * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
+      const rot = (px, py) => { const dx = px - cx, dy = py - cy; return { x: cx + dx*rc - dy*rs, y: cy + dx*rs + dy*rc }; };
+      return pathData.paths.map(p => { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c1 = rot(p.control1X, p.control1Y), c2 = rot(p.control2X, p.control2Y); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; });
+    }
+    // For teardrops: regenerate at new center with absolute rotation
+    if (el?.type === 'ring' && (el?.shapeStyle === 'teardrop' || (el?.squeeze !== undefined && el?.squeeze > 0)) && absoluteRot !== undefined) {
+      const pathData = createTeardropPath(cx, cy, el.stitchCount * dsWidth, el.squeeze ?? 0);
+      const r = absoluteRot * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
+      const rot = (px, py) => { const dx = px - cx, dy = py - cy; return { x: cx + dx*rc - dy*rs, y: cy + dx*rs + dy*rc }; };
+      return pathData.paths.map(p => {
+        if (p.type === 'cubic') { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c1 = rot(p.control1X, p.control1Y), c2 = rot(p.control2X, p.control2Y); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; }
+        else { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c = rot(p.controlX, p.controlY); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y }; }
+      });
+    }
+    // Chains, circle rings, lines: rotate baked path points by delta around cx/cy
+    const rad = deltaDeg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const rotPt = (px, py) => {
+      const dx = px - cx, dy = py - cy;
+      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
+    };
+    return paths.map(p => {
+      if (p.type === 'cubic') {
+        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+        const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+      } else {
+        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY), c = rotPt(p.controlX, p.controlY);
+        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+      }
+    });
+  };
+
+  const executeLinearArray = (count: number, angleDeg: number, spacing: number, rotStep: number) => {
+    const currentSelectedIds = selectedIdsRef.current;
+    const currentElements = elementsRef.current;
+    if (currentSelectedIds.length === 0 || count < 2) return;
+    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+    const rad = angleDeg * Math.PI / 180;
+    const dx = Math.cos(rad) * spacing;
+    const dy = Math.sin(rad) * spacing;
+    const newElements = [];
+    for (let i = 1; i < count; i++) {
+      const offsetX = dx * i;
+      const offsetY = dy * i;
+      const extraRot = rotStep * i;
+      const groupIdMap = new Map<string, string>();
+      selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+      selectedEls.forEach(el => {
+        const newEl = JSON.parse(JSON.stringify(el));
+        newEl.id = generateId();
+        delete newEl.orderNumber;
+        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+        const newCx = el.center.x + offsetX;
+        const newCy = el.center.y + offsetY;
+        newEl.center = { x: newCx, y: newCy };
+        // Translate paths to new position first
+        if (newEl.paths) {
+          newEl.paths = newEl.paths.map(p => {
+            if (p.type === 'cubic') {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+            } else {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+            }
+          });
+        }
+        // Then rotate paths around the new center and update rotation field
+        if (extraRot !== 0) {
+          const newAbsRot = ((el.rotation || 0) + extraRot + 360) % 360;
+          newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, el, newAbsRot);
+          newEl.rotation = newAbsRot;
+        }
+        newElements.push(newEl);
+      });
+    }
+    setElements(prev => [...prev, ...newElements]);
+    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+  };
+
+  // Spiral Array — place copies along an Archimedean or geometric spiral around a pivot.
+  const executeSpiralArray = (count: number, type: 'archimedean' | 'geometric', gap: number, growth: number, rotate: boolean, angleStep: number) => {
+    const currentSelectedIds = selectedIdsRef.current;
+    const currentElements = elementsRef.current;
+    if (currentSelectedIds.length === 0 || count < 2) return;
+    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+
+    // Pivot: linked grid → panel-selected grid → world origin
+    let pivX = 0, pivY = 0;
+    const linkedGid = (() => {
+      const gid = selectedEls[0]?.polarRotationGridId;
+      return gid && selectedEls.every(e => e.polarRotationGridId === gid) ? gid : null;
+    })();
+    const pivGrid = linkedGid
+      ? polarGrids.find(g => g.id === linkedGid)
+      : selectedPolarGridId ? polarGrids.find(g => g.id === selectedPolarGridId) : null;
+    if (pivGrid) { pivX = pivGrid.center.x; pivY = pivGrid.center.y; }
+
+    // Derive start radius and start angle from selection centroid relative to pivot
+    const centroidX = selectedEls.reduce((s, e) => s + e.center.x, 0) / selectedEls.length;
+    const centroidY = selectedEls.reduce((s, e) => s + e.center.y, 0) / selectedEls.length;
+    const r0 = Math.sqrt((centroidX - pivX) ** 2 + (centroidY - pivY) ** 2);
+    const angle0 = Math.atan2(centroidY - pivY, centroidX - pivX) * 180 / Math.PI;
+
+    const angularStep = angleStep; // fixed degrees per copy — independent of count
+
+    // Position on spiral for step i (i=0 = original selection position)
+    const spiralPos = (i: number) => {
+      const angleDeg = angle0 + angularStep * i;
+      const rad = angleDeg * Math.PI / 180;
+      const r = type === 'archimedean'
+        ? r0 + gap * i
+        : r0 * Math.pow(growth, i);
+      return { x: pivX + Math.cos(rad) * r, y: pivY + Math.sin(rad) * r, angleDeg };
+    };
+
+    const newElements = [];
+    for (let i = 1; i < count; i++) {
+      const pos = spiralPos(i);
+      // Offset moves the centroid to pos; each element keeps its relative position within the group
+      const offsetX = pos.x - centroidX;
+      const offsetY = pos.y - centroidY;
+      // Rotation delta relative to original angle — how much the spiral has turned
+      // offsetX/Y moves each element's centroid to the new spiral position
+
+      const groupIdMap = new Map<string, string>();
+      selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+      selectedEls.forEach(el => {
+        const newEl = JSON.parse(JSON.stringify(el));
+        newEl.id = generateId();
+        delete newEl.orderNumber;
+        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+
+        const newCx = el.center.x + offsetX;
+        const newCy = el.center.y + offsetY;
+        newEl.center = { x: newCx, y: newCy };
+
+        // First translate all path points to the new position
+        if (newEl.paths) {
+          newEl.paths = newEl.paths.map(p => {
+            if (p.type === 'cubic') {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+            } else {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+            }
+          });
+        }
+
+        if (rotate) {
+          // Target angle = direction from pivot to new center. Delta from current rotation.
+          const targetAngleDeg = Math.atan2(newCy - pivY, newCx - pivX) * 180 / Math.PI;
+          const rotDeltaDeg = targetAngleDeg - (el.rotation || 0);
+          const absRot = (targetAngleDeg + 360) % 360;
+          newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, rotDeltaDeg, el, absRot);
+          newEl.rotation = absRot;
+        }
+
+        newElements.push(newEl);
+      });
+    }
+    setElements(prev => [...prev, ...newElements]);
+    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+  };
+
+  // ── Tatting Order helpers ─────────────────────────────────────────────────
+
+  const getNextAvailableNumber = (): number => {
+    const used = new Set(
+      elements
+        .map(e => e.orderNumber)
+        .filter(n => n !== null && n !== undefined && String(n).trim() !== '')
+        .map(n => parseInt(String(n), 10))
+        .filter(n => !isNaN(n))
+    );
+    let i = 1;
+    while (used.has(i)) i++;
+    return i;
+  };
+
+  const assignOrderNumber = (targetElId: string, num: number) => {
+    const existingEl = elements.find(
+      e => e.id !== targetElId &&
+        parseInt(String(e.orderNumber), 10) === num
+    );
+    if (existingEl) {
+      setTattingOrderConflict({ newNum: num, existingElId: existingEl.id, targetElId });
+      return;
+    }
+    setElements(prev => prev.map(e =>
+      e.id === targetElId ? { ...e, orderNumber: num } : e
+    ));
+    setTattingOrderInput('');
+  };
+
+  const resolveTattingOrderConflict = (action: 'swap' | 'shift' | 'cancel') => {
+    if (!tattingOrderConflict) return;
+    const { newNum, existingElId, targetElId } = tattingOrderConflict;
+    if (action === 'swap') {
+      const targetEl = elements.find(e => e.id === targetElId);
+      const oldNum = targetEl?.orderNumber ?? null;
+      setElements(prev => prev.map(e => {
+        if (e.id === targetElId) return { ...e, orderNumber: newNum };
+        if (e.id === existingElId) return { ...e, orderNumber: oldNum };
+        return e;
+      }));
+    } else if (action === 'shift') {
+      setElements(prev => prev.map(e => {
+        if (e.id === targetElId) return { ...e, orderNumber: newNum };
+        const n = parseInt(String(e.orderNumber), 10);
+        if (!isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
+        return e;
+      }));
+    }
+    setTattingOrderConflict(null);
+    setTattingOrderInput('');
+  };
   // New canvas - confirm if there are elements
   const newCanvas = () => {
     // Show warning if canvas has content or has been modified (history > initial state)
@@ -4502,189 +4967,233 @@ const TattingDesigner = () => {
     setZoom(1);
     setHistory([{ elements: [], connections: [] }]);
     setHistoryIndex(0);
+    // Hide (don't delete) all polar grids — user can re-enable in the Polar Grid panel
+    setPolarGrids(prev => prev.map(g => ({ ...g, visible: false })));
+    setCurrentFilePath(null);
   };
 
-  const saveProject = useCallback(() => {
-    // Open save dialog with current project name
-    setSaveDialogName(projectName);
-    setShowSaveDialog(true);
-  }, [projectName]); // Dependency: projectName for dialog default
-  
-  // Actually perform the save after user confirms
-  const performSave = useCallback(() => {
-    const finalName = saveDialogName.trim() || 'Untitled Pattern';
+  // ── Recent Projects helpers ───────────────────────────────────────────────
+
+  // Generate a compact SVG thumbnail from elements (paths only, no labels/picots).
+  const generateThumbnail = (els) => {
+    if (!els || els.length === 0) return '';
+    // Collect all path points to compute bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const expand = (x, y) => { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; };
+    els.forEach(el => {
+      if (el.isClosed && el.shapeStyle === 'circle') {
+        const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
+        expand(el.center.x - r, el.center.y - r); expand(el.center.x + r, el.center.y + r);
+      } else if (el.paths?.length > 0) {
+        el.paths.forEach(p => {
+          expand(p.x, p.y); expand(p.endX, p.endY);
+          if (p.type === 'cubic') { expand(p.control1X, p.control1Y); expand(p.control2X, p.control2Y); }
+          else { expand(p.controlX, p.controlY); }
+        });
+      }
+    });
+    if (!isFinite(minX)) return '';
+    const pad = 16;
+    const W = 300, H = 200;
+    const srcW = maxX - minX + pad * 2, srcH = maxY - minY + pad * 2;
+    const scale = Math.min(W / srcW, H / srcH);
+    const offX = (W - srcW * scale) / 2 - (minX - pad) * scale;
+    const offY = (H - srcH * scale) / 2 - (minY - pad) * scale;
+    const tx = (x) => ((x * scale + offX)).toFixed(1);
+    const ty = (y) => ((y * scale + offY)).toFixed(1);
+    const paths = els.map(el => {
+      if (el.isClosed && el.shapeStyle === 'circle') {
+        const r = ((el.stitchCount * dsWidth) / (2 * Math.PI) * scale).toFixed(1);
+        return `<circle cx="${tx(el.center.x)}" cy="${ty(el.center.y)}" r="${r}" fill="none" stroke="#a78bfa" stroke-width="1.5"/>`;
+      }
+      if (!el.paths?.length) return '';
+      const d = el.paths.map(p => {
+        if (p.type === 'cubic') return `M${tx(p.x)},${ty(p.y)} C${tx(p.control1X)},${ty(p.control1Y)} ${tx(p.control2X)},${ty(p.control2Y)} ${tx(p.endX)},${ty(p.endY)}`;
+        return `M${tx(p.x)},${ty(p.y)} Q${tx(p.controlX)},${ty(p.controlY)} ${tx(p.endX)},${ty(p.endY)}`;
+      }).join(' ');
+      const stroke = el.type === 'ring' ? '#a78bfa' : '#34d399';
+      return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
+    }).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#1f2937"/>${paths}</svg>`;
+  };
+
+  // Add or update a recent project entry. Dedupes by filename, caps at 20.
+  const addToRecents = (name: string, filename: string, thumbnail: string) => {
+    try {
+      const raw = localStorage.getItem('tcad_recent_projects');
+      const list = raw ? JSON.parse(raw) : [];
+      const filtered = list.filter(e => e.filename !== filename);
+      const entry = { id: Date.now().toString(), name, filename, thumbnail, savedAt: new Date().toISOString() };
+      const updated = [entry, ...filtered].slice(0, 20);
+      localStorage.setItem('tcad_recent_projects', JSON.stringify(updated));
+    } catch (_) {}
+  };
+
+  // Build the project data object (shared by save and autosave)
+  const buildProjectData = useCallback((finalName: string) => ({
+    version: 90,
+    name: finalName,
+    created: new Date().toISOString(),
+    elements,
+    picotConnections,
+    camera,
+    zoom,
+    dsWidth,
+    beadLibrary,
+    polarGrids,
+    selectedPolarGridId,
+    bgColor,
+    gridEnabled,
+    customColors,
+    referenceImage,
+    refImageProps,
+    renderMode,
+    patternNotes,
+    materials,
+    activeThreadPreset: threadPresets.find(p => p.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET,
+  }), [elements, picotConnections, camera, zoom, dsWidth, beadLibrary, polarGrids, selectedPolarGridId, bgColor, gridEnabled, customColors, referenceImage, refImageProps, renderMode, patternNotes, materials, threadPresets, activePresetId]);
+
+  // Write to a known path — no dialog, used for Ctrl+S when file already exists
+  const saveToPath = useCallback(async (filePath: string, finalName: string) => {
+    const json = JSON.stringify(buildProjectData(finalName), null, 2);
+    await writeTextFile(filePath, json);
+    const thumb = generateThumbnail(elements);
+    addToRecents(finalName, filePath, thumb);
+  }, [buildProjectData, elements]);
+
+  // Show native Save As dialog then write — used for first save or explicit Save As
+  const performSave = useCallback(async (nameOverride?: string) => {
+    const finalName = (nameOverride ?? saveDialogName).trim() || 'Untitled Pattern';
     setProjectName(finalName);
     setShowSaveDialog(false);
-    
-    const projectData = {
-      version: 90,
-      name: finalName,
-      created: new Date().toISOString(),
-      elements: elements,
-      picotConnections: picotConnections, // NEW: save connections
-      camera: camera,
-      zoom: zoom,
-      dsWidth: dsWidth,
-      beadLibrary: beadLibrary,
-      polarGrids: polarGrids,
-      selectedPolarGridId: selectedPolarGridId,
-      bgColor: bgColor,
-      gridEnabled: gridEnabled,
-      customColors: customColors,
-      referenceImage: referenceImage,
-      refImageProps: refImageProps,
-      renderMode: renderMode, // NEW: realistic rendering
-      patternNotes: patternNotes, // Pattern notes
-      materials: materials, // Material groups
-      activeThreadPreset: threadPresets.find(p => p.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET
-    };
-    
-    const json = JSON.stringify(projectData, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${finalName.replace(/[^a-z0-9]/gi, '_')}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-  }, [saveDialogName, elements, picotConnections, camera, zoom, dsWidth, bgColor, gridEnabled, customColors, referenceImage, refImageProps, renderMode, patternNotes, materials]);
 
-  // Load project from JSON file
-  const loadProject = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // FILE VALIDATION
-    // 1. Check file type
-    if (!file.name.toLowerCase().endsWith('.json')) {
-      showLoadMsg('error', t('loadErrWrongFormat'));
-      e.target.value = '';
+    const filePath = await tauriSave({
+      title: 'Save Project',
+      defaultPath: `${finalName.replace(/[^a-z0-9]/gi, '_')}.json`,
+      filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
+    });
+    if (!filePath) return; // user cancelled
+
+    await saveToPath(filePath, finalName);
+    setCurrentFilePath(filePath);
+  }, [saveDialogName, saveToPath]);
+
+  // Ctrl+S entry point: silent save if path known, else show name dialog then Save As
+  const saveProject = useCallback(() => {
+    if (currentFilePath) {
+      // Already saved before — write silently to the same file
+      saveToPath(currentFilePath, projectName).catch(console.error);
+    } else {
+      // First save — ask for a name then pick a location
+      setSaveDialogName(projectName);
+      setShowSaveDialog(true);
+    }
+  }, [currentFilePath, projectName, saveToPath]);
+
+  // Always shows Save As dialog regardless of currentFilePath
+  const saveProjectAs = useCallback(() => {
+    setSaveDialogName(projectName);
+    setShowSaveDialog(true);
+  }, [projectName]);
+
+  // Shared project data applier — used by both loadProject and recent-project quick-load
+  const applyProjectData = useCallback((projectData: any, filePath: string) => {
+    // Validate it's a tatting project
+    if (!projectData.elements || !Array.isArray(projectData.elements)) {
+      showLoadMsg('error', t('loadErrMissingElements'));
       return;
     }
-    
-    // 2. Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      showLoadMsg('error', t('loadErrTooLarge'));
-      e.target.value = '';
+
+    const invalidElements = projectData.elements.filter((el: any) =>
+      !el.id || !el.type || !el.paths || !Array.isArray(el.paths) ||
+      (el.type !== 'ring' && el.type !== 'chain' && el.type !== 'line')
+    );
+    if (invalidElements.length > 0) {
+      showLoadMsg('error', t('loadErrInvalidElements').replace('{n}', String(invalidElements.length)));
       return;
     }
-    
-    // 3. Check MIME type
-    if (file.type && file.type !== 'application/json' && file.type !== 'text/json') {
-      // Allow empty type (some browsers don't set it for .json)
+
+    if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
+      projectData.camera = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
     }
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    if (projectData.zoom && (typeof projectData.zoom !== 'number' || projectData.zoom <= 0)) {
+      projectData.zoom = 1;
+    }
+    if (projectData.picotConnections && !Array.isArray(projectData.picotConnections)) {
+      projectData.picotConnections = [];
+    }
+
+    // Migrate legacy labelsInside → labelOffset
+    setElements((projectData.elements || []).map((el: any) =>
+      'labelsInside' in el && !('labelOffset' in el)
+        ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
+        : el
+    ));
+    setPicotConnections(projectData.picotConnections || []);
+    setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
+    setZoom(projectData.zoom || 1);
+    setDsWidth(projectData.dsWidth || 10);
+    setBgColor(projectData.bgColor || '#1F2937');
+    setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
+    setCustomColors(projectData.customColors || []);
+    setReferenceImage(projectData.referenceImage || null);
+    setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
+    setProjectName(projectData.name || 'Untitled Pattern');
+    setRenderMode(projectData.renderMode || 'schematic');
+    setPatternNotes(projectData.patternNotes || '');
+    setMaterials(projectData.materials || DEFAULT_MATERIALS);
+    if (Array.isArray(projectData.polarGrids)) {
+      setPolarGrids(prev => {
+        const existing = new Set(prev.map((g: any) => g.id));
+        return [...prev, ...projectData.polarGrids.filter((g: any) => !existing.has(g.id))];
+      });
+    }
+    if (projectData.selectedPolarGridId) setSelectedPolarGridId(projectData.selectedPolarGridId);
+    if (projectData.activeThreadPreset) {
+      const pt = projectData.activeThreadPreset;
+      setThreadPresets(prev => {
+        const exists = prev.find((p: any) => p.id === pt.id);
+        return exists ? prev.map((p: any) => p.id === pt.id ? pt : p) : [...prev, pt];
+      });
+      setActivePresetId(pt.id);
+      localStorage.setItem('tcad_active_preset_id', pt.id);
+    }
+
+    setSelectedIds([]);
+    setSelectedPicots([]);
+    setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
+    setHistoryIndex(0);
+    setCurrentFilePath(filePath);
+
+    const count = (projectData.elements || []).length;
+    setTimeout(() => showLoadMsg('success', t('loadSuccess').replace('{n}', String(count))), 50);
+
+    const thumb = generateThumbnail(projectData.elements || []);
+    addToRecents(projectData.name || 'Project', filePath, thumb);
+  }, []);
+
+  // Load project — native OS open dialog
+  const loadProject = useCallback(async () => {
+    const filePath = await tauriOpen({
+      title: 'Open Project',
+      filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
+    });
+    if (!filePath || typeof filePath !== 'string') return;
+
+    try {
+      const text = await readTextFile(filePath);
+      let projectData: any;
       try {
-        // 4. Validate JSON parsing
-        let projectData;
-        try {
-          projectData = JSON.parse(event.target.result);
-        } catch (parseError) {
-          showLoadMsg('error', t('loadErrCorrupted'));
-          return;
-        }
-        
-        // 5. Validate it's a tatting project (must have elements array)
-        if (!projectData.elements || !Array.isArray(projectData.elements)) {
-          showLoadMsg('error', t('loadErrMissingElements'));
-          return;
-        }
-        
-        // 6. Validate elements structure
-        const invalidElements = projectData.elements.filter((el, index) => {
-          if (!el.id || !el.type || !el.paths || !Array.isArray(el.paths)) {
-            return true;
-          }
-          if (el.type !== 'ring' && el.type !== 'chain' && el.type !== 'line') {
-            return true;
-          }
-          return false;
-        });
-        
-        if (invalidElements.length > 0) {
-          showLoadMsg('error', t('loadErrInvalidElements').replace('{n}', String(invalidElements.length)));
-          return;
-        }
-        
-        // 7. Validate data types for optional fields
-        if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
-          projectData.camera = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
-        }
-        
-        if (projectData.zoom && (typeof projectData.zoom !== 'number' || projectData.zoom <= 0)) {
-          projectData.zoom = 1;
-        }
-        
-        if (projectData.picotConnections && !Array.isArray(projectData.picotConnections)) {
-          projectData.picotConnections = [];
-        }
-        
-        // ALL VALIDATION PASSED - Load the project
-        setElements(projectData.elements || []);
-        setPicotConnections(projectData.picotConnections || []);
-        setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
-        setZoom(projectData.zoom || 1);
-        setDsWidth(projectData.dsWidth || 10);
-        setBgColor(projectData.bgColor || '#1F2937');
-        setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
-        setCustomColors(projectData.customColors || []);
-        setReferenceImage(projectData.referenceImage || null);
-        setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-        setProjectName(projectData.name || 'Untitled Pattern');
-        setRenderMode(projectData.renderMode || 'schematic');
-        setPatternNotes(projectData.patternNotes || '');
-        setMaterials(projectData.materials || DEFAULT_MATERIALS);
-        if (Array.isArray(projectData.polarGrids)) {
-          // Merge project grids into global set — add any that aren't already present by ID
-          setPolarGrids(prev => {
-            const existing = new Set(prev.map(g => g.id));
-            const merged = [...prev, ...projectData.polarGrids.filter(g => !existing.has(g.id))];
-            return merged;
-          });
-        }
-        // Restore active grid selection from save
-        if (projectData.selectedPolarGridId) setSelectedPolarGridId(projectData.selectedPolarGridId);
-        // Thread preset: if project has one, add/update in presets list and make it active
-        if (projectData.activeThreadPreset) {
-          const pt = projectData.activeThreadPreset;
-          setThreadPresets(prev => {
-            const exists = prev.find(p => p.id === pt.id);
-            return exists ? prev.map(p => p.id === pt.id ? pt : p) : [...prev, pt];
-          });
-          setActivePresetId(pt.id);
-          localStorage.setItem('tcad_active_preset_id', pt.id);
-        }
-        
-        // Clear selection and reset history
-        setSelectedIds([]);
-        setSelectedPicots([]);
-        setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
-        setHistoryIndex(0);
-        
-        // Show success toast AFTER all state updates
-        const count = (projectData.elements || []).length;
-        setTimeout(() => showLoadMsg('success', t('loadSuccess').replace('{n}', String(count))), 50);
-        
-      } catch (error) {
-        showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
+        projectData = JSON.parse(text);
+      } catch {
+        showLoadMsg('error', t('loadErrCorrupted'));
+        return;
       }
-    };
-    
-    reader.onerror = () => {
-      showLoadMsg('error', t('loadErrReadFailed'));
-    };
-    
-    reader.readAsText(file);
-    
-    // Reset input so same file can be loaded again
-    e.target.value = '';
-  };
+      applyProjectData(projectData, filePath);
+    } catch (error: any) {
+      showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
+    }
+  }, [applyProjectData]);
 
   // Load a theme JSON file and merge it over the default (unknown keys are ignored)
   const loadTheme = (e) => {
@@ -4827,6 +5336,35 @@ const TattingDesigner = () => {
         notesGroup.appendChild(t);
       });
       clonedSvg.appendChild(notesGroup);
+    }
+
+    // ── Step 4: Add order numbers as a separate toggleable layer ───────────
+    const numberedEls = elements.filter(el =>
+      el.orderNumber != null && String(el.orderNumber).trim() !== '' && el.center
+    );
+    if (numberedEls.length > 0) {
+      const orderLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      orderLayer.setAttribute('id', 'order-numbers');
+      orderLayer.setAttribute('inkscape:label', 'Order Numbers');
+      orderLayer.setAttribute('inkscape:groupmode', 'layer');
+      const fontSize = Math.max(8, Math.round(width / 60)); // scale to drawing
+      numberedEls.forEach(el => {
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        bg.setAttribute('x', String(el.center.x));
+        bg.setAttribute('y', String(el.center.y));
+        bg.setAttribute('text-anchor', 'middle');
+        bg.setAttribute('dominant-baseline', 'middle');
+        bg.setAttribute('font-family', 'sans-serif');
+        bg.setAttribute('font-size', String(fontSize));
+        bg.setAttribute('font-weight', 'bold');
+        bg.setAttribute('stroke', '#000000');
+        bg.setAttribute('stroke-width', '3');
+        bg.setAttribute('paint-order', 'stroke');
+        bg.setAttribute('fill', '#FFD700');
+        bg.textContent = String(el.orderNumber);
+        orderLayer.appendChild(bg);
+      });
+      clonedSvg.appendChild(orderLayer);
     }
 
     // Serialize AFTER all DOM mutations (including notes)
@@ -5449,13 +5987,11 @@ const TattingDesigner = () => {
     return { x: el.center.x, y: el.center.y };
   };
 
-  // Returns the polar grid center to use as rotation pivot, in priority order:
-  //  1. All selected elements share the same polarRotationGridId → use that grid's center.
-  //  2. Fallback: the grid currently selected in the Polar Grids panel.
-  //  3. Fallback: the only visible grid if exactly one is visible.
-  // Returns null if no grid can be determined.
+  // Returns the polar grid center to use as rotation pivot.
+  // Only activates when ALL selected elements are explicitly linked to the same grid via polarRotationGridId.
+  // Returns null otherwise — rotation falls back to bounding box center.
   const getPolarPivot = (ids) => {
-    // --- Priority 1: all elements explicitly linked ---
+    // Only use a polar grid as rotation pivot when ALL selected elements are explicitly linked to the same grid.
     if (ids && ids.length > 0) {
       const firstEl = elements.find(e => String(e.id) === String(ids[0]));
       const gid = firstEl?.polarRotationGridId || null;
@@ -5467,24 +6003,14 @@ const TattingDesigner = () => {
         if (grid) return { x: grid.center.x, y: grid.center.y };
       }
     }
-    // --- Priority 2: panel-selected grid ---
-    if (selectedPolarGridId) {
-      const sel = polarGrids.find(g => g.id === selectedPolarGridId);
-      if (sel) return { x: sel.center.x, y: sel.center.y };
-    }
-    // --- Priority 3: exactly one visible grid ---
-    const visibleGrids = polarGrids.filter(g => g.visible);
-    if (visibleGrids.length === 1) return { x: visibleGrids[0].center.x, y: visibleGrids[0].center.y };
     return null;
   };
 
-  // Returns the polar grid to use as flip axis, in priority order:
-  //  1. All selected elements share the same polarRotationGridId → use that grid.
-  //  2. Fallback: the grid currently selected in the Polar Grids panel (selectedPolarGridId).
-  //  3. Fallback: the only visible grid if exactly one is visible.
-  // Returns null if no grid can be determined.
+  // Returns the polar grid to use as flip axis.
+  // Only activates when ALL selected elements are explicitly linked to the same grid via polarRotationGridId.
+  // Returns null otherwise — flip falls back to bounding box center.
   const getPolarFlipGrid = (ids) => {
-    // --- Priority 1: all elements explicitly linked to the same grid ---
+    // Only use a polar grid as flip axis when ALL selected elements are explicitly linked to the same grid.
     if (ids && ids.length > 0) {
       const firstEl = elements.find(e => String(e.id) === String(ids[0]));
       const gid = firstEl?.polarRotationGridId || null;
@@ -5496,14 +6022,6 @@ const TattingDesigner = () => {
         if (linked) return linked;
       }
     }
-    // --- Priority 2: panel-selected grid ---
-    if (selectedPolarGridId) {
-      const sel = polarGrids.find(g => g.id === selectedPolarGridId);
-      if (sel) return sel;
-    }
-    // --- Priority 3: exactly one visible grid ---
-    const visibleGrids = polarGrids.filter(g => g.visible);
-    if (visibleGrids.length === 1) return visibleGrids[0];
     return null;
   };
 
@@ -5961,6 +6479,12 @@ const TattingDesigner = () => {
       // Pan tool: always pan, never change selection
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
+    } else if (activeMode === 'tattingOrder') {
+      // Tatting Order mode: single-select only regardless of tool, no dragging
+      const clicked = findClosestElement(world.x, world.y);
+      setSelectedIds(clicked ? [clicked.id] : []);
+      setTattingOrderInput(clicked?.orderNumber != null ? String(clicked.orderNumber) : '');
+      return;
     } else if (currentTool === 'select') {
       // In picotJoin / beading modes, element selection and dragging are disabled —
       // only picots and beads are interactive in those modes.
@@ -7045,7 +7569,7 @@ const TattingDesigner = () => {
       } else if (selectionBox) {
         setSelectionBox({ ...selectionBox, width: world.x - selectionBox.x, height: world.y - selectionBox.y });
       }
-    } else if (activeMode === 'picotJoin' || activeMode === 'beading') {
+    } else if (activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder' || activeMode === 'tattingOrder') {
       // Update selection box for picot join / beading modes
       if (selectionBox) {
         setSelectionBox({ ...selectionBox, width: world.x - selectionBox.x, height: world.y - selectionBox.y });
@@ -7161,7 +7685,15 @@ const TattingDesigner = () => {
         const boxSelected = elements.filter(el => 
           el.center.x >= minX && el.center.x <= maxX && el.center.y >= minY && el.center.y <= maxY
         ).map(el => el.id);
-        setSelectedIds(prev => [...new Set([...prev, ...boxSelected])]);
+        if (activeMode === 'tattingOrder') {
+          // Single-select only — take the first hit if any, clear if none
+          const single = boxSelected.length > 0 ? [boxSelected[0]] : [];
+          setSelectedIds(single);
+          const el = elements.find(e => e.id === single[0]);
+          setTattingOrderInput(el?.orderNumber != null ? String(el.orderNumber) : '');
+        } else {
+          setSelectedIds(prev => [...new Set([...prev, ...boxSelected])]);
+        }
       }
       
       setSelectionBox(null);
@@ -7416,22 +7948,22 @@ const TattingDesigner = () => {
         const k = e.key.toLowerCase();
         if (k === 'r') {
           // Shift+R — Add Ring (disabled in special modes)
-          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading') {
+          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading' && activeModeRef.current !== 'tattingOrder') {
             e.preventDefault(); addRing();
           }
         } else if (k === 'c') {
           // Shift+C — Add Chain
-          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading') {
+          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading' && activeModeRef.current !== 'tattingOrder') {
             e.preventDefault(); addChain();
           }
         } else if (k === 's') {
           // Shift+S — Add Split Ring
-          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading') {
+          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading' && activeModeRef.current !== 'tattingOrder') {
             e.preventDefault(); addSplitRing();
           }
         } else if (k === 'l') {
           // Shift+L — Line tool toggle
-          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading') {
+          if (activeModeRef.current !== 'picotJoin' && activeModeRef.current !== 'beading' && activeModeRef.current !== 'tattingOrder') {
             e.preventDefault();
             setCurrentTool(prev => prev === 'line' ? 'select' : 'line');
           }
@@ -7781,26 +8313,12 @@ const TattingDesigner = () => {
     }));
   };
 
-  const toggleLabelsInside = useCallback(() => {
+  const setLabelOffset = useCallback((value: number) => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length === 0) return;
-    
-    setElements(prev => prev.map(el => {
-      if (currentSelectedIds.includes(el.id)) {
-        // Cycle through 3 states: undefined/true (inside) → 'onPath' → false (outside) → back to undefined
-        const current = el.labelsInside;
-        let next;
-        if (current === 'onPath') {
-          next = false; // onPath → outside
-        } else if (current === false) {
-          next = undefined; // outside → inside (default)
-        } else {
-          next = 'onPath'; // inside → onPath
-        }
-        return { ...el, labelsInside: next };
-      }
-      return el;
-    }));
+    setElements(prev => prev.map(el =>
+      currentSelectedIds.includes(el.id) ? { ...el, labelOffset: value } : el
+    ));
   }, []); // No dependencies - uses refs
 
   const handleImageUpload = (e) => {
@@ -8945,15 +9463,7 @@ const TattingDesigner = () => {
       if (element.isClosed && element.shapeStyle === 'circle') {
         const targetCircumference = element.stitchCount * dsWidth;
         const radius = targetCircumference / (2 * Math.PI);
-        const labelsInside = element.labelsInside;
-        let textRadius;
-        if (labelsInside === 'onPath') {
-          textRadius = radius + 8;
-        } else if (labelsInside === false) {
-          textRadius = radius + 25;
-        } else {
-          textRadius = radius * 0.65;
-        }
+        const textRadius = radius + (element.labelOffset ?? 8);
         const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
         return runs.map((run, j) => {
           const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
@@ -8982,7 +9492,7 @@ const TattingDesigner = () => {
         const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
         const stitchCountB = element.stitchCount - splitPos;
         const labelsInside = element.labelsInside;
-        const offset = labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14;
+        const offset = element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14);
         const labels = [];
 
         const placeRunsOnPath = (runs, pathCurve, sectionStitchCount, keyPfx) => {
@@ -9026,10 +9536,7 @@ const TattingDesigner = () => {
         const pathLengthsNP = allSamplesNP.map(s => calculatePathLength(s));
         const totalLengthNP = pathLengthsNP.reduce((a, b) => a + b, 0);
         const labelsInside = element.labelsInside;
-        let offset;
-        if (labelsInside === 'onPath') { offset = 8; }
-        else if (labelsInside === false) { offset = element.isClosed ? 25 : 25; }
-        else { offset = element.isClosed ? -15 : -15; }
+        const offset = element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 25 : -15);
 
         const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
         return runs.map((run, j) => {
@@ -9079,16 +9586,7 @@ const TattingDesigner = () => {
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
       const labelsInside = element.labelsInside;
-      
-      // Position: inside, onPath, or outside
-      let textRadius;
-      if (labelsInside === 'onPath') {
-        textRadius = radius + 8; // On path (slightly outside the circle line)
-      } else if (labelsInside === false) {
-        textRadius = radius + 25; // Outside
-      } else {
-        textRadius = radius * 0.65; // Inside (default)
-      }
+      const textRadius = radius + (element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 25 : radius * -0.35));
       
       return segments.flatMap((seg, i) => {
         const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
@@ -9120,7 +9618,7 @@ const TattingDesigner = () => {
     if (element.isSplitRing) {
       const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
       const labelsInside = element.labelsInside;
-      const offset = labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14;
+      const offset = element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14);
       const labels = [];
 
       // Section A: picots where stitchesBefore < splitPos → labels on path[0]
@@ -9190,10 +9688,7 @@ const TattingDesigner = () => {
     const totalLength = pathLengths.reduce((a, b) => a + b, 0);
 
     const labelsInside = element.labelsInside;
-    let offset;
-    if (labelsInside === 'onPath') { offset = 8; }
-    else if (labelsInside === false) { offset = element.isClosed ? 25 : 25; }
-    else { offset = element.isClosed ? -15 : -15; }
+    const offset = element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 25 : -15);
 
     return segments.flatMap((seg, i) => {
       const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
@@ -9320,6 +9815,7 @@ const TattingDesigner = () => {
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== 'Escape') return;
+      if (showSplash) { setShowSplash(false); return; }
       if (renderMode === 'realistic') { setRenderMode('schematic'); return; }
       if (showColorPicker) { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); return; }
       if (showMaterialsPanel) { setShowMaterialsPanel(false); return; }
@@ -9332,11 +9828,12 @@ const TattingDesigner = () => {
       if (showThreadProperties) { setShowThreadProperties(false); return; }
       if (activeMode === 'picotJoin') { setActiveMode(null); setShowJoinTip(false); return; }
       if (activeMode === 'beading') { setActiveMode(null); setSelectedBEs([]); return; }
+      if (activeMode === 'tattingOrder') { setActiveMode(null); setSelectedIds([]); return; }
       if (currentTool === 'ruler' && rulerPoints.length > 0) { setRulerPoints([]); setRulerMousePos(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showColorPicker, showMaterialsPanel, showHelp, showBeadLibrary, showPolarGridPanel, showSaveDialog, showThreadProperties, currentTool, activeMode, renderMode, rulerPoints]);
+  }, [showSplash, showColorPicker, showMaterialsPanel, showHelp, showBeadLibrary, showPolarGridPanel, showSaveDialog, showThreadProperties, currentTool, activeMode, renderMode, rulerPoints]);
 
   // Resolve the correct help URL whenever the help modal opens or language changes.
   // Fetches the localised file and checks the body — Vite/SPA dev servers return
@@ -9362,6 +9859,22 @@ const TattingDesigner = () => {
       })
       .catch(() => { setResolvedHelpUrl('./tatting-help.html'); setHelpUrlReady(true); });
   }, [showHelp, language]);
+
+  // UI Guide URL resolution — same pattern as help
+  useEffect(() => {
+    if (!showUiGuide) { setUiGuideUrlReady(false); return; }
+    const localUrl = language === 'en' ? './tatting-ui-guide.html' : `./tatting-ui-guide_${language}.html`;
+    if (language === 'en') { setResolvedUiGuideUrl(localUrl); setUiGuideUrlReady(true); return; }
+    setUiGuideUrlReady(false);
+    fetch(localUrl)
+      .then(res => res.text())
+      .then(text => {
+        const isAppShell = text.includes('id="root"') || text.includes('<script type="module"');
+        setResolvedUiGuideUrl(isAppShell ? './tatting-ui-guide.html' : localUrl);
+        setUiGuideUrlReady(true);
+      })
+      .catch(() => { setResolvedUiGuideUrl('./tatting-ui-guide.html'); setUiGuideUrlReady(true); });
+  }, [showUiGuide, language]);
 
   // Update filteredSolidColors to use debounced search
   const filteredSolidColorsDebounced = useMemo(() => {
@@ -9664,38 +10177,19 @@ const TattingDesigner = () => {
         </div>
       )}
 
-      {/* Update available banner */}
-      {updateNotice && (
-        <div
-          className="fixed bottom-8 right-4 flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border border-blue-400 bg-gray-800 text-white text-sm"
-          style={{ zIndex: 2147483646, maxWidth: '320px' }}
-        >
-          <span className="text-blue-300 text-lg flex-shrink-0">↑</span>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold">{t('updateAvailable')}: {updateNotice.version}</div>
-            <div className="text-gray-400 text-xs">{t('updateCurrentVersion').replace('{current}', APP_VERSION)}</div>
-          </div>
-          <div className="flex flex-col gap-1 flex-shrink-0">
-            <button
-              onClick={() => window.open(updateNotice.url, '_blank')}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-semibold"
-            >{t('updateDownload')}</button>
-            <button
-              onClick={() => {
-                localStorage.setItem('tcad_update_seen', updateNotice.version);
-                setUpdateNotice(null);
-              }}
-              className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"
-            >{t('updateDismiss')}</button>
-          </div>
-        </div>
-      )}
-
       <style>{`
         /* Prevent browser interference with gestures */
         body {
           overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
           touch-action: none; /* Prevent browser zoom gestures */
+        }
+
+        /* Force dark background + light text on <option> elements.
+           On Linux/GTK the native dropdown ignores the parent select's CSS,
+           causing white-on-white text. This rule fixes it. */
+        select option {
+          background-color: #374151; /* gray-700 */
+          color: #f9fafb;            /* gray-50 */
         }
         
         /* Mobile responsive styles */
@@ -10023,6 +10517,7 @@ const TattingDesigner = () => {
            apply on top of this (they use !important), so small screens
            still shrink to fit — they just start from a larger base.
         ── */
+        .ui-large { font-size: 17.6px; } /* 16px default → ~1.1×; rem-based Tailwind classes (text-xs/sm/base…) scale with this */
         .ui-large .toolbar-scalable-left  { transform: scale(1.25) !important; transform-origin: top left   !important; }
         .ui-large .toolbar-scalable-right { transform: scale(1.25) !important; transform-origin: top right  !important; }
         .ui-large .top-toolbar-scalable   { transform: scale(1.25) !important; transform-origin: left center !important; }
@@ -10086,7 +10581,7 @@ const TattingDesigner = () => {
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{ width: '44px', height: '44px' }}
             title={t('btnUndo')}
-            disabled={historyIndex === 0 || activeMode === 'picotJoin' || activeMode === 'beading'}
+            disabled={historyIndex === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconUndo size={20} />
           </button>
@@ -10095,7 +10590,7 @@ const TattingDesigner = () => {
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{ width: '44px', height: '44px' }}
             title={t('btnRedo')}
-            disabled={historyIndex >= history.length - 1 || activeMode === 'picotJoin' || activeMode === 'beading'}
+            disabled={historyIndex >= history.length - 1 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconRedo size={20} />
           </button>
@@ -10426,6 +10921,104 @@ const TattingDesigner = () => {
                   </div>
                 )}
 
+              </div>
+            );
+          })() : activeMode === 'tattingOrder' ? (() => {
+            // ── Tatting Order mode property bar ──────────────────────────
+            const selectedEl = selectedIds.length === 1 ? elements.find(e => e.id === selectedIds[0]) : null;
+            const numbered = elements.filter(e => e.orderNumber != null && String(e.orderNumber).trim() !== '').length;
+            const total = elements.length;
+
+            return (
+              <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
+                {/* Row 1: mode banner + progress + exit */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-emerald-700 border border-emerald-400 flex-shrink-0">
+                    <IconUnnumberedOn size={16} />
+                    <span className="font-bold text-sm text-white tracking-wide">{t('tattingOrderTitle')}</span>
+                  </div>
+                  <span className="text-emerald-300 text-xs font-semibold">
+                    {t('tattingOrderProgress').replace('{numbered}', String(numbered)).replace('{total}', String(total))}
+                  </span>
+                  {!selectedEl && (
+                    <span className="text-gray-400 text-xs">{t('tattingOrderSub')}</span>
+                  )}
+                  <div className="ml-auto flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        const unnumbered = elements.filter(e =>
+                          e.type !== 'line' && (!e.orderNumber || String(e.orderNumber).trim() === '')
+                        ).length;
+                        setActiveMode(null);
+                        setSelectedIds([]);
+                        if (unnumbered > 0) {
+                          showLoadMsg('error', t('tattingOrderExitWarning').replace('{n}', String(unnumbered)));
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
+                    >
+                      ✕ {t('tattingOrderExitBtn')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Row 2: element controls (only when one element selected) */}
+                {selectedEl && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-gray-300 text-xs">{t('tattingOrderNumberLabel')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={tattingOrderInput}
+                      onChange={e => setTattingOrderInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const n = parseInt(tattingOrderInput, 10);
+                          if (!isNaN(n) && n > 0) assignOrderNumber(selectedEl.id, n);
+                        }
+                      }}
+                      placeholder="—"
+                      className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm text-center"
+                      style={{ touchAction: 'manipulation' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const n = parseInt(tattingOrderInput, 10);
+                        if (!isNaN(n) && n > 0) assignOrderNumber(selectedEl.id, n);
+                      }}
+                      disabled={!tattingOrderInput || isNaN(parseInt(tattingOrderInput, 10))}
+                      className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 disabled:opacity-40 text-white text-sm border border-gray-500"
+                    >
+                      ↵
+                    </button>
+                    <button
+                      onClick={() => {
+                        const next = getNextAvailableNumber();
+                        assignOrderNumber(selectedEl.id, next);
+                      }}
+                      className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold border border-emerald-500"
+                    >
+                      {t('tattingOrderAssignNext')} ({getNextAvailableNumber()})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setElements(prev => prev.map(e =>
+                          e.id === selectedEl.id ? { ...e, orderNumber: null } : e
+                        ));
+                        setTattingOrderInput('');
+                      }}
+                      disabled={!selectedEl.orderNumber}
+                      className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 text-sm border border-gray-600"
+                    >
+                      {t('tattingOrderClear')}
+                    </button>
+                    {selectedEl.orderNumber && (
+                      <span className="text-emerald-400 text-xs">
+                        #{selectedEl.orderNumber}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })() : selectedElement ? (
@@ -10861,10 +11454,25 @@ const TattingDesigner = () => {
                     needsHistoryPushRef.current = true;
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                  className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm text-white"
-                  style={{minWidth:'3.2rem'}}
+                  className="px-1 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white text-center"
+                  style={{width:'4.5ch', minWidth:'4.5ch'}}
                   placeholder="0°"
                 />
+                {/* ±1° nudge arrows */}
+                <div className="flex flex-col" style={{gap:'1px'}}>
+                  <button
+                    onClick={() => applySingleRotationDelta(selectedElement.id, 1)}
+                    className="px-1 bg-gray-700 hover:bg-gray-600 rounded-t text-gray-300 leading-none"
+                    style={{fontSize:'0.6rem', paddingTop:'2px', paddingBottom:'1px'}}
+                    title="Rotate +1°"
+                  >▲</button>
+                  <button
+                    onClick={() => applySingleRotationDelta(selectedElement.id, -1)}
+                    className="px-1 bg-gray-700 hover:bg-gray-600 rounded-b text-gray-300 leading-none"
+                    style={{fontSize:'0.6rem', paddingTop:'1px', paddingBottom:'2px'}}
+                    title="Rotate -1°"
+                  >▼</button>
+                </div>
                 <button
                   onClick={() => {
                     const currentRotation = selectedElement.rotation || 0;
@@ -10957,25 +11565,20 @@ const TattingDesigner = () => {
                   <IconFlipV size={16} />
                 </button>
 
-                {/* Notation position toggle - inside/onPath/outside */}
-                <button
-                  onClick={toggleLabelsInside}
-                  className={`px-2 py-1 rounded text-sm font-bold ${
-                    elements.filter(e => selectedIds.includes(e.id)).every(e => e.labelsInside !== false && e.labelsInside !== 'onPath')
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : elements.filter(e => selectedIds.includes(e.id)).every(e => e.labelsInside === 'onPath')
-                      ? 'bg-green-600 hover:bg-green-700'
-                      : elements.filter(e => selectedIds.includes(e.id)).every(e => e.labelsInside === false)
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-gray-700 hover:bg-gray-600'
-                  }`}
-                  title={t('propNotationPos')}
-                >
-                  {elements.filter(e => selectedIds.includes(e.id)).every(e => e.labelsInside !== false && e.labelsInside !== 'onPath') ? <IconNotationS size={16} /> :
-                   elements.filter(e => selectedIds.includes(e.id)).every(e => e.labelsInside === 'onPath') ? <IconNotationM size={16} /> :
-                   elements.filter(e => selectedIds.includes(e.id)).every(e => e.labelsInside === false) ? <IconNotationH size={16} /> :
-                   '~'}
-                </button>
+                {/* Notation label offset slider */}
+                <div className="flex items-center gap-1" title={t('propNotationPos')}>
+                  <IconNotationM size={16} className="text-gray-400 shrink-0" />
+                  <input
+                    type="range"
+                    min="-25"
+                    max="45"
+                    step="1"
+                    value={elements.find(e => selectedIds.includes(e.id))?.labelOffset ?? 8}
+                    onChange={e => setLabelOffset(Number(e.target.value))}
+                    className="w-20 accent-blue-500"
+                    title={t('propNotationPos')}
+                  />
+                </div>
 
                 {/* Hide notation label toggle */}
                 <button
@@ -11527,27 +12130,22 @@ const TattingDesigner = () => {
                         </button>
                       </div>
 
-                      {/* Notation position */}
+                      {/* Notation label offset */}
                       <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                         <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
-                        <button
-                          onClick={toggleLabelsInside}
-                          className={`px-2 py-1 rounded text-sm font-bold ${
-                            groupElements.every(e => e.labelsInside !== false && e.labelsInside !== 'onPath')
-                              ? 'bg-blue-600 hover:bg-blue-700'
-                              : groupElements.every(e => e.labelsInside === 'onPath')
-                              ? 'bg-green-600 hover:bg-green-700'
-                              : groupElements.every(e => e.labelsInside === false)
-                              ? 'bg-purple-600 hover:bg-purple-700'
-                              : 'bg-gray-700 hover:bg-gray-600'
-                          }`}
-                          title={t('propNotationPos')}
-                        >
-                          {groupElements.every(e => e.labelsInside !== false && e.labelsInside !== 'onPath') ? <IconNotationS size={16} /> :
-                           groupElements.every(e => e.labelsInside === 'onPath') ? <IconNotationM size={16} /> :
-                           groupElements.every(e => e.labelsInside === false) ? <IconNotationH size={16} /> :
-                           '~'}
-                        </button>
+                        <div className="flex items-center gap-1" title={t('propNotationPos')}>
+                          <IconNotationM size={16} className="text-gray-400 shrink-0" />
+                          <input
+                            type="range"
+                            min="-25"
+                            max="45"
+                            step="1"
+                            value={groupElements[0]?.labelOffset ?? 8}
+                            onChange={e => setLabelOffset(Number(e.target.value))}
+                            className="w-20 accent-blue-500"
+                            title={t('propNotationPos')}
+                          />
+                        </div>
                         <button
                           onClick={() => {
                             const allHidden = groupElements.every(e => e.hideLabel);
@@ -11788,26 +12386,21 @@ const TattingDesigner = () => {
                       <button onClick={doFlipH} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipH')}><IconFlipH size={16} /></button>
                       <button onClick={doFlipV} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipV')}><IconFlipV size={16} /></button>
 
-                      {/* Notation position */}
+                      {/* Notation label offset */}
                       <div className="w-px h-6 bg-gray-600 mx-1" />
-                      <button
-                        onClick={toggleLabelsInside}
-                        className={`px-2 py-1 rounded text-sm font-bold ${
-                          selEls.every(e => e.labelsInside !== false && e.labelsInside !== 'onPath')
-                            ? 'bg-blue-600 hover:bg-blue-700'
-                            : selEls.every(e => e.labelsInside === 'onPath')
-                            ? 'bg-green-600 hover:bg-green-700'
-                            : selEls.every(e => e.labelsInside === false)
-                            ? 'bg-purple-600 hover:bg-purple-700'
-                            : 'bg-gray-700 hover:bg-gray-600'
-                        }`}
-                        title={t('propNotationPos')}
-                      >
-                        {selEls.every(e => e.labelsInside !== false && e.labelsInside !== 'onPath') ? <IconNotationS size={16} /> :
-                         selEls.every(e => e.labelsInside === 'onPath') ? <IconNotationM size={16} /> :
-                         selEls.every(e => e.labelsInside === false) ? <IconNotationH size={16} /> :
-                         '~'}
-                      </button>
+                      <div className="flex items-center gap-1" title={t('propNotationPos')}>
+                        <IconNotationM size={16} className="text-gray-400 shrink-0" />
+                        <input
+                          type="range"
+                          min="-25"
+                          max="45"
+                          step="1"
+                          value={selEls[0]?.labelOffset ?? 8}
+                          onChange={e => setLabelOffset(Number(e.target.value))}
+                          className="w-20 accent-blue-500"
+                          title={t('propNotationPos')}
+                        />
+                      </div>
                       <button
                         onClick={() => {
                           const allHidden = selEls.every(e => e.hideLabel);
@@ -12153,25 +12746,25 @@ const TattingDesigner = () => {
           </button>
 
           {/* Join/Break buttons moved to properties bar in picotJoin mode */}
-          <button onClick={addRing} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading'}>
+          <button onClick={addRing} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddRing size={20} />
           </button>
-          <button onClick={addSplitRing} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading'}>
+          <button onClick={addSplitRing} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddSplitRing size={20} />
           </button>
-          <button onClick={() => setCurrentTool('line')} className={`p-2 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed ${currentTool === 'line' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolLineTool')} disabled={activeMode === 'picotJoin' || activeMode === 'beading'}>
+          <button onClick={() => setCurrentTool('line')} className={`p-2 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed ${currentTool === 'line' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolLineTool')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddLine size={20} />
           </button>
-          <button onClick={addChain} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading'}>
+          <button onClick={addChain} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddChain size={20} />
           </button>
-          <button onClick={deleteSelected} className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading'}><IconDelete size={20} /></button>
+          <button onClick={deleteSelected} className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}><IconDelete size={20} /></button>
           <button 
             onClick={groupSelected} 
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed"
             style={{ touchAction: 'manipulation' }}
             title={t('toolGroup')}
-            disabled={selectedIds.length < 2 || activeMode === 'picotJoin' || activeMode === 'beading'}
+            disabled={selectedIds.length < 2 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconGroup size={20} />
           </button>
@@ -12180,7 +12773,7 @@ const TattingDesigner = () => {
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed"
             style={{ touchAction: 'manipulation' }}
             title={t('toolUngroup')}
-            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading'}
+            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconUngroup size={20} />
           </button>
@@ -12262,15 +12855,6 @@ const TattingDesigner = () => {
           type="file"
           accept="image/*"
           onChange={handleImageUpload}
-          className="hidden"
-        />
-        
-        {/* Hidden file input for loading projects */}
-        <input
-          ref={loadInputRef}
-          type="file"
-          accept=".json"
-          onChange={loadProject}
           className="hidden"
         />
 
@@ -12792,10 +13376,12 @@ const TattingDesigner = () => {
 
                 const isSelected = selectedIds.includes(el.id);
                 const isUnnumbered = !el.orderNumber || el.orderNumber.toString().trim() === '';
-                const shouldHighlight = showUnnumbered && isUnnumbered;
+                const shouldHighlight = (showUnnumbered || activeMode === 'tattingOrder') && isUnnumbered;
                 const activeDraft = draftNotation?.elementId === el.id ? draftNotation.value : null;
                 const hasInvalidNotation = el.type !== 'line' && activeDraft && !isNotationValid(activeDraft.trim());
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)' : shouldHighlight ? 'url(#pink-glow)' : undefined;
+                // In tattingOrder mode, hide notation labels so only order numbers are visible
+                const hideNotationInMode = activeMode === 'tattingOrder';
                 // PERFORMANCE: During translate-drag, apply offset via SVG transform instead of
                 // mutating element state. Keeps stitchCache valid throughout the drag.
                 const dragTransform = (isSelected && dragOffsetRef.current.active)
@@ -12924,7 +13510,7 @@ const TattingDesigner = () => {
                             G
                           </text>
                         )}
-                        {showUnnumbered && el.orderNumber && (
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (
                           <text
                             x={el.center.x}
                             y={el.center.y}
@@ -12981,8 +13567,8 @@ const TattingDesigner = () => {
                           G
                         </text>
                       )}
-                      <g key={`${el.id}-labels`}>{el.hideLabel ? null : renderStitchLabels(el)}</g>
-                      {showUnnumbered && el.orderNumber && (
+                      <g key={`${el.id}-labels`}>{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                      {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (
                         <text
                           x={el.center.x}
                           y={el.center.y}
@@ -13091,6 +13677,29 @@ const TattingDesigner = () => {
                             return null;
                           });
                         })()}
+                        {/* Order number label for lines */}
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && el.paths?.length > 0 && (() => {
+                          const allPts: {x:number,y:number}[] = [];
+                          el.paths.forEach(p => {
+                            for (let i = 0; i <= 20; i++) {
+                              const t = i / 20, u = 1 - t;
+                              if (p.type === 'cubic') {
+                                allPts.push({ x: u*u*u*p.x+3*u*u*t*p.control1X+3*u*t*t*p.control2X+t*t*t*p.endX, y: u*u*u*p.y+3*u*u*t*p.control1Y+3*u*t*t*p.control2Y+t*t*t*p.endY });
+                              } else {
+                                allPts.push({ x: u*u*p.x+2*u*t*p.controlX+t*t*p.endX, y: u*u*p.y+2*u*t*p.controlY+t*t*p.endY });
+                              }
+                            }
+                          });
+                          let total = 0;
+                          for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
+                          let acc = 0, half = total / 2, ox = el.center.x, oy = el.center.y;
+                          for (let i = 1; i < allPts.length; i++) {
+                            const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
+                            if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
+                            acc += seg;
+                          }
+                          return <text x={ox} y={oy} fill="#FFD700" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#000000" strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                        })()}
                       </>
                     ) : (
                     /* Chains and teardrops */
@@ -13181,9 +13790,12 @@ const TattingDesigner = () => {
                                 const stitchTypes = Array.isArray(stitch.type) ? stitch.type : [stitch.type];
                                 for (let subIdx = 0; subIdx < stitchTypes.length; subIdx++) {
                                   const type = stitchTypes[subIdx];
+                                  // Use stored DS position (critical for RDS which skips every other slot).
+                                  // For SS the sub-stitch offset within the DS slot still applies.
+                                  const dsPos = stitch.dsPosition ?? i;
                                   const effectiveIndex = stitchTypes.length > 1
-                                    ? i + (subIdx / stitchTypes.length)
-                                    : i;
+                                    ? dsPos + (subIdx / stitchTypes.length)
+                                    : dsPos;
                                   const wedgePaths = el.isClosed
                                     ? renderWedgeTeardropShapes(stitch, el, scale, offsetAmount, type, effectiveIndex, stitchTypes.length)
                                     : renderWedgeChainShapes(stitch, el, scale, offsetAmount, type, effectiveIndex);
@@ -13226,7 +13838,7 @@ const TattingDesigner = () => {
                           })}
                           
                           {/* Keep order number and group indicator */}
-                          {showUnnumbered && el.orderNumber && (() => {
+                          {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                             let ox = el.center.x, oy = el.center.y;
                             if (el.type === 'chain' && el.paths && el.paths.length > 0) {
                               const allPts: {x:number,y:number}[] = [];
@@ -13424,8 +14036,8 @@ const TattingDesigner = () => {
                             })}
                           </g>
                         )}
-                        <g key={`${el.id}-labels`}>{el.hideLabel ? null : renderStitchLabels(el)}</g>
-{showUnnumbered && el.orderNumber && (() => {
+                        <g key={`${el.id}-labels`}>{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+{(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                           let ox = el.center.x, oy = el.center.y;
                           if (el.type === 'chain' && el.paths && el.paths.length > 0) {
                             const allPts: {x:number,y:number}[] = [];
@@ -13472,6 +14084,168 @@ const TattingDesigner = () => {
               })}
 
               </g>
+
+              {/* ── Polar Array ghost preview ─────────────────────────────
+                  Shown while the dialog is open. Renders simplified outlines
+                  of the copies-to-be at their computed positions.
+                  pointer-events:none so they don't interfere with canvas.     */}
+              {showPolarArrayDialog && (() => {
+                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                if (selEls.length === 0 || polarArrayCount < 2) return null;
+
+                // Pivot
+                let pivX: number, pivY: number;
+                if (polarArrayPivotId && polarArrayPivotId !== 'selection') {
+                  const grid = polarGrids.find(g => g.id === polarArrayPivotId);
+                  pivX = grid ? grid.center.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                  pivY = grid ? grid.center.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                } else {
+                  pivX = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                  pivY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                }
+
+                const stepDeg = polarArrayAngle / polarArrayCount;
+                const ghosts = [];
+
+                for (let i = 1; i < polarArrayCount; i++) {
+                  const rad = (stepDeg * i) * Math.PI / 180;
+                  const cos = Math.cos(rad);
+                  const sin = Math.sin(rad);
+
+                  selEls.forEach(el => {
+                    const dx = el.center.x - pivX;
+                    const dy = el.center.y - pivY;
+                    const cx = pivX + dx * cos - dy * sin;
+                    const cy = pivY + dx * sin + dy * cos;
+
+                    if (el.isClosed && el.shapeStyle === 'circle') {
+                      const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
+                      ghosts.push(
+                        <circle key={`ghost-${i}-${el.id}`}
+                          cx={cx} cy={cy} r={r}
+                          fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
+                          strokeDasharray={`${6/zoom} ${4/zoom}`}
+                          opacity={0.55} pointerEvents="none"
+                        />
+                      );
+                    } else if (el.paths && el.paths.length > 0) {
+                      // Rotate path points and draw a dashed stroke
+                      const rotPt = (px, py) => {
+                        const rx = px - pivX, ry = py - pivY;
+                        return { x: pivX + rx * cos - ry * sin, y: pivY + rx * sin + ry * cos };
+                      };
+                      const pathStrs = el.paths.map(p => {
+                        const s = rotPt(p.x, p.y);
+                        const e2 = rotPt(p.endX, p.endY);
+                        if (p.type === 'cubic') {
+                          const c1 = rotPt(p.control1X, p.control1Y);
+                          const c2 = rotPt(p.control2X, p.control2Y);
+                          return `M${s.x},${s.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${e2.x},${e2.y}`;
+                        } else {
+                          const c = rotPt(p.controlX, p.controlY);
+                          return `M${s.x},${s.y} Q${c.x},${c.y} ${e2.x},${e2.y}`;
+                        }
+                      });
+                      ghosts.push(
+                        <path key={`ghost-${i}-${el.id}`}
+                          d={pathStrs.join(' ')}
+                          fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
+                          strokeDasharray={`${6/zoom} ${4/zoom}`}
+                          opacity={0.55} pointerEvents="none"
+                        />
+                      );
+                    }
+                  });
+                }
+
+                return <g>{ghosts}</g>;
+              })()}
+
+              {/* ── Linear Array ghost preview ───────────────────────────── */}
+              {showLinearArrayDialog && (() => {
+                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                if (selEls.length === 0 || linearArrayCount < 2) return null;
+                const rad = linearArrayAngle * Math.PI / 180;
+                const dx = Math.cos(rad) * linearArraySpacing;
+                const dy = Math.sin(rad) * linearArraySpacing;
+                const ghosts = [];
+                for (let i = 1; i < linearArrayCount; i++) {
+                  const ox = dx * i, oy = dy * i;
+                  const extraRot = linearArrayRotStep * i;
+                  selEls.forEach(el => {
+                    const newCx = el.center.x + ox;
+                    const newCy = el.center.y + oy;
+                    // Use SVG transform: rotate around original center, then translate to new pos
+                    const transform = extraRot !== 0
+                      ? `translate(${ox},${oy}) rotate(${extraRot},${el.center.x},${el.center.y})`
+                      : `translate(${ox},${oy})`;
+                    if (el.isClosed && el.shapeStyle === 'circle') {
+                      const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
+                      ghosts.push(<circle key={`lgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    } else if (el.paths?.length > 0) {
+                      const d = el.paths.map(p => {
+                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                      }).join(' ');
+                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    }
+                  });
+                }
+                return <g>{ghosts}</g>;
+              })()}
+
+              {/* ── Spiral Array ghost preview ───────────────────────────── */}
+              {showSpiralArrayDialog && (() => {
+                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                if (selEls.length === 0 || spiralArrayCount < 2) return null;
+                let pivX = 0, pivY = 0;
+                const linkedGid = (() => { const gid = selEls[0]?.polarRotationGridId; return gid && selEls.every(e => e.polarRotationGridId === gid) ? gid : null; })();
+                const pivGrid = linkedGid ? polarGrids.find(g => g.id === linkedGid) : selectedPolarGridId ? polarGrids.find(g => g.id === selectedPolarGridId) : null;
+                if (pivGrid) { pivX = pivGrid.center.x; pivY = pivGrid.center.y; }
+                const centroidX = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                const centroidY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                const r0 = Math.sqrt((centroidX - pivX) ** 2 + (centroidY - pivY) ** 2);
+                const angle0 = Math.atan2(centroidY - pivY, centroidX - pivX) * 180 / Math.PI;
+                const angularStep = spiralArrayAngleStep; // fixed degrees per copy — independent of count
+                const spiralPos = (i) => {
+                  const angleDeg = angle0 + angularStep * i;
+                  const r = spiralArrayType === 'archimedean'
+                    ? r0 + spiralArrayGap * i
+                    : r0 * Math.pow(spiralArrayGrowth, i);
+                  return { x: pivX + Math.cos(angleDeg * Math.PI / 180) * r, y: pivY + Math.sin(angleDeg * Math.PI / 180) * r, angleDeg };
+                };
+                const ghosts = [];
+                for (let i = 1; i < spiralArrayCount; i++) {
+                  const pos = spiralPos(i);
+                  const offsetX = pos.x - centroidX;
+                  const offsetY = pos.y - centroidY;
+                  selEls.forEach(el => {
+                    const newCx = el.center.x + offsetX;
+                    const newCy = el.center.y + offsetY;
+                    // Rotation delta from current element rotation to target angle
+                    const targetAngle = Math.atan2(newCy - pivY, newCx - pivX) * 180 / Math.PI;
+                    const rotDelta = spiralArrayRotate ? targetAngle - (el.rotation || 0) : 0;
+                    // Correct SVG transform: rotate around ORIGINAL center, then translate.
+                    // translate(tx,ty) rotate(a,cx,cy) rotates around (cx,cy) in original coords then translates.
+                    // Using el.center keeps the center at el.center after rotate, then translate moves it to newCx,newCy.
+                    const transform = rotDelta !== 0
+                      ? `translate(${offsetX},${offsetY}) rotate(${rotDelta},${el.center.x},${el.center.y})`
+                      : `translate(${offsetX},${offsetY})`;
+                    if (el.isClosed && el.shapeStyle === 'circle') {
+                      const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
+                      ghosts.push(<circle key={`sgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke="#f472b6" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    } else if (el.paths?.length > 0) {
+                      const d = el.paths.map(p => {
+                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                      }).join(' ');
+                      ghosts.push(<path key={`sgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke="#f472b6" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    }
+                  });
+                }
+                return <g>{ghosts}</g>;
+              })()}
+
               {/* Joint picots rendered OUTSIDE the dim group so they stay full brightness in picotJoin mode */}
               {activeMode === 'picotJoin' && elements.map(el => {
                 const jpDragTransform = (selectedIds.includes(el.id) && dragOffsetRef.current.active)
@@ -13585,7 +14359,7 @@ const TattingDesigner = () => {
                   .map(el => {
                     const points = getSnapPoints(el);
                     return points.map((point, i) => (
-                      <g key={`snap-${el.id}-${i}`} data-ui="1" opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.15 : 1}>
+                      <g key={`snap-${el.id}-${i}`} data-ui="1" opacity={(activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder') ? 0.15 : 1}>
                         {/* Outer circle for visibility - fixed screen size */}
                         <circle 
                           cx={point.x} 
@@ -13837,7 +14611,7 @@ const TattingDesigner = () => {
               <h2 className="text-white text-lg md:text-xl font-bold">{t('helpTitle')}</h2>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.open(resolvedHelpUrl, '_blank')}
+                  onClick={() => openExternal(resolvedHelpUrl)}
                   className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded"
                   title={t('helpOpenTab')}
                 >{t('helpOpenInBrowser')}</button>
@@ -13852,6 +14626,39 @@ const TattingDesigner = () => {
                   className="flex-1 w-full rounded-b-lg"
                   style={{ border: 'none', minHeight: 0 }}
                   title={t('helpWindowTitle')}
+                />
+              : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
+            }
+          </div>
+        </div>
+      )}
+
+      {/* ── UI Guide modal ─────────────────────────────────────────────────── */}
+      {showUiGuide && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 md:p-4" onClick={() => setShowUiGuide(false)}>
+          <div
+            className="bg-gray-800 rounded-lg w-full max-w-full md:max-w-3xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+            style={{ height: window.innerWidth <= 768 ? '92vh' : '82vh', maxHeight: '92vh' }}
+          >
+            <div className="flex justify-between items-center p-3 md:p-4 border-b border-gray-700 flex-shrink-0">
+              <h2 className="text-white text-lg md:text-xl font-bold">{t('helpMenuUiGuide')}</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openExternal(resolvedUiGuideUrl)}
+                  className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded"
+                  title={t('helpOpenTab')}
+                >{t('helpOpenInBrowser')}</button>
+                <button onClick={() => setShowUiGuide(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+              </div>
+            </div>
+            {uiGuideUrlReady
+              ? <iframe
+                  key={resolvedUiGuideUrl}
+                  src={resolvedUiGuideUrl}
+                  className="flex-1 w-full rounded-b-lg"
+                  style={{ border: 'none', minHeight: 0 }}
+                  title={t('helpMenuUiGuide')}
                 />
               : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
             }
@@ -14658,6 +15465,42 @@ const TattingDesigner = () => {
         </div>
       )}
 
+      {/* ── Tatting Order conflict popup ─────────────────────────────── */}
+      {tattingOrderConflict && (() => {
+        const targetEl = elements.find(e => e.id === tattingOrderConflict.targetElId);
+        const canSwap = targetEl?.orderNumber != null && String(targetEl.orderNumber).trim() !== '';
+        return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
+          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-amber-500 shadow-2xl">
+            <h2 className="text-base font-bold text-amber-400 mb-4">{t('tattingOrderConflictTitle')} (#{tattingOrderConflict.newNum})</h2>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => resolveTattingOrderConflict('swap')}
+                disabled={!canSwap}
+                className="w-full px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded font-semibold text-sm"
+                autoFocus={canSwap}
+              >
+                {t('tattingOrderConflictSwap')}
+              </button>
+              <button
+                onClick={() => resolveTattingOrderConflict('shift')}
+                className="w-full px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-semibold text-sm"
+                autoFocus={!canSwap}
+              >
+                {t('tattingOrderConflictShift')}
+              </button>
+              <button
+                onClick={() => resolveTattingOrderConflict('cancel')}
+                className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+              >
+                {t('tattingOrderConflictCancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
       {showNewCanvasDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-gray-600 shadow-2xl">
@@ -14682,6 +15525,127 @@ const TattingDesigner = () => {
         </div>
       )}
 
+      {/* ── Recent Projects Dialog ────────────────────────────────────────── */}
+      {showRecentProjectsDialog && (() => {
+        const raw = (() => { try { return JSON.parse(localStorage.getItem('tcad_recent_projects') || '[]'); } catch (_) { return []; } })();
+        const recents: Array<{ id: string; name: string; filename: string; thumbnail: string; savedAt: string }> = raw;
+
+        const removeEntry = (id: string) => {
+          const updated = recents.filter(e => e.id !== id);
+          localStorage.setItem('tcad_recent_projects', JSON.stringify(updated));
+          // Force re-render by toggling dialog (quick trick — dialog reads localStorage fresh each render)
+          setShowRecentProjectsDialog(false);
+          setTimeout(() => setShowRecentProjectsDialog(true), 0);
+        };
+
+        const doLoad = (pendingAction: () => void) => {
+          if (elements.length > 0) {
+            // Show inline confirm then proceed
+            setPendingRecentLoad(() => pendingAction);
+            setShowRecentLoadConfirm(true);
+          } else {
+            setShowRecentProjectsDialog(false);
+            pendingAction();
+          }
+        };
+
+        return (
+          <>
+            <div className="fixed inset-0 bg-black bg-opacity-70" style={{ zIndex: 10010 }} onClick={() => setShowRecentProjectsDialog(false)} />
+            <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+              style={{ zIndex: 10011, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(720px, 96vw)', maxHeight: '90dvh' }}>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
+                <h2 className="text-white font-bold text-lg">{t('recentProjectsTitle')}</h2>
+                <button onClick={() => setShowRecentProjectsDialog(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {recents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <div className="text-gray-400 text-base">{t('recentProjectsEmpty')}</div>
+                    <div className="text-gray-500 text-sm">{t('recentProjectsEmptyHint')}</div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                    {recents.map(entry => (
+                      <div key={entry.id} className="bg-gray-700 rounded-lg overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors group cursor-pointer"
+                        onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); })}>
+
+                        {/* Thumbnail */}
+                        <div className="w-full bg-gray-900 flex items-center justify-center" style={{ aspectRatio: '3/2' }}>
+                          {entry.thumbnail
+                            ? <img src={`data:image/svg+xml;base64,${btoa(entry.thumbnail)}`} alt={entry.name} className="w-full h-full object-contain" draggable={false} />
+                            : <div className="text-gray-600 text-xs text-center px-2">{entry.name}</div>
+                          }
+                        </div>
+
+                        {/* Info + actions */}
+                        <div className="px-3 py-2">
+                          <div className="text-white text-sm font-medium truncate" title={entry.name}>{entry.name}</div>
+                          <div className="text-gray-400 text-xs mt-0.5">{t('recentProjectsSaved').replace('{date}', new Date(entry.savedAt).toLocaleDateString())}</div>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              className="flex-1 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs font-semibold"
+                              onClick={(ev) => { ev.stopPropagation(); doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); }); }}
+                            >{t('recentProjectsLoadBtn')}</button>
+                            <button
+                              className="py-1 px-2 rounded bg-gray-600 hover:bg-red-700 text-gray-300 hover:text-white text-xs"
+                              title={t('recentProjectsDeleteBtn')}
+                              onClick={(ev) => { ev.stopPropagation(); removeEntry(entry.id); }}
+                            >✕</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer — Browse button */}
+              <div className="flex justify-between items-center px-5 py-4 border-t border-gray-600 flex-shrink-0">
+                <div className="text-gray-500 text-xs">{recents.length > 0 ? `${recents.length} / 20` : ''}</div>
+                <button
+                  onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); })}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg border border-gray-500"
+                >
+                  <IconLoad size={14} />
+                  {t('recentProjectsBrowse')}
+                </button>
+              </div>
+            </div>
+
+            {/* Inline confirm overlay for non-empty canvas */}
+            {showRecentLoadConfirm && (
+              <>
+                <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 10012 }} />
+                <div className="fixed bg-gray-800 rounded-lg p-6 border border-gray-600 shadow-2xl"
+                  style={{ zIndex: 10013, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(360px, 92vw)' }}>
+                  <h2 className="text-white font-bold text-base mb-2">{t('recentProjectsLoadConfirmTitle')}</h2>
+                  <p className="text-gray-300 text-sm mb-5">{t('recentProjectsLoadConfirmBody')}</p>
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={() => setShowRecentLoadConfirm(false)}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm">
+                      {t('recentProjectsLoadConfirmCancel')}
+                    </button>
+                    <button onClick={() => {
+                      setShowRecentLoadConfirm(false);
+                      setShowRecentProjectsDialog(false);
+                      pendingRecentLoad?.();
+                    }}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-sm">
+                      {t('recentProjectsLoadConfirmOk')}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        );
+      })()}
+
       {showLoadConfirmDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-gray-600 shadow-2xl">
@@ -14698,7 +15662,7 @@ const TattingDesigner = () => {
               <button
                 onClick={() => {
                   setShowLoadConfirmDialog(false);
-                  loadInputRef.current?.click();
+                  loadProject();
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
               >
@@ -14744,45 +15708,7 @@ const TattingDesigner = () => {
         </div>
       )}
 
-      {/* Disclaimer Modal - Shows on startup */}
-      {showDisclaimer && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-3">
-          <div className="bg-gray-800 rounded-lg max-w-sm w-full border-2 border-yellow-500 flex flex-col"
-            style={{ padding: '16px' }}>
-            <h2 className="text-lg font-bold text-yellow-400 mb-1 text-center">{t('disclaimerTitle')}</h2>
-            <p className="text-center text-gray-400 text-xs mb-3">{t('disclaimerVersion')}</p>
-            <div className="text-gray-200 space-y-1 mb-4 leading-snug text-sm">
-              <p>{t('disclaimerBody2')}</p>
-              <p>{t('disclaimerBody3')}</p>
-              <p className="text-red-300 font-semibold">{t('disclaimerBody4')}</p>
-              <p className="text-gray-400 text-xs text-center mt-2">{t('disclaimerCopyright')}</p>
-            </div>
-            {/* Don't show again checkbox */}
-            <label className="flex items-center gap-2 mb-3 cursor-pointer text-gray-300 text-sm select-none">
-              <input
-                type="checkbox"
-                id="disclaimer-skip"
-                className="w-4 h-4 accent-blue-500"
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    localStorage.setItem('tcad_seen_version', APP_VERSION);
-                  } else {
-                    localStorage.removeItem('tcad_seen_version');
-                  }
-                }}
-              />
-              {t('disclaimerDontShow')}
-            </label>
-            <button
-              onClick={() => setShowDisclaimer(false)}
-              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded font-semibold text-sm"
-              style={{ minHeight: '44px', touchAction: 'manipulation' }}
-            >
-              {t('disclaimerContinue')}
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
     
     {/* File dropdown menu - rendered at top level to avoid clipping */}
@@ -14800,6 +15726,8 @@ const TattingDesigner = () => {
             return {
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
+              maxHeight: '80vh',
+              overflowY: 'auto',
               ...(rect && spaceRight < menuWidth
                 ? { right: `${window.innerWidth - rect.right}px` }
                 : { left: rect ? `${rect.left}px` : '1rem' }),
@@ -14810,12 +15738,16 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
             <IconHelp size={16} /><span>{t('helpMenuHelp')}</span>
           </button>
+          <button onClick={() => { setShowUiGuide(true); setShowHelpMenu(false); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            <IconHelp size={16} /><span>{t('helpMenuUiGuide')}</span>
+          </button>
           <div className="border-t border-gray-600 my-1" />
           <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
             <span className="text-gray-300 text-base w-4 text-center flex-shrink-0">ℹ</span><span>{t('helpMenuAbout')}</span>
           </button>
-          <button onClick={() => { window.open('https://ko-fi.com/savarosacraft', '_blank'); setShowHelpMenu(false); }}
+          <button onClick={() => { openExternal('https://ko-fi.com/savarosacraft'); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
             <span className="text-red-400 w-4 text-center flex-shrink-0">♥</span><span>{t('helpMenuKofi')}</span>
           </button>
@@ -14842,11 +15774,15 @@ const TattingDesigner = () => {
           </div>
 
           <div className="px-5 py-5 space-y-5">
-            {/* Name + version */}
-            <div>
-              <div className="text-white font-bold text-xl">TattingCAD</div>
-              <div className="text-gray-400 text-sm">{t('aboutVersion')} {APP_VERSION}</div>
-            </div>
+            {/* Logo header */}
+            <img
+              src="./logo.png"
+              alt="TattingCAD"
+              className="w-full rounded-lg object-cover"
+              style={{ aspectRatio: '3/1' }}
+              draggable={false}
+            />
+            <div className="text-gray-400 text-sm text-center">{t('aboutVersion')} {APP_VERSION}</div>
 
             <p className="text-gray-300 text-sm leading-relaxed">{t('aboutDescription')}</p>
 
@@ -14860,13 +15796,13 @@ const TattingDesigner = () => {
             </div>
 
             {/* GitHub */}
-            <button onClick={() => window.open('https://github.com/SavarosaCraft/TattingCad', '_blank')}
+            <button onClick={() => openExternal('https://github.com/SavarosaCraft/TattingCad')}
               className="w-full py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm flex items-center justify-center gap-2 border border-gray-500">
               <span>⛯</span><span>{t('aboutGithub')}</span>
             </button>
 
             {/* Ko-fi */}
-            <button onClick={() => window.open('https://ko-fi.com/savarosacraft', '_blank')}
+            <button onClick={() => openExternal('https://ko-fi.com/savarosacraft')}
               className="w-full py-2 rounded-lg bg-red-900 hover:bg-red-800 text-white text-sm flex items-center justify-center gap-2 border border-red-700">
               <span>♥</span><span>{t('helpMenuKofi')}</span>
             </button>
@@ -14875,45 +15811,13 @@ const TattingDesigner = () => {
             <div className="border-t border-gray-600 pt-4">
               <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">{t('helpMenuCheckUpdate')}</div>
               {(() => {
-                const lastCheck = localStorage.getItem('tcad_update_last_check');
-                const lastCheckedStr = lastCheck
-                  ? new Date(parseInt(lastCheck, 10)).toLocaleDateString()
-                  : t('updateNeverChecked');
                 return (
                   <div className="flex items-center gap-3 flex-wrap">
-                    <div className="text-xs text-gray-400 flex-1">{t('updateLastChecked')}: {lastCheckedStr}</div>
-                    {updateCheckStatus === 'idle' && (
-                      <button
-                        onClick={async () => {
-                          setUpdateCheckStatus('checking');
-                          try {
-                            const res = await fetch('https://api.github.com/repos/SavarosaCraft/TattingCad/releases/latest', { headers: { Accept: 'application/vnd.github+json' } });
-                            if (!res.ok) { setUpdateCheckStatus('error'); return; }
-                            const data = await res.json();
-                            const latestTag: string = data.tag_name ?? '';
-                            const latestUrl: string = data.html_url ?? '';
-                            localStorage.setItem('tcad_update_last_check', String(Date.now()));
-                            const latestClean = latestTag.replace(/^v/i, '');
-                            if (!latestClean || latestClean === APP_VERSION) {
-                              setUpdateCheckStatus('uptodate');
-                            } else {
-                              setUpdateCheckStatus('idle');
-                              setUpdateNotice({ version: latestTag, url: latestUrl });
-                            }
-                          } catch { setUpdateCheckStatus('error'); }
-                        }}
-                        className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded"
-                      >{t('updateCheckNow')}</button>
-                    )}
-                    {updateCheckStatus === 'checking' && <span className="text-xs text-gray-400 italic">{t('updateChecking')}</span>}
-                    {updateCheckStatus === 'uptodate' && <span className="text-xs text-green-400">✓ {t('updateUpToDate').replace('{current}', APP_VERSION)}</span>}
-                    {updateCheckStatus === 'error' && <span className="text-xs text-red-400">✕ {t('updateError')}</span>}
-                    {updateNotice && (
-                      <div className="w-full mt-2 flex items-center gap-2 bg-blue-900 border border-blue-600 rounded p-2 text-xs">
-                        <span className="text-blue-300 flex-1">{t('updateAvailable')}: {updateNotice.version}</span>
-                        <button onClick={() => window.open(updateNotice.url, '_blank')} className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded font-semibold">{t('updateDownload')}</button>
-                      </div>
-                    )}
+                    <div className="text-xs text-gray-400 flex-1">{t('updateCurrentVersion').replace('{current}', APP_VERSION)}</div>
+                    <button
+                      onClick={() => openExternal('https://github.com/SavarosaCraft/TattingCad/releases/latest')}
+                      className="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded"
+                    >{t('updateCheckNow')}</button>
                   </div>
                 );
               })()}
@@ -14941,7 +15845,7 @@ const TattingDesigner = () => {
         
         {/* Dropdown menu - extremely high z-index to be above everything */}
         <div 
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[200px] max-h-[80vh] overflow-y-auto"
+          className="fixed bg-gray-700 rounded shadow-xl min-w-[200px]"
           onClick={(e) => e.stopPropagation()}
           style={(() => {
             const rect = fileButtonRef.current?.getBoundingClientRect();
@@ -14950,6 +15854,8 @@ const TattingDesigner = () => {
             return {
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
+              maxHeight: '80vh',
+              overflowY: 'auto',
               ...(rect && spaceRight < menuWidth
                 ? { right: `${window.innerWidth - rect.right}px` }
                 : { left: rect ? `${rect.left}px` : '1rem' }),
@@ -14982,12 +15888,18 @@ const TattingDesigner = () => {
           </button>
           <button
             onClick={() => {
+              saveProjectAs();
               setShowFileMenu(false);
-              if (elements.length > 0) {
-                setShowLoadConfirmDialog(true);
-              } else {
-                loadInputRef.current?.click();
-              }
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+          >
+            <IconSave size={16} />
+            <span>{t('fileSaveAs') || 'Save As…'}</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowFileMenu(false);
+              setShowRecentProjectsDialog(true);
             }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
@@ -15005,7 +15917,6 @@ const TattingDesigner = () => {
           >
             <IconExport size={16} />
             <span>{t('fileExportSvg')}</span>
-            <span className="ml-auto text-xs text-gray-400">→ PNG</span>
           </button>
           <button
             onClick={() => {
@@ -15033,7 +15944,7 @@ const TattingDesigner = () => {
         
         {/* Dropdown menu */}
         <div 
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[220px] max-h-[80vh] overflow-y-auto"
+          className="fixed bg-gray-700 rounded shadow-xl min-w-[220px]"
           onClick={(e) => e.stopPropagation()}
           style={(() => {
             const rect = arrangeButtonRef.current?.getBoundingClientRect();
@@ -15042,6 +15953,8 @@ const TattingDesigner = () => {
             return {
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
+              maxHeight: '80vh',
+              overflowY: 'auto',
               ...(rect && spaceRight < menuWidth
                 ? { right: `${window.innerWidth - rect.right}px` }
                 : { left: rect ? `${rect.left}px` : '1rem' }),
@@ -15161,18 +16074,92 @@ const TattingDesigner = () => {
           {/* Polar Grid section */}
           <div className="px-3 py-1 text-xs text-gray-400 font-semibold">{t('arrangePolarHeader')}</div>
 
+          {polarGrids.length <= 1 ? (
+            <button
+              onClick={() => { centerToPolarGrid(); setShowArrangeMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+                (selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+            >
+              <IconPolarGrid size={16} />
+              <span>{t('arrangeCenterToPolarGrid')}</span>
+            </button>
+          ) : (
+            <>
+              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeCenterToPolarGrid')}</div>
+              {polarGrids.map(g => (
+                <button
+                  key={g.id}
+                  onClick={() => { centerToPolarGrid(g.id); setShowArrangeMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-white text-sm ${
+                    selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  disabled={selectedIds.length === 0}
+                >
+                  <IconPolarGrid size={14} className="text-gray-400" />
+                  <span>{g.name}</span>
+                </button>
+              ))}
+            </>
+          )}
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          {/* Array section — all three array types together */}
+          <div className="px-3 py-1 text-xs text-gray-400 font-semibold">{t('arrangeArrayHeader')}</div>
+
           <button
             onClick={() => {
-              centerToPolarGrid();
+              const linked = selectedIds.length > 0 ? (() => {
+                const els = elements.filter(e => selectedIds.includes(e.id));
+                const gid = els[0]?.polarRotationGridId;
+                return gid && els.every(e => e.polarRotationGridId === gid) ? gid : null;
+              })() : null;
+              setPolarArrayPivotId(linked || (polarGrids.length > 0 ? polarGrids[0].id : 'selection'));
+              setPolarArrayCount(6);
+              setPolarArrayAngle(360);
+              setShowPolarArrayDialog(true);
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
-              (selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-            disabled={selectedIds.length === 0 || polarGrids.length === 0}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0}
           >
             <IconPolarGrid size={16} />
-            <span>{t('arrangeCenterToPolarGrid')}</span>
+            <span>{t('arrangePolarArray')}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setLinearArrayCount(4);
+              setLinearArrayAngle(0);
+              setLinearArraySpacing(60);
+              setLinearArrayRotStep(0);
+              setShowLinearArrayDialog(true);
+              setShowArrangeMenu(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0}
+          >
+            <IconCopy size={16} />
+            <span>{t('arrangeLinearArray')}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSpiralArrayCount(8);
+              setSpiralArrayType('archimedean');
+              setSpiralArrayGap(40);
+              setSpiralArrayGrowth(1.2);
+              setSpiralArrayRotate(true);
+              setShowSpiralArrayDialog(true);
+              setShowArrangeMenu(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0}
+          >
+            <IconCopy size={16} />
+            <span>{t('arrangeSpiralArray')}</span>
           </button>
         </div>
       </>
@@ -15200,6 +16187,8 @@ const TattingDesigner = () => {
             return {
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
+              maxHeight: '80vh',
+              overflowY: 'auto',
               ...(rect && spaceRight < menuWidth
                 ? { right: `${window.innerWidth - rect.right}px` }
                 : { left: rect ? `${rect.left}px` : '1rem' }),
@@ -15236,16 +16225,19 @@ const TattingDesigner = () => {
 
           <div className="border-t border-gray-600 my-1"></div>
 
-          {/* Show Unnumbered */}
+          {/* Tatting Order mode */}
           <button
             onClick={() => {
-              setShowUnnumbered(!showUnnumbered);
+              setActiveMode('tattingOrder');
+              setCurrentTool('select');
+              setSelectedIds([]);
+              setTattingOrderInput('');
               setShowViewMenu(false);
             }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
           >
-            {showUnnumbered ? <IconUnnumberedOff size={16} /> : <IconUnnumberedOn size={16} />}
-            <span>{t('fileShowUnnumbered')}</span>
+            <IconUnnumberedOn size={16} />
+            <span>{t('viewTattingOrder')}</span>
           </button>
 
           {/* Show Invalid Notation */}
@@ -15642,25 +16634,6 @@ const TattingDesigner = () => {
                             <button key={k}
                               onClick={() => updateBead(activeBead.id, { size: k })}
                               className={`px-3 py-1 rounded text-xs border ${activeBead.size === k ? 'bg-purple-600 border-purple-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}
-                            >{label}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3 mb-3">
-                        <span className="text-gray-300 text-sm w-16 pt-1">{t('beadShapeLabel')}</span>
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            { value: 'circle',       label: <span>●</span> },
-                            { value: 'square',       label: <span>■</span> },
-                            { value: 'rectangle',    label: <span>▬</span> },
-                            { value: 'diamond',      label: <span>◆</span> },
-                            { value: 'teardrop-up',  label: <IconShapeTeardrop size={14} /> },
-                            { value: 'teardrop-down',label: <span style={{display:'inline-block',transform:'scaleY(-1)'}}><IconShapeTeardrop size={14} /></span> },
-                          ].map(({ value, label }) => (
-                            <button key={value}
-                              onClick={() => updateBead(activeBead.id, { shape: value })}
-                              title={value}
-                              className={`px-2 py-1 rounded text-sm border ${(activeBead.shape || 'circle') === value ? 'bg-purple-600 border-purple-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}
                             >{label}</button>
                           ))}
                         </div>
@@ -16151,6 +17124,402 @@ const TattingDesigner = () => {
         </>
       );
     })()}
+
+    {/* ── Splash Screen ────────────────────────────────────────── */}
+    {showSplash && (
+      <>
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 bg-black bg-opacity-75"
+          style={{ zIndex: 2147483630 }}
+          onClick={() => setShowSplash(false)}
+        />
+        <div
+          className="fixed inset-0 flex items-center justify-center pointer-events-none"
+          style={{ zIndex: 2147483631 }}
+        >
+          <div
+            className="bg-gray-900 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
+            style={{ width: 'min(380px, 92vw)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Row 1: Logo — full width, 3:1 aspect ratio.
+                When update is due, logo becomes a clickable update notice.
+                Replace src with actual asset path when ready. */}
+            {updateReminderDue && !showUpdatePopup ? (
+              <button
+                onClick={() => setShowUpdatePopup(true)}
+                className="w-full relative overflow-hidden group"
+                style={{ aspectRatio: '3/1' }}
+                title="Click to see update options"
+              >
+                {/* Dimmed logo underneath */}
+                <img
+                  src="./logo.png"
+                  alt="TattingCAD"
+                  className="w-full h-full object-cover opacity-30"
+                  draggable={false}
+                />
+                {/* Update overlay */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-900 bg-opacity-60">
+                  <div className="text-blue-300 text-sm font-semibold">{t('splashUpdateOverlayTitle')}</div>
+                  <div className="text-gray-400 text-xs">{t('splashUpdateOverlayBody').replace('{version}', APP_VERSION)}</div>
+                </div>
+              </button>
+            ) : (
+              <div style={{ aspectRatio: '3/1' }}>
+                <img
+                  src="./logo.png"
+                  alt="TattingCAD"
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                />
+              </div>
+            )}
+
+            {/* Rows 2–3: 2×2 button grid — compact, no emojis */}
+            <div className="grid grid-cols-2 gap-1.5 px-3 py-3">
+              <button
+                onClick={() => setShowSplash(false)}
+                className="py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-semibold transition-colors"
+              >{t('splashNewProject')}</button>
+
+              <button
+                onClick={() => { setShowSplash(false); setTimeout(() => setShowRecentProjectsDialog(true), 50); }}
+                className="py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold transition-colors"
+              >{t('splashLoadProject')}</button>
+
+              <button
+                onClick={() => { loadFromAutosave(); setShowSplash(false); }}
+                disabled={!splashAutosave}
+                className={`py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  splashAutosave
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                    : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                }`}
+                title={splashAutosave ? `${splashAutosave.name} — ${splashAutosave.date}` : t('splashNoAutosave')}
+              >
+                {splashAutosave ? t('splashResume').replace('{name}', splashAutosave.name) : t('splashNoAutosave')}
+              </button>
+
+              <button
+                onClick={() => setShowSplash(false)}
+                className="py-2 rounded-lg bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-gray-200 text-xs font-semibold transition-colors"
+              >{t('splashGettingStarted')}</button>
+            </div>
+
+            {/* Row 4: navigable tips strip */}
+            <div className="flex items-center gap-2 px-3 pb-3">
+              <button
+                onClick={() => setSplashTipIndex(i => (i - 1 + SPLASH_TIP_KEYS.length) % SPLASH_TIP_KEYS.length)}
+                className="text-gray-500 hover:text-gray-300 text-sm leading-none flex-shrink-0 px-1"
+                title={t('splashTipPrev')}
+              >‹</button>
+              <div className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-2 min-h-[2.5rem] flex items-center">
+                <span className="text-gray-400 text-xs leading-relaxed">{t(SPLASH_TIP_KEYS[splashTipIndex])}</span>
+              </div>
+              <button
+                onClick={() => setSplashTipIndex(i => (i + 1) % SPLASH_TIP_KEYS.length)}
+                className="text-gray-500 hover:text-gray-300 text-sm leading-none flex-shrink-0 px-1"
+                title={t('splashTipNext')}
+              >›</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Update popup — appears over the splash when logo is clicked */}
+        {showUpdatePopup && (
+          <div
+            className="fixed inset-0 flex items-center justify-center pointer-events-none"
+            style={{ zIndex: 2147483632 }}
+          >
+            <div
+              className="bg-gray-800 border border-blue-700 rounded-xl shadow-2xl pointer-events-auto px-5 py-4 flex flex-col gap-3"
+              style={{ width: 'min(300px, 88vw)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="text-white text-sm font-semibold">{t('splashUpdatePopupTitle')}</div>
+              <div className="text-gray-400 text-xs leading-relaxed">
+                {t('splashUpdatePopupBody').replace('{version}', APP_VERSION)}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openExternal('https://github.com/SavarosaCraft/TattingCad/releases/latest')}
+                  className="flex-1 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-semibold"
+                >{t('splashUpdatePopupOpen')}</button>
+                <button
+                  onClick={() => {
+                    localStorage.setItem('tcad_update_seen', APP_VERSION);
+                    setShowUpdatePopup(false);
+                  }}
+                  className="flex-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs"
+                >{t('splashUpdatePopupDismiss')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )}
+
+    {/* ── Polar Array Dialog ────────────────────────────────────── */}
+    {showPolarArrayDialog && (
+      <>
+        {/* Backdrop — clicking it closes */}
+        <div
+          className="fixed inset-0 bg-black bg-opacity-60"
+          style={{ zIndex: 2147483640, opacity: polarArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}
+          onClick={() => setShowPolarArrayDialog(false)}
+        />
+
+        {/* Dialog panel */}
+        <div
+          className="fixed inset-0 flex items-center justify-center pointer-events-none"
+          style={{ zIndex: 2147483641, opacity: polarArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}
+        >
+          <div
+            className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5"
+            style={{ width: 'min(340px, 92vw)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Title */}
+            <div className="text-white font-semibold text-base">{t('polarArrayTitle')}</div>
+
+            {/* Count */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('polarArrayCount')}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={2}
+                  max={72}
+                  value={polarArrayCount}
+                  onChange={e => setPolarArrayCount(Math.max(2, Math.min(72, parseInt(e.target.value) || 2)))}
+                  className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                />
+                {/* Quick-pick buttons */}
+                {[4, 6, 8, 12].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setPolarArrayCount(n)}
+                    className={`px-2 py-1 rounded text-xs ${polarArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                  >{n}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fill angle */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('polarArrayAngle')}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={360}
+                  value={polarArrayAngle}
+                  onChange={e => setPolarArrayAngle(Math.max(1, Math.min(360, parseInt(e.target.value) || 360)))}
+                  className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                />
+                <button
+                  onClick={() => setPolarArrayAngle(360)}
+                  className={`px-2 py-1 rounded text-xs ${polarArrayAngle === 360 ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                >360°</button>
+                <button
+                  onClick={() => setPolarArrayAngle(180)}
+                  className={`px-2 py-1 rounded text-xs ${polarArrayAngle === 180 ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                >180°</button>
+              </div>
+            </div>
+
+            {/* Pivot */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('polarArrayPivot')}</label>
+              <select
+                value={polarArrayPivotId || 'selection'}
+                onChange={e => setPolarArrayPivotId(e.target.value)}
+                className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+              >
+                <option value="selection">{t('polarArrayPivotSelection')}</option>
+                {polarGrids.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Step preview text */}
+            <div className="text-xs text-gray-400 text-center">
+              {polarArrayCount} copies · every {(polarArrayAngle / polarArrayCount).toFixed(1)}° · over {polarArrayAngle}°
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  executePolarArray(polarArrayCount, polarArrayAngle, polarArrayPivotId);
+                  setShowPolarArrayDialog(false);
+                }}
+                className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
+              >{t('polarArrayApply')}</button>
+              <button
+                onClick={() => setShowPolarArrayDialog(false)}
+                className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm"
+              >{t('confirmCancel')}</button>
+            </div>
+
+            {/* Peek button */}
+            <button
+              className="py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs select-none"
+              onMouseDown={() => setPolarArrayPeek(true)}
+              onMouseUp={() => setPolarArrayPeek(false)}
+              onMouseLeave={() => setPolarArrayPeek(false)}
+              onTouchStart={() => setPolarArrayPeek(true)}
+              onTouchEnd={() => setPolarArrayPeek(false)}
+            >👁 {t('polarArrayPeekHint')}</button>
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* ── Linear Array Dialog ───────────────────────────────────── */}
+    {showLinearArrayDialog && (
+      <>
+        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 2147483640, opacity: linearArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }} onClick={() => setShowLinearArrayDialog(false)} />
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483641, opacity: linearArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}>
+          <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5" style={{ width: 'min(340px, 92vw)' }} onClick={e => e.stopPropagation()}>
+            <div className="text-white font-semibold text-base">{t('linearArrayTitle')}</div>
+
+            {/* Count */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('linearArrayCount')}</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={2} max={100} value={linearArrayCount} onChange={e => setLinearArrayCount(Math.max(2, Math.min(100, parseInt(e.target.value) || 2)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                {[3,4,6,8].map(n => <button key={n} onClick={() => setLinearArrayCount(n)} className={`px-2 py-1 rounded text-xs ${linearArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}</button>)}
+              </div>
+            </div>
+
+            {/* Direction */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('linearArrayDirection')}</label>
+              <div className="flex items-center gap-2">
+                {[['H', 0], ['V', 90]].map(([label, val]) => (
+                  <button key={label} onClick={() => setLinearArrayAngle(val as number)} className={`px-3 py-1 rounded text-xs font-semibold ${linearArrayAngle === val ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{label}</button>
+                ))}
+                <input type="number" min={0} max={360} value={linearArrayAngle} onChange={e => setLinearArrayAngle(parseFloat(e.target.value) || 0)} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                <span className="text-gray-400 text-xs">°</span>
+              </div>
+            </div>
+
+            {/* Spacing */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('linearArraySpacing')}</label>
+              <input type="number" min={1} value={linearArraySpacing} onChange={e => setLinearArraySpacing(parseFloat(e.target.value) || 1)} className="w-28 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+            </div>
+
+            {/* Rotation per step */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('linearArrayRotStep')}</label>
+              <div className="flex items-center gap-2">
+                <input type="number" value={linearArrayRotStep} onChange={e => setLinearArrayRotStep(parseFloat(e.target.value) || 0)} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                <span className="text-gray-400 text-xs">°</span>
+                <button onClick={() => setLinearArrayRotStep(0)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">Reset</button>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div className="text-xs text-gray-400 text-center">
+              {linearArrayCount} copies · {linearArrayAngle}° · every {linearArraySpacing}px{linearArrayRotStep !== 0 ? ` · +${linearArrayRotStep}°/step` : ''}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => { executeLinearArray(linearArrayCount, linearArrayAngle, linearArraySpacing, linearArrayRotStep); setShowLinearArrayDialog(false); }} className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold">{t('linearArrayApply')}</button>
+              <button onClick={() => setShowLinearArrayDialog(false)} className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm">{t('confirmCancel')}</button>
+            </div>
+
+            {/* Peek button */}
+            <button
+              className="py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs select-none"
+              onMouseDown={() => setLinearArrayPeek(true)}
+              onMouseUp={() => setLinearArrayPeek(false)}
+              onMouseLeave={() => setLinearArrayPeek(false)}
+              onTouchStart={() => setLinearArrayPeek(true)}
+              onTouchEnd={() => setLinearArrayPeek(false)}
+            >👁 {t('linearArrayPeekHint')}</button>
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* ── Spiral Array Dialog ───────────────────────────────────── */}
+    {showSpiralArrayDialog && (
+      <>
+        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 2147483640, opacity: spiralArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }} onClick={() => setShowSpiralArrayDialog(false)} />
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483641, opacity: spiralArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}>
+          <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5" style={{ width: 'min(340px, 92vw)' }} onClick={e => e.stopPropagation()}>
+            <div className="text-white font-semibold text-base">{t('spiralArrayTitle')}</div>
+
+            {/* Count */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('spiralArrayCount')}</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={2} max={100} value={spiralArrayCount} onChange={e => setSpiralArrayCount(Math.max(2, Math.min(100, parseInt(e.target.value) || 2)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                {[4,6,8,12].map(n => <button key={n} onClick={() => setSpiralArrayCount(n)} className={`px-2 py-1 rounded text-xs ${spiralArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}</button>)}
+              </div>
+            </div>
+
+            {/* Angle step */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('spiralArrayAngleStep')}</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} max={180} value={spiralArrayAngleStep} onChange={e => setSpiralArrayAngleStep(Math.max(1, Math.min(180, parseFloat(e.target.value) || 30)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                {[15,30,45,60].map(n => <button key={n} onClick={() => setSpiralArrayAngleStep(n)} className={`px-2 py-1 rounded text-xs ${spiralArrayAngleStep === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}°</button>)}
+              </div>
+            </div>
+
+            {/* Type toggle */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">{t('spiralArrayType')}</label>
+              <div className="flex gap-2">
+                <button onClick={() => setSpiralArrayType('archimedean')} className={`flex-1 py-1.5 rounded text-xs font-semibold ${spiralArrayType === 'archimedean' ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{t('spiralArrayArchimedean')}</button>
+                <button onClick={() => setSpiralArrayType('geometric')} className={`flex-1 py-1.5 rounded text-xs font-semibold ${spiralArrayType === 'geometric' ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{t('spiralArrayGeometric')}</button>
+              </div>
+            </div>
+
+            {/* Type-specific fields */}
+            {spiralArrayType === 'archimedean' ? (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-400">{t('spiralArrayGap')}</label>
+                <input type="number" min={1} value={spiralArrayGap} onChange={e => setSpiralArrayGap(parseFloat(e.target.value) || 1)} className="w-28 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-400">{t('spiralArrayGrowth')}</label>
+                <input type="number" min={1.01} max={3} step={0.05} value={spiralArrayGrowth} onChange={e => setSpiralArrayGrowth(parseFloat(e.target.value) || 1.2)} className="w-28 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+              </div>
+            )}
+
+            {/* Rotate toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={spiralArrayRotate} onChange={e => setSpiralArrayRotate(e.target.checked)} className="accent-blue-500" />
+              <span className="text-xs text-gray-300">{t('spiralArrayRotate')}</span>
+            </label>
+
+            <div className="flex gap-2">
+              <button onClick={() => { executeSpiralArray(spiralArrayCount, spiralArrayType, spiralArrayGap, spiralArrayGrowth, spiralArrayRotate, spiralArrayAngleStep); setShowSpiralArrayDialog(false); }} className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold">{t('spiralArrayApply')}</button>
+              <button onClick={() => setShowSpiralArrayDialog(false)} className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm">{t('confirmCancel')}</button>
+            </div>
+
+            {/* Peek button */}
+            <button
+              className="py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs select-none"
+              onMouseDown={() => setSpiralArrayPeek(true)}
+              onMouseUp={() => setSpiralArrayPeek(false)}
+              onMouseLeave={() => setSpiralArrayPeek(false)}
+              onTouchStart={() => setSpiralArrayPeek(true)}
+              onTouchEnd={() => setSpiralArrayPeek(false)}
+            >👁 {t('spiralArrayPeekHint')}</button>
+          </div>
+        </div>
+      </>
+    )}
 
     {/* ── In-app Confirm Dialog ─────────────────────────────────── */}
     {confirmDialog && (
