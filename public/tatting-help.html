@@ -7,6 +7,7 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    html { background: #111827; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #111827;
@@ -73,12 +74,12 @@
     /* ── Typography helpers ── */
     h2 { font-size: 1.3rem; font-weight: 700; color: #60a5fa; margin-bottom: 1rem; }
     h3 { font-size: 1.05rem; font-weight: 600; color: #60a5fa; margin-bottom: 0.6rem; }
-    h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; }
+    h4 { font-size: 0.95rem; font-weight: 600; color: #93c5fd; margin-bottom: 0.5rem; }
     p { font-size: 0.875rem; line-height: 1.6; }
 
     .muted  { color: #6b7280; }
     .light  { color: #d1d5db; }
-    .white  { color: #fff; }
+    .white  { color: #e2e8f0; }
     .green  { color: #34d399; }
     .yellow { color: #fbbf24; }
     .blue   { color: #60a5fa; }
@@ -91,8 +92,8 @@
       font-family: 'Courier New', monospace;
       font-size: 0.8rem;
     }
-    em { font-style: italic; color: #d1d5db; }
-    strong { color: #f3f4f6; }
+    em { font-style: italic; color: #60a5fa; }
+    strong { color: #c4b5fd; }
 
     /* ── Cards ── */
     .card {
@@ -116,7 +117,7 @@
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 0.85rem; color: #fff;
     }
-    .step-body h5 { font-size: 0.9rem; font-weight: 600; color: #fff; margin-bottom: 0.25rem; }
+    .step-body h5 { font-size: 0.9rem; font-weight: 600; color: #a78bfa; margin-bottom: 0.25rem; }
     .step-body p  { font-size: 0.825rem; color: #d1d5db; }
 
     /* ── Tool entries ── */
@@ -231,7 +232,7 @@
 
     /* ── Essentials 2-col ── */
     .essentials { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem; }
-    .essentials .e-name { font-weight: 600; color: #fff; }
+    .essentials .e-name { font-weight: 600; color: #a78bfa; }
     .essentials .e-desc { color: #d1d5db; }
 
     /* ── Polar grid diagram ── */
@@ -276,6 +277,8 @@
       nav { display: none; }
 
       h2, h3, h4 { color: #111 !important; }
+      strong { color: #4c1d95 !important; }
+      em { color: #1d4ed8 !important; }
       p, li, div { color: #222 !important; }
       .muted  { color: #555 !important; }
       .light  { color: #222 !important; }
@@ -321,7 +324,7 @@
 <div id="topbar">
 <header>
   <div>
-    <h1>🧵 Tatting Pattern Designer</h1>
+    <h1>🧵 TattingCAD</h1>
     <span>Help &amp; Reference</span>
   </div>
   <div style="margin-left:auto; display:flex; gap:0.5rem;">
@@ -329,7 +332,7 @@
   </div>
 </header>
 
-<nav id="tabbar">
+<nav id="tabbar" style="display:flex; align-items:center;">
   <button class="active" onclick="show('quickstart',this)">🚀 Quick Start</button>
   <button onclick="show('shortcuts',this)">⌨️ Shortcuts</button>
   <button onclick="show('notation',this)">📝 Notation</button>
@@ -338,14 +341,38 @@
   <button onclick="show('tips',this)">💡 Tips</button>
   <button onclick="show('beads',this)">🪩 Beads</button>
   <button onclick="show('polargrid',this)">🔵 Polar Grid</button>
+
+<div style="margin-left:auto; display:flex; align-items:center; gap:0.4rem; padding-right:0.5rem;">
+  <input id="searchBox" type="text" placeholder="Search…" 
+    oninput="runSearch(this.value)"
+    style="background:#111827;border:1px solid #374151;color:#d1d5db;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.8rem;width:160px;" />
+
+  <button id="nextBtn" onclick="nextMatch()" disabled
+    style="background:#374151;border:none;color:#9ca3af;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
+    Next
+  </button>
+
+  <button onclick="clearSearch()" 
+    style="background:#374151;border:none;color:#d1d5db;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
+    ✕
+  </button>
+</div>
 </nav>
 </div>
 
 <main>
-
+<div id="searchResults" style="
+  display:none;
+  margin-bottom:1rem;
+  background:#1f2937;
+  border:1px solid #374151;
+  border-radius:8px;
+  padding:0.75rem;
+  font-size:0.85rem;">
+</div>
 <!-- ══════════════════════════════ QUICK START ══════════════════════════════ -->
 <section id="tab-quickstart" class="tab-panel active">
-  <h2>Welcome to Tatting Pattern Designer!</h2>
+  <h2>Welcome to TattingCAD!</h2>
   <p class="light" style="margin-bottom:1.5rem;">Create beautiful tatting patterns with this digital design tool.</p>
 
   <div class="card">
@@ -355,27 +382,27 @@
         <div class="step-num">1</div>
         <div class="step-body">
           <h5>Add Your First Ring or Chain</h5>
-          <p>Use the left toolbar buttons or click the canvas to add elements. Rings are for closed loops, chains connect elements.</p>
+          <p>Use the left toolbar buttons to add elements. Rings, Chains, SplitRings all at the touch of a button.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
         <div class="step-body">
           <h5>Write Notation</h5>
-          <p>Select an element and type notation like <code class="code-inline">r: 5ds-p-5ds</code> in the properties panel. The pattern updates automatically!</p>
+          <p>Select an element and type notation like <code class="code-inline">r: 5ds-p-5ds</code> in the properties panel. The pattern updates automatically according to the stitch count!</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
         <div class="step-body">
           <h5>Add Picots &amp; Joins</h5>
-          <p>Use <code class="code-inline">p</code> for picots, <code class="code-inline">jp</code> for join points (green → yellow when connected), <code class="code-inline">gp</code> for guide points, <code class="code-inline">jpg</code> for guide joined picots.</p>
+          <p>Use <code class="code-inline">p</code> for picots, <code class="code-inline">jp</code> for join points, <code class="code-inline">gp</code> for guide points, <code class="code-inline">jpg</code> for guide joined picots.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">4</div>
         <div class="step-body">
-          <h5>Assign Materials</h5>
+          <h5>Assign Materials / Colors</h5>
           <p>Open <strong>Options → Materials…</strong> to create thread materials with colors or gradients, then assign them to elements from the property bar.</p>
         </div>
       </div>
@@ -383,7 +410,14 @@
         <div class="step-num">5</div>
         <div class="step-body">
           <h5>Save &amp; Export</h5>
-          <p>Click <span class="blue">Save</span> to download your project as a <code class="code-inline">.json</code> file, or export as SVG for printing and sharing.</p>
+          <p>Click <span class="blue">Save</span> to save your project as a <code class="code-inline">.json</code> file, or export as SVG for printing and sharing.</p>
+        </div>
+      </div>
+	  <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <h5>Sharing Your Pattern</h5>
+          <p>Click <span class="blue">File → Output notation to clipboard</span> to get all your notation in one place. You can enhance the results by assigning the order of tatting using <span class="blue">View → Tatting order</span> and by assigning real world values to the program under <span class="blue">Options → Thread Properties</span>. </p>
         </div>
       </div>
     </div>
@@ -1068,22 +1102,195 @@
 </main>
 
 <script>
-  function show(tab, btn) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('#tabbar button').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
+// ── TAB SYSTEM ─────────────────────────────────────────────
+
+function show(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.remove('active'));
+
+  const panel = document.getElementById('tab-' + tab);
+  const btn = document.querySelector(`#tabbar button[data-tab="${tab}"]`);
+
+  if (panel) panel.classList.add('active');
+
+  if (btn) {
     btn.classList.add('active');
-    // Scroll tab into view on mobile
     btn.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
   }
+}
 
-  // Support ?tab=beads in URL for direct linking
-  const params = new URLSearchParams(location.search);
-  const t = params.get('tab');
-  if (t) {
-    const btn = [...document.querySelectorAll('#tabbar button')].find(b => b.getAttribute('onclick')?.includes("'" + t + "'"));
-    if (btn) show(t, btn);
+// convert existing inline onclick buttons → data-tab system
+document.querySelectorAll('#tabbar button').forEach(btn => {
+  const match = btn.getAttribute('onclick')?.match(/'([^']+)'/);
+  if (match) {
+    btn.dataset.tab = match[1];
+    btn.onclick = () => show(match[1]);
   }
+});
+
+// support ?tab=...
+const params = new URLSearchParams(location.search);
+const t = params.get('tab');
+if (t) show(t);
+
+
+// ── SEARCH SYSTEM ─────────────────────────────────────────
+
+let allMatches = [];
+let currentIndex = -1;
+
+function clearHighlights() {
+  document.querySelectorAll('.search-hit').forEach(el => {
+    el.replaceWith(document.createTextNode(el.textContent));
+  });
+}
+
+function highlight(panel, query) {
+  const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+  let node;
+
+  while ((node = walker.nextNode())) {
+    const text = node.nodeValue;
+    const idx = text.toLowerCase().indexOf(query);
+
+    if (idx !== -1) {
+      const span = document.createElement('span');
+      span.className = 'search-hit';
+      span.style.background = '#fbbf24';
+      span.style.color = '#111';
+
+      const before = text.slice(0, idx);
+      const match = text.slice(idx, idx + query.length);
+      const after = text.slice(idx + query.length);
+
+      span.textContent = match;
+
+      const frag = document.createDocumentFragment();
+      if (before) frag.appendChild(document.createTextNode(before));
+      frag.appendChild(span);
+      if (after) frag.appendChild(document.createTextNode(after));
+
+      node.parentNode.replaceChild(frag, node);
+
+      allMatches.push({
+        el: span,
+        tab: panel.id.replace('tab-', '')
+      });
+    }
+  }
+}
+
+function runSearch(query) {
+  const q = query.toLowerCase().trim();
+  const resultsBox = document.getElementById('searchResults');
+  const nextBtn = document.getElementById('nextBtn');
+
+  clearHighlights();
+  allMatches = [];
+  currentIndex = -1;
+
+  if (!q) {
+    if (resultsBox) resultsBox.style.display = 'none';
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.style.color = "#6b7280";
+    }
+    return;
+  }
+
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    highlight(panel, q);
+  });
+
+  const total = allMatches.length;
+
+  if (!total) {
+    if (resultsBox) {
+      resultsBox.style.display = 'block';
+      resultsBox.textContent = 'No results found.';
+    }
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.style.color = "#6b7280";
+    }
+    return;
+  }
+
+  // enable Next button
+  if (nextBtn) {
+    nextBtn.disabled = false;
+    nextBtn.style.color = "#d1d5db";
+  }
+
+  // hide results panel (optional)
+  if (resultsBox) resultsBox.style.display = 'none';
+
+  jumpToMatch(0);
+}
+
+function jumpToMatch(index) {
+  if (!allMatches.length) return;
+
+  const item = allMatches[index];
+
+  show(item.tab);
+
+  setTimeout(() => {
+    item.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.el.style.outline = '2px solid #3b82f6';
+    setTimeout(() => item.el.style.outline = '', 1200);
+  }, 80);
+
+  currentIndex = index;
+}
+
+function nextMatch() {
+  if (!allMatches.length) return;
+
+  currentIndex = (currentIndex + 1) % allMatches.length;
+  jumpToMatch(currentIndex);
+}
+
+
+// ── CLEAR SEARCH ──────────────────────────────────────────
+
+function clearSearch() {
+  const input = document.getElementById('searchBox');
+  const resultsBox = document.getElementById('searchResults');
+  const nextBtn = document.getElementById('nextBtn');
+
+  if (input) input.value = '';
+
+  clearHighlights();
+  allMatches = [];
+  currentIndex = -1;
+
+  if (resultsBox) {
+    resultsBox.style.display = 'none';
+    resultsBox.innerHTML = '';
+  }
+
+  if (nextBtn) {
+    nextBtn.disabled = true;
+    nextBtn.style.color = "#6b7280";
+  }
+}
+
+
+// ── OPTIONAL KEYBOARD SUPPORT ─────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('searchBox');
+
+  if (input) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') nextMatch();
+      if (e.key === 'Escape') clearSearch();
+    });
+  }
+});
 </script>
+
+
 </body>
 </html>

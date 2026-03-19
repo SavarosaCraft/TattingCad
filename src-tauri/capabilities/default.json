@@ -7,9 +7,15 @@
   ],
   "permissions": [
     "core:default",
-"dialog:default",
-"fs:default",
-"fs:allow-write-text-file",
-"fs:allow-read-text-file"
+    "dialog:default",
+    "fs:default",
+    "fs:allow-write-text-file",
+    "fs:allow-read-text-file",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://**" }
+      ]
+    }
   ]
 }

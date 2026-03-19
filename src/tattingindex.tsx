@@ -229,6 +229,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
+const logoUrl = '/logo.png';
 
 // Collision-safe unique ID generator — replaces Date.now()+Math.random() everywhere.
 const generateId = (): string => crypto.randomUUID();
@@ -720,6 +722,19 @@ const LANGUAGES_FALLBACK: Record<string, string> = {
   en: 'English',
 };
 
+// Colors cycled through for order group badges (canvas + SVG export).
+// Each entry is [fillColor, strokeColor] — dark stroke so badges stay readable on any bg.
+const ORDER_GROUP_COLORS: [string, string][] = [
+  ['#FFD700', '#000000'], // gold      (Round 1 — matches legacy ungrouped color)
+  ['#38BDF8', '#003366'], // sky blue  (Round 2)
+  ['#F472B6', '#5C0030'], // pink      (Round 3)
+  ['#4ADE80', '#004420'], // green     (Round 4)
+  ['#FB923C', '#5C1A00'], // orange    (Round 5)
+  ['#A78BFA', '#2D0060'], // violet    (Round 6)
+  ['#F87171', '#5C0000'], // red       (Round 7)
+  ['#34D399', '#003322'], // teal      (Round 8)
+];
+
 const TRANSLATIONS: Record<string, Record<string, string>> = {
   en: {
 
@@ -796,6 +811,15 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tattingOrderConflictShift: 'Shift all higher numbers up',
     tattingOrderConflictCancel: 'Cancel',
     tattingOrderNumberLabel: 'Order #',
+    tattingOrderGroup: 'Group',
+    tattingOrderGroupNew: '+ New Group',
+    tattingOrderGroupNamePlaceholder: 'Group name…',
+    tattingOrderGroupDefault: 'Round {n}',
+    tattingOrderGroupRename: 'Rename',
+    tattingOrderGroupDelete: 'Delete Group',
+    tattingOrderGroupDeleteConfirm: 'Delete "{name}"? Elements keep their numbers but lose their group.',
+    tattingOrderUngrouped: 'Ungrouped',
+    tattingOrderAssignGroup: 'Assign to Group',
 
     // ── Arrange menu ─────────────────────────────────────────────────────────
     arrangeDuplicate: 'Duplicate in Place',
@@ -1053,6 +1077,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
     // ── Gradient picker ───────────────────────────────────────────────────────
     clickGradientPreview: 'Click a gradient to preview',
+    clickColorPreview: 'Click a color swatch to preview',
+    colorPageIndicator: 'Page {page} of {total} ({count} colors)',
+    rotateNudgePlus: 'Rotate +1° (hold to repeat)',
+    rotateNudgeMinus: 'Rotate -1° (hold to repeat)',
 
     // ── Notation hint / other ─────────────────────────────────────────────────
     notationHintFormat: 'offset:color,offset:color,...',
@@ -1066,6 +1094,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
     // ── Polar Grid panel ──────────────────────────────────────────────────────
     polarGridTitle: 'Polar Grids',
+    polarGridPeekHint: 'Hold to peek at canvas',
     propHideLabel: 'Hide notation label',
     propPolarRotation: 'Polar rotation center',
     propPolarRotationNone: 'Own center',
@@ -1201,7 +1230,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
     // ── About panel ───────────────────────────────────────────────────────────
     aboutTitle: 'About TattingCAD',
-    aboutDescription: 'A visual tatting pattern designer for creating and editing lace diagrams.',
+    aboutDescription: 'A visual designer tool for creating and editing needle and shuttle tatting patterns.',
     aboutVersion: 'Version',
     aboutLicenseHeader: 'License',
     aboutLicenseText: 'MIT License — Copyright © 2026 SavarosaCraft',
@@ -1214,6 +1243,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     updateCheckNow: 'Open releases page',
 
     // ── File / project load errors ────────────────────────────────────────────
+    loadErrFileNotFound: 'File not found — it may have been moved or deleted. Use the Browse button to locate it.',
     loadErrWrongFormat: 'Wrong file format — please select a .json file.',
     loadErrTooLarge: 'Failed to load project: file too large (max 10MB).',
     loadErrCorrupted: 'Failed to load project: corrupted file (invalid JSON).',
@@ -1412,21 +1442,19 @@ const loadThreadPresets = () => {
 };
 
 // Open an external URL in the system browser.
-// In a compiled Tauri app window.open() is blocked — use Tauri's opener plugin instead.
-// Falls back to window.open() when running in a normal browser (dev mode / web build).
+// Uses Tauri's invoke directly — no plugin-opener package import needed.
+// Falls back to window.open() in plain browser (invoke will throw without __TAURI__).
 const openExternal = (url: string) => {
-  try {
-    const w = window as any;
-    if (w.__TAURI__?.opener?.openUrl) {
-      w.__TAURI__.opener.openUrl(url);          // Tauri v2 (opener plugin)
-    } else if (w.__TAURI__?.shell?.open) {
-      w.__TAURI__.shell.open(url);              // Tauri v1 (shell plugin)
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');  // plain browser fallback
-    }
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  console.log('[openExternal] called with:', url);
+  console.log('[openExternal] __TAURI__ present:', !!(window as any).__TAURI__);
+  console.log('[openExternal] __TAURI_INTERNALS__ present:', !!(window as any).__TAURI_INTERNALS__);
+  invoke('plugin:opener|open_url', { url })
+    .then(() => console.log('[openExternal] invoke succeeded'))
+    .catch((err) => {
+      console.error('[openExternal] invoke failed:', err);
+      console.log('[openExternal] falling back to window.open');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    });
 };
 
 const loadActivePresetId = () => {
@@ -1483,7 +1511,6 @@ const ThreadPropertiesNumInput = ({ label, value, onChange = null, unit = 'mm', 
 };
 
 const TattingDesigner = () => {
-  const [isAppReady, setIsAppReady] = useState(false);
   const [elements, setElements] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [camera, setCamera] = useState(() => ({
@@ -1505,6 +1532,7 @@ const TattingDesigner = () => {
   const [beadLibrary, setBeadLibrary] = useState(DEFAULT_BEAD_LIBRARY);
   const [polarGrids, setPolarGrids] = useState(() => loadPolarGrids()); // Polar grid objects — globally persisted
   const [showPolarGridPanel, setShowPolarGridPanel] = useState(false);
+  const [polarGridPeek, setPolarGridPeek] = useState(false);
   const [selectedPolarGridId, setSelectedPolarGridId] = useState(null);
   const [selectedBEs, setSelectedBEs] = useState([]); // [{ elementId, picotId }] multi-select in beading mode
   const [beClipboard, setBeClipboard] = useState(null); // { beStructure, beIsJoint, coreBeads, picotBeads }
@@ -1525,6 +1553,14 @@ const TattingDesigner = () => {
   const [activeMode, setActiveMode] = useState(null); // 'picotJoin' | 'beading' | 'tattingOrder' | null — persists across pan/select tool switches
   const [tattingOrderConflict, setTattingOrderConflict] = useState<{ newNum: number; existingElId: string; targetElId: string } | null>(null);
   const [tattingOrderInput, setTattingOrderInput] = useState('');
+  // Order groups — array of { id, name } in display order. Color assigned by index (cycles through GROUP_COLORS).
+  const [orderGroups, setOrderGroups] = useState<{ id: string; name: string }[]>([]);
+  const [activeOrderGroupId, setActiveOrderGroupId] = useState<string | null>(null);
+  const [newGroupNameInput, setNewGroupNameInput] = useState('');
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
+  const [renameGroupInput, setRenameGroupInput] = useState('');
+  const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [bgColor, setBgColor] = useState<string>(() => {
     try { return localStorage.getItem('tcad_bg_color') || '#1F2937'; } catch { return '#1F2937'; }
   });
@@ -1631,7 +1667,7 @@ const TattingDesigner = () => {
   const [spiralArrayAngleStep, setSpiralArrayAngleStep] = useState(30); // degrees per copy (fixed, not 360/count)
   const [showJoinTip, setShowJoinTip] = useState(() => localStorage.getItem('tcad_seen_join_tip') !== '1');
   const [saveDialogName, setSaveDialogName] = useState(''); // NEW: temp name in save dialog
-  const APP_VERSION = '0.9.98';
+  const APP_VERSION = '1.0.0';
 
   const [showFileMenu, setShowFileMenu] = useState(false); // NEW: file operations dropdown menu
 
@@ -1646,13 +1682,13 @@ const TattingDesigner = () => {
     if (daysSinceInstall < 90) return false;
     return localStorage.getItem('tcad_update_seen') !== APP_VERSION;
   })();
-  const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false); // Now lives inside splash only
+  const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false);
 
-  // Splash screen — shown on every launch, absorbs autosave prompt + update reminder
+  // Splash screen — shown on every launch
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [showUpdatePopup, setShowUpdatePopup] = useState<boolean>(false);
 
-  // Autosave metadata — parsed once for the splash button label, not yet loaded
+  // Autosave metadata — parsed once for the splash button label
   const splashAutosave = (() => {
     try {
       const saved = localStorage.getItem('tatting-designer-autosave');
@@ -1663,7 +1699,7 @@ const TattingDesigner = () => {
     } catch { return null; }
   })();
 
-  // Tips — navigable with prev/next (plain keys, resolved via t() at render time)
+  // Tips — navigable with prev/next
   const SPLASH_TIP_KEYS = [
     'splashTip01', 'splashTip02', 'splashTip03', 'splashTip04', 'splashTip05',
     'splashTip06', 'splashTip07', 'splashTip08', 'splashTip09', 'splashTip10',
@@ -1735,6 +1771,7 @@ const TattingDesigner = () => {
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
   const lastFrameTimeRef = useRef(0); // For 30fps cap on realistic rendering
+  const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
   const dragOriginRef = useRef(null); // World position at drag start, for ortho axis lock
   const pendingMouseEventRef = useRef(null);  // Store latest mouse event for batching
   // Ref to always-current handleMouseMoveInternal — fixes stale RAF closure bug where
@@ -1772,12 +1809,6 @@ const TattingDesigner = () => {
     historyRef.current = history;
     historyIndexRef.current = historyIndex;
   }, [history, historyIndex]);
-
-  // Signal that React has fully initialised — clears the loading splash
-  useEffect(() => {
-    const id = setTimeout(() => setIsAppReady(true), 0);
-    return () => clearTimeout(id);
-  }, []);
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
@@ -1859,6 +1890,7 @@ const TattingDesigner = () => {
   const activeModeRef = useRef(activeMode);
   const selectedBEsRef = useRef(selectedBEs);
   const beClipboardRef = useRef(beClipboard);
+  const orderGroupsRef = useRef(orderGroups);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
   // PERFORMANCE: Persistent notation-parse cache. Keyed by notation string.
   // Survives stitchCache rebuilds (e.g. dsWidth change) — only re-parses when notation text changes.
@@ -1890,6 +1922,7 @@ const TattingDesigner = () => {
     activeModeRef.current = activeMode;
     selectedBEsRef.current = selectedBEs;
     beClipboardRef.current = beClipboard;
+    orderGroupsRef.current = orderGroups;
   });
 
   // Persist polar grids globally to localStorage whenever they change
@@ -1918,6 +1951,7 @@ const TattingDesigner = () => {
         renderMode: renderModeRef.current,
         patternNotes: patternNotesRef.current,
         materials: materialsRef.current,
+        orderGroups: orderGroupsRef.current,
         beadLibrary: beadLibraryRef.current,
         activeThreadPreset: threadPresetsRef.current.find(p => p.id === activePresetIdRef.current) || threadPresetsRef.current[0] || null
       };
@@ -1972,6 +2006,7 @@ const TattingDesigner = () => {
       setRenderMode(projectData.renderMode || 'schematic');
       setPatternNotes(projectData.patternNotes || '');
       if (projectData.materials) setMaterials(projectData.materials);
+      setOrderGroups(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
       if (projectData.activeThreadPreset) {
         const preset = projectData.activeThreadPreset;
         setThreadPresets(prev => {
@@ -3052,13 +3087,16 @@ const TattingDesigner = () => {
   const parseNotation = (notation, silent = false) => {
     try {
       if (!silent) setNotationError(null);
-      const match = notation.match(/^(r|c|sr|jk|fr):\s*(.+)$/i);
+      const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
       if (!match) {
         if (!silent) setNotationError('Invalid format');
         return null;
       }
 
       const type = match[1].toLowerCase();
+      const isSplitChain = type === 'sc';
+      // sc behaves identically to c — treat as chain for all parsing purposes
+      const effectiveType = isSplitChain ? 'c' : type;
       const pattern = match[2];
       let totalDS = 0;
       const picots = [];
@@ -3310,7 +3348,7 @@ const TattingDesigner = () => {
 
       totalDS = position;
       if (hasInvalidToken) return null;
-      return { type, stitchCount: totalDS, picots };
+      return { type: effectiveType, stitchCount: totalDS, picots, isSplitChain };
     } catch (err) {
       if (!silent) setNotationError('Parse error');
       return null;
@@ -3926,10 +3964,13 @@ const TattingDesigner = () => {
 
   // Clipboard helper — navigator.clipboard is blocked in some WebViews (e.g. Tauri Android)
   // Falls back to execCommand which works everywhere
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, elementCount?: number) => {
+    const successMsg = elementCount != null
+      ? `${t('notationCopied')} (${elementCount} elements)`
+      : t('notationCopied');
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        showLoadMsg('success', t('notationCopied'));
+        showLoadMsg('success', successMsg);
       }).catch(() => {
         // Fallback
         try {
@@ -3942,7 +3983,7 @@ const TattingDesigner = () => {
           ta.select();
           document.execCommand('copy');
           document.body.removeChild(ta);
-          showLoadMsg('success', t('notationCopied'));
+          showLoadMsg('success', successMsg);
         } catch {
           showLoadMsg('error', t('notationCopyFailed'));
         }
@@ -3958,7 +3999,7 @@ const TattingDesigner = () => {
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
-        showLoadMsg('success', t('notationCopied'));
+        showLoadMsg('success', successMsg);
       } catch {
         showLoadMsg('error', t('notationCopyFailed'));
       }
@@ -4898,9 +4939,20 @@ const TattingDesigner = () => {
 
   // ── Tatting Order helpers ─────────────────────────────────────────────────
 
+  // Returns [fillColor, strokeColor] for an element's order badge based on its group.
+  // Ungrouped elements use index 0 (gold) — matches the legacy single-color behavior.
+  const getGroupBadgeColor = (el): [string, string] => {
+    if (!el.orderGroup) return ORDER_GROUP_COLORS[0];
+    const idx = orderGroups.findIndex(g => g.id === el.orderGroup);
+    return ORDER_GROUP_COLORS[idx >= 0 ? idx % ORDER_GROUP_COLORS.length : 0];
+  };
+
   const getNextAvailableNumber = (): number => {
     const used = new Set(
       elements
+        .filter(e => activeOrderGroupId === null
+          ? (!e.orderGroup)           // ungrouped scope
+          : e.orderGroup === activeOrderGroupId) // group scope
         .map(e => e.orderNumber)
         .filter(n => n !== null && n !== undefined && String(n).trim() !== '')
         .map(n => parseInt(String(n), 10))
@@ -4914,14 +4966,18 @@ const TattingDesigner = () => {
   const assignOrderNumber = (targetElId: string, num: number) => {
     const existingEl = elements.find(
       e => e.id !== targetElId &&
-        parseInt(String(e.orderNumber), 10) === num
+        parseInt(String(e.orderNumber), 10) === num &&
+        // conflict only within the same group scope
+        (activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId)
     );
     if (existingEl) {
       setTattingOrderConflict({ newNum: num, existingElId: existingEl.id, targetElId });
       return;
     }
     setElements(prev => prev.map(e =>
-      e.id === targetElId ? { ...e, orderNumber: num } : e
+      e.id === targetElId
+        ? { ...e, orderNumber: num, orderGroup: activeOrderGroupId ?? undefined }
+        : e
     ));
     setTattingOrderInput('');
   };
@@ -4939,9 +4995,11 @@ const TattingDesigner = () => {
       }));
     } else if (action === 'shift') {
       setElements(prev => prev.map(e => {
-        if (e.id === targetElId) return { ...e, orderNumber: newNum };
+        if (e.id === targetElId) return { ...e, orderNumber: newNum, orderGroup: activeOrderGroupId ?? undefined };
+        // Only shift elements in the same group scope
+        const sameGroup = activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId;
         const n = parseInt(String(e.orderNumber), 10);
-        if (!isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
+        if (sameGroup && !isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
         return e;
       }));
     }
@@ -4970,6 +5028,8 @@ const TattingDesigner = () => {
     // Hide (don't delete) all polar grids — user can re-enable in the Polar Grid panel
     setPolarGrids(prev => prev.map(g => ({ ...g, visible: false })));
     setCurrentFilePath(null);
+    setOrderGroups([]);
+    setActiveOrderGroupId(null);
   };
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
@@ -5050,8 +5110,9 @@ const TattingDesigner = () => {
     renderMode,
     patternNotes,
     materials,
+    orderGroups,
     activeThreadPreset: threadPresets.find(p => p.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET,
-  }), [elements, picotConnections, camera, zoom, dsWidth, beadLibrary, polarGrids, selectedPolarGridId, bgColor, gridEnabled, customColors, referenceImage, refImageProps, renderMode, patternNotes, materials, threadPresets, activePresetId]);
+  }), [elements, picotConnections, camera, zoom, dsWidth, beadLibrary, polarGrids, selectedPolarGridId, bgColor, gridEnabled, customColors, referenceImage, refImageProps, renderMode, patternNotes, materials, orderGroups, threadPresets, activePresetId]);
 
   // Write to a known path — no dialog, used for Ctrl+S when file already exists
   const saveToPath = useCallback(async (filePath: string, finalName: string) => {
@@ -5061,40 +5122,37 @@ const TattingDesigner = () => {
     addToRecents(finalName, filePath, thumb);
   }, [buildProjectData, elements]);
 
-  // Show native Save As dialog then write — used for first save or explicit Save As
+  // Show native Save As dialog then write
   const performSave = useCallback(async (nameOverride?: string) => {
-    const finalName = (nameOverride ?? saveDialogName).trim() || 'Untitled Pattern';
-    setProjectName(finalName);
-    setShowSaveDialog(false);
+    const finalName = (nameOverride ?? projectName).trim() || 'Untitled Pattern';
+    try {
+      const filePath = await tauriSave({
+        title: 'Save Project',
+        defaultPath: `${finalName.replace(/[^a-z0-9]/gi, '_')}.json`,
+        filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
+      });
+      if (!filePath) return; // user cancelled
+      setProjectName(finalName);
+      await saveToPath(filePath, finalName);
+      setCurrentFilePath(filePath);
+    } catch (err) {
+      console.error('Save failed:', err);
+    }
+  }, [projectName, saveToPath]);
 
-    const filePath = await tauriSave({
-      title: 'Save Project',
-      defaultPath: `${finalName.replace(/[^a-z0-9]/gi, '_')}.json`,
-      filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
-    });
-    if (!filePath) return; // user cancelled
-
-    await saveToPath(filePath, finalName);
-    setCurrentFilePath(filePath);
-  }, [saveDialogName, saveToPath]);
-
-  // Ctrl+S entry point: silent save if path known, else show name dialog then Save As
+  // Ctrl+S: silent save if path known, else go straight to OS dialog
   const saveProject = useCallback(() => {
     if (currentFilePath) {
-      // Already saved before — write silently to the same file
       saveToPath(currentFilePath, projectName).catch(console.error);
     } else {
-      // First save — ask for a name then pick a location
-      setSaveDialogName(projectName);
-      setShowSaveDialog(true);
+      performSave();
     }
-  }, [currentFilePath, projectName, saveToPath]);
+  }, [currentFilePath, projectName, saveToPath, performSave]);
 
-  // Always shows Save As dialog regardless of currentFilePath
+  // Save As — always shows OS dialog
   const saveProjectAs = useCallback(() => {
-    setSaveDialogName(projectName);
-    setShowSaveDialog(true);
-  }, [projectName]);
+    performSave();
+  }, [performSave]);
 
   // Shared project data applier — used by both loadProject and recent-project quick-load
   const applyProjectData = useCallback((projectData: any, filePath: string) => {
@@ -5142,6 +5200,8 @@ const TattingDesigner = () => {
     setRenderMode(projectData.renderMode || 'schematic');
     setPatternNotes(projectData.patternNotes || '');
     setMaterials(projectData.materials || DEFAULT_MATERIALS);
+    setOrderGroups(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
+    setActiveOrderGroupId(null);
     if (Array.isArray(projectData.polarGrids)) {
       setPolarGrids(prev => {
         const existing = new Set(prev.map((g: any) => g.id));
@@ -5172,7 +5232,32 @@ const TattingDesigner = () => {
     addToRecents(projectData.name || 'Project', filePath, thumb);
   }, []);
 
-  // Load project — native OS open dialog
+  // Load directly from a known path — used by recent project cards (no OS dialog)
+  const loadFromPath = useCallback(async (filePath: string) => {
+    try {
+      const text = await readTextFile(filePath);
+      let projectData: any;
+      try {
+        projectData = JSON.parse(text);
+      } catch {
+        showLoadMsg('error', t('loadErrCorrupted'));
+        return;
+      }
+      applyProjectData(projectData, filePath);
+    } catch (error: any) {
+      // Likely moved or deleted — give a friendly message
+      const isNotFound = error.message?.toLowerCase().includes('not found') ||
+                         error.message?.toLowerCase().includes('no such file') ||
+                         error.code === 'NOT_FOUND';
+      if (isNotFound) {
+        showLoadMsg('error', t('loadErrFileNotFound'));
+      } else {
+        showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
+      }
+    }
+  }, [applyProjectData]);
+
+  // Load project — native OS open dialog (Browse button only)
   const loadProject = useCallback(async () => {
     const filePath = await tauriOpen({
       title: 'Open Project',
@@ -5349,6 +5434,13 @@ const TattingDesigner = () => {
       orderLayer.setAttribute('inkscape:groupmode', 'layer');
       const fontSize = Math.max(8, Math.round(width / 60)); // scale to drawing
       numberedEls.forEach(el => {
+        // Pick color by group index; ungrouped elements fall back to gold (index 0)
+        const groupIndex = el.orderGroup
+          ? orderGroups.findIndex(g => g.id === el.orderGroup)
+          : -1;
+        const [fillColor, strokeColor] = ORDER_GROUP_COLORS[
+          groupIndex >= 0 ? groupIndex % ORDER_GROUP_COLORS.length : 0
+        ];
         const bg = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         bg.setAttribute('x', String(el.center.x));
         bg.setAttribute('y', String(el.center.y));
@@ -5357,10 +5449,10 @@ const TattingDesigner = () => {
         bg.setAttribute('font-family', 'sans-serif');
         bg.setAttribute('font-size', String(fontSize));
         bg.setAttribute('font-weight', 'bold');
-        bg.setAttribute('stroke', '#000000');
+        bg.setAttribute('stroke', strokeColor);
         bg.setAttribute('stroke-width', '3');
         bg.setAttribute('paint-order', 'stroke');
-        bg.setAttribute('fill', '#FFD700');
+        bg.setAttribute('fill', fillColor);
         bg.textContent = String(el.orderNumber);
         orderLayer.appendChild(bg);
       });
@@ -5401,7 +5493,7 @@ const TattingDesigner = () => {
       const el = elementById.get(elementId);
       if (!el) return null;
       const num = el.orderNumber?.toString().trim();
-      const typeLabel = el.type === 'ring' ? 'R' : el.type === 'chain' ? 'CH' : null;
+      const typeLabel = el.type === 'ring' ? 'R' : el.type === 'chain' ? (el.isSplitChain ? 'SC' : 'CH') : null;
       if (!typeLabel) return null; // Lines are not referenced in jp output
       if (!num) return `${typeLabel}#?`;
       if (orderNumberCount[num] > 1) return `${typeLabel}#${num}⚠`;
@@ -5447,7 +5539,7 @@ const TattingDesigner = () => {
       // ── Type prefix ─────────────────────────────────────────────────────────
       const typePrefix = el.isSplitRing ? 'sr'
         : el.type === 'ring'  ? 'r'
-        : el.type === 'chain' ? 'c'
+        : el.type === 'chain' ? (el.isSplitChain ? 'sc' : 'c')
         : null;
       if (!typePrefix) return el.notation || '';
 
@@ -5458,9 +5550,13 @@ const TattingDesigner = () => {
         return m[1].toLowerCase() + m[2];
       };
 
-      // ── Sort picots by position, skip guide/guide-point picots ──────────────
+      // ── Sort picots by position ────────────────────────────────────────────
+      // jpg (isGuide + isJoint) → output as plain jp: it's a real join point,
+      //   the guide flag only affects how it renders on canvas (green vs orange).
+      // gp  (isGuidePoint, no arm) → skip: pure construction snap-dot, not a
+      //   tatting element. isGuidePoint && !isJoint is the exact gp signature.
       const picots = [...(el.picots || [])]
-        .filter(p => !p.isGuide && !p.isGuidePoint)
+        .filter(p => !(p.isGuidePoint && !p.isJoint))
         .sort((a, b) => a.stitchesBefore - b.stitchesBefore);
 
       const totalStitches = el.stitchCount;
@@ -5542,9 +5638,9 @@ const TattingDesigner = () => {
       if (hasAnyElements) {
         const unnumbered = elements.filter(el => el.type !== 'line');
         const list = unnumbered.map(el => {
-          const typeLabel = el.type === 'ring' ? (el.isSplitRing ? 'SR' : 'R') : 'CH';
+          const typeLabel = el.type === 'ring' ? (el.isSplitRing ? 'SR' : 'R') : (el.isSplitChain ? 'SC' : 'CH');
           const hint = el.notation
-            ? ' (' + el.notation.replace(/^(r|c|sr):\s*/i, '').slice(0, 35) + ')' : '';
+            ? ' (' + el.notation.replace(/^(r|c|sc|sr):\s*/i, '').slice(0, 35) + ')' : '';
           return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
         });
         fallbackHeader = `⚠ Some elements don't have an assigned order number:\n${list.join('\n')}`;
@@ -5556,21 +5652,73 @@ const TattingDesigner = () => {
       }
     }
 
-    // Warn about duplicates but don't abort
-    const dupNums = Object.entries(orderNumberCount)
-      .filter(([, count]) => count > 1)
-      .map(([num]) => num);
+    // Warn about duplicates but don't abort.
+    // Duplicate detection is now per-group: same number in same group = duplicate.
+    const groupDupNums: string[] = [];
+    {
+      // key = "groupId|num" (ungrouped uses "")
+      const groupNumCount: Record<string, number> = {};
+      orderedElements.forEach(item => {
+        const gKey = (item.element.orderGroup ?? '') + '|' + item.rawOrder;
+        groupNumCount[gKey] = (groupNumCount[gKey] || 0) + 1;
+      });
+      Object.entries(groupNumCount).forEach(([k, count]) => {
+        if (count > 1) {
+          const [, num] = k.split('|');
+          groupDupNums.push(num);
+        }
+      });
+    }
 
-    const patternLines = orderedElements.map(item => {
+    // Helper: render a single element line
+    const renderElementLine = (item) => {
       const el = item.element;
-      const dupWarning = orderNumberCount[item.rawOrder] > 1 ? ' ⚠DUPLICATE#' : '';
+      // Duplicate check is within-group — same number in same group scope
+      const gKey = (el.orderGroup ?? '') + '|' + item.rawOrder;
+      const isDup = orderedElements.filter(x =>
+        (x.element.orderGroup ?? '') + '|' + x.rawOrder === gKey
+      ).length > 1;
+      const dupWarning = isDup ? ' ⚠DUPLICATE#' : '';
       if (el.type === 'line') return `${item.rawOrder}${dupWarning}. [Line]`;
       const notationText = buildOutputNotation(el, el.id);
       return `${item.rawOrder}${dupWarning}. ${notationText}${el.rw ? ' RW' : ''}`;
-    });
+    };
 
-    if (dupNums.length > 0) {
-      patternLines.unshift(`⚠ Warning: duplicate order numbers: ${dupNums.join(', ')}`);
+    // Decide: grouped or flat output
+    const hasAnyGroup = orderedElements.some(item => item.element.orderGroup);
+    let patternBody: string;
+
+    if (hasAnyGroup) {
+      // ── Grouped output ─────────────────────────────────────────────────────
+      // Section order: orderGroups array order first, then ungrouped at the end
+      const sections: string[] = [];
+
+      for (const group of orderGroups) {
+        const groupItems = orderedElements.filter(item => item.element.orderGroup === group.id);
+        if (groupItems.length === 0) continue;
+        const header = `=== ${group.name} ===`;
+        const lines = groupItems.map(renderElementLine);
+        sections.push(header + '\n' + lines.join('\n'));
+      }
+
+      // Ungrouped elements (no orderGroup or orderGroup not found in array)
+      const knownGroupIds = new Set(orderGroups.map(g => g.id));
+      const ungroupedItems = orderedElements.filter(item =>
+        !item.element.orderGroup || !knownGroupIds.has(item.element.orderGroup)
+      );
+      if (ungroupedItems.length > 0) {
+        const lines = ungroupedItems.map(renderElementLine);
+        sections.push(`=== Ungrouped ===\n` + lines.join('\n'));
+      }
+
+      patternBody = sections.join('\n\n');
+    } else {
+      // ── Flat output (legacy — no groups used) ──────────────────────────────
+      const patternLines = orderedElements.map(renderElementLine);
+      if (groupDupNums.length > 0) {
+        patternLines.unshift(`⚠ Warning: duplicate order numbers: ${groupDupNums.join(', ')}`);
+      }
+      patternBody = patternLines.join('\n');
     }
 
     // Collect unnumbered rings + chains (lines without numbers are less meaningful to list)
@@ -5585,10 +5733,10 @@ const TattingDesigner = () => {
           const list = unnumberedElements.map(el => {
             const typeLabel = el.type === 'ring'
               ? (el.isSplitRing ? 'SR' : 'R')
-              : 'CH';
+              : (el.isSplitChain ? 'SC' : 'CH');
             // Show a short notation hint so user can identify the element
             const hint = el.notation
-              ? ' (' + el.notation.replace(/^(r|c|sr):\s*/i, '').slice(0, 35) + (el.notation.length > 40 ? '…' : '') + ')'
+              ? ' (' + el.notation.replace(/^(r|c|sc|sr):\s*/i, '').slice(0, 35) + (el.notation.length > 40 ? '…' : '') + ')'
               : '';
             return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
           });
@@ -5647,7 +5795,7 @@ const TattingDesigner = () => {
         return count;
       };
 
-      const tokens = notation.replace(/^(r|c|sr|ch):\s*/i, '').split(/[,\s\-]+/);
+      const tokens = notation.replace(/^(r|c|sc|sr|ch):\s*/i, '').split(/[,\s\-]+/);
       for (const tok of tokens) {
         // bc:SEQ — each bead in sequence = 1 DS on core, 0 working thread
         const bcMatch = tok.match(/^bc:([YZVyzv0-9]+)$/i);
@@ -5878,10 +6026,10 @@ const TattingDesigner = () => {
 
     const patternText = (fallbackHeader
       ? fallbackHeader + (threadBlock ? threadBlock : '') + beadBlock + notesBlock
-      : patternLines.join('\n') + unnumberedBlock + notesBlock + threadBlock + beadBlock);
+      : patternBody + unnumberedBlock + notesBlock + threadBlock + beadBlock);
 
-    copyToClipboard(patternText);
-  }, [elements, picotConnections, patternNotes, threadPresets, activePresetId, materials, dsWidth]);
+    copyToClipboard(patternText, orderedElements.length);
+  }, [elements, picotConnections, patternNotes, threadPresets, activePresetId, materials, dsWidth, orderGroups]);
 
   // Export as PNG
 
@@ -7994,7 +8142,7 @@ const TattingDesigner = () => {
     };
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [clipboard, pasteFromClipboard]);
+  }, [clipboard, pasteFromClipboard, saveProject]);
 
   const updateNotation = (notation, notationB = null, elementId = null) => {
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
@@ -8246,6 +8394,7 @@ const TattingDesigner = () => {
         stitchCount: parsed.stitchCount, 
         picots: restoreBEConfigs(mergedPicots, el.beConfigs),
         beConfigs: extractBEConfigs(restoreBEConfigs(mergedPicots, el.beConfigs)),
+        isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
         ...(Object.keys(newPathData).length > 0 ? newPathData : {})
       };
     }));
@@ -10120,50 +10269,12 @@ const TattingDesigner = () => {
     return result;
   };
 
-  if (!isAppReady) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0,
-        background: '#111827',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        gap: '28px',
-        fontFamily: 'system-ui, sans-serif',
-        color: '#F9FAFB',
-      }}>
-        {/* Logo mark — a spinning tatting ring with picots */}
-        <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg"
-          style={{ animation: 'tcad-spin 2.4s linear infinite' }}>
-          <style>{`@keyframes tcad-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-          <circle cx="36" cy="36" r="26" stroke="#4B5563" strokeWidth="6" fill="none"/>
-          <circle cx="36" cy="36" r="26" stroke="#60A5FA" strokeWidth="6" fill="none"
-            strokeDasharray="48 116" strokeLinecap="round"/>
-          <circle cx="36" cy="36" r="14" stroke="#374151" strokeWidth="4" fill="none"/>
-          <circle cx="36" cy="36" r="14" stroke="#93C5FD" strokeWidth="4" fill="none"
-            strokeDasharray="22 66" strokeLinecap="round"/>
-          {[[36,6],[66,36],[36,66],[6,36]].map(([cx,cy],i) => (
-            <circle key={i} cx={cx} cy={cy} r="3.5" fill="#60A5FA" opacity="0.7"/>
-          ))}
-        </svg>
-
-        <div style={{ textAlign: 'center', lineHeight: 1.3 }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.02em', color: '#F9FAFB' }}>
-            TattingCAD
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#9CA3AF', marginTop: '4px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            Loading…
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       {/* Load notification toast */}
       {loadMsg && (
         <div
-          className="fixed top-6 left-1/2 pointer-events-none"
+          className="fixed bottom-8 left-1/2 pointer-events-none"
           style={{ transform: 'translateX(-50%)', zIndex: 2147483647 }}
         >
           <div className={`flex items-center gap-3 px-5 py-3 rounded-lg shadow-2xl text-white font-semibold text-sm border ${
@@ -10179,9 +10290,10 @@ const TattingDesigner = () => {
 
       <style>{`
         /* Prevent browser interference with gestures */
-        body {
+        html, body {
           overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
           touch-action: none; /* Prevent browser zoom gestures */
+          overflow: hidden;
         }
 
         /* Force dark background + light text on <option> elements.
@@ -10929,20 +11041,221 @@ const TattingDesigner = () => {
             const numbered = elements.filter(e => e.orderNumber != null && String(e.orderNumber).trim() !== '').length;
             const total = elements.length;
 
+            // Active group object (null = Ungrouped scope)
+            const activeGroup = activeOrderGroupId
+              ? orderGroups.find(g => g.id === activeOrderGroupId) ?? null
+              : null;
+            const activeGroupIndex = activeGroup
+              ? orderGroups.findIndex(g => g.id === activeGroup.id)
+              : -1;
+            const [activeBadgeFill] = activeGroup
+              ? ORDER_GROUP_COLORS[activeGroupIndex % ORDER_GROUP_COLORS.length]
+              : ORDER_GROUP_COLORS[0]; // gold for ungrouped
+
+            // Per-group numbered count for the progress chip
+            const numberedInScope = elements.filter(e => {
+              const hasNum = e.orderNumber != null && String(e.orderNumber).trim() !== '';
+              if (!hasNum) return false;
+              return activeOrderGroupId === null
+                ? !e.orderGroup
+                : e.orderGroup === activeOrderGroupId;
+            }).length;
+            const totalInScope = elements.filter(e =>
+              activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId
+            ).length;
+
             return (
               <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
-                {/* Row 1: mode banner + progress + exit */}
-                <div className="flex items-center gap-3 flex-wrap">
+                {/* Row 1: mode banner + group bar + exit */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-emerald-700 border border-emerald-400 flex-shrink-0">
                     <IconUnnumberedOn size={16} />
                     <span className="font-bold text-sm text-white tracking-wide">{t('tattingOrderTitle')}</span>
                   </div>
-                  <span className="text-emerald-300 text-xs font-semibold">
-                    {t('tattingOrderProgress').replace('{numbered}', String(numbered)).replace('{total}', String(total))}
+
+                  {/* Group dropdown */}
+                  <div className="relative flex-shrink-0" style={{ zIndex: 200 }}>
+                    {/* Trigger button */}
+                    <button
+                      onClick={() => { setShowGroupDropdown(d => !d); setShowNewGroupInput(false); setRenamingGroupId(null); }}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold border border-gray-500 bg-gray-700 hover:bg-gray-600 text-gray-200"
+                      style={ activeGroup ? { borderColor: activeBadgeFill, color: activeBadgeFill } : {} }
+                    >
+                      <span>{activeGroup ? activeGroup.name : t('tattingOrderUngrouped')}</span>
+                      <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
+                    </button>
+
+                    {/* Dropdown panel */}
+                    {showGroupDropdown && (
+                      <>
+                        {/* Click-outside veil */}
+                        <div
+                          className="fixed inset-0"
+                          style={{ zIndex: -1 }}
+                          onClick={() => { setShowGroupDropdown(false); setRenamingGroupId(null); setShowNewGroupInput(false); }}
+                        />
+                        <div
+                          className="absolute left-0 top-full mt-1 rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
+                          style={{ backgroundColor: '#1f2937', zIndex: 300 }}
+                        >
+                          {/* Ungrouped row */}
+                          <button
+                            onClick={() => { setActiveOrderGroupId(null); setShowGroupDropdown(false); setShowNewGroupInput(false); setRenamingGroupId(null); }}
+                            className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${activeOrderGroupId === null ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
+                          >
+                            <span style={{ fontSize: '8px' }}>{activeOrderGroupId === null ? '●' : '○'}</span>
+                            {t('tattingOrderUngrouped')}
+                          </button>
+
+                          {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
+
+                          {/* Group rows */}
+                          {orderGroups.map((grp, gi) => {
+                            const [gpFill] = ORDER_GROUP_COLORS[gi % ORDER_GROUP_COLORS.length];
+                            const isActive = activeOrderGroupId === grp.id;
+                            const isRenaming = renamingGroupId === grp.id;
+
+                            return (
+                              <div key={grp.id} className="flex items-center gap-1 px-1 hover:bg-gray-700 group">
+                                {isRenaming ? (
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    value={renameGroupInput}
+                                    onChange={e => setRenameGroupInput(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') {
+                                        const name = renameGroupInput.trim() || grp.name;
+                                        setOrderGroups(prev => prev.map(g => g.id === grp.id ? { ...g, name } : g));
+                                        setRenamingGroupId(null);
+                                      }
+                                      if (e.key === 'Escape') setRenamingGroupId(null);
+                                    }}
+                                    onBlur={() => {
+                                      const name = renameGroupInput.trim() || grp.name;
+                                      setOrderGroups(prev => prev.map(g => g.id === grp.id ? { ...g, name } : g));
+                                      setRenamingGroupId(null);
+                                    }}
+                                    onClick={e => e.stopPropagation()}
+                                    className="flex-1 px-2 py-0.5 bg-gray-600 border rounded text-white text-xs my-0.5"
+                                    style={{ borderColor: gpFill }}
+                                  />
+                                ) : (
+                                  <button
+                                    className="flex-1 text-left px-2 py-1 text-xs flex items-center gap-2"
+                                    style={{ color: isActive ? gpFill : '#d1d5db' }}
+                                    onClick={() => { setActiveOrderGroupId(grp.id); setShowGroupDropdown(false); setShowNewGroupInput(false); }}
+                                  >
+                                    <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
+                                    <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
+                                  </button>
+                                )}
+                                {/* Pencil — only visible on the active row, always shown (not hover-only) */}
+                                {isActive && !isRenaming && (
+                                  <button
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setRenameGroupInput(grp.name);
+                                      setRenamingGroupId(grp.id);
+                                    }}
+                                    className="px-1 py-0.5 rounded text-gray-400 hover:text-white text-xs flex-shrink-0"
+                                    title={t('tattingOrderGroupRename')}
+                                  >✏️</button>
+                                )}
+                                {/* Delete — hover-reveal on all rows */}
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (window.confirm(t('tattingOrderGroupDeleteConfirm').replace('{name}', grp.name))) {
+                                      setElements(prev => prev.map(el =>
+                                        el.orderGroup === grp.id ? { ...el, orderGroup: undefined } : el
+                                      ));
+                                      setOrderGroups(prev => prev.filter(g => g.id !== grp.id));
+                                      if (activeOrderGroupId === grp.id) setActiveOrderGroupId(null);
+                                      setShowGroupDropdown(false);
+                                    }
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 px-1 py-0.5 rounded text-red-400 hover:text-red-200 text-xs flex-shrink-0"
+                                  title={t('tattingOrderGroupDelete')}
+                                >🗑</button>
+                              </div>
+                            );
+                          })}
+
+                          <div className="my-1 border-t border-gray-600" />
+
+                          {/* + New Group */}
+                          {showNewGroupInput ? (
+                            <div className="flex items-center gap-1 px-2 py-1">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={newGroupNameInput}
+                                onChange={e => setNewGroupNameInput(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    const name = newGroupNameInput.trim() ||
+                                      t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                                    const id = crypto.randomUUID();
+                                    setOrderGroups(prev => [...prev, { id, name }]);
+                                    setActiveOrderGroupId(id);
+                                    setNewGroupNameInput('');
+                                    setShowNewGroupInput(false);
+                                    setShowGroupDropdown(false);
+                                  }
+                                  if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupNameInput(''); }
+                                }}
+                                onClick={e => e.stopPropagation()}
+                                placeholder={t('tattingOrderGroupNamePlaceholder')}
+                                className="flex-1 px-2 py-0.5 bg-gray-600 border border-emerald-500 rounded text-white text-xs"
+                              />
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const name = newGroupNameInput.trim() ||
+                                    t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                                  const id = crypto.randomUUID();
+                                  setOrderGroups(prev => [...prev, { id, name }]);
+                                  setActiveOrderGroupId(id);
+                                  setNewGroupNameInput('');
+                                  setShowNewGroupInput(false);
+                                  setShowGroupDropdown(false);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs border border-emerald-500"
+                              >✓</button>
+                              <button
+                                onClick={e => { e.stopPropagation(); setShowNewGroupInput(false); setNewGroupNameInput(''); }}
+                                className="px-1.5 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs"
+                              >✕</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                setNewGroupNameInput(t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1)));
+                                setShowNewGroupInput(true);
+                              }}
+                              className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
+                            >
+                              {t('tattingOrderGroupNew')}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Progress in current scope */}
+                  <span className="text-xs font-semibold" style={{ color: activeBadgeFill }}>
+                    {t('tattingOrderProgress')
+                      .replace('{numbered}', String(numberedInScope))
+                      .replace('{total}', String(totalInScope))}
                   </span>
+
                   {!selectedEl && (
                     <span className="text-gray-400 text-xs">{t('tattingOrderSub')}</span>
                   )}
+
                   <div className="ml-auto flex-shrink-0">
                     <button
                       onClick={() => {
@@ -10951,6 +11264,8 @@ const TattingDesigner = () => {
                         ).length;
                         setActiveMode(null);
                         setSelectedIds([]);
+                        setShowNewGroupInput(false);
+                        setShowGroupDropdown(false);
                         if (unnumbered > 0) {
                           showLoadMsg('error', t('tattingOrderExitWarning').replace('{n}', String(unnumbered)));
                         }
@@ -11000,10 +11315,41 @@ const TattingDesigner = () => {
                     >
                       {t('tattingOrderAssignNext')} ({getNextAvailableNumber()})
                     </button>
+                    {/* Assign to Group */}
+                    <button
+                      onClick={() => {
+                        const hasNumber = selectedEl.orderNumber != null && String(selectedEl.orderNumber).trim() !== '';
+                        if (hasNumber) {
+                          // Just re-group, keep existing number as-is (no conflict check)
+                          setElements(prev => prev.map(e =>
+                            e.id === selectedEl.id
+                              ? { ...e, orderGroup: activeOrderGroupId ?? undefined }
+                              : e
+                          ));
+                        } else {
+                          // No number yet — assign group + next available in that group
+                          const next = getNextAvailableNumber();
+                          setElements(prev => prev.map(e =>
+                            e.id === selectedEl.id
+                              ? { ...e, orderGroup: activeOrderGroupId ?? undefined, orderNumber: next }
+                              : e
+                          ));
+                          setTattingOrderInput('');
+                        }
+                      }}
+                      className="px-3 py-1 rounded text-xs font-semibold border"
+                      style={{
+                        backgroundColor: activeBadgeFill + '33',
+                        borderColor: activeBadgeFill,
+                        color: activeBadgeFill,
+                      }}
+                    >
+                      {t('tattingOrderAssignGroup')}: {activeGroup ? activeGroup.name : t('tattingOrderUngrouped')}
+                    </button>
                     <button
                       onClick={() => {
                         setElements(prev => prev.map(e =>
-                          e.id === selectedEl.id ? { ...e, orderNumber: null } : e
+                          e.id === selectedEl.id ? { ...e, orderNumber: null, orderGroup: undefined } : e
                         ));
                         setTattingOrderInput('');
                       }}
@@ -11012,11 +11358,18 @@ const TattingDesigner = () => {
                     >
                       {t('tattingOrderClear')}
                     </button>
-                    {selectedEl.orderNumber && (
-                      <span className="text-emerald-400 text-xs">
-                        #{selectedEl.orderNumber}
-                      </span>
-                    )}
+                    {selectedEl.orderNumber && (() => {
+                      const selGi = selectedEl.orderGroup
+                        ? orderGroups.findIndex(g => g.id === selectedEl.orderGroup)
+                        : -1;
+                      const [selFill] = ORDER_GROUP_COLORS[selGi >= 0 ? selGi % ORDER_GROUP_COLORS.length : 0];
+                      const selGroupName = selGi >= 0 ? orderGroups[selGi]?.name : null;
+                      return (
+                        <span className="text-xs font-semibold" style={{ color: selFill }}>
+                          {selGroupName ? `${selGroupName} #` : '#'}{selectedEl.orderNumber}
+                        </span>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -11458,21 +11811,29 @@ const TattingDesigner = () => {
                   style={{width:'4.5ch', minWidth:'4.5ch'}}
                   placeholder="0°"
                 />
-                {/* ±1° nudge arrows */}
-                <div className="flex flex-col" style={{gap:'1px'}}>
-                  <button
-                    onClick={() => applySingleRotationDelta(selectedElement.id, 1)}
-                    className="px-1 bg-gray-700 hover:bg-gray-600 rounded-t text-gray-300 leading-none"
-                    style={{fontSize:'0.6rem', paddingTop:'2px', paddingBottom:'1px'}}
-                    title="Rotate +1°"
-                  >▲</button>
-                  <button
-                    onClick={() => applySingleRotationDelta(selectedElement.id, -1)}
-                    className="px-1 bg-gray-700 hover:bg-gray-600 rounded-b text-gray-300 leading-none"
-                    style={{fontSize:'0.6rem', paddingTop:'1px', paddingBottom:'2px'}}
-                    title="Rotate -1°"
-                  >▼</button>
-                </div>
+                {/* ±1° nudge arrows — side by side, press-and-hold to repeat */}
+                <button
+                  onMouseDown={() => {
+                    applySingleRotationDelta(selectedElement.id, 1);
+                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, 1), 80);
+                  }}
+                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
+                  style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
+                  title={t('rotateNudgePlus')}
+                >▲</button>
+                <button
+                  onMouseDown={() => {
+                    applySingleRotationDelta(selectedElement.id, -1);
+                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, -1), 80);
+                  }}
+                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
+                  style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
+                  title={t('rotateNudgeMinus')}
+                >▼</button>
                 <button
                   onClick={() => {
                     const currentRotation = selectedElement.rotation || 0;
@@ -12198,7 +12559,7 @@ const TattingDesigner = () => {
                   if (el.type === 'line') return 'line';
                   if (el.isSplitRing) return 'sr';
                   if (el.type === 'ring') return 'r';
-                  if (el.type === 'chain') return 'c';
+                  if (el.type === 'chain') return el.isSplitChain ? 'sc' : 'c';
                   return null;
                 };
 
@@ -12231,7 +12592,7 @@ const TattingDesigner = () => {
                 const doFlipV = () => flipElements(selectedIds,  0, flipPivotX, flipPivotY);
 
                 // Type label
-                const typeLabel = sameType === 'r' ? 'Rings' : sameType === 'c' ? 'Chains' : sameType === 'sr' ? 'Split Rings' : null;
+                const typeLabel = sameType === 'r' ? 'Rings' : sameType === 'c' ? 'Chains' : sameType === 'sc' ? 'Split Chains' : sameType === 'sr' ? 'Split Rings' : null;
 
                 return (
                   <>
@@ -12291,7 +12652,7 @@ const TattingDesigner = () => {
                           type="text"
                           defaultValue={prefillNotation ?? ''}
                           disabled={!allSameType}
-                          placeholder={allSameType ? (sameType === 'r' ? 'r: 5ds-p-5ds' : sameType === 'c' ? 'c: 5ds-p-5ds' : 'sr: 5ds-p-5ds') : 'Mixed types'}
+                          placeholder={allSameType ? (sameType === 'r' ? 'r: 5ds-p-5ds' : sameType === 'c' ? 'c: 5ds-p-5ds' : sameType === 'sc' ? 'sc: 5ds-p-5ds' : 'sr: 5ds-p-5ds') : 'Mixed types'}
                           title={allSameType ? 'Apply notation to all selected' : 'Select same-type elements to edit notation'}
                           onBlur={(e) => {
                             if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
@@ -12333,7 +12694,7 @@ const TattingDesigner = () => {
                               } else {
                                 newPaths = el.paths; // Chains: keep existing path shape, just update notation
                               }
-                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: newPaths ?? el.paths };
+                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false, paths: newPaths ?? el.paths };
                             }));
                           }}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.target.value = prefillNotation ?? ''; e.target.blur(); } }}
@@ -13510,22 +13871,26 @@ const TattingDesigner = () => {
                             G
                           </text>
                         )}
-                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (
-                          <text
-                            x={el.center.x}
-                            y={el.center.y}
-                            fill="#FFD700"
-                            fontSize={Math.round(notationFS * 1.57)}
-                            fontWeight="bold"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            stroke="#000000"
-                            strokeWidth="3"
-                            paintOrder="stroke"
-                          >
-                            {el.orderNumber}
-                          </text>
-                        )}
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
+                          const _gi = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
+                          const [_fill, _stroke] = ORDER_GROUP_COLORS[_gi >= 0 ? _gi % ORDER_GROUP_COLORS.length : 0];
+                          return (
+                            <text
+                              x={el.center.x}
+                              y={el.center.y}
+                              fill={_fill}
+                              fontSize={Math.round(notationFS * 1.57)}
+                              fontWeight="bold"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              stroke={_stroke}
+                              strokeWidth="3"
+                              paintOrder="stroke"
+                            >
+                              {el.orderNumber}
+                            </text>
+                          );
+                        })()}
                       </g>
                     );
                   }
@@ -13568,22 +13933,26 @@ const TattingDesigner = () => {
                         </text>
                       )}
                       <g key={`${el.id}-labels`}>{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
-                      {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (
-                        <text
-                          x={el.center.x}
-                          y={el.center.y}
-                          fill="#FFD700"
-                          fontSize={Math.round(notationFS * 1.57)}
-                          fontWeight="bold"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          stroke="#000000"
-                          strokeWidth="3"
-                          paintOrder="stroke"
-                        >
-                          {el.orderNumber}
-                        </text>
-                      )}
+                      {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
+                        const _gi = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
+                        const [_fill, _stroke] = ORDER_GROUP_COLORS[_gi >= 0 ? _gi % ORDER_GROUP_COLORS.length : 0];
+                        return (
+                          <text
+                            x={el.center.x}
+                            y={el.center.y}
+                            fill={_fill}
+                            fontSize={Math.round(notationFS * 1.57)}
+                            fontWeight="bold"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            stroke={_stroke}
+                            strokeWidth="3"
+                            paintOrder="stroke"
+                          >
+                            {el.orderNumber}
+                          </text>
+                        );
+                      })()}
                     </g>
                   );
                 }
@@ -13698,7 +14067,9 @@ const TattingDesigner = () => {
                             if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
                             acc += seg;
                           }
-                          return <text x={ox} y={oy} fill="#FFD700" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#000000" strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                          const _gi3 = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
+                          const [_f3, _s3] = ORDER_GROUP_COLORS[_gi3 >= 0 ? _gi3 % ORDER_GROUP_COLORS.length : 0];
+                          return <text x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                       </>
                     ) : (
@@ -13861,7 +14232,9 @@ const TattingDesigner = () => {
                                 acc += seg;
                               }
                             }
-                            return <text x={ox} y={oy} fill="#FFD700" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#000000" strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                            const _gi4 = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
+                            const [_f4, _s4] = ORDER_GROUP_COLORS[_gi4 >= 0 ? _gi4 % ORDER_GROUP_COLORS.length : 0];
+                            return <text x={ox} y={oy} fill={_f4} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s4} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                           })()}
                           {el.groupId && (
                             <text
@@ -14060,7 +14433,9 @@ const TattingDesigner = () => {
                               acc += seg;
                             }
                           }
-                          return <text x={ox} y={oy} fill="#FFD700" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#000000" strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                          const _gi5 = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
+                          const [_f5, _s5] = ORDER_GROUP_COLORS[_gi5 >= 0 ? _gi5 % ORDER_GROUP_COLORS.length : 0];
+                          return <text x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                         {el.groupId && (
                           <text
@@ -14609,14 +14984,7 @@ const TattingDesigner = () => {
             {/* Header */}
             <div className="flex justify-between items-center p-3 md:p-4 border-b border-gray-700 flex-shrink-0">
               <h2 className="text-white text-lg md:text-xl font-bold">{t('helpTitle')}</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openExternal(resolvedHelpUrl)}
-                  className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded"
-                  title={t('helpOpenTab')}
-                >{t('helpOpenInBrowser')}</button>
-                <button onClick={() => setShowHelp(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
-              </div>
+              <button onClick={() => setShowHelp(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
             {/* Help content — language-aware, falls back to English if localised file missing */}
             {helpUrlReady
@@ -14643,14 +15011,7 @@ const TattingDesigner = () => {
           >
             <div className="flex justify-between items-center p-3 md:p-4 border-b border-gray-700 flex-shrink-0">
               <h2 className="text-white text-lg md:text-xl font-bold">{t('helpMenuUiGuide')}</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openExternal(resolvedUiGuideUrl)}
-                  className="text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded"
-                  title={t('helpOpenTab')}
-                >{t('helpOpenInBrowser')}</button>
-                <button onClick={() => setShowUiGuide(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
-              </div>
+              <button onClick={() => setShowUiGuide(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
             {uiGuideUrlReady
               ? <iframe
@@ -15177,11 +15538,11 @@ const TattingDesigner = () => {
                               disabled={dmcPage === 0}
                               className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-600 disabled:hover:bg-gray-700"
                             >
-                              ← Prev
+                              {t('prevBtn')}
                             </button>
                             
                             <span className="text-gray-400 text-sm">
-                              Page {dmcPage + 1} of {Math.max(1, totalPages)} ({filteredColors.length} colors)
+                              {t('colorPageIndicator').replace('{page}', String(dmcPage + 1)).replace('{total}', String(Math.max(1, totalPages))).replace('{count}', String(filteredColors.length))}
                             </span>
                             
                             <button
@@ -15189,7 +15550,7 @@ const TattingDesigner = () => {
                               disabled={dmcPage >= totalPages - 1}
                               className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-600 disabled:hover:bg-gray-700"
                             >
-                              Next →
+                              {t('nextBtn')}
                             </button>
                           </div>
                           
@@ -15235,7 +15596,7 @@ const TattingDesigner = () => {
                                   </>
                                 ) : (
                                   <p className="text-gray-400 text-sm">
-                                    Click a color swatch to preview
+                                    {t('clickColorPreview')}
                                   </p>
                                 )}
                               </div>
@@ -15254,7 +15615,7 @@ const TattingDesigner = () => {
                 {/* Search bar */}
                 <input
                   type="text"
-                  placeholder="Search gradients by name or ID..."
+                  placeholder={t('colorSearchPlaceholder')}
                   value={gradientSearchTerm}
                   onChange={(e) => { setGradientSearchTerm(e.target.value); setGradientPage(0); }}
                   className="w-full px-3 py-2 bg-gray-700 text-white rounded mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -15327,9 +15688,9 @@ const TattingDesigner = () => {
                         ))}
                       </div>
                       <div className="flex items-center justify-center gap-2 mb-3" style={{ height: '2rem' }}>
-                        <button onClick={() => setGradientPage(p => Math.max(0, p - 1))} disabled={gradientPage === 0} className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 hover:bg-gray-600">← Prev</button>
-                        <span className="text-gray-400 text-sm">Page {gradientPage + 1} of {totalPages} ({filtered.length})</span>
-                        <button onClick={() => setGradientPage(p => Math.min(totalPages - 1, p + 1))} disabled={gradientPage >= totalPages - 1} className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 hover:bg-gray-600">Next →</button>
+                        <button onClick={() => setGradientPage(p => Math.max(0, p - 1))} disabled={gradientPage === 0} className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 hover:bg-gray-600">{t('prevBtn')}</button>
+                        <span className="text-gray-400 text-sm">{t('colorPageIndicator').replace('{page}', String(gradientPage + 1)).replace('{total}', String(totalPages)).replace('{count}', String(filtered.length))}</span>
+                        <button onClick={() => setGradientPage(p => Math.min(totalPages - 1, p + 1))} disabled={gradientPage >= totalPages - 1} className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 hover:bg-gray-600">{t('nextBtn')}</button>
                       </div>
                       {/* Preview */}
                       <div className="bg-gray-700 rounded p-3 border-2 border-gray-600">
@@ -15557,7 +15918,7 @@ const TattingDesigner = () => {
 
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
-                <h2 className="text-white font-bold text-lg">{t('recentProjectsTitle')}</h2>
+                <h2 className="text-gray-100 font-bold text-lg">{t('recentProjectsTitle')}</h2>
                 <button onClick={() => setShowRecentProjectsDialog(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
               </div>
 
@@ -15572,7 +15933,7 @@ const TattingDesigner = () => {
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                     {recents.map(entry => (
                       <div key={entry.id} className="bg-gray-700 rounded-lg overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors group cursor-pointer"
-                        onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); })}>
+                        onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); })}>
 
                         {/* Thumbnail */}
                         <div className="w-full bg-gray-900 flex items-center justify-center" style={{ aspectRatio: '3/2' }}>
@@ -15589,7 +15950,7 @@ const TattingDesigner = () => {
                           <div className="flex gap-2 mt-2">
                             <button
                               className="flex-1 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs font-semibold"
-                              onClick={(ev) => { ev.stopPropagation(); doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); }); }}
+                              onClick={(ev) => { ev.stopPropagation(); doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}
                             >{t('recentProjectsLoadBtn')}</button>
                             <button
                               className="py-1 px-2 rounded bg-gray-600 hover:bg-red-700 text-gray-300 hover:text-white text-xs"
@@ -15673,40 +16034,7 @@ const TattingDesigner = () => {
         </div>
       )}
 
-      {showSaveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
-            <h2 className="text-xl font-bold text-white mb-4">{t('saveDialogTitle')}</h2>
-            <label className="block text-gray-300 text-sm mb-2">{t('saveDialogLabel')}</label>
-            <input
-              type="text"
-              value={saveDialogName}
-              onChange={(e) => setSaveDialogName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') performSave();
-                if (e.key === 'Escape') setShowSaveDialog(false);
-              }}
-              className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none mb-4"
-              placeholder={t('saveDialogPlaceholder')}
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowSaveDialog(false)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-              >
-                {t('saveDialogCancel')}
-              </button>
-              <button
-                onClick={performSave}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
-              >
-                {t('saveDialogSave')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
 
     </div>
@@ -15724,6 +16052,7 @@ const TattingDesigner = () => {
             const menuWidth = 220;
             const spaceRight = rect ? window.innerWidth - rect.left : 0;
             return {
+              backgroundColor: '#374151',
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
               maxHeight: '80vh',
@@ -15735,25 +16064,25 @@ const TattingDesigner = () => {
           })()}
         >
           <button onClick={() => { setShowHelp(true); setShowHelpMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <IconHelp size={16} /><span>{t('helpMenuHelp')}</span>
           </button>
           <button onClick={() => { setShowUiGuide(true); setShowHelpMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <IconHelp size={16} /><span>{t('helpMenuUiGuide')}</span>
           </button>
           <div className="border-t border-gray-600 my-1" />
           <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <span className="text-gray-300 text-base w-4 text-center flex-shrink-0">ℹ</span><span>{t('helpMenuAbout')}</span>
           </button>
           <button onClick={() => { openExternal('https://ko-fi.com/savarosacraft'); setShowHelpMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <span className="text-red-400 w-4 text-center flex-shrink-0">♥</span><span>{t('helpMenuKofi')}</span>
           </button>
           <div className="border-t border-gray-600 my-1" />
           <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); setUpdateCheckStatus('idle'); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white">
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <span className="text-blue-300 w-4 text-center flex-shrink-0">↑</span><span>{t('helpMenuCheckUpdate')}</span>
           </button>
         </div>
@@ -15765,18 +16094,13 @@ const TattingDesigner = () => {
       <>
         <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 10002 }} onClick={() => setShowAbout(false)} />
         <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-          style={{ zIndex: 10003, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 95vw)', maxHeight: '95dvh', overflowY: 'auto' }}>
+          style={{ zIndex: 10003, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 95vw)', maxHeight: '95dvh', overflow: 'hidden' }}>
 
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600">
-            <h2 className="text-white font-bold text-lg">{t('aboutTitle')}</h2>
-            <button onClick={() => setShowAbout(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
-          </div>
 
-          <div className="px-5 py-5 space-y-5">
+          <div className="px-5 py-5 space-y-5 overflow-y-auto flex-1">
             {/* Logo header */}
             <img
-              src="./logo.png"
+              src={logoUrl}
               alt="TattingCAD"
               className="w-full rounded-lg object-cover"
               style={{ aspectRatio: '3/1' }}
@@ -15789,7 +16113,8 @@ const TattingDesigner = () => {
             {/* License */}
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('aboutLicenseHeader')}</div>
-              <div className="bg-gray-700 rounded p-3 text-xs text-gray-300 leading-relaxed space-y-2">
+              <div className="bg-gray-700 rounded p-3 text-xs text-gray-300 leading-relaxed space-y-2"
+                style={{ maxHeight: '120px', overflowY: 'auto' }}>
                 <div className="font-semibold">{t('aboutLicenseText')}</div>
                 <div className="text-gray-400">{t('aboutLicenseFull')}</div>
               </div>
@@ -15824,7 +16149,7 @@ const TattingDesigner = () => {
             </div>
           </div>
 
-          <div className="px-5 pb-5">
+          <div className="px-5 pb-5 flex-shrink-0">
             <button onClick={() => setShowAbout(false)}
               className="w-full py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm">
               {t('aboutClose')}
@@ -15852,6 +16177,7 @@ const TattingDesigner = () => {
             const menuWidth = 200;
             const spaceRight = rect ? window.innerWidth - rect.left : 0;
             return {
+              backgroundColor: '#374151',
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
               maxHeight: '80vh',
@@ -15868,7 +16194,7 @@ const TattingDesigner = () => {
               setShowFileMenu(false);
               setTimeout(() => newCanvas(), 0);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconNew size={16} />
             <span>{t('fileNew')}</span>
@@ -15880,7 +16206,7 @@ const TattingDesigner = () => {
               saveProject();
               setShowFileMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconSave size={16} />
             <span>{t('fileSave')}</span>
@@ -15891,7 +16217,7 @@ const TattingDesigner = () => {
               saveProjectAs();
               setShowFileMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconSave size={16} />
             <span>{t('fileSaveAs') || 'Save As…'}</span>
@@ -15901,7 +16227,7 @@ const TattingDesigner = () => {
               setShowFileMenu(false);
               setShowRecentProjectsDialog(true);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconLoad size={16} />
             <span>{t('fileLoad')}</span>
@@ -15912,7 +16238,7 @@ const TattingDesigner = () => {
               exportSVG();
               setShowFileMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
             title={t('fileExportSvgTitle')}
           >
             <IconExport size={16} />
@@ -15923,7 +16249,7 @@ const TattingDesigner = () => {
               generatePattern();
               setShowFileMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconDownload size={16} />
             <span>{t('fileOutputNotation')}</span>
@@ -15951,6 +16277,7 @@ const TattingDesigner = () => {
             const menuWidth = 220;
             const spaceRight = rect ? window.innerWidth - rect.left : 0;
             return {
+              backgroundColor: '#374151',
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
               maxHeight: '80vh',
@@ -15968,7 +16295,7 @@ const TattingDesigner = () => {
               duplicateInPlace();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length === 0}
@@ -15988,7 +16315,7 @@ const TattingDesigner = () => {
               alignLeft();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length < 2 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length < 2}
@@ -16002,7 +16329,7 @@ const TattingDesigner = () => {
               alignCenterHorizontal();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length < 2 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length < 2}
@@ -16016,7 +16343,7 @@ const TattingDesigner = () => {
               alignRight();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length < 2 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length < 2}
@@ -16032,7 +16359,7 @@ const TattingDesigner = () => {
               alignTop();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length < 2 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length < 2}
@@ -16046,7 +16373,7 @@ const TattingDesigner = () => {
               alignCenterVertical();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length < 2 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length < 2}
@@ -16060,7 +16387,7 @@ const TattingDesigner = () => {
               alignBottom();
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
               selectedIds.length < 2 ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             disabled={selectedIds.length < 2}
@@ -16077,7 +16404,7 @@ const TattingDesigner = () => {
           {polarGrids.length <= 1 ? (
             <button
               onClick={() => { centerToPolarGrid(); setShowArrangeMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${
+              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
                 (selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               disabled={selectedIds.length === 0 || polarGrids.length === 0}
@@ -16092,7 +16419,7 @@ const TattingDesigner = () => {
                 <button
                   key={g.id}
                   onClick={() => { centerToPolarGrid(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-white text-sm ${
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${
                     selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                   disabled={selectedIds.length === 0}
@@ -16122,7 +16449,7 @@ const TattingDesigner = () => {
               setShowPolarArrayDialog(true);
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={selectedIds.length === 0}
           >
             <IconPolarGrid size={16} />
@@ -16138,7 +16465,7 @@ const TattingDesigner = () => {
               setShowLinearArrayDialog(true);
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={selectedIds.length === 0}
           >
             <IconCopy size={16} />
@@ -16155,7 +16482,7 @@ const TattingDesigner = () => {
               setShowSpiralArrayDialog(true);
               setShowArrangeMenu(false);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={selectedIds.length === 0}
           >
             <IconCopy size={16} />
@@ -16185,6 +16512,7 @@ const TattingDesigner = () => {
             const menuWidth = 200;
             const spaceRight = rect ? window.innerWidth - rect.left : 0;
             return {
+              backgroundColor: '#374151',
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
               maxHeight: '80vh',
@@ -16199,7 +16527,7 @@ const TattingDesigner = () => {
           {/* Fit View — top of menu */}
           <button
             onClick={() => { fitAllElements(); setShowViewMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconFitView size={16} />
             <span>{t('viewFitView')}</span>
@@ -16217,7 +16545,7 @@ const TattingDesigner = () => {
               });
               setShowViewMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>{renderMode === 'schematic' ? <IconRenderRealistic size={16} /> : <IconRenderSchematic size={16} />}</span>
             <span>{renderMode === 'schematic' ? t('viewSwitchRealistic') : t('viewSwitchSchematic')}</span>
@@ -16234,7 +16562,7 @@ const TattingDesigner = () => {
               setTattingOrderInput('');
               setShowViewMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconUnnumberedOn size={16} />
             <span>{t('viewTattingOrder')}</span>
@@ -16246,7 +16574,7 @@ const TattingDesigner = () => {
               setShowInvalidNotation(!showInvalidNotation);
               setShowViewMenu(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             {showInvalidNotation ? <IconInvalidOff size={16} /> : <IconInvalidOn size={16} />}
             <span>{t('viewShowInvalidNotation')}</span>
@@ -16261,7 +16589,7 @@ const TattingDesigner = () => {
               localStorage.setItem('tcad_bg_color', next);
               setBgColor(next);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <div className="w-4 h-4 rounded border border-gray-500" style={{ backgroundColor: bgColor }}></div>
             <span>{t('optionsBgColor')}</span>
@@ -16272,7 +16600,7 @@ const TattingDesigner = () => {
             onClick={() => {
               setGridEnabled(!gridEnabled);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             {gridEnabled ? <IconGridOff size={16} /> : <IconGridOn size={16} />}
             <span>{t('optionsGrid')}</span>
@@ -16300,6 +16628,7 @@ const TattingDesigner = () => {
             const menuWidth = 200;
             const spaceRight = rect ? window.innerWidth - rect.left : 0;
             return {
+              backgroundColor: '#374151',
               zIndex: 9999,
               top: rect ? `${rect.bottom + 4}px` : '4rem',
               ...(rect && spaceRight < menuWidth
@@ -16312,7 +16641,7 @@ const TattingDesigner = () => {
           {/* Materials Manager */}
           <button
             onClick={() => { setShowMaterialsPanel(true); setShowOptionsMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>{t('viewMaterials')}</span>
           </button>
@@ -16320,7 +16649,7 @@ const TattingDesigner = () => {
           {/* Thread Properties */}
           <button
             onClick={() => { setShowThreadProperties(true); setShowOptionsMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>{t('viewThreadProperties')}</span>
           </button>
@@ -16328,7 +16657,7 @@ const TattingDesigner = () => {
           {/* Bead Library */}
           <button
             onClick={() => { setShowBeadLibrary(true); setShowOptionsMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>{t('viewBeadLibrary')}</span>
           </button>
@@ -16336,7 +16665,7 @@ const TattingDesigner = () => {
           {/* Polar Grids */}
           <button
             onClick={() => { setShowPolarGridPanel(true); setShowOptionsMenu(false); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>{t('viewPolarGrids')}</span>
           </button>
@@ -16344,7 +16673,7 @@ const TattingDesigner = () => {
           {/* Notation Font Size */}
           <div className="px-4 py-2">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-white text-sm">{t('optionsNotationSize')}</span>
+              <span className="text-gray-200 text-sm">{t('optionsNotationSize')}</span>
             </div>
             <div className="flex gap-1">
               {(['small', 'medium', 'large']).map(size => (
@@ -16365,7 +16694,7 @@ const TattingDesigner = () => {
           {/* UI Scale */}
           <div className="px-4 py-2">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-white text-sm">{t('viewUIScale')}</span>
+              <span className="text-gray-200 text-sm">{t('viewUIScale')}</span>
             </div>
             <div className="flex gap-1">
               {(['normal', 'large'] as const).map(s => (
@@ -16389,7 +16718,7 @@ const TattingDesigner = () => {
             onClick={() => {
               setSnapEnabled(!snapEnabled);
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>{t('optionsSnap')}</span>
             <span className="ml-auto">{snapEnabled ? <IconSnapOn size={16} /> : <IconSnapOff size={16} />}</span>
@@ -16402,7 +16731,7 @@ const TattingDesigner = () => {
               <div className="px-4 py-2">
                 <div className="flex items-center gap-2">
                   <IconLanguage size={16} />
-                  <span className="text-white text-sm">{t('languagePickerLabel')}</span>
+                  <span className="text-gray-200 text-sm">{t('languagePickerLabel')}</span>
                 </div>
                 <select
                   value={language}
@@ -16424,14 +16753,14 @@ const TattingDesigner = () => {
           <div className="border-t border-gray-600 my-1"></div>
           <button
             onClick={() => { setShowOptionsMenu(false); themeInputRef.current?.click(); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconLoad size={16} />
             <span>{t('viewLoadTheme')}</span>
           </button>
           <button
             onClick={() => { setTheme(DEFAULT_THEME); setShowOptionsMenu(false); showLoadMsg('success', t('themeResetSuccess')); }}
-            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-white"
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span className="text-base">↩️</span>
             <span>{t('viewResetTheme')}</span>
@@ -16448,9 +16777,9 @@ const TattingDesigner = () => {
       <>
         <div className="fixed inset-0 bg-black bg-opacity-60" style={{zIndex:10000}} onClick={() => setShowMaterialsPanel(false)} />
         <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600"
-          style={{zIndex:10001, top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(420px, 95vw)', maxHeight:'85dvh', overflowY:'auto'}}>
+          style={{backgroundColor:'#1f2937', zIndex:10001, top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(420px, 95vw)', maxHeight:'85dvh', overflowY:'auto'}}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600">
-            <h2 className="text-white font-bold text-lg">{t('materialsTitle')}</h2>
+            <h2 className="text-gray-100 font-bold text-lg">{t('materialsTitle')}</h2>
             <button onClick={() => setShowMaterialsPanel(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
           </div>
 
@@ -16571,7 +16900,7 @@ const TattingDesigner = () => {
               {/* Left: Bead list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
                 <div className="px-3 py-3 border-b border-gray-600">
-                  <span className="text-white font-semibold text-sm flex items-center gap-2"><IconBeadCore size={16} /> {t('beadLibraryPanelTitle')}</span>
+                  <span className="text-gray-100 font-semibold text-sm flex items-center gap-2"><IconBeadCore size={16} /> {t('beadLibraryPanelTitle')}</span>
                 </div>
                 <div className="flex-1 overflow-y-auto flex sm:flex-col flex-row">
                   {beadLibrary.map(b => (
@@ -16771,15 +17100,15 @@ const TattingDesigner = () => {
 
       return (
         <>
-          <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex: 2147483644 }} onClick={() => setShowPolarGridPanel(false)} />
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483645 }}>
+          <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex: 2147483644, opacity: polarGridPeek ? 0 : 1, transition: 'opacity 0.15s' }} onClick={() => setShowPolarGridPanel(false)} />
+          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483645, opacity: polarGridPeek ? 0 : 1, transition: 'opacity 0.15s' }}>
             <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col sm:flex-row"
               style={{ width: 'min(820px, 95vw)', height: 'min(540px, 90vh)' }}>
 
               {/* Left: Grid list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
                 <div className="px-3 py-3 border-b border-gray-600">
-                  <span className="text-white font-semibold text-sm flex items-center gap-2"><IconPolarGrid size={16} /> {t('polarGridTitle')}</span>
+                  <span className="text-gray-100 font-semibold text-sm flex items-center gap-2"><IconPolarGrid size={16} /> {t('polarGridTitle')}</span>
                 </div>
                 <div className="flex-1 overflow-y-auto flex sm:flex-col flex-row">
                   {polarGrids.map(g => (
@@ -16847,6 +17176,15 @@ const TattingDesigner = () => {
                   )}
                   <button onClick={() => setShowPolarGridPanel(false)}
                     className="text-gray-400 hover:text-white text-xl ml-4">✕</button>
+                  <button
+                    onMouseDown={() => setPolarGridPeek(true)}
+                    onMouseUp={() => setPolarGridPeek(false)}
+                    onMouseLeave={() => setPolarGridPeek(false)}
+                    onTouchStart={() => setPolarGridPeek(true)}
+                    onTouchEnd={() => setPolarGridPeek(false)}
+                    className="px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300 ml-1"
+                    title={t('polarGridPeekHint')}
+                  >👁 {t('polarGridPeekHint')}</button>
                 </div>
 
                 {/* Body */}
@@ -17013,7 +17351,7 @@ const TattingDesigner = () => {
               {/* Left: Preset list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
                 <div className="px-3 py-3 border-b border-gray-600">
-                  <span className="text-white font-semibold text-sm">{t('threadPresetsTitle')}</span>
+                  <span className="text-gray-100 font-semibold text-sm">{t('threadPresetsTitle')}</span>
                 </div>
                 <div className="flex-1 overflow-y-auto sm:overflow-y-auto overflow-x-auto sm:overflow-x-hidden flex sm:flex-col flex-row">
                   {threadPresets.map(p => (
@@ -17126,6 +17464,7 @@ const TattingDesigner = () => {
     })()}
 
     {/* ── Splash Screen ────────────────────────────────────────── */}
+    {/* ── Full welcome splash ───────────────────────────────────── */}
     {showSplash && (
       <>
         {/* Backdrop */}
@@ -17143,9 +17482,7 @@ const TattingDesigner = () => {
             style={{ width: 'min(380px, 92vw)' }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Row 1: Logo — full width, 3:1 aspect ratio.
-                When update is due, logo becomes a clickable update notice.
-                Replace src with actual asset path when ready. */}
+            {/* Row 1: Logo */}
             {updateReminderDue && !showUpdatePopup ? (
               <button
                 onClick={() => setShowUpdatePopup(true)}
@@ -17153,14 +17490,7 @@ const TattingDesigner = () => {
                 style={{ aspectRatio: '3/1' }}
                 title="Click to see update options"
               >
-                {/* Dimmed logo underneath */}
-                <img
-                  src="./logo.png"
-                  alt="TattingCAD"
-                  className="w-full h-full object-cover opacity-30"
-                  draggable={false}
-                />
-                {/* Update overlay */}
+                <img src={logoUrl} alt="TattingCAD" className="w-full h-full object-cover opacity-30" draggable={false} />
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-900 bg-opacity-60">
                   <div className="text-blue-300 text-sm font-semibold">{t('splashUpdateOverlayTitle')}</div>
                   <div className="text-gray-400 text-xs">{t('splashUpdateOverlayBody').replace('{version}', APP_VERSION)}</div>
@@ -17168,16 +17498,11 @@ const TattingDesigner = () => {
               </button>
             ) : (
               <div style={{ aspectRatio: '3/1' }}>
-                <img
-                  src="./logo.png"
-                  alt="TattingCAD"
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                />
+                <img src={logoUrl} alt="TattingCAD" className="w-full h-full object-cover" draggable={false} />
               </div>
             )}
 
-            {/* Rows 2–3: 2×2 button grid — compact, no emojis */}
+            {/* 2×2 button grid */}
             <div className="grid grid-cols-2 gap-1.5 px-3 py-3">
               <button
                 onClick={() => setShowSplash(false)}
@@ -17208,7 +17533,7 @@ const TattingDesigner = () => {
               >{t('splashGettingStarted')}</button>
             </div>
 
-            {/* Row 4: navigable tips strip */}
+            {/* Navigable tips strip */}
             <div className="flex items-center gap-2 px-3 pb-3">
               <button
                 onClick={() => setSplashTipIndex(i => (i - 1 + SPLASH_TIP_KEYS.length) % SPLASH_TIP_KEYS.length)}
@@ -17227,12 +17552,9 @@ const TattingDesigner = () => {
           </div>
         </div>
 
-        {/* Update popup — appears over the splash when logo is clicked */}
+        {/* Update popup */}
         {showUpdatePopup && (
-          <div
-            className="fixed inset-0 flex items-center justify-center pointer-events-none"
-            style={{ zIndex: 2147483632 }}
-          >
+          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483632 }}>
             <div
               className="bg-gray-800 border border-blue-700 rounded-xl shadow-2xl pointer-events-auto px-5 py-4 flex flex-col gap-3"
               style={{ width: 'min(300px, 88vw)' }}
@@ -17248,10 +17570,7 @@ const TattingDesigner = () => {
                   className="flex-1 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-semibold"
                 >{t('splashUpdatePopupOpen')}</button>
                 <button
-                  onClick={() => {
-                    localStorage.setItem('tcad_update_seen', APP_VERSION);
-                    setShowUpdatePopup(false);
-                  }}
+                  onClick={() => { localStorage.setItem('tcad_update_seen', APP_VERSION); setShowUpdatePopup(false); }}
                   className="flex-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs"
                 >{t('splashUpdatePopupDismiss')}</button>
               </div>

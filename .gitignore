@@ -6,3 +6,4 @@ src-tauri/target/
 Thumbs.db
 # Android build output
 src-tauri/gen/android/
+/ETC

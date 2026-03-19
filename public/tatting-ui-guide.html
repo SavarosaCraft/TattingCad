@@ -188,7 +188,23 @@
   <button onclick="show('toolbar',this)">🔧 Toolbar</button>
   <button onclick="show('propbar',this)">📐 Property Bar</button>
   <button onclick="show('panels',this)">🪟 Panels</button>
+  <button onclick="show('modes',this)">📳 Modes</button>
   <button onclick="show('dialogs',this)">💬 Dialogs</button>
+  <div style="margin-left:auto; display:flex; align-items:center; gap:0.4rem; padding-right:0.5rem;">
+  <input id="searchBox" type="text" placeholder="Search…" 
+    oninput="runSearch(this.value)"
+    style="background:#111827;border:1px solid #374151;color:#d1d5db;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.8rem;width:160px;" />
+
+  <button id="nextBtn" onclick="nextMatch()" disabled
+    style="background:#374151;border:none;color:#9ca3af;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
+    Next
+  </button>
+
+  <button onclick="clearSearch()" 
+    style="background:#374151;border:none;color:#d1d5db;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
+    ✕
+  </button>
+</div>
 </nav>
 </div>
 
@@ -741,6 +757,10 @@
     	<div class="field-row">
       <div class="field-label">Rotation angle</div>
       <div class="field-desc">Type any angle and press Enter to rotate to that angle precisely. Works for single elements and groups.</div>
+    </div>    	
+	<div class="field-row">
+      <div class="field-label">Rotation Nudge</div>
+      <div class="field-desc">Use the arrows to fine-tune the rotation to your liking.</div>
     </div>
 	<div class="field-row">
       <div class="field-label">Rotatie 90 Degree CW</div>
@@ -788,15 +808,15 @@
     <div class="modal-title">Split Ring</div>
     <div class="field-row">
       <div class="field-label">Side A notation</div>
-      <div class="field-desc">Stitch notation for the first half. Must begin with <code class="code-inline">sr:</code>.</div>
+      <div class="field-desc">Stitch notation for the first half.</div>
     </div>
     <div class="field-row">
       <div class="field-label">Side B notation</div>
-      <div class="field-desc">Stitch notation for the second half. No prefix needed.</div>
+      <div class="field-desc">Stitch notation for the second half.</div>
     </div>
     <div class="field-row">
-      <div class="field-label">Squeeze A / B</div>
-      <div class="field-desc">Independent squeeze sliders for each half.</div>
+      <div class="field-label">Squeeze</div>
+      <div class="field-desc">Stretches or compresses the ring vertically without changing stitch count.</div>
     </div>   
 	<div class="field-row">
       <div class="field-label">Material A / B</div>
@@ -821,11 +841,6 @@
 	    <div class="field-row">
       <div class="field-label">Copy/cut/paste Beads</div>
       <div class="field-desc">Copies, cuts or Pastes the beaqds on the string.</div>
-    </div>
-	    <div class="field-row">
-      <div class="field-label">Notation</div>
-      <div class="field-desc">Optional bead notation. Lines don't count stitches but can visually display bead positions.</div>
-    </div>
     <div class="field-row">
       <div class="field-label">Order #</div>
       <div class="field-desc">Lines can carry a tatting order number just like rings and chains. The number displays at the arc midpoint of the line on canvas and is included in SVG export and pattern output.</div>
@@ -837,7 +852,7 @@
 
 <!-- ═══════════════════════════ PANELS ═══════════════════════════ -->
 <section id="tab-panels" class="tab-panel">
-  <h2>Side Panels</h2>
+  <h2>Essential Panels</h2>
 
   <div class="card">
     <div class="modal-title">🎨 Materials Panel</div>
@@ -898,7 +913,175 @@
 
  
   
-   <div class="card card-green">
+   
+</section>
+
+<!-- ═══════════════════════════ MODES ═══════════════════════════ -->
+<section id="tab-modes" class="tab-panel">
+
+<!-- Bead Edit Mode -->
+<div class="card" style="margin-bottom:0.75rem; border-left:4px solid #9b5fa5;">
+  <h4 style="color:#9b5fa5;">🪩 Bead Edit Mode — Assigning Beads to Picots</h4>
+  <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">
+    Assign beads to individual picot positions on any element.
+    Enter with <strong>Shift+B</strong> or the bead icon (🪩). Exit with <strong>Esc</strong>.
+  </p>
+  <div>
+    <!-- section -->
+    <div>
+      <div class="menu-header">
+        Selecting bead positions
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li>◆ Diamond markers indicate beadable picots.</li>
+        <li>Click to select, or drag to multi-select.</li>
+        <li>Edits apply to all selected positions.</li>
+      </ul>
+    </div>
+
+    <!-- section -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
+        Bead structures
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li><strong>Core only</strong> — bead on thread.</li>
+        <li><strong>Core + plain picot</strong></li>
+        <li><strong>Core + beaded picot</strong></li>
+        <li><strong>Suspended</strong></li>
+        <li><strong>Beaded picot</strong></li>
+      </ul>
+    </div>
+
+    <!-- section -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
+        Bead slots
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li><strong>Core (3):</strong> left / centre / right</li>
+        <li><strong>Picot (3):</strong> when supported by structure</li>
+      </ul>
+    </div>
+
+    <!-- section -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
+        Join toggle
+      </div>
+      <p style="font-size:0.82rem; margin:0;">
+        Marks a bead position as a join point (yellow). Independent of Picot Join mode.
+      </p>
+    </div>
+
+    <!-- section -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
+        Copy / Cut / Paste
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li>Copy: structure + beads</li>
+        <li>Cut: copy + reset</li>
+        <li>Paste: applies to selection</li>
+      </ul>
+    </div>
+
+    <!-- section -->
+    <div>
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#c8863a; font-weight:500; margin-bottom:0.25rem;">
+        Line elements
+      </div>
+      <p style="font-size:0.82rem; margin:0; color:#6b4811;">
+        Lines use ordered bead sequences instead of per-picot slots. You can copy/paste setups across multiple lines.
+      </p>
+    </div>
+
+  </div>
+
+  <p style="font-size:0.75rem; color:#777; margin-top:0.6rem;">
+    Press <strong>Esc</strong> or <strong>Shift+B</strong> to exit. Changes are live and undoable.
+  </p>
+</div>
+
+<!-- Joint Picot (blue insert) -->
+<div class="card" style="margin-bottom:0.75rem; border-left:4px solid #2166a8;">
+  <h4 style="color:#2166a8;">🪡 Bead Assignments — Picot Connections</h4>
+
+  <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">
+    Assign bead structures to picots before joining. Beads are optional but visible in the canvas for clarity.
+  </p>
+
+  <!-- unified blue container -->
+  <div>
+
+    <!-- selecting beads -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
+        Selecting bead positions
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li>◆ Diamond markers indicate beadable picots.</li>
+        <li>Click to select, or drag a box to multi-select several positions.</li>
+        <li>All edits apply simultaneously to selected positions.</li>
+      </ul>
+    </div>
+
+    <!-- bead structures -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
+        Bead structures
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li><strong>Core only</strong> — bead on thread</li>
+        <li><strong>Core + plain picot</strong></li>
+        <li><strong>Core + beaded picot</strong></li>
+        <li><strong>Suspended</strong></li>
+        <li><strong>Beaded picot</strong></li>
+      </ul>
+    </div>
+
+    <!-- bead slots -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
+        Bead slots
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li><strong>Core (up to 3):</strong> left / centre / right</li>
+        <li><strong>Picot (up to 3):</strong> only if structure allows</li>
+      </ul>
+    </div>
+
+    <!-- joint toggle note -->
+    <div style="margin-bottom:0.6rem;">
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
+        Joint toggle
+      </div>
+      <p style="font-size:0.82rem; margin:0;">
+        Marks a bead position as a join point — independent of Picot Join mode. Turns the marker teal when joined.
+      </p>
+    </div>
+
+    <!-- copy/cut/paste -->
+    <div>
+      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
+        Copy / Cut / Paste
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li>Copy: saves structure + bead slots</li>
+        <li>Cut: copy + reset source</li>
+        <li>Paste: applies configuration to selected bead positions</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <p style="font-size:0.75rem; color:#456788; margin-top:0.6rem;">
+    Press <strong>Esc</strong> to exit this insert. Changes are live and undoable.
+  </p>
+</div>
+
+<!-- Tatting Order Mode< (green insert) -->
+<div class="card" style="margin-bottom:0.75rem; border-left:4px solid #065F46;">
     <div class="modal-title">🔢 Tatting Order Mode</div>
     <div class="modal-subtitle">Entered via View → Tatting Order… The entire property bar is replaced by this panel for the duration of the mode. Dragging, multi-select, and notation editing are all disabled — click elements to select them one at a time and assign sequence numbers.</div>
 
@@ -973,7 +1156,9 @@
       <div class="field-desc">When any element has an order number, SVG export adds a dedicated <strong>Order Numbers</strong> layer (Inkscape/Illustrator compatible). Each number is a gold text element with a black outline, positioned at the element midpoint. The layer can be hidden or deleted in a vector editor without affecting the pattern artwork.</div>
     </div>
   </div>
+
 </section>
+
 
 <!-- ═══════════════════════════ DIALOGS ═══════════════════════════ -->
 <section id="tab-dialogs" class="tab-panel">
@@ -1058,19 +1243,196 @@
 </main>
 
 <script>
-  function show(tab, btn) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('#tabbar button').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
+// ── TAB SYSTEM ─────────────────────────────────────────────
+
+function show(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.remove('active'));
+
+  const panel = document.getElementById('tab-' + tab);
+  const btn = document.querySelector(`#tabbar button[data-tab="${tab}"]`);
+
+  if (panel) panel.classList.add('active');
+
+  if (btn) {
     btn.classList.add('active');
     btn.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
   }
-  const params = new URLSearchParams(location.search);
-  const t = params.get('tab');
-  if (t) {
-    const btn = [...document.querySelectorAll('#tabbar button')].find(b => b.getAttribute('onclick')?.includes("'" + t + "'"));
-    if (btn) show(t, btn);
+}
+
+// convert existing inline onclick buttons → data-tab system
+document.querySelectorAll('#tabbar button').forEach(btn => {
+  const match = btn.getAttribute('onclick')?.match(/'([^']+)'/);
+  if (match) {
+    btn.dataset.tab = match[1];
+    btn.onclick = () => show(match[1]);
   }
+});
+
+// support ?tab=...
+const params = new URLSearchParams(location.search);
+const t = params.get('tab');
+if (t) show(t);
+
+
+// ── SEARCH SYSTEM ─────────────────────────────────────────
+
+let allMatches = [];
+let currentIndex = -1;
+
+function clearHighlights() {
+  document.querySelectorAll('.search-hit').forEach(el => {
+    el.replaceWith(document.createTextNode(el.textContent));
+  });
+}
+
+function highlight(panel, query) {
+  const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+  let node;
+
+  while ((node = walker.nextNode())) {
+    const text = node.nodeValue;
+    const idx = text.toLowerCase().indexOf(query);
+
+    if (idx !== -1) {
+      const span = document.createElement('span');
+      span.className = 'search-hit';
+      span.style.background = '#fbbf24';
+      span.style.color = '#111';
+
+      const before = text.slice(0, idx);
+      const match = text.slice(idx, idx + query.length);
+      const after = text.slice(idx + query.length);
+
+      span.textContent = match;
+
+      const frag = document.createDocumentFragment();
+      if (before) frag.appendChild(document.createTextNode(before));
+      frag.appendChild(span);
+      if (after) frag.appendChild(document.createTextNode(after));
+
+      node.parentNode.replaceChild(frag, node);
+
+      allMatches.push({
+        el: span,
+        tab: panel.id.replace('tab-', '')
+      });
+    }
+  }
+}
+
+function runSearch(query) {
+  const q = query.toLowerCase().trim();
+  const resultsBox = document.getElementById('searchResults');
+  const nextBtn = document.getElementById('nextBtn');
+
+  clearHighlights();
+  allMatches = [];
+  currentIndex = -1;
+
+  if (!q) {
+    if (resultsBox) resultsBox.style.display = 'none';
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.style.color = "#6b7280";
+    }
+    return;
+  }
+
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    highlight(panel, q);
+  });
+
+  const total = allMatches.length;
+
+  if (!total) {
+    if (resultsBox) {
+      resultsBox.style.display = 'block';
+      resultsBox.textContent = 'No results found.';
+    }
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.style.color = "#6b7280";
+    }
+    return;
+  }
+
+  // enable Next button
+  if (nextBtn) {
+    nextBtn.disabled = false;
+    nextBtn.style.color = "#d1d5db";
+  }
+
+  // hide results panel (optional)
+  if (resultsBox) resultsBox.style.display = 'none';
+
+  jumpToMatch(0);
+}
+
+function jumpToMatch(index) {
+  if (!allMatches.length) return;
+
+  const item = allMatches[index];
+
+  show(item.tab);
+
+  setTimeout(() => {
+    item.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.el.style.outline = '2px solid #3b82f6';
+    setTimeout(() => item.el.style.outline = '', 1200);
+  }, 80);
+
+  currentIndex = index;
+}
+
+function nextMatch() {
+  if (!allMatches.length) return;
+
+  currentIndex = (currentIndex + 1) % allMatches.length;
+  jumpToMatch(currentIndex);
+}
+
+
+// ── CLEAR SEARCH ──────────────────────────────────────────
+
+function clearSearch() {
+  const input = document.getElementById('searchBox');
+  const resultsBox = document.getElementById('searchResults');
+  const nextBtn = document.getElementById('nextBtn');
+
+  if (input) input.value = '';
+
+  clearHighlights();
+  allMatches = [];
+  currentIndex = -1;
+
+  if (resultsBox) {
+    resultsBox.style.display = 'none';
+    resultsBox.innerHTML = '';
+  }
+
+  if (nextBtn) {
+    nextBtn.disabled = true;
+    nextBtn.style.color = "#6b7280";
+  }
+}
+
+
+// ── OPTIONAL KEYBOARD SUPPORT ─────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('searchBox');
+
+  if (input) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') nextMatch();
+      if (e.key === 'Escape') clearSearch();
+    });
+  }
+});
 </script>
+
+
+
 </body>
 </html>
