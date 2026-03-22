@@ -31,6 +31,9 @@ No account. No cloud. No trackers. Everything stays on your device.
 - Tatting Order mode — number elements across named rounds
 - Generates written notation from your diagram
 - Realistic and schematic rendering modes
+- Beads - both with BE element or inline notation
+- Polar grids
+- Linear, Polar and Spiral Arrays
 - Full material library (DMC thread colors + gradients)
 - SVG export
 
