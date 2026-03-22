@@ -323,12 +323,19 @@
 
 <div id="topbar">
 <header>
-  <div>
-    <h1>🧵 TattingCAD</h1>
-    <span>Help &amp; Reference</span>
-  </div>
-  <div style="margin-left:auto; display:flex; gap:0.5rem;">
-    <button onclick="window.print()" style="background:#374151;border:none;color:#d1d5db;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">🖨 Print</button>
+<div style="margin-left:auto; display:flex; align-items:center; gap:0.4rem; padding-right:0.5rem;">
+<button onclick="window.print()" style="background:#374151;border:none;color:#d1d5db;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">🖨 Print</button>
+  <input id="searchBox" type="text" placeholder="Search…" 
+    oninput="runSearch(this.value)"
+    style="background:#111827;border:1px solid #374151;color:#d1d5db;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.8rem;width:160px;" />
+  <button id="nextBtn" onclick="nextMatch()" disabled
+    style="background:#374151;border:none;color:#9ca3af;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
+    Next
+  </button>
+  <button onclick="clearSearch()" 
+    style="background:#374151;border:none;color:#d1d5db;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
+    ✕
+  </button>
   </div>
 </header>
 
@@ -342,21 +349,6 @@
   <button onclick="show('beads',this)">Beads</button>
   <button onclick="show('polargrid',this)">Polar Grid</button>
 
-<div style="margin-left:auto; display:flex; align-items:center; gap:0.4rem; padding-right:0.5rem;">
-  <input id="searchBox" type="text" placeholder="Search…" 
-    oninput="runSearch(this.value)"
-    style="background:#111827;border:1px solid #374151;color:#d1d5db;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.8rem;width:160px;" />
-
-  <button id="nextBtn" onclick="nextMatch()" disabled
-    style="background:#374151;border:none;color:#9ca3af;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
-    Next
-  </button>
-
-  <button onclick="clearSearch()" 
-    style="background:#374151;border:none;color:#d1d5db;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
-    ✕
-  </button>
-</div>
 </nav>
 </div>
 
@@ -403,7 +395,7 @@
         <div class="step-num">4</div>
         <div class="step-body">
           <h5>Assign Materials / Colors</h5>
-          <p>Open <strong>Options → Materials…</strong> to create thread materials with colors or gradients, then assign them to elements from the property bar.</p>
+          <p>Open <span class="blue">Options → Materials…</span> to create thread materials with colors or gradients, then assign them to elements from the property bar.</p>
         </div>
       </div>
       <div class="step">
@@ -424,27 +416,43 @@
   </div>
 
   <div class="card" style="margin-top:1rem;">
+    <h4 class="blue" style="margin-bottom:0.75rem;">How to Measure Your Thread Usage per DS</h4>
+    <div style="display:flex; gap:1.25rem; align-items:flex-start; flex-wrap:wrap;">
+      <img src="measuring.png" alt="Thread measurement steps" width="250" height="380"
+        style="flex-shrink:0; border-radius:6px; border:1px solid #374151; object-fit:cover; max-width:100%;" />
+      <div style="flex:1; min-width:200px;">
+        <p style="font-size:0.875rem; font-weight:600; color:#c4b5fd; margin-bottom:0.75rem;">Basic measurement (core + ball thread per DS)</p>
+        <ol style="padding-left:1.25rem; font-size:0.85rem; color:#d1d5db; line-height:1.9; margin-bottom:1rem;">
+          <li>Make a starting knot, leaving a tail in a contrasting color.</li>
+          <li>Tat 20 double stitches.</li>
+          <li>Close the ring. Cut both threads as close to the ring as possible.</li>
+          <li>Cut the ring open and pull the two threads apart.</li>
+          <li>Measure the core thread in millimeters.</li>
+          <li>Measure the ball thread in millimeters.</li>
+        </ol>
+        <p style="font-size:0.85rem; color:#d1d5db; margin-bottom:0.75rem;">EEnter both measurements in <span class="blue">Options → Thread properties</span>.</p>
+        <div class="card card-blue" style="margin-bottom:0.75rem;">
+          <p style="font-size:0.82rem; color:#d1d5db;">For a more accurate measurement, make two more rings:</p>
+          <ul style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.82rem; color:#d1d5db; line-height:1.8;">
+            <li><strong>Ring B:</strong> 20 DS with 10 regular picots</li>
+            <li><strong>Ring C:</strong> 20 DS with 10 construction picots</li>
+          </ul>
+          <p style="margin-top:0.5rem; font-size:0.82rem; color:#d1d5db;">Measure both threads the same way. This lets you calculate exactly how much extra thread each picot type consumes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
     <h4 class="yellow">Essential Tools</h4>
     <div class="essentials" style="margin-top:0.6rem;">
       <div><div class="e-name">Pan Tool</div><div class="e-desc">Move around the canvas (or middle-click drag)</div></div>
       <div><div class="e-name">Select Tool</div><div class="e-desc">Click elements to edit, drag to move</div></div>
       <div><div class="e-name">Ring Tool</div><div class="e-desc">Click to add rings (circles or teardrops)</div></div>
       <div><div class="e-name">Chain Tool</div><div class="e-desc">Click to add chains between elements</div></div>
-      <div><div class="e-name">Realistic View</div><div class="e-desc">Toggle to see stitches rendered realistically</div></div>
-      <div><div class="e-name">Order Numbers</div><div class="e-desc">Number elements to generate pattern text</div></div>
+      <div><div class="e-name">Path Edit</div><div class="e-desc">Click to edit existing chains while keeping their length.</div></div>
+      <div><div class="e-name">Beading mode</div><div class="e-desc">Assign beads to any element containing the 'BE' (Beaded Element) notation.</div></div>
     </div>
-  </div>
-
-  <div class="card" style="margin-top:1rem;">
-    <h4 style="color:#a78bfa;">Pro Tips</h4>
-    <ul class="pro-tips" style="margin-top:0.6rem;">
-      <li><span class="check">✓</span><span><strong>Snap to Points:</strong> Enable snap (🧲 button) to connect elements precisely at join/guide points</span></li>
-      <li><span class="check">✓</span><span><strong>Rotation:</strong> Hold Shift (desktop) or click rotation toggle (mobile) to rotate selected elements</span></li>
-      <li><span class="check">✓</span><span><strong>Squeeze Rings:</strong> Use the Squeeze slider to make rings taller/wider while keeping stitch count constant</span></li>
-      <li><span class="check">✓</span><span><strong>Pattern Generation:</strong> Assign order numbers (1, 2, 3…) then click "Generate Pattern" to copy notation</span></li>
-      <li><span class="check">✓</span><span><strong>Reference Images:</strong> Upload a photo/diagram to trace over (adjust opacity and scale)</span></li>
-      <li><span class="check">✓</span><span><strong>Show Unnumbered:</strong> Toggle to see which elements need order numbers (pink glow highlight)</span></li>
-    </ul>
   </div>
 
   <div class="card card-blue" style="margin-top:1rem;">
@@ -513,24 +521,7 @@
   </div>
 
   <div class="shortcut-group">
-    <div class="shortcut-group-title">Escape — closes / exits in this priority order</div>
-    <div class="escape-note">
-      <ol>
-        <li>Realistic render mode → back to Schematic</li>
-        <li>Color picker</li>
-        <li>Materials panel</li>
-        <li>About dialog</li>
-        <li>Help menu</li>
-        <li>Help panel</li>
-        <li>Bead library</li>
-        <li>Polar grid panel</li>
-        <li>Save dialog</li>
-        <li>Thread properties</li>
-        <li>Picot Join mode</li>
-        <li>Beading mode</li>
-        <li>Ruler tool (clears current measurement)</li>
-      </ol>
-    </div>
+    <div class="shortcut-group-title">Escape — closes / exits</div>
   </div>
 </section>
 
@@ -546,6 +537,7 @@
     <div class="notation-rows">
       <div><code class="code-inline">r:</code> &nbsp;Ring</div>
       <div><code class="code-inline">c:</code> &nbsp;Chain</div>
+	        <div><code class="code-inline">sc:</code> &nbsp;Split Chain<span class="muted">(parsed as chain, reserved prefix)</span></div>
       <div><code class="code-inline">sr:</code> &nbsp;Split Ring</div>
       <div><code class="code-inline">jk:</code> &nbsp;Josephine Knot <span class="muted">(parsed as ring, reserved prefix)</span></div>
       <div><code class="code-inline">fr:</code> &nbsp;Floating Ring <span class="muted">(parsed as ring, reserved prefix)</span></div>
@@ -648,6 +640,7 @@
 <!-- ══════════════════════════════ TOOLS ══════════════════════════════ -->
 <section id="tab-tools" class="tab-panel">
   <h2>Tools</h2>
+  <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">More information under  <span class="blue"> Help → UI reference</span>.</p>
 
   <div class="tool">
     <div class="tool-name">Pan Tool</div>
@@ -684,18 +677,14 @@
   <div class="tool">
     <div class="tool-name">Line Tool (L)</div>
     <div class="tool-desc">
-      Creates a visual connector line — no stitches, not included in pattern output. Use it to link elements, mark thread paths, or add diagram annotations.
-      <ul style="margin-top:0.3rem; font-size:0.82rem; color:#6b7280;">
-        <li>Adjust thickness with the Line Width slider in the property bar.</li>
-        <li>Use Path Edit (PE) to curve the line just like a chain.</li>
-        <li>Lines can carry beads — add bead notation in the line's notation field.</li>
-      </ul>
+      Creates a visual connector line — no stitches, not included in pattern output. Lines can carry beads — add bead notation in the line's notation field.<br>
+	  The Line Tool also enables editing existing lines.
     </div>
   </div>
 
   <div class="tool">
     <div class="tool-name">Path Edit (PE)</div>
-    <div class="tool-desc">Select a chain or line, then click PE to edit its curve. Drag the green start/end handles or the blue control handles to reshape. Handles stay fixed screen size regardless of zoom.</div>
+    <div class="tool-desc">Select a chain, then click PE to edit its curve. Drag the green start/end handles or the blue control handles to reshape. Handles stay fixed screen size regardless of zoom.</div>
   </div>
 
   <div class="tool">
@@ -711,8 +700,8 @@
   </div>
 
   <div class="tool">
-    <div class="tool-name">Image Tool</div>
-    <div class="tool-desc">Upload a reference image to trace over. Adjust opacity, scale, position, and rotation in the image controls panel.</div>
+    <div class="tool-name">Reference image Tool</div>
+    <div class="tool-desc">Upload a background image. Adjust opacity, scale, position, and rotation in the properties toolbar.</div>
   </div>
 </section>
 
@@ -776,15 +765,7 @@
 
   <div class="feature">
     <div class="feature-name">Reference Image</div>
-    <div class="feature-body">Upload a background image to trace over. Adjust opacity, scale, position, and rotation in the reference image controls.</div>
-  </div>
-
-  <div class="feature">
-    <div class="feature-name">Materials &amp; Colors</div>
-    <div class="feature-body">
-      <strong>Materials:</strong> Create reusable thread materials in Options → Materials… — assign solid DMC colors or gradients, then apply from the property bar.<br>
-      <strong>Gradients:</strong> Bottom toolbar shows selected gradients (4 by default, max 10). Click + to add from the gradient picker. Ctrl+Click a gradient to remove it.
-    </div>
+    <div class="feature-body">Upload a background image. Adjust opacity, scale, position, and rotation in the properties toolbar.</div>
   </div>
 
   <div class="feature">
@@ -794,7 +775,7 @@
 
   <div class="feature">
     <div class="feature-name">Order Numbers</div>
-    <div class="feature-body">Enter a number in the "Order #" field to label rings and chains for pattern instructions.</div>
+    <div class="feature-body">Enter a number in the "Order #" field to label rings and chains for pattern instructions. Use  <span class="blue"> View → Tatting order</span> for more in-depth editing.</div>
   </div>
 </section>
 
@@ -803,9 +784,7 @@
   <h2>Tips &amp; Tricks</h2>
 
   <ul class="tips-list" style="margin-bottom:2rem;">
-    <li><strong>Radial patterns:</strong> Create one petal, press D to duplicate in place, type an angle (e.g. 45° for 8-petal, 30° for 12-point). Repeat D + Enter until complete.</li>
-    <li><strong>Quick color edit:</strong> Double-click any color swatch in the palette to open the color picker.</li>
-    <li><strong>Rotation handles:</strong> Hold Shift (desktop) or click rotation button (mobile) to show handles. Release/click again to hide for easier movement.</li>
+    <li><strong>Rotation handles:</strong> Hold Shift (desktop) or click rotation button to show handles.</li>
     <li><strong>Fast rotation:</strong> Use ↶ and ↷ buttons for instant 90° rotations instead of typing angles.</li>
     <li><strong>Symmetry with flipping:</strong> Duplicate elements and use Flip H or Flip V to create perfectly mirrored patterns.</li>
     <li><strong>Alignment:</strong> Use Arrange menu alignment options to quickly organise multiple elements (requires 2+ selected).</li>
@@ -814,10 +793,10 @@
     <li><strong>Auto-save:</strong> Your work is automatically saved every 3 minutes to browser storage.</li>
     <li><strong>Undo safety:</strong> Undo/Redo tracks up to 50 states — experiment freely.</li>
     <li><strong>Copy preserves:</strong> Copy/paste maintains all element properties including groups and connections.</li>
-    <li><strong>Zoom tricks:</strong> Use + / - keys or mouse wheel to zoom. Press F to fit all elements in view.</li>
+    <li><strong>Zoom tricks:</strong> Use toolbar buttons or Shift + Mouse Wheel to zoom. Press F to fit all elements in view.</li>
     <li><strong>Multi-select:</strong> Hold Shift while clicking to add elements to your selection.</li>
     <li><strong>Box selection:</strong> Drag in empty space to create a selection box around multiple elements.</li>
-    <li><strong>Group workflow:</strong> Group related elements (Ctrl+G) to rotate and move them as one unit. Ungroup with Shift+G.</li>
+    <li><strong>Group workflow:</strong> Group related elements <strong>Ctrl+G</strong> to rotate and move them as one unit. Ungroup with <strong>Shift+G</strong>.</li>
   </ul>
 
   <h3>Customising Indicator Colors</h3>
@@ -849,8 +828,25 @@
 
 <!-- ══════════════════════════════ BEADS ══════════════════════════════ -->
 <section id="tab-beads" class="tab-panel">
-  <h2>Bead Notation</h2>
-  <p style="margin-bottom:1rem; font-size:0.875rem;">Beads are added inline in the notation string. Three size keys: <code class="code-inline">Y</code> (small), <code class="code-inline">Z</code> (medium), <code class="code-inline">V</code> (large). Sizes are configurable in <strong>Options → Bead Sizes</strong>.</p>
+<h2>Beaded Elements</h2>
+  
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">BE</span>
+      <strong class="white">Beaded element</strong>
+    </div>
+      <p style="margin-bottom:1rem; font-size:0.875rem;">Beads are added inline in the notation string using <code class="code-inline">BE</code>. To adjust available beads, go to <strong>Options → Bead Library</strong>.</p>
+  <p style="margin-bottom:1rem; font-size:0.875rem;">More information about Bead Library and Beads property panel is in  <span class="blue"> Help → UI Reference</span>.<p>
+    <div class="codeblock">
+      r: 5ds-<span class="hl">BE</span>-5ds<br>
+      c: 3ds-<span class="hl">BE</span>-3ds-<span class="hl">BE</span>-3ds
+    </div>
+  </div>
+
+
+  <h2>Bead Notation - not recommended</h2>
+  <p style="margin-bottom:1rem; font-size:0.875rem;">Inline bead notation was the initial idea for bead placement, but it got too complicated. The notation is still available from code - because in some cases it can be faster than visual editor.</p>
+    <p style="margin-bottom:1rem; font-size:0.875rem;">Beads can be added inline in the notation string. Three size keys: <code class="code-inline">Y</code> (small), <code class="code-inline">Z</code> (medium), <code class="code-inline">V</code> (large). Sizes are configurable in <strong>Options → Bead Library</strong>.</p>
 
   <!-- bc -->
   <div class="card">

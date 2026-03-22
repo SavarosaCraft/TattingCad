@@ -485,5 +485,8 @@
   "clickColorPreview": "Kattints egy színmintára az előnézethez",
   "colorPageIndicator": "{page} / {total} oldal ({count} szín)",
   "rotateNudgePlus": "Forgatás +1° (tartsd lenyomva az ismétléshez)",
-  "rotateNudgeMinus": "Forgatás -1° (tartsd lenyomva az ismétléshez)"
+  "rotateNudgeMinus": "Forgatás -1° (tartsd lenyomva az ismétléshez)",
+"bakingViewTitle": "Realisztikus nézet renderelése…",
+"bakingViewSub": "Az összes elem öltésgeometriájának kiszámítása. Összetett minták esetén ez egy pillanatot vehet igénybe.",
+"fileBrowse": "Fájl tallózása…"
 }

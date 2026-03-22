@@ -654,32 +654,6 @@ export const IconPolarGrid = ({ size = 20, className = '' }) => (
 );
 
 // Label/tag with a number — notation labels visible
-export const IconLabelOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" className={className}>
-    {/* Tag shape: rectangle body + pointed left tip */}
-    <path d="M7,4 L17.5,4 Q18.5,4 18.5,5 L18.5,15 Q18.5,16 17.5,16 L7,16 L2,10 Z"
-      fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-    {/* Small hole on tag */}
-    <circle cx="15.5" cy="10" r="1" fill="currentColor"/>
-    {/* "1" numeral lines suggesting a label number */}
-    <line x1="9" y1="7.5" x2="9" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-    <line x1="7.5" y1="9" x2="9" y2="7.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-  </svg>
-);
-
-// Label/tag with a diagonal slash — notation labels hidden
-export const IconLabelOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" className={className}>
-    {/* Tag shape */}
-    <path d="M7,4 L17.5,4 Q18.5,4 18.5,5 L18.5,15 Q18.5,16 17.5,16 L7,16 L2,10 Z"
-      fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" strokeOpacity="0.5"/>
-    {/* Small hole */}
-    <circle cx="15.5" cy="10" r="1" fill="currentColor" opacity="0.5"/>
-    {/* Diagonal slash — same style as IconGridOff / IconSnapOff */}
-    <line x1="3" y1="17" x2="17" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-);
-
 // Scissors / cut — Material Design scissors icon
 export const IconCut = ({ size = 20, className = '' }) => (
   <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
@@ -725,14 +699,23 @@ const LANGUAGES_FALLBACK: Record<string, string> = {
 // Colors cycled through for order group badges (canvas + SVG export).
 // Each entry is [fillColor, strokeColor] — dark stroke so badges stay readable on any bg.
 const ORDER_GROUP_COLORS: [string, string][] = [
-  ['#FFD700', '#000000'], // gold      (Round 1 — matches legacy ungrouped color)
-  ['#38BDF8', '#003366'], // sky blue  (Round 2)
-  ['#F472B6', '#5C0030'], // pink      (Round 3)
-  ['#4ADE80', '#004420'], // green     (Round 4)
-  ['#FB923C', '#5C1A00'], // orange    (Round 5)
-  ['#A78BFA', '#2D0060'], // violet    (Round 6)
-  ['#F87171', '#5C0000'], // red       (Round 7)
-  ['#34D399', '#003322'], // teal      (Round 8)
+  ['#FFD700', '#000000'], // gold        (ungrouped — legacy)
+  ['#38BDF8', '#003366'], // sky blue    (Round 1)
+  ['#F472B6', '#5C0030'], // pink        (Round 2)
+  ['#4ADE80', '#004420'], // green       (Round 3)
+  ['#FB923C', '#5C1A00'], // orange      (Round 4)
+  ['#A78BFA', '#2D0060'], // violet      (Round 5)
+  ['#F87171', '#5C0000'], // red         (Round 6)
+  ['#34D399', '#003322'], // teal        (Round 7)
+  ['#FACC15', '#4D3000'], // amber       (Round 8)
+  ['#818CF8', '#1E1B5C'], // indigo      (Round 9)
+  ['#F9A8D4', '#5C002B'], // rose        (Round 10)
+  ['#2DD4BF', '#003D36'], // cyan-teal   (Round 11)
+  ['#C084FC', '#3B0764'], // purple      (Round 12)
+  ['#86EFAC', '#003D1A'], // mint        (Round 13)
+  ['#FCA5A5', '#5C0000'], // salmon      (Round 14)
+  ['#67E8F9', '#003344'], // light cyan  (Round 15)
+  ['#FCD34D', '#4D3000'], // yellow      (Round 16)
 ];
 
 const TRANSLATIONS: Record<string, Record<string, string>> = {
@@ -780,6 +763,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     renderSchematic: 'Schematic',
     renderRealistic: 'Realistic',
     renderToggleTitle: 'Toggle realistic stitch rendering (Press V)',
+    bakingViewTitle: 'Rendering realistic view…',
+    bakingViewSub: 'Calculating stitch geometry for all elements. Complex patterns may take a moment.',
     btnUndo: 'Undo (Ctrl+Z)',
     btnRedo: 'Redo (Ctrl+Shift+Z)',
     btnCopy: 'Copy (Ctrl+C)',
@@ -792,6 +777,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     fileSave: 'Save Project',
     fileSaveAs: 'Save As…',
     fileLoad: 'Load Project',
+    fileBrowse: 'Browse for File…',
     fileExportSvg: 'Export SVG',
     fileExportSvgTitle: 'Export the current pattern as an SVG vector file',
     fileOutputNotation: 'Output notation to clipboard',
@@ -1561,6 +1547,8 @@ const TattingDesigner = () => {
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
   const [renameGroupInput, setRenameGroupInput] = useState('');
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
+  const [showPropBarGroupDropdown, setShowPropBarGroupDropdown] = useState(false);
+  const [propBarOrderDraft, setPropBarOrderDraft] = useState<string | null>(null); // null = not editing
   const [bgColor, setBgColor] = useState<string>(() => {
     try { return localStorage.getItem('tcad_bg_color') || '#1F2937'; } catch { return '#1F2937'; }
   });
@@ -1632,11 +1620,13 @@ const TattingDesigner = () => {
   const [gradientCategory, setGradientCategory] = useState('all'); // Current category filter
   const [gradientPage, setGradientPage] = useState(0); // Gradient picker pagination
   const [isShiftHeld, setIsShiftHeld] = useState(false); // Track if Shift key is held for rotation handles
+  const [spaceDown, setSpaceDown] = useState(false);     // Track if Space is held for temporary pan
+  const spaceDownRef = useRef(false);                    // Ref mirror — mouse handlers read this to avoid stale closure
   const [showRotationHandles, setShowRotationHandles] = useState(false); // Manual toggle for rotation handles (mobile)
   const [showUnnumbered, setShowUnnumbered] = useState(false); // Toggle to highlight unnumbered elements
   const [showInvalidNotation, setShowInvalidNotation] = useState(false); // Toggle to highlight elements with invalid notation
   const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0 }); // NEW: for pinch-to-zoom
-  const [showSaveDialog, setShowSaveDialog] = useState(false); // NEW: save dialog modal
+  const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false);
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showRecentProjectsDialog, setShowRecentProjectsDialog] = useState(false);
   const [showRecentLoadConfirm, setShowRecentLoadConfirm] = useState(false);
@@ -1666,7 +1656,6 @@ const TattingDesigner = () => {
   const [spiralArrayRotate, setSpiralArrayRotate] = useState(true);  // rotate to follow spiral
   const [spiralArrayAngleStep, setSpiralArrayAngleStep] = useState(30); // degrees per copy (fixed, not 360/count)
   const [showJoinTip, setShowJoinTip] = useState(() => localStorage.getItem('tcad_seen_join_tip') !== '1');
-  const [saveDialogName, setSaveDialogName] = useState(''); // NEW: temp name in save dialog
   const APP_VERSION = '1.0.0';
 
   const [showFileMenu, setShowFileMenu] = useState(false); // NEW: file operations dropdown menu
@@ -1682,7 +1671,6 @@ const TattingDesigner = () => {
     if (daysSinceInstall < 90) return false;
     return localStorage.getItem('tcad_update_seen') !== APP_VERSION;
   })();
-  const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false);
 
   // Splash screen — shown on every launch
   const [showSplash, setShowSplash] = useState<boolean>(true);
@@ -1719,6 +1707,7 @@ const TattingDesigner = () => {
   // REALISTIC RENDERING STATE
   // ============================================================================
   const [renderMode, setRenderMode] = useState('schematic'); // 'schematic' | 'realistic'
+  const [bakedRealisticSVG, setBakedRealisticSVG] = useState<string | null>(null); // Baked SVG for realistic view
   const [orthoLock, setOrthoLock] = useState(false); // Constrain movement to X or Y axis
   const [notationFontSize, setNotationFontSize] = useState('medium'); // 'small' | 'medium' | 'large'
   const [uiScale, setUiScale] = useState<string>(() => {
@@ -1770,8 +1759,9 @@ const TattingDesigner = () => {
   const historyIndexRef = useRef(0);  // Ref to current index
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
-  const lastFrameTimeRef = useRef(0); // For 30fps cap on realistic rendering
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
+  const groupDropdownButtonRef = useRef<HTMLButtonElement>(null); // For fixed-position group dropdown on mobile
+  const propBarGroupButtonRef = useRef<HTMLButtonElement>(null); // For property bar group dropdown
   const dragOriginRef = useRef(null); // World position at drag start, for ortho axis lock
   const pendingMouseEventRef = useRef(null);  // Store latest mouse event for batching
   // Ref to always-current handleMouseMoveInternal — fixes stale RAF closure bug where
@@ -1783,18 +1773,19 @@ const TattingDesigner = () => {
 
   // Shared history push — used by the elements useEffect and by the mouseUp handler.
   // Reads history from refs (always current), writes via setters (stable references).
-  const pushHistoryState = useCallback((els, conns) => {
+  const pushHistoryState = useCallback((els, conns, groups?) => {
     const currentHistory = historyRef.current;
     const currentIndex = historyIndexRef.current;
     const currentState = currentHistory[currentIndex];
 
-    const newStateStr = JSON.stringify({ elements: els, connections: conns });
+    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: groups });
     const oldStateStr = currentState ? JSON.stringify(currentState) : null;
     if (oldStateStr === newStateStr) return;
 
     const cloned = {
       elements: JSON.parse(JSON.stringify(els)),
       connections: JSON.parse(JSON.stringify(conns)),
+      orderGroups: JSON.parse(JSON.stringify(groups ?? [])),
     };
 
     const newHistory = currentHistory.slice(0, currentIndex + 1);
@@ -2271,17 +2262,33 @@ const TattingDesigner = () => {
     }
   }, [patternNotes]);
 
-  // Track Shift key for rotation handles visibility
+  // Track Shift key (rotation handles) and Space key (temporary pan)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Shift') {
         setIsShiftHeld(true);
+      }
+      if (e.key === ' ') {
+        // Don't intercept Space when the user is typing in a field
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        e.preventDefault(); // Prevent page scroll
+        if (!spaceDownRef.current) {
+          spaceDownRef.current = true;
+          setSpaceDown(true);
+        }
       }
     };
     
     const handleKeyUp = (e) => {
       if (e.key === 'Shift') {
         setIsShiftHeld(false);
+      }
+      if (e.key === ' ') {
+        spaceDownRef.current = false;
+        setSpaceDown(false);
+        // Release any active space-pan on key up
+        setIsDragging(false);
+        setDragStart(null);
       }
     };
     
@@ -4529,6 +4536,7 @@ const TattingDesigner = () => {
       setHistoryIndex(newIndex);
       setElements(JSON.parse(JSON.stringify(state.elements)));
       setPicotConnections(JSON.parse(JSON.stringify(state.connections)));
+      if (state.orderGroups) setOrderGroups(JSON.parse(JSON.stringify(state.orderGroups)));
       setTimeout(() => { isUndoRedoRef.current = false; }, 0);
     }
   }, []); // No dependencies - uses refs
@@ -4544,6 +4552,7 @@ const TattingDesigner = () => {
       setHistoryIndex(newIndex);
       setElements(JSON.parse(JSON.stringify(state.elements)));
       setPicotConnections(JSON.parse(JSON.stringify(state.connections)));
+      if (state.orderGroups) setOrderGroups(JSON.parse(JSON.stringify(state.orderGroups)));
       setTimeout(() => { isUndoRedoRef.current = false; }, 0);
     }
   }, []); // No dependencies - uses refs
@@ -4940,11 +4949,12 @@ const TattingDesigner = () => {
   // ── Tatting Order helpers ─────────────────────────────────────────────────
 
   // Returns [fillColor, strokeColor] for an element's order badge based on its group.
-  // Ungrouped elements use index 0 (gold) — matches the legacy single-color behavior.
+  // Ungrouped elements use index 0 (gold) — legacy single-color behavior.
+  // Grouped elements start from index 1 so Round 1 is visually distinct from ungrouped.
   const getGroupBadgeColor = (el): [string, string] => {
     if (!el.orderGroup) return ORDER_GROUP_COLORS[0];
     const idx = orderGroups.findIndex(g => g.id === el.orderGroup);
-    return ORDER_GROUP_COLORS[idx >= 0 ? idx % ORDER_GROUP_COLORS.length : 0];
+    return ORDER_GROUP_COLORS[idx >= 0 ? (idx + 1) % ORDER_GROUP_COLORS.length : 1];
   };
 
   const getNextAvailableNumber = (): number => {
@@ -4967,45 +4977,59 @@ const TattingDesigner = () => {
     const existingEl = elements.find(
       e => e.id !== targetElId &&
         parseInt(String(e.orderNumber), 10) === num &&
-        // conflict only within the same group scope
         (activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId)
     );
     if (existingEl) {
       setTattingOrderConflict({ newNum: num, existingElId: existingEl.id, targetElId });
       return;
     }
-    setElements(prev => prev.map(e =>
+    const newEls = elements.map(e =>
       e.id === targetElId
         ? { ...e, orderNumber: num, orderGroup: activeOrderGroupId ?? undefined }
         : e
-    ));
+    );
+    setElements(newEls);
     setTattingOrderInput('');
+    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
   };
 
   const resolveTattingOrderConflict = (action: 'swap' | 'shift' | 'cancel') => {
     if (!tattingOrderConflict) return;
     const { newNum, existingElId, targetElId } = tattingOrderConflict;
+    let newEls = elements;
     if (action === 'swap') {
       const targetEl = elements.find(e => e.id === targetElId);
       const oldNum = targetEl?.orderNumber ?? null;
-      setElements(prev => prev.map(e => {
+      newEls = elements.map(e => {
         if (e.id === targetElId) return { ...e, orderNumber: newNum };
         if (e.id === existingElId) return { ...e, orderNumber: oldNum };
         return e;
-      }));
+      });
+      setElements(newEls);
     } else if (action === 'shift') {
-      setElements(prev => prev.map(e => {
+      newEls = elements.map(e => {
         if (e.id === targetElId) return { ...e, orderNumber: newNum, orderGroup: activeOrderGroupId ?? undefined };
-        // Only shift elements in the same group scope
         const sameGroup = activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId;
         const n = parseInt(String(e.orderNumber), 10);
         if (sameGroup && !isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
         return e;
-      }));
+      });
+      setElements(newEls);
     }
     setTattingOrderConflict(null);
     setTattingOrderInput('');
+    if (action !== 'cancel') {
+      pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+    }
   };
+  // Convenience: push a history snapshot after any tatting-order mutation.
+  // Call AFTER the state setters so refs are updated by the next render — but since
+  // we pass current ref values directly, this captures the pre-setState snapshot which
+  // is fine for undo (React batches the update anyway).
+  const pushOrderHistory = () => {
+    pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+  };
+
   // New canvas - confirm if there are elements
   const newCanvas = () => {
     // Show warning if canvas has content or has been modified (history > initial state)
@@ -5308,7 +5332,7 @@ const TattingDesigner = () => {
   };
 
 
-  const exportSVG = useCallback(() => {
+  const exportSVG = useCallback(async () => {
     if (!canvasRef.current) return;
     
     // Get the SVG element
@@ -5434,12 +5458,13 @@ const TattingDesigner = () => {
       orderLayer.setAttribute('inkscape:groupmode', 'layer');
       const fontSize = Math.max(8, Math.round(width / 60)); // scale to drawing
       numberedEls.forEach(el => {
-        // Pick color by group index; ungrouped elements fall back to gold (index 0)
+        // Pick color by group index — same logic as getGroupBadgeColor():
+        // ungrouped = gold (index 0), grouped starts at index 1 so Round 1 != ungrouped
         const groupIndex = el.orderGroup
           ? orderGroups.findIndex(g => g.id === el.orderGroup)
           : -1;
         const [fillColor, strokeColor] = ORDER_GROUP_COLORS[
-          groupIndex >= 0 ? groupIndex % ORDER_GROUP_COLORS.length : 0
+          groupIndex >= 0 ? (groupIndex + 1) % ORDER_GROUP_COLORS.length : 0
         ];
         const bg = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         bg.setAttribute('x', String(el.center.x));
@@ -5465,19 +5490,21 @@ const TattingDesigner = () => {
 
     // Add XML declaration
     svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
+
+    // ── Save via Tauri dialog (browser link.click() is blocked in Tauri WebView) ──
+    try {
+      const filePath = await tauriSave({
+        title: 'Export SVG',
+        defaultPath: `${projectName.replace(/[^a-z0-9]/gi, '_')}.svg`,
+        filters: [{ name: 'SVG Image', extensions: ['svg'] }],
+      });
+      if (!filePath) return; // user cancelled
+      await writeTextFile(filePath, svgString);
+    } catch (err) {
+      console.error('SVG export failed:', err);
+    }
     
-    // Download
-    const blob = new Blob([svgString], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${projectName.replace(/[^a-z0-9]/gi, '_')}.svg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-  }, [elements, projectName]);
+  }, [elements, projectName, patternNotes, orderGroups, dsWidth]);
 
   // Generate pattern text from ordered elements
   const generatePattern = useCallback(() => {
@@ -6045,8 +6072,10 @@ const TattingDesigner = () => {
       picots: [...selectedPicots] // Array of {elementId, picotId}
     };
     
-    setPicotConnections(prev => [...prev, connection]);
+    const newConns = [...picotConnectionsRef.current, connection];
+    setPicotConnections(newConns);
     setSelectedPicots([]); // Clear selection after joining
+    pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
   }, [selectedPicots]); // Dependency: selectedPicots for creating connection
 
   // Break connections for selected joint picots
@@ -6056,13 +6085,14 @@ const TattingDesigner = () => {
     }
     
     // Remove any connections that include any of the selected picots
-    setPicotConnections(prev => prev.filter(conn => {
+    const newConns = picotConnectionsRef.current.filter(conn => {
       return !conn.picots.some(p => 
         selectedPicots.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId)
       );
-    }));
-    
+    });
+    setPicotConnections(newConns);
     setSelectedPicots([]); // Clear selection after breaking
+    pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
   }, [selectedPicots]); // Dependency: selectedPicots for filtering
 
 
@@ -6450,6 +6480,14 @@ const TattingDesigner = () => {
       setDragStart({ x: e.clientX, y: e.clientY });
       return;
     }
+
+    // Space + left click = temporary pan (Figma-style), regardless of current tool
+    if (e.button === 0 && spaceDownRef.current) {
+      e.preventDefault();
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
     
     // Only handle left click for tools
     if (e.button !== 0) return;
@@ -6632,6 +6670,8 @@ const TattingDesigner = () => {
       const clicked = findClosestElement(world.x, world.y);
       setSelectedIds(clicked ? [clicked.id] : []);
       setTattingOrderInput(clicked?.orderNumber != null ? String(clicked.orderNumber) : '');
+      setShowPropBarGroupDropdown(false);
+      setPropBarOrderDraft(null);
       return;
     } else if (currentTool === 'select') {
       // In picotJoin / beading modes, element selection and dragging are disabled —
@@ -6660,8 +6700,16 @@ const TattingDesigner = () => {
             }
           });
         } else {
-          // Single select: select the whole group
-          if (!selectedIds.includes(clicked.id)) setSelectedIds(groupMembers);
+          // Single select: if the click lands on any currently selected element
+          // (not just the topmost one), preserve the whole selection and start drag.
+          // This handles duplicate-in-place: new elements sit exactly on top of
+          // originals, so findClosestElement returns an original that isn't in the
+          // new selection — but the click position still hits selected elements.
+          const clickHitsSelection = selectedIds.includes(clicked.id) ||
+            elements.some(el => selectedIds.includes(el.id) && isPointInElement(el, world.x, world.y));
+          if (!clickHitsSelection) {
+            setSelectedIds(groupMembers);
+          }
           setDraggedElement(clicked.id);
           lastMousePosRef.current = { x: world.x, y: world.y };
           dragOriginRef.current = { x: world.x, y: world.y }; // For ortho axis lock
@@ -6707,35 +6755,14 @@ const TattingDesigner = () => {
   };
 
   const handleMouseMove = (e) => {
-    // PERFORMANCE OPTIMIZATION: RAF Batching + 30fps cap for realistic rendering
+    // RAF Batching for smooth panning and interaction
     pendingMouseEventRef.current = { clientX: e.clientX, clientY: e.clientY };
     
     if (!rafIdRef.current) {
-      rafIdRef.current = requestAnimationFrame((timestamp) => {
+      rafIdRef.current = requestAnimationFrame(() => {
         rafIdRef.current = null;
-        
-        if (!pendingMouseEventRef.current) return;
-        
-        // Cap at ~30fps (33ms per frame) — realistic rendering is expensive,
-        // display refresh (60-120fps) is overkill for this use case
-        const elapsed = timestamp - lastFrameTimeRef.current;
-        if (elapsed < 33) {
-          // Too soon — re-queue for next frame without processing
-          rafIdRef.current = requestAnimationFrame((ts) => {
-            rafIdRef.current = null;
-            lastFrameTimeRef.current = ts;
-            const ev = pendingMouseEventRef.current;
-            // Call via ref so we always use the latest version of the handler,
-            // not the version captured in the stale RAF closure.
-            if (ev) handleMouseMoveInternalRef.current?.(ev);
-          });
-          return;
-        }
-        
-        lastFrameTimeRef.current = timestamp;
-        const e = pendingMouseEventRef.current;
-        // Call via ref so we always use the latest version of the handler.
-        handleMouseMoveInternalRef.current?.(e);
+        const ev = pendingMouseEventRef.current;
+        if (ev) handleMouseMoveInternalRef.current?.(ev);
       });
     }
   };
@@ -7917,6 +7944,15 @@ const TattingDesigner = () => {
     pathDragStartRef.current = null; // Clear interpolation start data
     setRotationHandle(null);         // NEW: clear rotation handle
     setMovingPivot(false);           // NEW: clear pivot movement
+
+    // Minimum line length guard — remove lines that were placed as accidental dots.
+    // A line whose start and end are within 12 world-units of each other is a misclick.
+    setElements(prev => prev.filter(el => {
+      if (el.type !== 'line' || !el.paths || el.paths.length === 0) return true;
+      const path = el.paths[0];
+      const len = Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y);
+      return len >= 12;
+    }));
   };
 
   useEffect(() => {
@@ -7968,11 +8004,7 @@ const TattingDesigner = () => {
       // Toggle render mode: V key (WITHOUT Ctrl/Cmd)
       if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        setRenderMode(prev => {
-          const next = prev === 'schematic' ? 'realistic' : 'schematic';
-          if (next === 'realistic') setCurrentTool('pan');
-          return next;
-        });
+        handleSetRenderMode(renderMode === 'schematic' ? 'realistic' : 'schematic');
         return;
       }
 
@@ -9965,7 +9997,7 @@ const TattingDesigner = () => {
     const handler = (e) => {
       if (e.key !== 'Escape') return;
       if (showSplash) { setShowSplash(false); return; }
-      if (renderMode === 'realistic') { setRenderMode('schematic'); return; }
+      if (renderMode === 'realistic') { handleSetRenderMode('schematic'); return; }
       if (showColorPicker) { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); return; }
       if (showMaterialsPanel) { setShowMaterialsPanel(false); return; }
       if (showAbout) { setShowAbout(false); return; }
@@ -9973,7 +10005,6 @@ const TattingDesigner = () => {
       if (showHelp) { setShowHelp(false); return; }
       if (showBeadLibrary) { setShowBeadLibrary(false); return; }
       if (showPolarGridPanel) { setShowPolarGridPanel(false); return; }
-      if (showSaveDialog) { setShowSaveDialog(false); return; }
       if (showThreadProperties) { setShowThreadProperties(false); return; }
       if (activeMode === 'picotJoin') { setActiveMode(null); setShowJoinTip(false); return; }
       if (activeMode === 'beading') { setActiveMode(null); setSelectedBEs([]); return; }
@@ -9982,7 +10013,7 @@ const TattingDesigner = () => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showSplash, showColorPicker, showMaterialsPanel, showHelp, showBeadLibrary, showPolarGridPanel, showSaveDialog, showThreadProperties, currentTool, activeMode, renderMode, rulerPoints]);
+  }, [showSplash, showColorPicker, showMaterialsPanel, showHelp, showBeadLibrary, showPolarGridPanel, showThreadProperties, currentTool, activeMode, renderMode, rulerPoints]);
 
   // Resolve the correct help URL whenever the help modal opens or language changes.
   // Fetches the localised file and checks the body — Vite/SPA dev servers return
@@ -10073,6 +10104,222 @@ const TattingDesigner = () => {
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elements, renderMode, dsWidth]);
+
+  // ── BAKED REALISTIC VIEW ──────────────────────────────────────────────────
+  // Runs once on switch to realistic. Serializes all stitch geometry to a
+  // static SVG string. Pan/zoom then costs zero geometry work.
+  const bakeRealisticView = () => {
+    const scale = calculateStitchScale();
+    const offsetAmount = dsWidth * 0.125 + 5;
+    const PICOT_TIP_H = { sp: 1.2, p: 2.0, lp: 3.2, medium: 2.0, small: 1.2, large: 3.2 };
+    const PICOT_BASE_OFF = 0.6;
+
+    // ── bounds tracking ──
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const expand = (x: number, y: number) => {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    };
+
+    // ── per-element SVG fragments ──
+    const fragments: string[] = [];
+
+    for (const el of elements) {
+      const elColor = getElementColor(el);
+
+      // ── helper: picot SVG for a path element ──
+      const picotSVG = (totalPathLength: any): string => {
+        if (!el.picots) return '';
+        const picotSideDir = el.picotSideMultiplier || 1;
+        const N = el.stitchCount;
+        let out = '';
+        for (const picot of el.picots) {
+          if (picot.isJoint || picot.beadType) continue;
+          const tMid   = picot.stitchesBefore / N;
+          const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
+          const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
+          const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
+
+          const ptAt = (frac: number) =>
+            getPointAndAngleAtDistanceFast(
+              totalPathLength.allSamples,
+              totalPathLength.pathLengths,
+              frac * totalPathLength.totalLength
+            );
+
+          const ptMid   = ptAt(tMid);
+          const ptLeft  = ptAt(tLeft);
+          const ptRight = ptAt(tRight);
+
+          let nx: number, ny: number;
+          const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
+          if (isHalfway) {
+            const ptJoin = ptAt(0);
+            const ax = ptMid.x - ptJoin.x, ay = ptMid.y - ptJoin.y;
+            const al = Math.sqrt(ax*ax + ay*ay) || 1;
+            nx = (ax / al) * picotSideDir;
+            ny = (ay / al) * picotSideDir;
+          } else {
+            nx =  Math.sin(ptMid.angle) * picotSideDir;
+            ny = -Math.cos(ptMid.angle) * picotSideDir;
+          }
+
+          const bL  = { x: ptLeft.x,  y: ptLeft.y  };
+          const bR  = { x: ptRight.x, y: ptRight.y };
+          const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
+          const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
+          const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
+
+          const picotColor = elColor.isGradient
+            ? getGradientColorAtPosition(elColor.id, tMid)
+            : elColor.color;
+          const lw = el.lineWidth || 2;
+          const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
+
+          expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
+
+          out += `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>`;
+          out += `<path d="${d}" stroke="${picotColor}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
+        }
+        return out;
+      };
+
+      // ── stitch buckets → merged paths per color ──
+      const stitchesToSVG = (stitches: any[], isCircle: boolean, isSplitRing = false): string => {
+        if (!stitches || stitches.length === 0) return '';
+        const buckets = new Map<string, string[]>();
+        const strokeW = 0.05 * scale;
+
+        for (let i = 0; i < stitches.length; i++) {
+          const stitch = stitches[i];
+          const stitchTypes = Array.isArray(stitch.type) ? stitch.type : [stitch.type];
+          for (let subIdx = 0; subIdx < stitchTypes.length; subIdx++) {
+            const type = stitchTypes[subIdx];
+            const dsPos = stitch.dsPosition ?? i;
+            const effectiveIndex = stitchTypes.length > 1
+              ? dsPos + (subIdx / stitchTypes.length)
+              : dsPos;
+
+            let wedgePaths: string[];
+            if (isCircle) {
+              wedgePaths = renderWedgeRingShapes(stitch, el, scale, offsetAmount, type);
+            } else if (el.isClosed) {
+              wedgePaths = renderWedgeTeardropShapes(stitch, el, scale, offsetAmount, type, effectiveIndex, stitchTypes.length);
+            } else {
+              wedgePaths = renderWedgeChainShapes(stitch, el, scale, offsetAmount, type, effectiveIndex);
+            }
+
+            const existing = buckets.get(stitch.color) || [];
+            buckets.set(stitch.color, existing.concat(wedgePaths));
+
+            // expand bounds from stitch positions
+            expand(stitch.x - dsWidth, stitch.y - dsWidth);
+            expand(stitch.x + dsWidth, stitch.y + dsWidth);
+          }
+        }
+
+        let out = '';
+        for (const [color, dParts] of buckets.entries()) {
+          const d = dParts.filter(Boolean).join(' ');
+          if (d) out += `<path d="${d}" fill="${color}" stroke="black" stroke-width="${strokeW.toFixed(3)}" stroke-linejoin="miter"/>`;
+        }
+        return out;
+      };
+
+      let frag = '';
+
+      if (el.isClosed && el.shapeStyle === 'circle') {
+        // ── circle ring ──
+        const stitches = calculateCircleStitches(el);
+        const r = el.stitchCount * dsWidth / (2 * Math.PI);
+        expand(el.center.x - r - dsWidth*2, el.center.y - r - dsWidth*2);
+        expand(el.center.x + r + dsWidth*2, el.center.y + r + dsWidth*2);
+        // picots for circle: simple arc approach (no path sampling needed)
+        frag += stitchesToSVG(stitches, true);
+
+      } else if (el.isSplitRing) {
+        // ── split ring ──
+        const cached = calculateSplitRingStitches(el);
+        const stitchesA = cached.filter((_: any, i: number) => i < cached.length / 2);
+        const stitchesB = cached.filter((_: any, i: number) => i >= cached.length / 2);
+        const allSamplesA = [sampleBezierPath(el.paths[0], 50)];
+        const pathLengthsA = allSamplesA.map((s: any[]) => calculatePathLength(s));
+        const totalLengthA = pathLengthsA.reduce((a: number, b: number) => a + b, 0);
+        const allSamplesB = [sampleBezierPath(el.paths[1], 50)];
+        const pathLengthsB = allSamplesB.map((s: any[]) => calculatePathLength(s));
+        const totalLengthB = pathLengthsB.reduce((a: number, b: number) => a + b, 0);
+        // Use path bounding for expand
+        for (const path of el.paths || []) {
+          const pts = sampleBezierPath(path, 20);
+          for (const pt of pts) expand(pt.x, pt.y);
+        }
+        frag += stitchesToSVG(cached, false, true);
+
+      } else if (el.type === 'chain' || el.type === 'ring') {
+        // ── path element (chain / teardrop ring) ──
+        const cached = calculatePathStitches(el);
+        const stitches = cached?.stitches ?? cached;
+        if (stitches && stitches.length > 0) {
+          const allSamples = (el.paths || []).map((p: any) => sampleBezierPath(p, 50));
+          const pathLengths = allSamples.map((s: any[]) => calculatePathLength(s));
+          const totalLength = pathLengths.reduce((a: number, b: number) => a + b, 0);
+          const totalPathLength = { allSamples, pathLengths, totalLength };
+
+          // expand bounds from path
+          for (const path of el.paths || []) {
+            const pts = sampleBezierPath(path, 20);
+            for (const pt of pts) expand(pt.x, pt.y);
+          }
+
+          frag += picotSVG(totalPathLength);
+          frag += stitchesToSVG(stitches, false);
+        }
+
+      } else if (el.type === 'line') {
+        // ── line element — simple stroke ──
+        const elStroke = elColor.isGradient
+          ? getGradientColorAtPosition(elColor.id, 0.5)
+          : elColor.color;
+        for (const path of el.paths || []) {
+          let d: string;
+          if (path.type === 'cubic') {
+            d = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
+          } else {
+            d = `M ${path.x},${path.y} Q ${path.controlX},${path.controlY} ${path.endX},${path.endY}`;
+          }
+          frag += `<path d="${d}" fill="none" stroke="black" stroke-width="${(el.lineWidth || 2) + 2}" stroke-linecap="round"/>`;
+          frag += `<path d="${d}" fill="none" stroke="${elStroke}" stroke-width="${el.lineWidth || 2}" stroke-linecap="round"/>`;
+          const pts = sampleBezierPath(path, 20);
+          for (const pt of pts) expand(pt.x, pt.y);
+        }
+      }
+
+      if (frag) fragments.push(frag);
+    }
+
+    // ── fallback bounds ──
+    if (!isFinite(minX)) { minX = -100; minY = -100; maxX = 100; maxY = 100; }
+    const PAD = dsWidth * 3;
+    minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
+    const W = maxX - minX, H = maxY - minY;
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX.toFixed(1)} ${minY.toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}">${fragments.join('')}</svg>`;
+    setBakedRealisticSVG(svg);
+  };
+
+  // ── handleSetRenderMode: wrapper that manages baking on transition ──────
+  const handleSetRenderMode = (next: string) => {
+    if (next === 'realistic') {
+      setCurrentTool('pan');
+      setBakedRealisticSVG(null);
+      setRenderMode('realistic');
+      // Defer baking one tick so React can commit renderMode first
+      setTimeout(() => bakeRealisticView(), 0);
+    } else {
+      setBakedRealisticSVG(null);
+      setRenderMode('schematic');
+    }
+  };
 
   const getSolidColor = (element) => {
     const mat = materialsById.get(element.materialId || 'default');
@@ -10647,6 +10894,7 @@ const TattingDesigner = () => {
           .ui-large .toolbar-scalable-right { transform: scale(0.85) !important; }
           .ui-large .top-toolbar-scalable   { transform: scale(0.85) !important; }
         }
+        @keyframes tattingBakeSpin { to { transform: rotate(360deg); } }
       `}</style>
       <div className={`w-full h-screen flex flex-col select-none${uiScale === 'large' ? ' ui-large' : ''}`} style={{ backgroundColor: bgColor }}>
       {/* Two-row header — paddingTop pushes content below the Android status bar on edge-to-edge WebViews */}
@@ -10816,7 +11064,7 @@ const TattingDesigner = () => {
               <span className="text-gray-400 text-xs">{t('modeRealisticSub')}</span>
               <div className="ml-auto">
                 <button
-                  onClick={() => setRenderMode('schematic')}
+                  onClick={() => handleSetRenderMode('schematic')}
                   className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
                   title={t('toolSwitchSchematic')}
                 >
@@ -11074,9 +11322,10 @@ const TattingDesigner = () => {
                   </div>
 
                   {/* Group dropdown */}
-                  <div className="relative flex-shrink-0" style={{ zIndex: 200 }}>
+                  <div className="relative flex-shrink-0">
                     {/* Trigger button */}
                     <button
+                      ref={groupDropdownButtonRef}
                       onClick={() => { setShowGroupDropdown(d => !d); setShowNewGroupInput(false); setRenamingGroupId(null); }}
                       className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold border border-gray-500 bg-gray-700 hover:bg-gray-600 text-gray-200"
                       style={ activeGroup ? { borderColor: activeBadgeFill, color: activeBadgeFill } : {} }
@@ -11085,18 +11334,22 @@ const TattingDesigner = () => {
                       <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
                     </button>
 
-                    {/* Dropdown panel */}
-                    {showGroupDropdown && (
+                    {/* Dropdown panel — fixed position so it escapes the property bar on mobile */}
+                    {showGroupDropdown && (() => {
+                      const rect = groupDropdownButtonRef.current?.getBoundingClientRect();
+                      const dropTop = rect ? rect.bottom + 4 : 60;
+                      const dropLeft = rect ? rect.left : 0;
+                      return (
                       <>
                         {/* Click-outside veil */}
                         <div
                           className="fixed inset-0"
-                          style={{ zIndex: -1 }}
+                          style={{ zIndex: 9998 }}
                           onClick={() => { setShowGroupDropdown(false); setRenamingGroupId(null); setShowNewGroupInput(false); }}
                         />
                         <div
-                          className="absolute left-0 top-full mt-1 rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
-                          style={{ backgroundColor: '#1f2937', zIndex: 300 }}
+                          className="fixed rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
+                          style={{ backgroundColor: '#1f2937', zIndex: 9999, top: dropTop, left: dropLeft }}
                         >
                           {/* Ungrouped row */}
                           <button
@@ -11126,14 +11379,18 @@ const TattingDesigner = () => {
                                     onKeyDown={e => {
                                       if (e.key === 'Enter') {
                                         const name = renameGroupInput.trim() || grp.name;
-                                        setOrderGroups(prev => prev.map(g => g.id === grp.id ? { ...g, name } : g));
+                                        const newGroups = orderGroupsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
+                                        setOrderGroups(newGroups);
+                                        pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
                                         setRenamingGroupId(null);
                                       }
                                       if (e.key === 'Escape') setRenamingGroupId(null);
                                     }}
                                     onBlur={() => {
                                       const name = renameGroupInput.trim() || grp.name;
-                                      setOrderGroups(prev => prev.map(g => g.id === grp.id ? { ...g, name } : g));
+                                      const newGroups = orderGroupsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
+                                      setOrderGroups(newGroups);
+                                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
                                       setRenamingGroupId(null);
                                     }}
                                     onClick={e => e.stopPropagation()}
@@ -11166,14 +11423,21 @@ const TattingDesigner = () => {
                                 <button
                                   onClick={e => {
                                     e.stopPropagation();
-                                    if (window.confirm(t('tattingOrderGroupDeleteConfirm').replace('{name}', grp.name))) {
-                                      setElements(prev => prev.map(el =>
-                                        el.orderGroup === grp.id ? { ...el, orderGroup: undefined } : el
-                                      ));
-                                      setOrderGroups(prev => prev.filter(g => g.id !== grp.id));
-                                      if (activeOrderGroupId === grp.id) setActiveOrderGroupId(null);
-                                      setShowGroupDropdown(false);
-                                    }
+                                    setShowGroupDropdown(false);
+                                    setConfirmDialog({
+                                      message: t('tattingOrderGroupDeleteConfirm').replace('{name}', grp.name),
+                                      confirmLabel: t('confirmDelete'),
+                                      onConfirm: () => {
+                                        const newEls = elementsRef.current.map(el =>
+                                          el.orderGroup === grp.id ? { ...el, orderGroup: undefined } : el
+                                        );
+                                        const newGroups = orderGroupsRef.current.filter(g => g.id !== grp.id);
+                                        setElements(newEls);
+                                        setOrderGroups(newGroups);
+                                        if (activeOrderGroupId === grp.id) setActiveOrderGroupId(null);
+                                        pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
+                                      }
+                                    });
                                   }}
                                   className="opacity-0 group-hover:opacity-100 px-1 py-0.5 rounded text-red-400 hover:text-red-200 text-xs flex-shrink-0"
                                   title={t('tattingOrderGroupDelete')}
@@ -11197,11 +11461,13 @@ const TattingDesigner = () => {
                                     const name = newGroupNameInput.trim() ||
                                       t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
                                     const id = crypto.randomUUID();
-                                    setOrderGroups(prev => [...prev, { id, name }]);
+                                    const newGroups = [...orderGroupsRef.current, { id, name }];
+                                    setOrderGroups(newGroups);
                                     setActiveOrderGroupId(id);
                                     setNewGroupNameInput('');
                                     setShowNewGroupInput(false);
                                     setShowGroupDropdown(false);
+                                    pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
                                   }
                                   if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupNameInput(''); }
                                 }}
@@ -11215,11 +11481,13 @@ const TattingDesigner = () => {
                                   const name = newGroupNameInput.trim() ||
                                     t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
                                   const id = crypto.randomUUID();
-                                  setOrderGroups(prev => [...prev, { id, name }]);
+                                  const newGroups = [...orderGroupsRef.current, { id, name }];
+                                  setOrderGroups(newGroups);
                                   setActiveOrderGroupId(id);
                                   setNewGroupNameInput('');
                                   setShowNewGroupInput(false);
                                   setShowGroupDropdown(false);
+                                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
                                 }}
                                 className="px-1.5 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs border border-emerald-500"
                               >✓</button>
@@ -11242,7 +11510,8 @@ const TattingDesigner = () => {
                           )}
                         </div>
                       </>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Progress in current scope */}
@@ -11320,21 +11589,19 @@ const TattingDesigner = () => {
                       onClick={() => {
                         const hasNumber = selectedEl.orderNumber != null && String(selectedEl.orderNumber).trim() !== '';
                         if (hasNumber) {
-                          // Just re-group, keep existing number as-is (no conflict check)
-                          setElements(prev => prev.map(e =>
-                            e.id === selectedEl.id
-                              ? { ...e, orderGroup: activeOrderGroupId ?? undefined }
-                              : e
-                          ));
+                          const newEls = elementsRef.current.map(e =>
+                            e.id === selectedEl.id ? { ...e, orderGroup: activeOrderGroupId ?? undefined } : e
+                          );
+                          setElements(newEls);
+                          pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
                         } else {
-                          // No number yet — assign group + next available in that group
                           const next = getNextAvailableNumber();
-                          setElements(prev => prev.map(e =>
-                            e.id === selectedEl.id
-                              ? { ...e, orderGroup: activeOrderGroupId ?? undefined, orderNumber: next }
-                              : e
-                          ));
+                          const newEls = elementsRef.current.map(e =>
+                            e.id === selectedEl.id ? { ...e, orderGroup: activeOrderGroupId ?? undefined, orderNumber: next } : e
+                          );
+                          setElements(newEls);
                           setTattingOrderInput('');
+                          pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
                         }
                       }}
                       className="px-3 py-1 rounded text-xs font-semibold border"
@@ -11348,10 +11615,12 @@ const TattingDesigner = () => {
                     </button>
                     <button
                       onClick={() => {
-                        setElements(prev => prev.map(e =>
+                        const newEls = elementsRef.current.map(e =>
                           e.id === selectedEl.id ? { ...e, orderNumber: null, orderGroup: undefined } : e
-                        ));
+                        );
+                        setElements(newEls);
                         setTattingOrderInput('');
+                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
                       }}
                       disabled={!selectedEl.orderNumber}
                       className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 text-sm border border-gray-600"
@@ -11384,37 +11653,109 @@ const TattingDesigner = () => {
                     <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
                     <input
                       type="text"
-                      value={selectedElement.orderNumber || ''}
-                      onChange={(e) => {
-                        const newOrderNum = e.target.value.trim();
-                        setElements(prev => {
-                          const conflict = prev.find(el =>
-                            el.id !== selectedElement.id &&
-                            el.orderNumber &&
-                            el.orderNumber.toString().trim() === newOrderNum &&
-                            newOrderNum !== ''
-                          );
-                          if (conflict) {
-                            const usedNumbers = prev
-                              .filter(el => el.id !== conflict.id && el.orderNumber)
-                              .map(el => parseInt(el.orderNumber))
-                              .filter(n => !isNaN(n));
-                            let nextNum = 1;
-                            while (usedNumbers.includes(nextNum)) nextNum++;
-                            return prev.map(el => {
-                              if (el.id === selectedElement.id) return { ...el, orderNumber: newOrderNum };
-                              if (el.id === conflict.id) return { ...el, orderNumber: nextNum.toString() };
-                              return el;
-                            });
-                          }
-                          return prev.map(el =>
-                            el.id === selectedElement.id ? { ...el, orderNumber: newOrderNum } : el
-                          );
-                        });
+                      value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
+                      onChange={e => setPropBarOrderDraft(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const n = parseInt(propBarOrderDraft ?? '', 10);
+                          if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
+                          else if (propBarOrderDraft?.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
+                          setPropBarOrderDraft(null);
+                          (e.target as HTMLInputElement).blur();
+                        }
+                        if (e.key === 'Escape') { setPropBarOrderDraft(null); (e.target as HTMLInputElement).blur(); }
+                      }}
+                      onFocus={() => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
+                      onBlur={() => {
+                        if (propBarOrderDraft !== null) {
+                          const n = parseInt(propBarOrderDraft, 10);
+                          if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
+                          else if (propBarOrderDraft.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
+                          setPropBarOrderDraft(null);
+                        }
                       }}
                       className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
                       placeholder="#"
                     />
+                    {/* Round group picker for lines */}
+                    <div className="relative flex-shrink-0">
+                        <button
+                          ref={propBarGroupButtonRef}
+                          onClick={() => setShowPropBarGroupDropdown(d => !d)}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300"
+                          style={(() => {
+                            const grp = selectedElement?.orderGroup ? orderGroups.find(g => g.id === selectedElement.orderGroup) : null;
+                            const gi = grp ? orderGroups.findIndex(g => g.id === grp.id) : -1;
+                            const [fill] = gi >= 0 ? ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length] : [null];
+                            return fill ? { borderColor: fill, color: fill } : {};
+                          })()}
+                        >
+                          <span>{selectedElement?.orderGroup ? (orderGroups.find(g => g.id === selectedElement.orderGroup)?.name ?? t('tattingOrderUngrouped')) : t('tattingOrderUngrouped')}</span>
+                          <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
+                        </button>
+                        {showPropBarGroupDropdown && (() => {
+                          const rect = propBarGroupButtonRef.current?.getBoundingClientRect();
+                          const dropTop = rect ? rect.bottom + 4 : 60;
+                          const dropLeft = rect ? rect.left : 0;
+                          return (
+                            <>
+                              <div className="fixed inset-0" style={{ zIndex: 9998 }}
+                                onClick={() => setShowPropBarGroupDropdown(false)} />
+                              <div className="fixed rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
+                                style={{ backgroundColor: '#1f2937', zIndex: 9999, top: dropTop, left: dropLeft }}>
+                                <button
+                                  onClick={() => {
+                                    const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: undefined } : el);
+                                    setElements(newEls);
+                                    setShowPropBarGroupDropdown(false);
+                                    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                                  }}
+                                  className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${!selectedElement?.orderGroup ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
+                                >
+                                  <span style={{ fontSize: '8px' }}>{!selectedElement?.orderGroup ? '●' : '○'}</span>
+                                  {t('tattingOrderUngrouped')}
+                                </button>
+                                {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
+                                {orderGroups.map((grp, gi) => {
+                                  const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
+                                  const isActive = selectedElement?.orderGroup === grp.id;
+                                  return (
+                                    <button key={grp.id}
+                                      onClick={() => {
+                                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: grp.id } : el);
+                                        setElements(newEls);
+                                        setShowPropBarGroupDropdown(false);
+                                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                                      }}
+                                      className="w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700"
+                                      style={{ color: isActive ? gpFill : '#d1d5db' }}
+                                    >
+                                      <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
+                                      <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
+                                    </button>
+                                  );
+                                })}
+                                <div className="my-1 border-t border-gray-600" />
+                                <button
+                                  onClick={() => {
+                                    const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                                    const id = crypto.randomUUID();
+                                    const newGroups = [...orderGroupsRef.current, { id, name }];
+                                    const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: id } : el);
+                                    setOrderGroups(newGroups);
+                                    setElements(newEls);
+                                    setShowPropBarGroupDropdown(false);
+                                    pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
+                                  }}
+                                  className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
+                                >
+                                  {t('tattingOrderGroupNew')}
+                                </button>
+                              </div>
+                            </>
+                          );
+                        })()}
+                    </div>
                     {/* ── Line bead picker ── */}
                     {(() => {
                       // Normalise: migrate legacy lineBeadId+lineBeadCount to lineBeadSlots on first render
@@ -11996,53 +12337,116 @@ const TattingDesigner = () => {
                 <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
                 <input
                   type="text"
-                  value={selectedElement.orderNumber || ''}
-                  onChange={(e) => {
-                    const newOrderNum = e.target.value.trim();
-                    setElements(prev => {
-                      // Check if this order number is already used by another element
-                      const conflict = prev.find(el => 
-                        el.id !== selectedElement.id && 
-                        el.orderNumber && 
-                        el.orderNumber.toString().trim() === newOrderNum &&
-                        newOrderNum !== ''
-                      );
-                      
-                      if (conflict) {
-                        // Find next available order number
-                        const usedNumbers = prev
-                          .filter(el => el.id !== conflict.id && el.orderNumber)
-                          .map(el => parseInt(el.orderNumber))
-                          .filter(n => !isNaN(n));
-                        
-                        let nextNum = 1;
-                        while (usedNumbers.includes(nextNum)) {
-                          nextNum++;
-                        }
-                        
-                        // Reassign conflict to next available number
-                        return prev.map(el => {
-                          if (el.id === selectedElement.id) {
-                            return { ...el, orderNumber: newOrderNum };
-                          } else if (el.id === conflict.id) {
-                            return { ...el, orderNumber: nextNum.toString() };
-                          }
-                          return el;
-                        });
-                      }
-                      
-                      // No conflict, just update
-                      return prev.map(el => 
-                        el.id === selectedElement.id ? { ...el, orderNumber: newOrderNum } : el
-                      );
-                    });
+                  value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
+                  onChange={e => setPropBarOrderDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const n = parseInt(propBarOrderDraft ?? '', 10);
+                      if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
+                      else if (propBarOrderDraft?.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
+                      setPropBarOrderDraft(null);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                    if (e.key === 'Escape') { setPropBarOrderDraft(null); (e.target as HTMLInputElement).blur(); }
+                  }}
+                  onFocus={e => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
+                  onBlur={() => {
+                    if (propBarOrderDraft !== null) {
+                      const n = parseInt(propBarOrderDraft, 10);
+                      if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
+                      else if (propBarOrderDraft.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
+                      setPropBarOrderDraft(null);
+                    }
                   }}
                   className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
                   placeholder="#"
                 />
               </div>
 
-              {/* RW toggle — Reverse Work */}
+              {/* Round group picker — inline next to order number, available outside tatting order mode */}
+              <div className="relative flex-shrink-0 top-toolbar-scalable">
+                  <button
+                    ref={propBarGroupButtonRef}
+                    onClick={() => setShowPropBarGroupDropdown(d => !d)}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300"
+                    style={(() => {
+                      const grp = selectedElement?.orderGroup ? orderGroups.find(g => g.id === selectedElement.orderGroup) : null;
+                      const gi = grp ? orderGroups.findIndex(g => g.id === grp.id) : -1;
+                      const [fill] = gi >= 0 ? ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length] : [null];
+                      return fill ? { borderColor: fill, color: fill } : {};
+                    })()}
+                    title={t('tattingOrderGroupTitle') || 'Assign to round'}
+                  >
+                    <span>{selectedElement?.orderGroup ? (orderGroups.find(g => g.id === selectedElement.orderGroup)?.name ?? t('tattingOrderUngrouped')) : t('tattingOrderUngrouped')}</span>
+                    <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
+                  </button>
+                  {showPropBarGroupDropdown && (() => {
+                    const rect = propBarGroupButtonRef.current?.getBoundingClientRect();
+                    const dropTop = rect ? rect.bottom + 4 : 60;
+                    const dropLeft = rect ? rect.left : 0;
+                    return (
+                      <>
+                        <div className="fixed inset-0" style={{ zIndex: 9998 }}
+                          onClick={() => setShowPropBarGroupDropdown(false)} />
+                        <div className="fixed rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
+                          style={{ backgroundColor: '#1f2937', zIndex: 9999, top: dropTop, left: dropLeft }}>
+                          {/* Ungrouped row */}
+                          <button
+                            onClick={() => {
+                              setElements(prev => prev.map(el =>
+                                el.id === selectedElement.id ? { ...el, orderGroup: undefined } : el
+                              ));
+                              setShowPropBarGroupDropdown(false);
+                              pushOrderHistory();
+                            }}
+                            className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${!selectedElement?.orderGroup ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
+                          >
+                            <span style={{ fontSize: '8px' }}>{!selectedElement?.orderGroup ? '●' : '○'}</span>
+                            {t('tattingOrderUngrouped')}
+                          </button>
+                          {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
+                          {orderGroups.map((grp, gi) => {
+                            const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
+                            const isActive = selectedElement?.orderGroup === grp.id;
+                            return (
+                              <button key={grp.id}
+                                onClick={() => {
+                                  setElements(prev => prev.map(el =>
+                                    el.id === selectedElement.id ? { ...el, orderGroup: grp.id } : el
+                                  ));
+                                  setShowPropBarGroupDropdown(false);
+                                  pushOrderHistory();
+                                }}
+                                className="w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700"
+                                style={{ color: isActive ? gpFill : '#d1d5db' }}
+                              >
+                                <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
+                                <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
+                              </button>
+                            );
+                          })}
+                          <div className="my-1 border-t border-gray-600" />
+                          <button
+                            onClick={() => {
+                              const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                              const id = crypto.randomUUID();
+                              setOrderGroups(prev => [...prev, { id, name }]);
+                              setElements(prev => prev.map(el =>
+                                el.id === selectedElement.id ? { ...el, orderGroup: id } : el
+                              ));
+                              setShowPropBarGroupDropdown(false);
+                              setTimeout(() => pushOrderHistory(), 0);
+                            }}
+                            className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
+                          >
+                            {t('tattingOrderGroupNew')}
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
+              </div>
+
               <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                 <button
                   onClick={() => {
@@ -13019,6 +13423,24 @@ const TattingDesigner = () => {
           </div>
         )}
         {/* ── End Notes Drawer ──────────────────────────────────── */}
+
+        {/* ── Baking overlay ────────────────────────────────────── */}
+        {renderMode === 'realistic' && !bakedRealisticSVG && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 20 }}>
+            <div className="flex flex-col items-center gap-3 px-6 py-5 rounded-xl border border-gray-600" style={{ backgroundColor: 'rgba(17,24,39,0.88)' }}>
+              {/* Spinner */}
+              <svg width="36" height="36" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#374151" strokeWidth="3" />
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#6366f1" strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray="44 44"
+                  style={{ transformOrigin: '18px 18px', animation: 'tattingBakeSpin 0.9s linear infinite' }} />
+              </svg>
+              <div className="text-sm font-semibold text-gray-200 text-center">{t('bakingViewTitle')}</div>
+              <div className="text-xs text-gray-400 text-center" style={{ maxWidth: '220px', lineHeight: '1.5' }}>{t('bakingViewSub')}</div>
+            </div>
+          </div>
+        )}
         <div className="absolute left-4 top-4 mobile-toolbar-compact toolbar-scalable-left bg-gray-800 text-white p-2 rounded z-10 grid grid-cols-2 gap-1 pointer-events-none" style={{ width: '100px', touchAction: 'none' }}>
           {renderMode === 'realistic' && (
             <>
@@ -13318,7 +13740,15 @@ const TattingDesigner = () => {
         <div
           ref={canvasRef}
           className="w-full h-full"
-          style={currentTool === 'ruler' ? { cursor: 'crosshair' } : undefined}
+          style={
+            spaceDown
+              ? { cursor: isDragging ? 'grabbing' : 'grab' }
+              : currentTool === 'ruler'
+                ? { cursor: 'crosshair' }
+                : currentTool === 'pan'
+                  ? { cursor: isDragging ? 'grabbing' : 'grab' }
+                  : undefined
+          }
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -13570,7 +14000,17 @@ const TattingDesigner = () => {
             </defs>
 
             <g transform={`translate(${camera.x}, ${camera.y}) scale(${zoom})`}>
-              {gridEnabled && <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)" />}
+              {gridEnabled && renderMode !== 'realistic' && <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)" />}
+
+              {/* ── Baked realistic view ─────────────────────────────────── */}
+              {renderMode === 'realistic' && bakedRealisticSVG && (
+                <g dangerouslySetInnerHTML={{ __html: bakedRealisticSVG
+                  .replace(/^<svg[^>]*>/, '')
+                  .replace(/<\/svg>$/, '') }} />
+              )}
+              {renderMode === 'realistic' && !bakedRealisticSVG && (
+                <text x="0" y="0" fill="transparent" fontSize={16 / zoom} textAnchor="middle">.</text>
+              )}
 
               {/* ── Polar Grids ─────────────────────────────────────────── */}
               {polarGrids.filter(g => g.visible).map(grid => {
@@ -13664,8 +14104,14 @@ const TattingDesigner = () => {
                 
                 if (renderMode === 'realistic') {
                   // Realistic mode: each picot → center, solid color + black outline
-                  const firstEl = elementById.get(conn.picots[0].elementId);
-                  const lineColor = firstEl?.color || '#FF8C00';
+                  // Use getSolidColor (material system) — firstEl.color bypasses materials and returns white
+                  const connectedEls = conn.picots.map(p => elementById.get(p.elementId)).filter(Boolean);
+                  const firstEl = connectedEls[0];
+                  const pickedEl = connectedEls.find(e => {
+                    const c = getSolidColor(e);
+                    return c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== '#fff';
+                  }) || firstEl;
+                  const lineColor = (pickedEl ? getSolidColor(pickedEl) : null) || '#FF8C00';
                   const lineWidth = firstEl?.lineWidth || 2;
                   const beadSeqForConnR = (() => {
                     for (const p of conn.picots) {
@@ -13723,7 +14169,7 @@ const TattingDesigner = () => {
               })}
 
               {/* picotJoin/beading dim overlay wraps all path elements */}
-              <g opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.25 : 1}>
+              <g opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.25 : renderMode === 'realistic' ? 0 : 1} style={{ pointerEvents: renderMode === 'realistic' ? 'none' : undefined }}>
               {[...elements].sort((a, b) => {
                 // Rings always render on top of chains/lines.
                 // Sort: lines = 0, chains = 1, rings = 2.
@@ -13760,142 +14206,7 @@ const TattingDesigner = () => {
                   const targetCircumference = el.stitchCount * dsWidth;
                   const radius = targetCircumference / (2 * Math.PI);
                   
-                  // NEW: Realistic rendering mode
-                  if (renderMode === 'realistic') {
-                    const stitches = stitchCache.get(el.id);
-                    if (!stitches || stitches.length === 0) return null;
-                    
-                    const scale = calculateStitchScale();
-                     const offsetAmount = dsWidth * 0.125 + 5;
-                     const PICOT_TIP_H = { sp: 1.2, p: 2.0, lp: 3.2, medium: 2.0, small: 1.2, large: 3.2 };
-                     const PICOT_BASE_OFF = 0.6; // × dsWidth half-offset each side
-                     const picotSideDir = (el.picotSideMultiplier || 1); // +1 outside, -1 inside
-
-                     return (
-                       <g key={el.id} filter={elementFilter} transform={dragTransform}>
-                         {/* Render all picots first (behind stitches) */}
-                         {(el.picots || []).filter(picot => !picot.isJoint && !picot.beadType).map(picot => {
-                           const elRot = (el.rotation || 0) * Math.PI / 180;
-                           const R = el.stitchCount * dsWidth / (2 * Math.PI);
-                           const tipH = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
-                           const baseOff = PICOT_BASE_OFF * dsWidth;
-                           const tipMult = picotSideDir;
-
-                           // Radial angle at picot position
-                           const angleBase  = (picot.stitchesBefore / el.stitchCount) * 2 * Math.PI - Math.PI / 2 + elRot;
-                           const angleLeft  = ((picot.stitchesBefore - PICOT_BASE_OFF) / el.stitchCount) * 2 * Math.PI - Math.PI / 2 + elRot;
-                           const angleRight = ((picot.stitchesBefore + PICOT_BASE_OFF) / el.stitchCount) * 2 * Math.PI - Math.PI / 2 + elRot;
-
-                           const bL = { x: el.center.x + Math.cos(angleLeft)  * R, y: el.center.y + Math.sin(angleLeft)  * R };
-                           const bR = { x: el.center.x + Math.cos(angleRight) * R, y: el.center.y + Math.sin(angleRight) * R };
-                           const tipR = R + tipMult * tipH;
-                           const tip = { x: el.center.x + Math.cos(angleBase) * tipR, y: el.center.y + Math.sin(angleBase) * tipR };
-
-                           // Bezier control point so curve passes through tip at t=0.5
-                           const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-                           const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
-
-                           const picotColor = elColor.isGradient ? getGradientColorAtPosition(elColor.id, picot.stitchesBefore / el.stitchCount) : elColor.color;
-                           const lw = el.lineWidth || 2;
-                           const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-
-                           return (
-                             <g key={`picot-${picot.id}`}>
-                               <path d={d} stroke="black" strokeWidth={lw + 2} fill="none" strokeLinecap="round" />
-                               <path d={d} stroke={picotColor} strokeWidth={lw} fill="none" strokeLinecap="round" />
-                             </g>
-                           );
-                         })}
-
-                         {/* Render stitches as wedge trapezoids — paths merged per color to minimise SVG nodes */}
-                         {(() => {
-                           const strokeW = 0.05 * scale;
-                           // Accumulate d-strings per fill color
-                           const buckets = new Map();
-                           for (const stitch of stitches) {
-                             const stitchTypes = Array.isArray(stitch.type) ? stitch.type : [stitch.type];
-                             for (let subIdx = 0; subIdx < stitchTypes.length; subIdx++) {
-                               const type = stitchTypes[subIdx];
-                               const N = el.stitchCount;
-                               const quarterArc = (Math.PI * 2 / N) * 0.25;
-                               const shiftedCenterPolar = subIdx === 0
-                                 ? stitch.centerPolarAngle - quarterArc * (stitchTypes.length > 1 ? 1 : 0)
-                                 : stitch.centerPolarAngle + quarterArc;
-                               const stitchForWedge = stitchTypes.length > 1
-                                 ? { ...stitch, centerPolarAngle: shiftedCenterPolar }
-                                 : stitch;
-                               const wedgePaths = renderWedgeRingShapes(stitchForWedge, el, scale, offsetAmount, type);
-                               const existing = buckets.get(stitch.color) || [];
-                               buckets.set(stitch.color, existing.concat(wedgePaths));
-                             }
-                           }
-                           // One <path> per distinct fill color
-                           return Array.from(buckets.entries()).map(([color, dParts]) => (
-                             <path
-                               key={color}
-                               d={dParts.join(' ')}
-                               fill={color}
-                               stroke="black"
-                               strokeWidth={strokeW}
-                               strokeLinejoin="miter"
-                             />
-                           ));
-                         })()}
-                        
-                        {/* Beads — rendered same as schematic for realistic mode */}
-                        {renderPicots(el, true)}
-                        {/* Selection indicator */}
-                        {isSelected && (
-                          <circle
-                            cx={el.center.x}
-                            cy={el.center.y}
-                            r={radius + 5}
-                            fill="none"
-                            stroke="#3B82F6"
-                            strokeWidth="2"
-                            strokeDasharray="5,5"
-                          />
-                        )}
-                        
-                        {/* Keep group and order indicators */}
-                        {el.groupId && (
-                          <text
-                            x={el.center.x}
-                            y={el.center.y + radius + 20}
-                            fill="#10B981"
-                            fontSize={notationFS}
-                            fontWeight="bold"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            G
-                          </text>
-                        )}
-                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                          const _gi = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
-                          const [_fill, _stroke] = ORDER_GROUP_COLORS[_gi >= 0 ? _gi % ORDER_GROUP_COLORS.length : 0];
-                          return (
-                            <text
-                              x={el.center.x}
-                              y={el.center.y}
-                              fill={_fill}
-                              fontSize={Math.round(notationFS * 1.57)}
-                              fontWeight="bold"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              stroke={_stroke}
-                              strokeWidth="3"
-                              paintOrder="stroke"
-                            >
-                              {el.orderNumber}
-                            </text>
-                          );
-                        })()}
-                      </g>
-                    );
-                  }
-                  
-                  // Original schematic rendering
+                  // Original schematic rendering for circles
                   return (
                     <g key={el.id} filter={elementFilter} transform={dragTransform}>
                       <circle
@@ -13934,8 +14245,7 @@ const TattingDesigner = () => {
                       )}
                       <g key={`${el.id}-labels`}>{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                        const _gi = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
-                        const [_fill, _stroke] = ORDER_GROUP_COLORS[_gi >= 0 ? _gi % ORDER_GROUP_COLORS.length : 0];
+                        const [_fill, _stroke] = getGroupBadgeColor(el);
                         return (
                           <text
                             x={el.center.x}
@@ -14067,8 +14377,7 @@ const TattingDesigner = () => {
                             if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
                             acc += seg;
                           }
-                          const _gi3 = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
-                          const [_f3, _s3] = ORDER_GROUP_COLORS[_gi3 >= 0 ? _gi3 % ORDER_GROUP_COLORS.length : 0];
+                          const [_f3, _s3] = getGroupBadgeColor(el);
                           return <text x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                       </>
@@ -14076,182 +14385,7 @@ const TattingDesigner = () => {
                     /* Chains and teardrops */
                     <>
                     {/* NEW: Realistic rendering mode */}
-                    {renderMode === 'realistic' ? (() => {
-                      const cached = stitchCache.get(el.id);
-                      // For path elements, cache stores {stitches, allSamples, pathLengths, totalLength}
-                      const stitches = cached?.stitches ?? cached;
-                      if (!stitches || stitches.length === 0) return null;
-                      
-                       const scale = calculateStitchScale();
-                       const offsetAmount = dsWidth * 0.125 + 5;
-                       const PICOT_TIP_H = { sp: 1.2, p: 2.0, lp: 3.2, medium: 2.0, small: 1.2, large: 3.2 };
-                       const PICOT_BASE_OFF = 0.6; // DS units half-offset each side
-                       const picotSideDir = (el.picotSideMultiplier || 1);
-                       // PERFORMANCE: reuse pre-sampled path data from stitchCache — no sampleBezierPath here
-                       const totalPathLength = cached?.allSamples
-                         ? { allSamples: cached.allSamples, pathLengths: cached.pathLengths, totalLength: cached.totalLength }
-                         : (() => {
-                             const allSamples = (el.paths || []).map(p => sampleBezierPath(p, 50));
-                             const pathLengths = allSamples.map(s => calculatePathLength(s));
-                             return { allSamples, pathLengths, totalLength: pathLengths.reduce((a,b) => a+b, 0) };
-                           })();
-
-                       return (
-                         <>
-                           {/* Render all picots first (behind stitches) */}
-                           {(el.picots || []).filter(picot => !picot.isJoint && !picot.beadType).map(picot => {
-                             const N = el.stitchCount;
-                             const tMid   = picot.stitchesBefore / N;
-                             const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
-                             const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
-                             const tipH = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
-
-                             const ptAt = (frac) => {
-                               const { allSamples, pathLengths, totalLength } = totalPathLength;
-                               return getPointAndAngleAtDistanceFast(allSamples, pathLengths, frac * totalLength);
-                             };
-
-                             const ptMid   = ptAt(tMid);
-                             const ptLeft  = ptAt(tLeft);
-                             const ptRight = ptAt(tRight);
-
-                             // For closed rings near the halfway point, path tangent is unstable.
-                             // Use stable axis: vector from join point (ptAt(0)) → midpoint.
-                             let nx, ny;
-                             const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
-                             if (isHalfway) {
-                               const ptJoin = ptAt(0);
-                               const ax = ptMid.x - ptJoin.x, ay = ptMid.y - ptJoin.y;
-                               const al = Math.sqrt(ax*ax + ay*ay) || 1;
-                               nx = (ax / al) * picotSideDir;
-                               ny = (ay / al) * picotSideDir;
-                             } else {
-                               // Normal perpendicular to path — matches schematic: atan2(dy,dx) - PI/2
-                               nx = Math.sin(ptMid.angle) * picotSideDir;
-                               ny = -Math.cos(ptMid.angle) * picotSideDir;
-                             }
-
-                             const bL  = { x: ptLeft.x,  y: ptLeft.y  };
-                             const bR  = { x: ptRight.x, y: ptRight.y };
-                             const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
-
-                             const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-                             const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
-
-                             const picotColor = (() => {
-                               return elColor.isGradient ? getGradientColorAtPosition(elColor.id, tMid) : elColor.color;
-                             })();
-                             const lw = el.lineWidth || 2;
-                             const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-
-                             return (
-                               <g key={`picot-${picot.id}`}>
-                                 <path d={d} stroke="black" strokeWidth={lw + 2} fill="none" strokeLinecap="round" />
-                                 <path d={d} stroke={picotColor} strokeWidth={lw} fill="none" strokeLinecap="round" />
-                               </g>
-                             );
-                           })}
-
-                            {/* Render stitches — paths merged per color to minimise SVG nodes */}
-                            {(() => {
-                              const strokeW = 0.05 * scale;
-                              const buckets = new Map();
-                              for (let i = 0; i < stitches.length; i++) {
-                                const stitch = stitches[i];
-                                const stitchTypes = Array.isArray(stitch.type) ? stitch.type : [stitch.type];
-                                for (let subIdx = 0; subIdx < stitchTypes.length; subIdx++) {
-                                  const type = stitchTypes[subIdx];
-                                  // Use stored DS position (critical for RDS which skips every other slot).
-                                  // For SS the sub-stitch offset within the DS slot still applies.
-                                  const dsPos = stitch.dsPosition ?? i;
-                                  const effectiveIndex = stitchTypes.length > 1
-                                    ? dsPos + (subIdx / stitchTypes.length)
-                                    : dsPos;
-                                  const wedgePaths = el.isClosed
-                                    ? renderWedgeTeardropShapes(stitch, el, scale, offsetAmount, type, effectiveIndex, stitchTypes.length)
-                                    : renderWedgeChainShapes(stitch, el, scale, offsetAmount, type, effectiveIndex);
-                                  const existing = buckets.get(stitch.color) || [];
-                                  buckets.set(stitch.color, existing.concat(wedgePaths));
-                                }
-                              }
-                              return Array.from(buckets.entries()).map(([color, dParts]) => (
-                                <path
-                                  key={color}
-                                  d={dParts.join(' ')}
-                                  fill={color}
-                                  stroke="black"
-                                  strokeWidth={strokeW}
-                                  strokeLinejoin="miter"
-                                />
-                              ));
-                            })()}
-                          
-                          {/* Beads — rendered same as schematic for realistic mode */}
-                          {renderPicots(el, true)}
-                          {/* Selection indicator */}
-                          {isSelected && el.paths.map((path, i) => {
-                            let pathD;
-                            if (path.type === 'cubic') {
-                              pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
-                            } else {
-                              pathD = `M ${path.x},${path.y} Q ${path.controlX},${path.controlY} ${path.endX},${path.endY}`;
-                            }
-                            return (
-                              <path
-                                key={`select-${i}`}
-                                d={pathD}
-                                fill="none"
-                                stroke="#3B82F6"
-                                strokeWidth="2"
-                                strokeDasharray="5,5"
-                              />
-                            );
-                          })}
-                          
-                          {/* Keep order number and group indicator */}
-                          {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                            let ox = el.center.x, oy = el.center.y;
-                            if (el.type === 'chain' && el.paths && el.paths.length > 0) {
-                              const allPts: {x:number,y:number}[] = [];
-                              el.paths.forEach(p => {
-                                for (let i = 0; i <= 40; i++) {
-                                  const t = i / 40, u = 1 - t;
-                                  if (p.type === 'cubic') {
-                                    allPts.push({ x: u*u*u*p.x+3*u*u*t*p.control1X+3*u*t*t*p.control2X+t*t*t*p.endX, y: u*u*u*p.y+3*u*u*t*p.control1Y+3*u*t*t*p.control2Y+t*t*t*p.endY });
-                                  } else {
-                                    allPts.push({ x: u*u*p.x+2*u*t*p.controlX+t*t*p.endX, y: u*u*p.y+2*u*t*p.controlY+t*t*p.endY });
-                                  }
-                                }
-                              });
-                              let total = 0;
-                              for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                              let acc = 0, half = total / 2;
-                              for (let i = 1; i < allPts.length; i++) {
-                                const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                                if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
-                                acc += seg;
-                              }
-                            }
-                            const _gi4 = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
-                            const [_f4, _s4] = ORDER_GROUP_COLORS[_gi4 >= 0 ? _gi4 % ORDER_GROUP_COLORS.length : 0];
-                            return <text x={ox} y={oy} fill={_f4} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s4} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
-                          })()}
-                          {el.groupId && (
-                            <text
-                              x={el.center.x}
-                              y={el.center.y + 60}
-                              fill="#10B981"
-                              fontSize={notationFS}
-                              fontWeight="bold"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                            >
-                              G
-                            </text>
-                          )}
-                        </>
-                      );
-                    })() : el.type === 'line' ? (
+                    {el.type === 'line' ? (
                       // Line rendering - simple bezier path without stitches
                       <>
                         {el.paths.map((path, i) => {
@@ -14433,8 +14567,7 @@ const TattingDesigner = () => {
                               acc += seg;
                             }
                           }
-                          const _gi5 = el.orderGroup ? orderGroups.findIndex(g => g.id === el.orderGroup) : -1;
-                          const [_f5, _s5] = ORDER_GROUP_COLORS[_gi5 >= 0 ? _gi5 % ORDER_GROUP_COLORS.length : 0];
+                          const [_f5, _s5] = getGroupBadgeColor(el);
                           return <text x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                         {el.groupId && (
@@ -14975,7 +15108,7 @@ const TattingDesigner = () => {
       </div>
 
       {showHelp && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 md:p-4" onClick={() => setShowHelp(false)}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 md:p-4" style={{ zIndex: 2147483645 }} onClick={() => setShowHelp(false)}>
           <div
             className="bg-gray-800 rounded-lg w-full max-w-full md:max-w-3xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -16081,7 +16214,7 @@ const TattingDesigner = () => {
             <span className="text-red-400 w-4 text-center flex-shrink-0">♥</span><span>{t('helpMenuKofi')}</span>
           </button>
           <div className="border-t border-gray-600 my-1" />
-          <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); setUpdateCheckStatus('idle'); }}
+          <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <span className="text-blue-300 w-4 text-center flex-shrink-0">↑</span><span>{t('helpMenuCheckUpdate')}</span>
           </button>
@@ -16118,6 +16251,12 @@ const TattingDesigner = () => {
                 <div className="font-semibold">{t('aboutLicenseText')}</div>
                 <div className="text-gray-400">{t('aboutLicenseFull')}</div>
               </div>
+            </div>
+
+            {/* Special Thanks */}
+            <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Special Thanks</div>
+              <div className="text-sm text-gray-300">Mike &amp; Tim</div>
             </div>
 
             {/* GitHub */}
@@ -16231,6 +16370,24 @@ const TattingDesigner = () => {
           >
             <IconLoad size={16} />
             <span>{t('fileLoad')}</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowFileMenu(false);
+              if (elements.length > 0) {
+                setConfirmDialog({
+                  message: t('recentProjectsLoadConfirmBody'),
+                  confirmLabel: t('recentProjectsLoadConfirmOk'),
+                  onConfirm: () => loadProject(),
+                });
+              } else {
+                loadProject();
+              }
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            <IconLoad size={16} />
+            <span>{t('fileBrowse')}</span>
           </button>
           <div className="border-t border-gray-600 my-1"></div>
           <button
@@ -16538,11 +16695,7 @@ const TattingDesigner = () => {
           {/* Realistic / Schematic toggle */}
           <button
             onClick={() => {
-              setRenderMode(prev => {
-                const next = prev === 'schematic' ? 'realistic' : 'schematic';
-                if (next === 'realistic') setCurrentTool('pan');
-                return next;
-              });
+              handleSetRenderMode(renderMode === 'schematic' ? 'realistic' : 'schematic');
               setShowViewMenu(false);
             }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
@@ -17528,7 +17681,7 @@ const TattingDesigner = () => {
               </button>
 
               <button
-                onClick={() => setShowSplash(false)}
+                onClick={() => { setShowSplash(false); setShowHelp(true); }}
                 className="py-2 rounded-lg bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-gray-200 text-xs font-semibold transition-colors"
               >{t('splashGettingStarted')}</button>
             </div>

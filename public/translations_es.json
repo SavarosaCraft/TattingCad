@@ -485,5 +485,8 @@
   "clickColorPreview": "Haz clic en una muestra de color para previsualizar",
   "colorPageIndicator": "Página {page} de {total} ({count} colores)",
   "rotateNudgePlus": "Rotar +1° (mantén para repetir)",
-  "rotateNudgeMinus": "Rotar -1° (mantén para repetir)"
+  "rotateNudgeMinus": "Rotar -1° (mantén para repetir)",
+"bakingViewTitle": "Renderizando vista realista…",
+"bakingViewSub": "Calculando la geometría de puntos de todos los elementos. Los patrones complejos pueden tardar un momento.",
+"fileBrowse": "Buscar archivo…"
 }

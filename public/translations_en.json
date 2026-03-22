@@ -485,5 +485,8 @@
   "clickColorPreview": "Click a color swatch to preview",
   "colorPageIndicator": "Page {page} of {total} ({count} colors)",
   "rotateNudgePlus": "Rotate +1° (hold to repeat)",
-  "rotateNudgeMinus": "Rotate -1° (hold to repeat)"
+  "rotateNudgeMinus": "Rotate -1° (hold to repeat)",
+"bakingViewTitle": "Rendering realistic view…",
+"bakingViewSub": "Calculating stitch geometry for all elements. Complex patterns may take a moment.",
+"fileBrowse": "Browse for File…"
 }

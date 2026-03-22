@@ -175,36 +175,29 @@
 
 <div id="topbar">
 <header>
-  <div>
-    <h1>🧵 TattingCAD</h1>
-    <span>UI Reference Guide</span>
-  </div>
-  <div style="margin-left:auto;">
-    <button onclick="window.print()" style="background:#374151;border:none;color:#d1d5db;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">🖨 Print</button>
-  </div>
-</header>
-<nav id="tabbar">
-  <button class="active" onclick="show('menus',this)">📋 Menus</button>
-  <button onclick="show('toolbar',this)">🔧 Toolbar</button>
-  <button onclick="show('propbar',this)">📐 Property Bar</button>
-  <button onclick="show('panels',this)">🪟 Panels</button>
-  <button onclick="show('modes',this)">📳 Modes</button>
-  <button onclick="show('dialogs',this)">💬 Dialogs</button>
-  <div style="margin-left:auto; display:flex; align-items:center; gap:0.4rem; padding-right:0.5rem;">
+<div style="margin-left:auto; display:flex; align-items:center; gap:0.4rem; padding-right:0.5rem;">
+<button onclick="window.print()" style="background:#374151;border:none;color:#d1d5db;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">🖨 Print</button>
   <input id="searchBox" type="text" placeholder="Search…" 
     oninput="runSearch(this.value)"
     style="background:#111827;border:1px solid #374151;color:#d1d5db;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.8rem;width:160px;" />
-
   <button id="nextBtn" onclick="nextMatch()" disabled
     style="background:#374151;border:none;color:#9ca3af;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
     Next
   </button>
-
   <button onclick="clearSearch()" 
     style="background:#374151;border:none;color:#d1d5db;padding:0.3rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.75rem;">
     ✕
   </button>
-</div>
+  </div>
+</header>
+<nav id="tabbar">
+  <button class="active" onclick="show('menus',this)">Menus</button>
+  <button onclick="show('toolbar',this)">Toolbar</button>
+  <button onclick="show('propbar',this)">Property Bar</button>
+  <button onclick="show('panels',this)">Panels</button>
+  <button onclick="show('modes',this)"> Modes</button>
+  <button onclick="show('dialogs',this)">Dialogs</button>
+ </div>
 </nav>
 </div>
 
@@ -232,7 +225,7 @@
       <div class="menu-item-icon">💾</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Save Project <span class="shortcut-badge">Ctrl+S</span></div>
-        <div class="menu-item-desc">Opens the Save dialog to name the project, then downloads a <code class="code-inline">.json</code> file.</div>
+        <div class="menu-item-desc">Opens the Save dialog to name the project, then saves a <code class="code-inline">.json</code> file. Generates a prveiw for the loader.</div>
       </div>
     </div>
     <div class="menu-item">
@@ -242,13 +235,21 @@
         <div class="menu-item-desc">Opens the <strong>Recent Projects</strong> browser showing SVG thumbnail previews of previously saved or loaded files. Use <em>Browse for file…</em> to pick any <code class="code-inline">.json</code> from disk. If the canvas has work a confirmation step appears first.</div>
       </div>
     </div>
+	<div class="menu-item">
+      <div class="menu-item-icon">📂</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Browse for File...</div>
+        <div class="menu-item-desc">System window to pick any <code class="code-inline">.json</code> from disk. If the canvas has work a confirmation step appears first.</div>
+		</div>
+    </div>
+
 
     <div class="menu-header">Export</div>
     <div class="menu-item">
       <div class="menu-item-icon">↗</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Export SVG</div>
-        <div class="menu-item-desc">Saves the pattern as a scalable vector file. Open it in any browser, Inkscape, or Illustrator to view, print, or convert to other formats at any size.</div>
+        <div class="menu-item-desc">Saves the pattern or Schematic View as a scalable vector file. Open it in any browser, Inkscape, or Illustrator to view, print, or convert to other formats at any size.</div>
       </div>
     </div>
     <div class="menu-item">
@@ -414,47 +415,47 @@
 <!-- Optons -->
   <div class="card">
     <div class="modal-title">Options</div>
-    <div class="modal-subtitle">Materials, Thread options, Polar grids and more...</div>
+    <div class="modal-subtitle">Materials, thread options, polar grids, and more.</div>
 	
 	<div class="menu-item">
       <div class="menu-item-icon">🪨</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Materials</div>
-        <div class="menu-item-desc">Brings up the Materials panel. (More in the ps section)</div>
+        <div class="menu-item-desc">Opens the Materials panel.</div>
       </div>
     </div>
 	<div class="menu-item">
       <div class="menu-item-icon">🧵</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Thread Properties</div>
-        <div class="menu-item-desc">Brings up the Tread Properties panel. (More in the ps section)</div>
+        <div class="menu-item-desc">Opens the Thread Properties panel.</div>
       </div>
     </div>
 	<div class="menu-item">
       <div class="menu-item-icon">🪩</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Bead Library</div>
-        <div class="menu-item-desc">Brings up the Bead Library panel. (More in the ps section)</div>
+        <div class="menu-item-desc">>Opens the Bead Library panel.</div>
       </div>
     </div>
 	<div class="menu-item">
       <div class="menu-item-icon">🕸️</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Polar grids</div>
-        <div class="menu-item-desc">Brings up the Polar grid panel. (More in the ps section)</div>
+        <div class="menu-item-desc">>Opens the Polar grid panel.</div>
       </div>
     </div>
 	<div class="menu-item">
       <div class="menu-item-icon">🗛</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Notation Size</div>
-        <div class="menu-item-desc">Choose between Small/Medium/Largs notation numbers.</div>
+        <div class="menu-item-desc">Choose between Small/Medium/Large notation numbers.</div>
       </div>
     </div>
 		<div class="menu-item">
       <div class="menu-item-icon">🗛</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">UI Scazle</div>
+        <div class="menu-item-name">UI Scale</div>
         <div class="menu-item-desc">Choose between Normal or Large UI.</div>
       </div>
     </div>
@@ -529,7 +530,6 @@
     </div>
   </div>
 </section>
-
 <!-- ═══════════════════════════ TOOLBAR ═══════════════════════════ -->
 <section id="tab-toolbar" class="tab-panel">
   <h2>Toolbars</h2>
@@ -564,7 +564,7 @@
       <div class="menu-item-icon">↔️</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Ortho Lock<span class="shortcut-badge">Tab</span></div>
-        <div class="menu-item-desc">Toggle to lock movement only horizontal or vertical directions.</div>
+        <div class="menu-item-desc">Toggle to constrain movement to horizontal or vertical only.</div>
       </div>
     </div>	
 	   <div class="menu-item">
@@ -589,7 +589,7 @@
         <div class="menu-item-desc">Links <code class="code-inline">jp</code> join picots between elements. Drag a selection box around picots to select them, then click Link (🔗) or Unlink (🔓). Green = free, yellow = connected.</div>
       </div>
     </div>
-    <div class="menu-item">
+	    <div class="menu-item">
       <div class="menu-item-icon">🪩</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Beading Mode <span class="shortcut-badge">Shift+B</span></div>
@@ -730,12 +730,11 @@
       </div>
     </div>
  </section>
-
+</section>
 <!-- ═══════════════════════════ PROPERTY BAR ═══════════════════════════ -->
 <section id="tab-propbar" class="tab-panel">
   <h2>Property Bar</h2>
   <p class="light" style="margin-bottom:1rem;">Appears below the top toolbar when an element is selected. Contents change by element type.</p>
-
   <div class="card">
     <div class="modal-title">Common Fields <span style="font-size:0.8rem;color:#6b7280;font-weight:400;">(all types)</span></div>
     <div class="field-row">
@@ -791,7 +790,6 @@
       <div class="field-desc">Dropdown to assign a thread material. Color comes from Material properties. Materials are defined in the Materials panel.</div>
     </div>
   </div>
-
   <div class="card">
     <div class="modal-title">Ring</div>
     <div class="field-row">
@@ -803,7 +801,6 @@
       <div class="field-desc">Stretches or compresses the ring vertically without changing stitch count. Positive = taller, negative = flatter.</div>
     </div>
   </div>
-
   <div class="card">
     <div class="modal-title">Split Ring</div>
     <div class="field-row">
@@ -823,7 +820,6 @@
       <div class="field-desc">Independent materials for each half.</div>
     </div>
   </div>
-
   <div class="card">
     <div class="modal-title">Line</div>
     <div class="field-row">
@@ -836,20 +832,18 @@
     </div>
 	    <div class="field-row">
       <div class="field-label">Dropdowns</div>
-      <div class="field-desc">Select the beads from the Nead Library</div>
+      <div class="field-desc">Select the beads from the Bead Library</div>
     </div>
 	    <div class="field-row">
       <div class="field-label">Copy/cut/paste Beads</div>
-      <div class="field-desc">Copies, cuts or Pastes the beaqds on the string.</div>
+      <div class="field-desc">Copies, cuts or Pastes the beads on the string.</div>
     <div class="field-row">
       <div class="field-label">Order #</div>
       <div class="field-desc">Lines can carry a tatting order number just like rings and chains. The number displays at the arc midpoint of the line on canvas and is included in SVG export and pattern output.</div>
     </div>
   </div>
-
- 
 </section>
-
+</section>
 <!-- ═══════════════════════════ PANELS ═══════════════════════════ -->
 <section id="tab-panels" class="tab-panel">
   <h2>Essential Panels</h2>
@@ -867,7 +861,7 @@
   <div class="card">
     <div class="modal-title">🧵 Thread Properties Panel</div>
     <div class="modal-subtitle">Thread settings that drive stitch size calculations project-wide. All calculations are based on these data points. More info in Help.</div>
-    <div class="field-row"><div class="field-label">Thread name</div><div class="field-desc">Name your thread weight, and type and tattign style.</div></div>
+    <div class="field-row"><div class="field-label">Thread name</div><div class="field-desc">Name your thread weight, and type and tatting style.</div></div>
     <div class="field-row"><div class="field-label">Measurements</div><div class="field-desc">Fill out the fields according the Help UI to make personalized sizing for your project.</div></div>
 	<div class="field-row"><div class="field-label">Alternative calculation</div><div class="field-desc">An other way to fill out the needed fields for picot length.</div></div>
 	<div class="field-row"><div class="field-label">+Add</div><div class="field-desc">Add a new thread to your library. With custom measurements.</div></div>
@@ -876,7 +870,7 @@
     <div class="modal-title">🪩 Bead Library Panel</div>
     <div class="modal-subtitle">Define custom bead types with names, size keys, and colors.</div>
     <div class="field-row"><div class="field-label">Bead name</div><div class="field-desc">A label for the bead type (e.g. "Seed bead 11/0 gold").</div></div>
-    <div class="field-row"><div class="field-label">Size key</div><div class="field-desc">Maps to Y (small), Z (medium), or V (large). The size of the beads are based on your Double stitch width - only 3 sizes are availabe.</div></div>
+    <div class="field-row"><div class="field-label">Size key</div><div class="field-desc">Maps to Y (small), Z (medium), or V (large). The size of the beads are based on your Double stitch width - only 3 sizes are available.</div></div>
 	<div class="field-row"><div class="field-label">+Add</div><div class="field-desc">Create a new custom bead.</div></div>
     <div class="field-row"><div class="field-label">Size</div><div class="field-desc">Choose one of the available sizes S/M/L.</div></div>
 	<div class="field-row"><div class="field-label">Shape</div><div class="field-desc">Choose the shape of your bead.</div></div>
@@ -904,191 +898,109 @@
     <div class="field-row"><div class="field-label">Ring: offset°</div><div class="field-desc">Rotates this ring's spokes independently — combine with global offset to stagger rings.</div></div>
 	<div class="field-row"><div class="field-label">Delete</div><div class="field-desc">Delete the selected elements. Grids or rings.</div></div>
   </div>
-
-
-
-
-
-
-
- 
-  
-   
 </section>
-
 <!-- ═══════════════════════════ MODES ═══════════════════════════ -->
 <section id="tab-modes" class="tab-panel">
+  <h2>Available Editing Modes</h2>
+<!-- Joint Picot (blue insert) -->
+<div class="card" style="margin-bottom:0.75rem; border-left:4px solid #2166a8;">  
+    <h4 style="color:#2166a8;">Picot Edit Mode</h4>
+    <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">Entered via left toolbar: Joint Picot Tool, or <strong>Shift+J</strong>. Exit via 'Exit mode' button or ESC.<br>In this mode you can select and connect elements that have the joint picot notation. <br><strong>JP</strong> - joined picots, <strong>JPG</strong> - joined picots with guide point, or <strong>BE</strong> beaded element, with joined picot setting.</p>
+    <div>
+	
+	<div class="card" style="margin-top:1rem;">
+      <div class="menu-item-name">
+        Selecting join points
+      </div>
+      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
+        <li>Circle markers indicate where joining points is possible.</li>
+        <li>Click to select, or drag to multi-select. Purple colors indicate selected points.</li>
+        <li>Yellow circles and dashed lines indicate existing connections.</li>
+      </ul>
+    </div></div>
 
+    <div class="menu-header">Mode Banner Row</div>
+    <div class="field-row">
+      <div class="field-label">JOIN</div>
+      <div class="field-desc">After selecting more than one join picots, this button will connect them together.</div>
+    </div>
+	<div class="field-row">
+      <div class="field-label">CUT</div>
+      <div class="field-desc">Selecting already connected picots, this button will remove their existing connections.</div>
+    </div>
+	<div class="field-row">
+      <div class="field-label">✕ Exit Mode</div>
+      <div class="field-desc">Exits Mode and returns to the normal property bar.</div>
+    </div>
+    </div>
 <!-- Bead Edit Mode -->
 <div class="card" style="margin-bottom:0.75rem; border-left:4px solid #9b5fa5;">
-  <h4 style="color:#9b5fa5;">🪩 Bead Edit Mode — Assigning Beads to Picots</h4>
+  <h4 style="color:#9b5fa5;">Bead Edit Mode — Assigning Beads to Picots</h4>
   <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">
-    Assign beads to individual picot positions on any element.
-    Enter with <strong>Shift+B</strong> or the bead icon (🪩). Exit with <strong>Esc</strong>.
+    Assign beads to any element containing the '<strong>BE</strong>' (Beaded Element) notation. Exception is the Line element, that handles its own beads in the property bar.<br>
+    Enter with <strong>Shift+B</strong> or the 'Beading mode" on left toolbar. Exit via 'Exit mode' button or ESC.
   </p>
   <div>
     <!-- section -->
     <div>
-      <div class="menu-header">
+      <div class="menu-item-name">
         Selecting bead positions
       </div>
       <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li>◆ Diamond markers indicate beadable picots.</li>
+        <li>Diamond markers indicate '<strong>BE</strong>' (Beaded Element) notations.</li>
         <li>Click to select, or drag to multi-select.</li>
         <li>Edits apply to all selected positions.</li>
       </ul>
     </div>
 
     <!-- section -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
-        Bead structures
-      </div>
+    <div class="card" style="margin-top:1rem;">
+	  <div><h4 class="yellow">Bead structures</h4></div>
+	 <div class="menu-item-name">Core only</div><div class="field-desc">A bead threaded onto the core thread at this picot. No picot loop.</div>
+     <div class="menu-item-name">Core + plain picot</div><div class="field-desc">Core bead(s) plus a standard un-beaded picot loop above.</div>	  
+     <div class="menu-item-name">Core + beaded picot</div><div class="field-desc">Core bead(s) plus a picot loop that itself carries beads.</div>
+     <div class="menu-item-name">Suspended</div><div class="field-desc">Beads string hang from the pico, held up by a closing bead.</div>
+     <div class="menu-item-name">Beaded picot</div><div class="field-desc">Only the picots has beads.</div>
+	</div>
+
+  
+    <!-- section -->
+    <div class="card" style="margin-top:1rem;">
+	  <div><h4 class="yellow">Connectable join point TOGGLE</h4></div>
+     <div class="field-desc">A toggle to let a '<strong>BE</strong>' (Beaded Element) behave like a Join picot. In Join Picot mode these will be selectable, and can nonnect to one or more other joined picots.</div>
+    </div>
+	
+	<div class="card" style="margin-top:1rem;">
+      <div class="menu-item-name">Copy / Cut / Paste</div>
       <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li><strong>Core only</strong> — bead on thread.</li>
-        <li><strong>Core + plain picot</strong></li>
-        <li><strong>Core + beaded picot</strong></li>
-        <li><strong>Suspended</strong></li>
-        <li><strong>Beaded picot</strong></li>
+        <li>Behaves as the Clipboard, just for the Beaded elements.</li>
       </ul>
     </div>
-
-    <!-- section -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
-        Bead slots
-      </div>
-      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li><strong>Core (3):</strong> left / centre / right</li>
-        <li><strong>Picot (3):</strong> when supported by structure</li>
-      </ul>
-    </div>
-
-    <!-- section -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
-        Join toggle
-      </div>
-      <p style="font-size:0.82rem; margin:0;">
-        Marks a bead position as a join point (yellow). Independent of Picot Join mode.
-      </p>
-    </div>
-
-    <!-- section -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#7a4a86; font-weight:500; margin-bottom:0.25rem;">
-        Copy / Cut / Paste
-      </div>
-      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li>Copy: structure + beads</li>
-        <li>Cut: copy + reset</li>
-        <li>Paste: applies to selection</li>
-      </ul>
-    </div>
-
-    <!-- section -->
-    <div>
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#c8863a; font-weight:500; margin-bottom:0.25rem;">
-        Line elements
-      </div>
-      <p style="font-size:0.82rem; margin:0; color:#6b4811;">
-        Lines use ordered bead sequences instead of per-picot slots. You can copy/paste setups across multiple lines.
-      </p>
-    </div>
-
-  </div>
-
-  <p style="font-size:0.75rem; color:#777; margin-top:0.6rem;">
-    Press <strong>Esc</strong> or <strong>Shift+B</strong> to exit. Changes are live and undoable.
-  </p>
-</div>
-
-<!-- Joint Picot (blue insert) -->
-<div class="card" style="margin-bottom:0.75rem; border-left:4px solid #2166a8;">
-  <h4 style="color:#2166a8;">🪡 Bead Assignments — Picot Connections</h4>
-
+	<div class="card" style="margin-top:1rem;">
+ <h4 class="yellow">Dropdowns</h4>
   <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">
-    Assign bead structures to picots before joining. Beads are optional but visible in the canvas for clarity.
-  </p>
+    Select the desired beads to apply to the selected elements.<br>
+    Edit the available beads using the '<strong>Library...</strong>' button.
+  </p> </div>
 
-  <!-- unified blue container -->
-  <div>
 
-    <!-- selecting beads -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
-        Selecting bead positions
-      </div>
-      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li>◆ Diamond markers indicate beadable picots.</li>
-        <li>Click to select, or drag a box to multi-select several positions.</li>
-        <li>All edits apply simultaneously to selected positions.</li>
-      </ul>
-    </div>
 
-    <!-- bead structures -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
-        Bead structures
-      </div>
-      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li><strong>Core only</strong> — bead on thread</li>
-        <li><strong>Core + plain picot</strong></li>
-        <li><strong>Core + beaded picot</strong></li>
-        <li><strong>Suspended</strong></li>
-        <li><strong>Beaded picot</strong></li>
-      </ul>
-    </div>
 
-    <!-- bead slots -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
-        Bead slots
-      </div>
-      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li><strong>Core (up to 3):</strong> left / centre / right</li>
-        <li><strong>Picot (up to 3):</strong> only if structure allows</li>
-      </ul>
-    </div>
 
-    <!-- joint toggle note -->
-    <div style="margin-bottom:0.6rem;">
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
-        Joint toggle
-      </div>
-      <p style="font-size:0.82rem; margin:0;">
-        Marks a bead position as a join point — independent of Picot Join mode. Turns the marker teal when joined.
-      </p>
-    </div>
-
-    <!-- copy/cut/paste -->
-    <div>
-      <div style="font-size:0.72rem; letter-spacing:0.08em; color:#0f3057; font-weight:500; margin-bottom:0.25rem;">
-        Copy / Cut / Paste
-      </div>
-      <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li>Copy: saves structure + bead slots</li>
-        <li>Cut: copy + reset source</li>
-        <li>Paste: applies configuration to selected bead positions</li>
-      </ul>
-    </div>
-
-  </div>
-
-  <p style="font-size:0.75rem; color:#456788; margin-top:0.6rem;">
-    Press <strong>Esc</strong> to exit this insert. Changes are live and undoable.
-  </p>
-</div>
+</div></div>
 
 <!-- Tatting Order Mode< (green insert) -->
 <div class="card" style="margin-bottom:0.75rem; border-left:4px solid #065F46;">
-    <div class="modal-title">🔢 Tatting Order Mode</div>
-    <div class="modal-subtitle">Entered via View → Tatting Order… The entire property bar is replaced by this panel for the duration of the mode. Dragging, multi-select, and notation editing are all disabled — click elements to select them one at a time and assign sequence numbers.</div>
-
+    <h4 style="color:#065F46;">Tatting Order Mode</h4>
+    <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">Entered via View → Tatting Order… Exit via 'Exit mode' button or ESC. <br>Dragging, multi-select, and notation editing are all disabled — click elements to select them one at a time and assign sequence numbers.</p>
     <div class="menu-header">Mode Banner Row</div>
     <div class="field-row">
-      <div class="field-label">Progress counter</div>
-      <div class="field-desc">Shows <strong>{numbered} / {total} numbered</strong> — updates live as you work. Counts all elements including lines (lines can carry order numbers too).</div>
+      <div class="field-label">Round dropdown</div>
+      <div class="field-desc">Assign "rounds" to elements. Placing them in a separate group makes organizing repetitive patterns easier. Editing the names of rows or deleting them is possible within the dropdown. When an element assigned to a group, it will change the color of the order number.</div>
+    </div>
+    <div class="field-row">
+    <div class="field-label">Progress counter</div>
+    <div class="field-desc">Shows <strong>{numbered} / {total} numbered</strong> — updates live as you work. Counts all elements including lines (lines can carry order numbers too).</div>
     </div>
     <div class="field-row">
       <div class="field-label">Hint text</div>
@@ -1096,7 +1008,7 @@
     </div>
     <div class="field-row">
       <div class="field-label">✕ Exit Mode</div>
-      <div class="field-desc">Exits Tatting Order Mode and returns to the normal property bar. If any elements are still unnumbered, a red error toast appears naming the count — the exit still completes.</div>
+      <div class="field-desc">Exits Tatting Order Mode and returns to the normal property bar.</div>
     </div>
 
     <div class="menu-header">Number Assignment Row (appears when an element is selected)</div>
@@ -1109,10 +1021,15 @@
       <div class="field-desc">Assigns the typed number to the selected element. Disabled while the field is empty or non-numeric. If the number is already taken by another element, the <strong>Conflict popup</strong> appears.</div>
     </div>
     <div class="field-row">
-      <div class="field-label">Assign Next (N)</div>
+      <div class="field-label">Assign Next</div>
       <div class="field-desc">One-click shortcut that assigns the next available gap number — the lowest positive integer not yet used by any element. The button label shows the number that will be assigned so you can confirm before clicking.</div>
     </div>
     <div class="field-row">
+      <div class="field-label">Assign to Group</div>
+      <div class="field-desc">Assigns the selected element to the selected Group.</div>
+    </div>
+    
+	<div class="field-row">
       <div class="field-label">Clear</div>
       <div class="field-desc">Removes the order number from the selected element entirely. Disabled if the element has no number.</div>
     </div>
@@ -1127,8 +1044,8 @@
       <div class="field-desc">All elements without an order number glow pink at all times while the mode is active. Glow disappears as soon as a number is assigned.</div>
     </div>
     <div class="field-row">
-      <div class="field-label">Gold numbers</div>
-      <div class="field-desc">Assigned order numbers render as gold labels at the midpoint of each element — rings at their center, chains and lines at the arc midpoint.</div>
+      <div class="field-label">Gold / Group colored numbers</div>
+      <div class="field-desc">Assigned order numbers appear as colored labels at the midpoint of each element — rings at their center, chains and lines at the arc midpoint. Ungrouped elements show in gold. Elements assigned to a round use that round's color.</div>
     </div>
     <div class="field-row">
       <div class="field-label">No dragging</div>
@@ -1156,23 +1073,12 @@
       <div class="field-desc">When any element has an order number, SVG export adds a dedicated <strong>Order Numbers</strong> layer (Inkscape/Illustrator compatible). Each number is a gold text element with a black outline, positioned at the element midpoint. The layer can be hidden or deleted in a vector editor without affecting the pattern artwork.</div>
     </div>
   </div>
-
 </section>
-
-
 <!-- ═══════════════════════════ DIALOGS ═══════════════════════════ -->
 <section id="tab-dialogs" class="tab-panel">
   <h2>Dialogs &amp; Modals</h2>
 
-  <div class="card">
-    <div class="modal-title">💾 Save Project Dialog</div>
-    <div class="modal-subtitle">Triggered by File → Save or Ctrl+S.</div>
-    <div class="field-row"><div class="field-label">Project name</div><div class="field-desc">Editable name for the file. Special characters are replaced with underscores in the filename. Defaults to the current project name.</div></div>
-    <div class="field-row"><div class="field-label">Save</div><div class="field-desc">Downloads the <code class="code-inline">.json</code> and adds a thumbnail to Recent Projects.</div></div>
-    <div class="field-row"><div class="field-label">Cancel</div><div class="field-desc">Closes without saving.</div></div>
-  </div>
-
-  <div class="card">
+   <div class="card">
     <div class="modal-title">📂 Recent Projects Dialog</div>
     <div class="modal-subtitle">Triggered by File → Load Project or the Splash screen Load button.</div>
     <p style="font-size:0.875rem;color:#9ca3af;margin-bottom:0.75rem;">Visual grid of recently saved or loaded projects with SVG thumbnail previews. Thumbnails are generated automatically at save/load time. Up to 20 entries are kept.</p>
@@ -1209,8 +1115,9 @@
     <div class="field-row"><div class="field-label">Spacing</div><div class="field-desc">Distance between each copy in canvas units.</div></div>
     <div class="field-row"><div class="field-label">Rotation/step</div><div class="field-desc">Extra rotation added to each copy cumulatively. 0 = none. 15 = each copy 15° more than the previous. Reset button clears to 0.</div></div>
     <div class="field-row"><div class="field-label">Summary line</div><div class="field-desc">Plain-language description of the current settings updated live.</div></div>
-    <div class="field-row"><div class="field-label">Peek / Apply</div><div class="field-desc">Peek shows the green ghost preview. Apply creates copies as a single undoable step.</div></div>
-  </div>
+    <div class="field-row"><div class="field-label">Peek</div><div class="field-desc">Hold to fade the dialog and see the live green ghost preview on the canvas clearly.</div></div>
+    <div class="field-row"><div class="field-label">Apply</div><div class="field-desc">Creates all copies as a single undoable step.</div></div>    
+ </div>
 
   <div class="card">
     <div class="modal-title">🌀 Spiral Array Dialog</div>
@@ -1220,28 +1127,28 @@
     <div class="field-row"><div class="field-label">Gap</div><div class="field-desc">(Archimedean) Distance added to the radius per step in canvas units.</div></div>
     <div class="field-row"><div class="field-label">Growth factor</div><div class="field-desc">(Geometric) Multiplier applied to the radius each step. 1.2 = grows 20% per copy.</div></div>
     <div class="field-row"><div class="field-label">Rotate elements</div><div class="field-desc">When checked, each copy is rotated to face outward along the spiral. Uncheck to keep the original orientation.</div></div>
-    <div class="field-row"><div class="field-label">Peek / Apply</div><div class="field-desc">Peek shows the pink ghost preview. Apply creates copies as a single undoable step.</div></div>
+    <div class="field-row"><div class="field-label">Peek</div><div class="field-desc">Hold to fade the dialog and see the live pink ghost preview on the canvas clearly.</div></div>
+    <div class="field-row"><div class="field-label">Apply</div><div class="field-desc">Creates all copies as a single undoable step.</div></div>    
+
   </div>
 
   <div class="card">
     <div class="modal-title">ℹ About Dialog</div>
     <div class="modal-subtitle">Triggered by Help → About TattingCAD.</div>
-    <p style="font-size:0.875rem;color:#9ca3af;">Shows the app logo, version, description, license, GitHub button, Ko-fi button, and a manual update check. The Open Releases Page button opens GitHub. Dismiss for this version hides the update reminder until the next release.</p>
+    <p style="font-size:0.875rem;color:#9ca3af;">Shows the app logo, version, description, license, GitHub button, Ko-fi button, and a manual update check. <br>The Open Releases Page button opens GitHub.</p>
   </div>
 
   <div class="card">
     <div class="modal-title">🎨 Color Picker</div>
     <div class="modal-subtitle">Used for element colors, material colors, background color, and polar grid colors.</div>
     <div class="field-row"><div class="field-label">Picker tab</div><div class="field-desc">Freeform HSL/RGB color wheel and hex input.</div></div>
-    <div class="field-row"><div class="field-label">Swatches tab</div><div class="field-desc">Grid of predefined swatches and recently used colors.</div></div>
-    <div class="field-row"><div class="field-label">DMC tab</div><div class="field-desc">Searchable DMC thread color database. Filter by name, number, or category. Select a color to use its exact hex value.</div></div>
-    <div class="field-row"><div class="field-label">Gradient tab</div><div class="field-desc">Browse and search the gradient library for material assignments.</div></div>
+    <div class="field-row"><div class="field-label">DMC tab</div><div class="field-desc">Searchable DMC thread color database. Filter by name, number, or category.</div></div>
+    <div class="field-row"><div class="field-label">Gradient tab</div><div class="field-desc">Browse and search the gradient library for material.</div></div>
   </div>
 </section>
 
 
 </main>
-
 <script>
 // ── TAB SYSTEM ─────────────────────────────────────────────
 
