@@ -488,5 +488,12 @@
   "rotateNudgeMinus": "Rotar -1° (mantén para repetir)",
 "bakingViewTitle": "Renderizando vista realista…",
 "bakingViewSub": "Calculando la geometría de puntos de todos los elementos. Los patrones complejos pueden tardar un momento.",
-"fileBrowse": "Buscar archivo…"
+"fileBrowse": "Buscar archivo…",
+"arrangeAlignToGridH": "Alinear a cuadrícula polar (H)",
+"arrangeAlignToGridV": "Alinear a cuadrícula polar (V)",
+"toolZoomRect": "Zoom a selección (Z)",
+"viewShowInvalidNotation": "Mostrar notación inválida",
+"viewHideInvalidNotation": "Ocultar notación inválida",
+"viewShowEditingArtifacts": "Mostrar artefactos",
+"viewHideEditingArtifacts": "Ocultar artefactos"
 }

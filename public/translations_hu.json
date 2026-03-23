@@ -488,5 +488,12 @@
   "rotateNudgeMinus": "Forgatás -1° (tartsd lenyomva az ismétléshez)",
 "bakingViewTitle": "Realisztikus nézet renderelése…",
 "bakingViewSub": "Az összes elem öltésgeometriájának kiszámítása. Összetett minták esetén ez egy pillanatot vehet igénybe.",
-"fileBrowse": "Fájl tallózása…"
+"fileBrowse": "Fájl tallózása…",
+"arrangeAlignToGridH": "Vízszintes poláris rácsigazítás",
+"arrangeAlignToGridV": "Függőleges poláris rácsigazítás",
+"toolZoomRect": "Nagyítás kijelölésre (Z)",
+"viewShowInvalidNotation": "Hibás minta mutatása",
+"viewHideInvalidNotation": "Hibás minta rejtése",
+"viewShowEditingArtifacts": "Segédjelek mutatása",
+"viewHideEditingArtifacts": "Segédjelek rejtése"
 }

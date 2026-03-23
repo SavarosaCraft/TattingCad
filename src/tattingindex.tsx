@@ -550,6 +550,12 @@ export const IconFitView = ({ size = 20, className = '' }) => (
     <path d="M3.175,4.4971 L4.4979,4.4971 L4.4979,3.1722 L3.9687,3.1722 L3.9687,3.9671 L3.175,3.9671 Z M0.7937,2.1198 L1.3229,2.1198 L1.3229,1.3249 L2.1167,1.3249 L2.1167,0.7949 L0.7938,0.7949 Z M0.5292,5.292 C0.3836,5.292 0.2591,5.2401 0.1554,5.1363 C0.0518,5.0325 0,4.9078 0,4.7621 L0,0.5299 C0,0.3842 0.0518,0.2595 0.1554,0.1557 C0.2591,0.0519 0.3836,0 0.5292,0 L4.7625,0 C4.908,0 5.0326,0.0519 5.1362,0.1557 C5.2398,0.2595 5.2917,0.3842 5.2917,0.5299 L5.2917,4.7621 C5.2917,4.9078 5.2399,5.0325 5.1362,5.1363 C5.0326,5.2401 4.908,5.292 4.7625,5.292 Z M0.5292,4.7621 L4.7625,4.7621 L4.7625,0.5299 L0.5292,0.5299 Z M0.5292,4.7621 L0.5292,0.5299 Z" fill="currentColor" strokeWidth="0.0066"/>
   </svg>
 );
+export const IconZoomRect = ({ size = 20, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
+    <path d="M784,-120 L532,-372 Q502,-348 463,-334 Q424,-320 380,-320 Q271,-320 195.5,-395.5 Q120,-471 120,-580 Q120,-689 195.5,-764.5 Q271,-840 380,-840 Q489,-840 564.5,-764.5 Q640,-689 640,-580 Q640,-536 626,-497 Q612,-458 588,-428 L840,-176 L784,-120 Z M380,-400 Q455,-400 507.5,-452.5 Q560,-505 560,-580 Q560,-655 507.5,-707.5 Q455,-760 380,-760 Q305,-760 252.5,-707.5 Q200,-655 200,-580 Q200,-505 252.5,-452.5 Q305,-400 380,-400 Z" fill="currentColor"/>
+    <rect x="220" y="-720" width="160" height="110" fill="none" stroke="currentColor" strokeWidth="55" strokeDasharray="30,25" rx="8"/>
+  </svg>
+);
 
 // ── Connection ───────────────────────────────────────────────────────────────
 export const IconLink = ({ size = 20, className = '' }) => (
@@ -818,6 +824,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     arrangeAlignBottom: 'Align Bottom',
     arrangePolarHeader: 'Polar Grid',
     arrangeCenterToPolarGrid: 'Center to Polar Grid',
+    arrangeAlignToGridH: 'Align to Grid Horizontally',
+    arrangeAlignToGridV: 'Align to Grid Vertically',
     arrangePolarArray: 'Polar Array…',
     polarArrayTitle: 'Polar Array',
     polarArrayCount: 'Total copies (including original)',
@@ -861,6 +869,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     toolOrthoLock: 'Ortho lock: constrain movement to X or Y axis (or hold Shift)',
     toolPathEdit: 'Path Edit Tool',
     toolRuler: 'Ruler Tool (measure distance)',
+    toolZoomRect: 'Zoom to Rectangle (Z)',
     rulerClickFirst: 'Click to set start point',
     rulerClickSecond: 'Click to set end point — click again to reset',
     rulerPx: 'px',
@@ -928,6 +937,9 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     menuViewTitle: 'View options',
     viewFitView: 'Fit View',
     viewShowInvalidNotation: 'Show Invalid Notation',
+    viewHideInvalidNotation: 'Hide Invalid Notation',
+    viewShowEditingArtifacts: 'Show Editing Artifacts',
+    viewHideEditingArtifacts: 'Hide Editing Artifacts',
     viewMaterials: 'Materials…',
     viewThreadProperties: 'Thread Properties…',
     viewBeadLibrary: 'Bead Library…',
@@ -1622,9 +1634,13 @@ const TattingDesigner = () => {
   const [isShiftHeld, setIsShiftHeld] = useState(false); // Track if Shift key is held for rotation handles
   const [spaceDown, setSpaceDown] = useState(false);     // Track if Space is held for temporary pan
   const spaceDownRef = useRef(false);                    // Ref mirror — mouse handlers read this to avoid stale closure
+  const [zDown, setZDown] = useState(false);             // Track if Z is held for temporary zoom-rect
+  const zDownRef = useRef(false);                        // Ref mirror for Z key
+  const [zoomRectBox, setZoomRectBox] = useState(null);  // { x, y, width, height } in world coords while dragging
   const [showRotationHandles, setShowRotationHandles] = useState(false); // Manual toggle for rotation handles (mobile)
   const [showUnnumbered, setShowUnnumbered] = useState(false); // Toggle to highlight unnumbered elements
-  const [showInvalidNotation, setShowInvalidNotation] = useState(false); // Toggle to highlight elements with invalid notation
+  const [showInvalidNotation, setShowInvalidNotation] = useState(true); // Toggle to highlight elements with invalid notation
+  const [showEditingArtifacts, setShowEditingArtifacts] = useState(true); // Toggle to show/hide JP dots and connection lines in realistic view
   const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0 }); // NEW: for pinch-to-zoom
   const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false);
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
@@ -1769,6 +1785,7 @@ const TattingDesigner = () => {
   // re-renders triggered by setDragTick, zoom, or camera changes.
   const handleMouseMoveInternalRef = useRef(null);
   const needsHistoryPushRef = useRef(false);  // Flag to push history after interaction ends
+  const skipAutoHistoryRef = useRef(false);   // Flag: explicit pushHistoryState already called — skip useEffect auto-push
   const pathDragStartRef = useRef(null);  // Store initial control points and position for smooth path editing
 
   // Shared history push — used by the elements useEffect and by the mouseUp handler.
@@ -1778,8 +1795,11 @@ const TattingDesigner = () => {
     const currentIndex = historyIndexRef.current;
     const currentState = currentHistory[currentIndex];
 
-    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: groups });
-    const oldStateStr = currentState ? JSON.stringify(currentState) : null;
+    const normalGroups = groups ?? [];
+    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: normalGroups });
+    const oldStateStr = currentState
+      ? JSON.stringify({ elements: currentState.elements, connections: currentState.connections, orderGroups: currentState.orderGroups ?? [] })
+      : null;
     if (oldStateStr === newStateStr) return;
 
     const cloned = {
@@ -1852,11 +1872,12 @@ const TattingDesigner = () => {
   // Track history when elements or connections change
   useEffect(() => {
     if (isUndoRedoRef.current) return; // Don't add during undo/redo
+    if (skipAutoHistoryRef.current) { skipAutoHistoryRef.current = false; return; } // Explicit push already done
     if (isInteractingRef.current) {
       needsHistoryPushRef.current = true; // Push after interaction ends instead
       return;
     }
-    pushHistoryState(elements, picotConnections);
+    pushHistoryState(elements, picotConnections, orderGroupsRef.current);
   }, [elements, picotConnections]); // Depend on both elements and connections
 
   // Auto-save to localStorage every 30 seconds
@@ -1880,6 +1901,7 @@ const TattingDesigner = () => {
   const activePresetIdRef = useRef(activePresetId);
   const activeModeRef = useRef(activeMode);
   const selectedBEsRef = useRef(selectedBEs);
+  const selectedPicotsRef = useRef([]);
   const beClipboardRef = useRef(beClipboard);
   const orderGroupsRef = useRef(orderGroups);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1914,6 +1936,7 @@ const TattingDesigner = () => {
     selectedBEsRef.current = selectedBEs;
     beClipboardRef.current = beClipboard;
     orderGroupsRef.current = orderGroups;
+    selectedPicotsRef.current = selectedPicots;
   });
 
   // Persist polar grids globally to localStorage whenever they change
@@ -2036,14 +2059,18 @@ const TattingDesigner = () => {
         const currentCamera = cameraRef.current;
         const delta = e.deltaY > 0 ? -0.08 : 0.08;
         const newZoom = Math.max(0.1, Math.min(3, currentZoom + delta));
-        if (!canvasRef.current) { setZoom(newZoom); return; }
+        if (!canvasRef.current) { zoomRef.current = newZoom; setZoom(newZoom); return; }
         const rect = canvasRef.current.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
         const worldX = (mouseX - currentCamera.x) / currentZoom;
         const worldY = (mouseY - currentCamera.y) / currentZoom;
+        const newCamera = { x: mouseX - worldX * newZoom, y: mouseY - worldY * newZoom };
+        // Update refs immediately so the next scroll event in the same frame reads fresh values
+        zoomRef.current = newZoom;
+        cameraRef.current = newCamera;
         setZoom(newZoom);
-        setCamera({ x: mouseX - worldX * newZoom, y: mouseY - worldY * newZoom });
+        setCamera(newCamera);
       }
     };
     
@@ -2277,6 +2304,14 @@ const TattingDesigner = () => {
           setSpaceDown(true);
         }
       }
+      if (e.key === 'z' || e.key === 'Z') {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.ctrlKey || e.metaKey || e.shiftKey) return; // Don't intercept Ctrl+Z (undo) or Shift+Z (redo)
+        if (!zDownRef.current) {
+          zDownRef.current = true;
+          setZDown(true);
+        }
+      }
     };
     
     const handleKeyUp = (e) => {
@@ -2289,6 +2324,11 @@ const TattingDesigner = () => {
         // Release any active space-pan on key up
         setIsDragging(false);
         setDragStart(null);
+      }
+      if (e.key === 'z' || e.key === 'Z') {
+        zDownRef.current = false;
+        setZDown(false);
+        setZoomRectBox(null); // Clear any in-progress zoom rect
       }
     };
     
@@ -2317,11 +2357,14 @@ const TattingDesigner = () => {
     setPivotOffset({ x: 0, y: 0 });
   }, [selectedIds]);
 
-  // Clear ruler when switching to another tool
+  // Clear ruler and zoomRectBox when switching to another tool
   useEffect(() => {
     if (currentTool !== 'ruler') {
       setRulerPoints([]);
       setRulerMousePos(null);
+    }
+    if (currentTool !== 'zoomRect') {
+      setZoomRectBox(null);
     }
   }, [currentTool]);
 
@@ -3088,7 +3131,47 @@ const TattingDesigner = () => {
   // Pure validity check — no setState side-effects, safe to call during render
   const isNotationValid = (notation) => {
     if (!notation) return true;
-    return parseNotation(notation, true) !== null;
+    if (parseNotation(notation, true) === null) return false;
+    return checkNotationSemantics(notation);
+  };
+
+  const checkNotationSemantics = (notation) => {
+    try {
+      const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
+      if (!match) return false;
+      const pattern = match[2];
+      const expandTokens = (pat) => {
+        const parts = []; let current = ''; let depth = 0;
+        for (const char of pat) {
+          if (char === '(') depth++; if (char === ')') depth--;
+          if ((char === '-' || char === '.') && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; }
+          else { current += char; }
+        }
+        if (current.trim()) parts.push(current.trim());
+        const result = [];
+        for (const part of parts) {
+          const repeatMatch = part.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+          if (repeatMatch) { const count = parseInt(repeatMatch[1] || repeatMatch[4]); const inner = repeatMatch[2] || repeatMatch[3]; for (let i = 0; i < count; i++) result.push(...expandTokens(inner)); }
+          else { result.push(part); }
+        }
+        return result;
+      };
+      const isZeroWidth = (token) => {
+        const t = token.toLowerCase().trim();
+        if (t === 'be') return true;
+        if (t.startsWith('bc:') || t.startsWith('bp:') || t.startsWith('bcp:') || t.startsWith('sb:') || t.startsWith('bjp:')) return true;
+        return /^(\d+)?(p|sp|cp|lp|jp|jpg|bjp|gp)$/i.test(t);
+      };
+      const tokens = expandTokens(pattern); let prevZero = false;
+      for (const token of tokens) {
+        const t = token.toLowerCase().trim();
+        if (/^\d+(p|sp|cp|lp|jp|jpg|bjp|gp)$/i.test(t)) return false;
+        const zw = isZeroWidth(token);
+        if (zw && prevZero) return false;
+        prevZero = zw;
+      }
+      return true;
+    } catch { return true; }
   };
 
   const parseNotation = (notation, silent = false) => {
@@ -3863,8 +3946,7 @@ const TattingDesigner = () => {
     const targetLength = 12 * dsWidth;
     const squeeze = 0;
     const pathData = createTeardropPath(center.x, center.y, targetLength, squeeze);
-    
-    setElements(prev => [...prev, {
+    const newEl = {
       id: Date.now(),
       type: 'ring',
       materialId: lastUsedMaterialIdRef.current,
@@ -3879,7 +3961,12 @@ const TattingDesigner = () => {
       squeeze: squeeze,
       picotSideMultiplier: 1,
       ...pathData
-    }]);
+    };
+    const newElements = [...elementsRef.current, newEl];
+    skipAutoHistoryRef.current = true;
+    setElements(newElements);
+    setSelectedIds([newEl.id]);
+    pushHistoryState(newElements, picotConnectionsRef.current, orderGroupsRef.current);
   }, [dsWidth, camera, zoom]);
 
   const addSplitRing = useCallback(() => {
@@ -3890,8 +3977,7 @@ const TattingDesigner = () => {
     const squeeze = 0.25;
     const pathData = createSplitRingPath(center.x, center.y, totalLength, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
     const now = Date.now();
-    
-    setElements(prev => [...prev, {
+    const newEl = {
       id: now,
       type: 'ring',
       center: { x: center.x, y: center.y },
@@ -3913,7 +3999,12 @@ const TattingDesigner = () => {
       isSplitRing: true,
       materialId: lastUsedMaterialIdRef.current,
       ...pathData
-    }]);
+    };
+    const newElements = [...elementsRef.current, newEl];
+    skipAutoHistoryRef.current = true;
+    setElements(newElements);
+    setSelectedIds([newEl.id]);
+    pushHistoryState(newElements, picotConnectionsRef.current, orderGroupsRef.current);
   }, [dsWidth, camera, zoom]);
 
   // Apply curve type transformation to a path for rendering
@@ -3930,14 +4021,12 @@ const TattingDesigner = () => {
     const halfChord = chord / 2;
     // Gentle arc: lift control points by 1/5 of chord
     const arcLift = chord / 5;
-    
     const startX = center.x - halfChord;
     const startY = center.y;
     const endX = center.x + halfChord;
     const endY = center.y;
-    
     const now = Date.now();
-    setElements(prev => [...prev, {
+    const newEl = {
       id: now,
       type: 'chain',
       materialId: lastUsedMaterialIdRef.current,
@@ -3946,14 +4035,10 @@ const TattingDesigner = () => {
       shapeStyle: 'chain',
       paths: [{
         type: 'cubic',
-        x: startX,
-        y: startY,
-        control1X: startX + chord / 3,
-        control1Y: startY - arcLift,
-        control2X: startX + chord * 2 / 3,
-        control2Y: startY - arcLift,
-        endX: endX,
-        endY: endY
+        x: startX, y: startY,
+        control1X: startX + chord / 3, control1Y: startY - arcLift,
+        control2X: startX + chord * 2 / 3, control2Y: startY - arcLift,
+        endX: endX, endY: endY
       }],
       stitchCount,
       color: '#FFFFFF',
@@ -3961,7 +4046,12 @@ const TattingDesigner = () => {
       notation: 'c: 6ds-p-6ds',
       labelOffset: 8,
       picotSideMultiplier: 1
-    }]);
+    };
+    const newElements = [...elementsRef.current, newEl];
+    skipAutoHistoryRef.current = true;
+    setElements(newElements);
+    setSelectedIds([newEl.id]);
+    pushHistoryState(newElements, picotConnectionsRef.current, orderGroupsRef.current);
   }, [dsWidth, camera, zoom]);
 
   const showLoadMsg = (type, text) => {
@@ -4054,6 +4144,10 @@ const TattingDesigner = () => {
     if (currentSelectedIds.length === 0) return;
     setElements(prev => prev.filter(e => !currentSelectedIds.includes(e.id)));
     setSelectedIds([]);
+    // Remove any picot connections that reference a picot on a deleted element
+    setPicotConnections(prev => prev.filter(conn =>
+      !conn.picots.some(p => currentSelectedIds.includes(p.elementId))
+    ));
   }, []); // No dependencies - uses refs
 
   // Get bounds of a single element
@@ -4126,88 +4220,99 @@ const TattingDesigner = () => {
   };
 
   // Alignment functions
+  const getAlignmentUnits = () => {
+    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
+    const unitMap = new Map();
+    selectedElements.forEach(el => {
+      if (el.groupId) {
+        if (!unitMap.has(el.groupId)) unitMap.set(el.groupId, { ids: [], bounds: null });
+        const unit = unitMap.get(el.groupId);
+        unit.ids.push(el.id);
+        const b = getElementBounds(el);
+        if (!unit.bounds) { unit.bounds = { ...b }; }
+        else {
+          unit.bounds.left   = Math.min(unit.bounds.left,   b.left);
+          unit.bounds.right  = Math.max(unit.bounds.right,  b.right);
+          unit.bounds.top    = Math.min(unit.bounds.top,    b.top);
+          unit.bounds.bottom = Math.max(unit.bounds.bottom, b.bottom);
+          unit.bounds.centerX = (unit.bounds.left + unit.bounds.right) / 2;
+          unit.bounds.centerY = (unit.bounds.top  + unit.bounds.bottom) / 2;
+        }
+      } else {
+        unitMap.set('__solo__' + el.id, { ids: [el.id], bounds: getElementBounds(el) });
+      }
+    });
+    return [...unitMap.values()];
+  };
+
   const alignLeft = () => {
     if (selectedIds.length < 2) return;
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
-    const bounds = selectedElements.map(el => ({ el, bounds: getElementBounds(el) }));
-    const leftmost = Math.min(...bounds.map(b => b.bounds.left));
-    
-    setElements(prev => prev.map(el => {
-      const item = bounds.find(b => b.el.id === el.id);
-      if (!item) return el;
-      const dx = leftmost - item.bounds.left;
-      return moveElement(el, dx, 0);
-    }));
+    const units = getAlignmentUnits();
+    if (units.length < 2) return;
+    const target = Math.min(...units.map(u => u.bounds.left));
+    setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, target - unit.bounds.left, 0); }));
   };
 
   const alignRight = () => {
     if (selectedIds.length < 2) return;
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
-    const bounds = selectedElements.map(el => ({ el, bounds: getElementBounds(el) }));
-    const rightmost = Math.max(...bounds.map(b => b.bounds.right));
-    
-    setElements(prev => prev.map(el => {
-      const item = bounds.find(b => b.el.id === el.id);
-      if (!item) return el;
-      const dx = rightmost - item.bounds.right;
-      return moveElement(el, dx, 0);
-    }));
+    const units = getAlignmentUnits();
+    if (units.length < 2) return;
+    const target = Math.max(...units.map(u => u.bounds.right));
+    setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, target - unit.bounds.right, 0); }));
   };
 
   const alignTop = () => {
     if (selectedIds.length < 2) return;
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
-    const bounds = selectedElements.map(el => ({ el, bounds: getElementBounds(el) }));
-    const topmost = Math.min(...bounds.map(b => b.bounds.top));
-    
-    setElements(prev => prev.map(el => {
-      const item = bounds.find(b => b.el.id === el.id);
-      if (!item) return el;
-      const dy = topmost - item.bounds.top;
-      return moveElement(el, 0, dy);
-    }));
+    const units = getAlignmentUnits();
+    if (units.length < 2) return;
+    const target = Math.min(...units.map(u => u.bounds.top));
+    setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, 0, target - unit.bounds.top); }));
   };
 
   const alignBottom = () => {
     if (selectedIds.length < 2) return;
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
-    const bounds = selectedElements.map(el => ({ el, bounds: getElementBounds(el) }));
-    const bottommost = Math.max(...bounds.map(b => b.bounds.bottom));
-    
-    setElements(prev => prev.map(el => {
-      const item = bounds.find(b => b.el.id === el.id);
-      if (!item) return el;
-      const dy = bottommost - item.bounds.bottom;
-      return moveElement(el, 0, dy);
-    }));
+    const units = getAlignmentUnits();
+    if (units.length < 2) return;
+    const target = Math.max(...units.map(u => u.bounds.bottom));
+    setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, 0, target - unit.bounds.bottom); }));
   };
 
   const alignCenterHorizontal = () => {
     if (selectedIds.length < 2) return;
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
-    const bounds = selectedElements.map(el => ({ el, bounds: getElementBounds(el) }));
-    const avgCenter = bounds.reduce((sum, b) => sum + b.bounds.centerX, 0) / bounds.length;
-    
-    setElements(prev => prev.map(el => {
-      const item = bounds.find(b => b.el.id === el.id);
-      if (!item) return el;
-      const dx = avgCenter - item.bounds.centerX;
-      return moveElement(el, dx, 0);
-    }));
+    const units = getAlignmentUnits();
+    if (units.length < 2) return;
+    const target = units.reduce((sum, u) => sum + u.bounds.centerX, 0) / units.length;
+    setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, target - unit.bounds.centerX, 0); }));
   };
 
   const alignCenterVertical = () => {
     if (selectedIds.length < 2) return;
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
-    const bounds = selectedElements.map(el => ({ el, bounds: getElementBounds(el) }));
-    const avgCenter = bounds.reduce((sum, b) => sum + b.bounds.centerY, 0) / bounds.length;
-    
-    setElements(prev => prev.map(el => {
-      const item = bounds.find(b => b.el.id === el.id);
-      if (!item) return el;
-      const dy = avgCenter - item.bounds.centerY;
-      return moveElement(el, 0, dy);
-    }));
+    const units = getAlignmentUnits();
+    if (units.length < 2) return;
+    const target = units.reduce((sum, u) => sum + u.bounds.centerY, 0) / units.length;
+    setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, 0, target - unit.bounds.centerY); }));
+  };
+
+  const alignToGridHorizontal = (gridId = null) => {
+    if (selectedIds.length === 0 || polarGrids.length === 0) return;
+    const findGrid = () => { if (gridId) return polarGrids.find(g => g.id === gridId); const linkedId = (() => { for (const id of selectedIds) { const el = elements.find(e => e.id === id); if (el?.polarRotationGridId) return el.polarRotationGridId; } return null; })(); if (linkedId) return polarGrids.find(g => g.id === linkedId); return polarGrids.find(g => g.visible) || polarGrids[0]; };
+    const grid = findGrid(); if (!grid) return;
+    const allBounds = elements.filter(e => selectedIds.includes(e.id)).map(el => getElementBounds(el));
+    const selCenterX = (Math.min(...allBounds.map(b => b.left)) + Math.max(...allBounds.map(b => b.right))) / 2;
+    const dx = grid.center.x - selCenterX;
+    if (Math.abs(dx) < 0.01) return;
+    setElements(prev => prev.map(el => selectedIds.includes(el.id) ? moveElement(el, dx, 0) : el));
+  };
+
+  const alignToGridVertical = (gridId = null) => {
+    if (selectedIds.length === 0 || polarGrids.length === 0) return;
+    const findGrid = () => { if (gridId) return polarGrids.find(g => g.id === gridId); const linkedId = (() => { for (const id of selectedIds) { const el = elements.find(e => e.id === id); if (el?.polarRotationGridId) return el.polarRotationGridId; } return null; })(); if (linkedId) return polarGrids.find(g => g.id === linkedId); return polarGrids.find(g => g.visible) || polarGrids[0]; };
+    const grid = findGrid(); if (!grid) return;
+    const allBounds = elements.filter(e => selectedIds.includes(e.id)).map(el => getElementBounds(el));
+    const selCenterY = (Math.min(...allBounds.map(b => b.top)) + Math.max(...allBounds.map(b => b.bottom))) / 2;
+    const dy = grid.center.y - selCenterY;
+    if (Math.abs(dy) < 0.01) return;
+    setElements(prev => prev.map(el => selectedIds.includes(el.id) ? moveElement(el, 0, dy) : el));
   };
 
   // Center all selected elements to a polar grid's center point.
@@ -5361,6 +5466,49 @@ const TattingDesigner = () => {
     // pink-glow = search highlight — neither belongs in export)
     clonedSvg.querySelectorAll('[filter]').forEach(n => n.removeAttribute('filter'));
 
+    // ── Step 1b: Reorganize into Inkscape-compatible layers ─────────────────
+    const ns = 'http://www.w3.org/2000/svg';
+    const inkNs = 'http://www.inkscape.org/namespaces/inkscape';
+
+    const makeLayer = (id: string, label: string) => {
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('id', id);
+      g.setAttributeNS(inkNs, 'inkscape:groupmode', 'layer');
+      g.setAttributeNS(inkNs, 'inkscape:label', label);
+      return g;
+    };
+
+    const layerDesign   = makeLayer('layer-design',   'Design');
+    const layerNotation = makeLayer('layer-notation',  'Notation');
+    const layerOrder    = makeLayer('layer-order',     'Order Numbers');
+    const layerGroups   = makeLayer('layer-groups',    'Group Markers');
+
+    // Collect all marked elements and move to their layers
+    // Work on the main group's children
+    const mg = Array.from(clonedSvg.children).find(c => c.tagName.toLowerCase() === 'g') as SVGGElement | undefined;
+    if (mg) {
+      // Depth-first: collect all [data-layer] nodes
+      const allLayerNodes = Array.from(mg.querySelectorAll('[data-layer]'));
+      allLayerNodes.forEach(node => {
+        const layer = node.getAttribute('data-layer');
+        node.removeAttribute('data-layer');
+        if (layer === 'notation') layerNotation.appendChild(node);
+        else if (layer === 'order')   layerOrder.appendChild(node);
+        else if (layer === 'groups')  layerGroups.appendChild(node);
+      });
+
+      // Move remaining content into design layer
+      while (mg.firstChild) layerDesign.appendChild(mg.firstChild);
+      // Append all layers back into main group
+      mg.appendChild(layerDesign);
+      mg.appendChild(layerNotation);
+      mg.appendChild(layerOrder);
+      mg.appendChild(layerGroups);
+    }
+
+    // Add inkscape namespace to SVG root
+    clonedSvg.setAttribute('xmlns:inkscape', inkNs);
+
     // Remove the dark background color from the SVG root — use white for export
     clonedSvg.style.backgroundColor = 'white';
     clonedSvg.style.userSelect = '';
@@ -6171,10 +6319,10 @@ const TattingDesigner = () => {
   const getPolarPivot = (ids) => {
     // Only use a polar grid as rotation pivot when ALL selected elements are explicitly linked to the same grid.
     if (ids && ids.length > 0) {
-      const firstEl = elements.find(e => String(e.id) === String(ids[0]));
+      const firstEl = elementsRef.current.find(e => String(e.id) === String(ids[0]));
       const gid = firstEl?.polarRotationGridId || null;
       if (gid && ids.every(id => {
-        const el = elements.find(e => String(e.id) === String(id));
+        const el = elementsRef.current.find(e => String(e.id) === String(id));
         return el?.polarRotationGridId === gid;
       })) {
         const grid = polarGrids.find(g => g.id === gid);
@@ -6190,10 +6338,10 @@ const TattingDesigner = () => {
   const getPolarFlipGrid = (ids) => {
     // Only use a polar grid as flip axis when ALL selected elements are explicitly linked to the same grid.
     if (ids && ids.length > 0) {
-      const firstEl = elements.find(e => String(e.id) === String(ids[0]));
+      const firstEl = elementsRef.current.find(e => String(e.id) === String(ids[0]));
       const gid = firstEl?.polarRotationGridId || null;
       if (gid && ids.every(id => {
-        const el = elements.find(e => String(e.id) === String(id));
+        const el = elementsRef.current.find(e => String(e.id) === String(id));
         return el?.polarRotationGridId === gid;
       })) {
         const linked = polarGrids.find(g => g.id === gid);
@@ -6422,6 +6570,25 @@ const TattingDesigner = () => {
     
   };
 
+  // Zoom to a world-coordinate rectangle (marquee zoom).
+  // Fits the given world rect to the canvas with a small padding.
+  const zoomToRect = (worldMinX, worldMinY, worldMaxX, worldMaxY) => {
+    if (!canvasRef.current) return;
+    const rw = worldMaxX - worldMinX;
+    const rh = worldMaxY - worldMinY;
+    if (rw < 1 || rh < 1) return; // too small — ignore accidental clicks
+    const rect = canvasRef.current.getBoundingClientRect();
+    const padding = 20;
+    const zoomX = (rect.width  - padding * 2) / rw;
+    const zoomY = (rect.height - padding * 2) / rh;
+    const newZoom = Math.max(0.1, Math.min(3, Math.min(zoomX, zoomY)));
+    const worldCX = (worldMinX + worldMaxX) / 2;
+    const worldCY = (worldMinY + worldMaxY) / 2;
+    setZoom(newZoom);
+    setCamera({ x: rect.width  / 2 - worldCX * newZoom,
+                y: rect.height / 2 - worldCY * newZoom });
+  };
+
   // Zoom toward the center of the screen by a delta amount.
   // Reads from refs so it stays correct even when called from stale closures
   // (e.g. the keydown useEffect which only re-registers on clipboard change).
@@ -6486,6 +6653,22 @@ const TattingDesigner = () => {
       e.preventDefault();
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
+    // Z + left click = temporary zoom-rect (schematic only)
+    if (e.button === 0 && zDownRef.current && renderModeRef.current === 'schematic') {
+      e.preventDefault();
+      const world = screenToWorld(e.clientX, e.clientY);
+      setZoomRectBox({ x: world.x, y: world.y, width: 0, height: 0 });
+      return;
+    }
+
+    // zoomRect tool — persistent toolbar version
+    if (currentTool === 'zoomRect' && e.button === 0 && renderModeRef.current === 'schematic') {
+      e.preventDefault();
+      const world = screenToWorld(e.clientX, e.clientY);
+      setZoomRectBox({ x: world.x, y: world.y, width: 0, height: 0 });
       return;
     }
     
@@ -7755,6 +7938,11 @@ const TattingDesigner = () => {
     if (currentTool === 'ruler' && rulerPoints.length === 1) {
       setRulerMousePos({ x: world.x, y: world.y });
     }
+
+    // ── Zoom rect: update drag rectangle ────────────────────────────────────
+    if (zoomRectBox) {
+      setZoomRectBox(prev => prev ? { ...prev, width: world.x - prev.x, height: world.y - prev.y } : null);
+    }
   };
   // Keep ref pointing at the latest version of this function.
   // The RAF in handleMouseMove captures a stale closure; routing through this ref
@@ -7762,6 +7950,17 @@ const TattingDesigner = () => {
   handleMouseMoveInternalRef.current = handleMouseMoveInternal;
 
   const handleMouseUp = (e) => {
+    // ── Zoom rect: apply zoom on release ──────────────────────────────────
+    if (zoomRectBox) {
+      const minX = Math.min(zoomRectBox.x, zoomRectBox.x + zoomRectBox.width);
+      const maxX = Math.max(zoomRectBox.x, zoomRectBox.x + zoomRectBox.width);
+      const minY = Math.min(zoomRectBox.y, zoomRectBox.y + zoomRectBox.height);
+      const maxY = Math.max(zoomRectBox.y, zoomRectBox.y + zoomRectBox.height);
+      zoomToRect(minX, minY, maxX, maxY);
+      setZoomRectBox(null);
+      return;
+    }
+
     if (selectionBox) {
       const minX = Math.min(selectionBox.x, selectionBox.x + selectionBox.width);
       const maxX = Math.max(selectionBox.x, selectionBox.x + selectionBox.width);
@@ -7857,9 +8056,23 @@ const TattingDesigner = () => {
         }
       } else {
         // Regular element selection
-        const boxSelected = elements.filter(el => 
+        const boxHit = elements.filter(el =>
           el.center.x >= minX && el.center.x <= maxX && el.center.y >= minY && el.center.y <= maxY
-        ).map(el => el.id);
+        );
+        // Groups: only select a group if ALL its members are inside the box
+        const boxHitIds = new Set(boxHit.map(el => el.id));
+        const filteredIds = new Set<string | number>();
+        boxHit.forEach(el => {
+          if (el.groupId) {
+            const allMembers = elements.filter(e => e.groupId === el.groupId);
+            if (allMembers.every(e => boxHitIds.has(e.id))) {
+              allMembers.forEach(e => filteredIds.add(e.id));
+            }
+          } else {
+            filteredIds.add(el.id);
+          }
+        });
+        const boxSelected = [...filteredIds];
         if (activeMode === 'tattingOrder') {
           // Single-select only — take the first hit if any, clear if none
           const single = boxSelected.length > 0 ? [boxSelected[0]] : [];
@@ -7876,7 +8089,7 @@ const TattingDesigner = () => {
     
     // If we were interacting and changes were made, push to history
     if (isInteractingRef.current && needsHistoryPushRef.current) {
-      pushHistoryState(elements, picotConnections);
+      pushHistoryState(elements, picotConnections, orderGroupsRef.current);
     }
     
     // Reset interaction flags
@@ -8036,7 +8249,35 @@ const TattingDesigner = () => {
       
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        deleteSelected();
+        if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
+          const newConns = picotConnectionsRef.current.filter(conn =>
+            !conn.picots.some(p => selectedPicotsRef.current.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId))
+          );
+          setPicotConnections(newConns);
+          setSelectedPicots([]);
+          pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
+        } else {
+          deleteSelected();
+        }
+      } else if ((e.key === 'j' || e.key === 'J') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length >= 2) {
+          e.preventDefault();
+          const connection = { id: generateId(), picots: [...selectedPicotsRef.current] };
+          const newConns = [...picotConnectionsRef.current, connection];
+          setPicotConnections(newConns);
+          setSelectedPicots([]);
+          pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
+        }
+      } else if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
+          e.preventDefault();
+          const newConns = picotConnectionsRef.current.filter(conn =>
+            !conn.picots.some(p => selectedPicotsRef.current.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId))
+          );
+          setPicotConnections(newConns);
+          setSelectedPicots([]);
+          pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
+        }
       } else if (e.key === 'Tab') {
         e.preventDefault();
         setCurrentTool(prev => prev === 'pan' ? 'select' : 'pan');
@@ -8151,7 +8392,7 @@ const TattingDesigner = () => {
           // Shift+J — Toggle picot join mode
           e.preventDefault();
           if (activeModeRef.current === 'picotJoin') {
-            setActiveMode(null); setShowJoinTip(false);
+            setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]);
           } else if (activeModeRef.current !== 'beading') {
             setActiveMode('picotJoin');
             setCurrentTool('select');
@@ -8556,8 +8797,8 @@ const TattingDesigner = () => {
       const rotation = (element.rotation || 0) * Math.PI / 180; // Convert to radians
       const angle = baseAngle + rotation; // Apply rotation
       
-      // jp and jpg when baseOnly: return BASE position (on ring edge)
-      if ((picot.isJoint && !picot.isGuide) || baseOnly) {
+      // jp and jpg: return BASE position (on ring edge)
+      if (picot.isJoint || baseOnly) {
         return {
           x: element.center.x + Math.cos(angle) * radius,
           y: element.center.y + Math.sin(angle) * radius
@@ -8630,8 +8871,8 @@ const TattingDesigner = () => {
       dy = 2*(1-t)*(path.controlY - path.y) + 2*t*(path.endY - path.controlY);
     }
     
-    // jp only (not jpg) OR baseOnly: return BASE position (on path)
-    if ((picot.isJoint && !picot.isGuide) || picot.isGuidePoint || baseOnly) {
+    // jp, jpg, gp, or baseOnly: return BASE position (on path)
+    if (picot.isJoint || picot.isGuidePoint || baseOnly) {
       return { x, y };
     }
     
@@ -9277,13 +9518,11 @@ const TattingDesigner = () => {
         
         const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
         const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
-        // jpg (isJoint+isGuide) = green arm; jp = green dot → yellow when connected → pink when selected
-        const color = (p.isJoint && p.isGuide)
-          ? (isSelected ? theme.jpgArmSelected : theme.jpgArm)    // jpg: green arm
-          : p.isJoint
+        // jpg and jp both use joint dot colors; gp invisible; regular picots use element color
+        const color = p.isJoint
           ? (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected)
           : p.isGuidePoint
-          ? theme.gpDiamond                                // gp: yellow-green diamond
+          ? theme.gpDiamond
           : getSolidColor(element);
         const strokeWidth = isSelected ? "4" : "2";
         
@@ -9308,23 +9547,13 @@ const TattingDesigner = () => {
           );
         }
 
-        // jp only (not jpg): dot on path — hidden in realistic mode
-        if (p.isJoint && !p.isGuide) {
+        // jp / jpg: dot on path — schematic only, hidden when editing artifacts off
+        if (p.isJoint) {
           if (renderMode === 'realistic') return null;
+          if (!showEditingArtifacts) return null;
           return (
-            <g key={p.id}>
+            <g key={p.id} data-ui="1">
               <circle cx={startX} cy={startY} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
-            </g>
-          );
-        }
-
-        // Guide Point (gp): diamond marker on path, no arm — schematic only
-        if (p.isGuidePoint) {
-          if (beadAndJointOnly) return null;
-          if (renderMode !== 'schematic') return null;
-          return (
-            <g key={p.id}>
-              <rect transform={`rotate(45, ${startX}, ${startY})`} x={startX - 4} y={startY - 4} width="8" height="8" fill={color} stroke="#000" strokeWidth="1.5" />
             </g>
           );
         }
@@ -9358,7 +9587,7 @@ const TattingDesigner = () => {
         return (
           <g key={p.id} className={p.isGuide ? 'guide-picot' : undefined}>
             <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-            {p.isGuide && renderMode === 'schematic' && <rect className="guide-picot-marker" x={endX - 3} y={endY - 3} width="6" height="6" fill={color} stroke="#FFF" strokeWidth="1" />}
+            
           </g>
         );
       });
@@ -9418,12 +9647,10 @@ const TattingDesigner = () => {
 
         const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
         const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
-        const color = (p.isJoint && p.isGuide)
-          ? (isSelected ? theme.jpgArmSelected : theme.jpgArm)    // jpg: green arm
-          : p.isJoint
+        const color = p.isJoint
           ? (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected)
           : p.isGuidePoint
-          ? theme.gpDiamond                                // gp: yellow-green diamond
+          ? theme.gpDiamond
           : getSolidColor(element);
         const strokeWidth = isSelected ? "4" : "2";
 
@@ -9447,18 +9674,15 @@ const TattingDesigner = () => {
           );
         }
 
-        if (p.isJoint && !p.isGuide) {
+        // jp / jpg: dot on path — schematic only, hidden when editing artifacts off
+        if (p.isJoint) {
           if (renderMode === 'realistic') return null;
-          return <g key={p.id}><circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} /></g>;
+          if (!showEditingArtifacts) return null;
+          return <g key={p.id} data-ui="1"><circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} /></g>;
         }
+        // Guide Point (gp): no visual — pure snap point on path
         if (p.isGuidePoint) {
-          if (beadAndJointOnly) return null;
-          if (renderMode !== 'schematic') return null;
-          return (
-            <g key={p.id}>
-              <rect transform={`rotate(45, ${x}, ${y})`} x={x - 4} y={y - 4} width="8" height="8" fill={color} stroke="#000" strokeWidth="1.5" />
-            </g>
-          );
+          return null;
         }
         if (p.beadType === 'bcp') {
           if (beadAndJointOnly) return null;
@@ -9480,7 +9704,7 @@ const TattingDesigner = () => {
         return (
           <g key={p.id} className={p.isGuide ? 'guide-picot' : undefined}>
             <line x1={x} y1={y} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-            {p.isGuide && renderMode === 'schematic' && <rect className="guide-picot-marker" x={endX - 3} y={endY - 3} width="6" height="6" fill={color} stroke="#FFF" strokeWidth="1" />}
+            
           </g>
         );
       });
@@ -9563,13 +9787,10 @@ const TattingDesigner = () => {
       
       const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
       const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
-      // jpg (isJoint+isGuide) = green arm; jp = green dot → yellow when connected → pink when selected
-      const color = (p.isJoint && p.isGuide)
-        ? (isSelected ? theme.jpgArmSelected : theme.jpgArm)    // jpg: green arm
-        : p.isJoint
+      const color = p.isJoint
         ? (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected)
         : p.isGuidePoint
-        ? theme.gpDiamond                                // gp: yellow-green diamond
+        ? theme.gpDiamond
         : getSolidColor(element);
       const strokeWidth = isSelected ? "4" : "2";
 
@@ -9579,25 +9800,20 @@ const TattingDesigner = () => {
         return renderBE(p, x, y, perpAngle, color, len, isSelected);
       }
       
-      // jp only (not jpg): dot on path — hidden in realistic mode
-      if (p.isJoint && !p.isGuide) {
+      // jp / jpg: dot on path — schematic only, hidden when editing artifacts off
+      if (p.isJoint) {
         if (renderMode === 'realistic') return null;
+        if (!showEditingArtifacts) return null;
         return (
-          <g key={p.id}>
+          <g key={p.id} data-ui="1">
             <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
           </g>
         );
       }
 
-      // Guide Point (gp): diamond marker on path, no arm — schematic only
+      // Guide Point (gp): no visual — pure snap point on path
       if (p.isGuidePoint) {
-        if (beadAndJointOnly) return null;
-        if (renderMode !== 'schematic') return null;
-        return (
-          <g key={p.id}>
-            <rect transform={`rotate(45, ${x}, ${y})`} x={x - 4} y={y - 4} width="8" height="8" fill={color} stroke="#000" strokeWidth="1.5" />
-          </g>
-        );
+        return null;
       }
 
       // Beaded picot (bp:SEQ)
@@ -9622,7 +9838,7 @@ const TattingDesigner = () => {
       return (
         <g key={p.id} className={p.isGuide ? 'guide-picot' : undefined}>
           <line x1={x} y1={y} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-          {p.isGuide && renderMode === 'schematic' && <rect className="guide-picot-marker" x={endX - 3} y={endY - 3} width="6" height="6" fill={color} stroke="#FFF" strokeWidth="1" />}
+          
         </g>
       );
     });
@@ -10006,9 +10222,10 @@ const TattingDesigner = () => {
       if (showBeadLibrary) { setShowBeadLibrary(false); return; }
       if (showPolarGridPanel) { setShowPolarGridPanel(false); return; }
       if (showThreadProperties) { setShowThreadProperties(false); return; }
-      if (activeMode === 'picotJoin') { setActiveMode(null); setShowJoinTip(false); return; }
+      if (activeMode === 'picotJoin') { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); return; }
       if (activeMode === 'beading') { setActiveMode(null); setSelectedBEs([]); return; }
       if (activeMode === 'tattingOrder') { setActiveMode(null); setSelectedIds([]); return; }
+      if (currentTool === 'zoomRect') { setCurrentTool('select'); setZoomRectBox(null); return; }
       if (currentTool === 'ruler' && rulerPoints.length > 0) { setRulerPoints([]); setRulerMousePos(null); return; }
     };
     window.addEventListener('keydown', handler);
@@ -10134,7 +10351,7 @@ const TattingDesigner = () => {
         const N = el.stitchCount;
         let out = '';
         for (const picot of el.picots) {
-          if (picot.isJoint || picot.beadType) continue;
+          if (picot.isJoint || picot.isGuidePoint || picot.beadType) continue;
           const tMid   = picot.stitchesBefore / N;
           const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
           const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
@@ -10941,7 +11158,7 @@ const TattingDesigner = () => {
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{ width: '44px', height: '44px' }}
             title={t('btnUndo')}
-            disabled={historyIndex === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
+            disabled={historyIndex === 0 || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconUndo size={20} />
           </button>
@@ -10950,7 +11167,7 @@ const TattingDesigner = () => {
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{ width: '44px', height: '44px' }}
             title={t('btnRedo')}
-            disabled={historyIndex >= history.length - 1 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
+            disabled={historyIndex >= history.length - 1 || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconRedo size={20} />
           </button>
@@ -11084,7 +11301,7 @@ const TattingDesigner = () => {
                 <span className="text-gray-400 text-xs">{t('modePicotJoinSub')}</span>
                 <div className="ml-auto">
                   <button
-                    onClick={() => { setActiveMode(null); setShowJoinTip(false); }}
+                    onClick={() => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); }}
                     className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
                     title={t('toolExitPicotEdit')}
                   >
@@ -12104,7 +12321,7 @@ const TattingDesigner = () => {
                 </button>
                 <input
                   type="text"
-                  value={singleRotationInput !== '' ? singleRotationInput : String(((Math.round(selectedElement.rotation || 0)) % 360 + 360) % 360)}
+                  value={singleRotationInput !== '' ? singleRotationInput : String(parseFloat((((selectedElement.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
                   onChange={(e) => setSingleRotationInput(e.target.value)}
                   onBlur={(e) => {
                     const currentDeg = ((selectedElement.rotation || 0) % 360 + 360) % 360;
@@ -12149,7 +12366,7 @@ const TattingDesigner = () => {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                   className="px-1 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white text-center"
-                  style={{width:'4.5ch', minWidth:'4.5ch'}}
+                  style={{width:'6.5ch', minWidth:'6.5ch'}}
                   placeholder="0°"
                 />
                 {/* ±1° nudge arrows — side by side, press-and-hold to repeat */}
@@ -12777,7 +12994,7 @@ const TattingDesigner = () => {
                         </button>
                         <input
                           type="text"
-                          value={groupRotationInput !== '' ? groupRotationInput : String(((Math.round(groupElements[0]?.rotation || 0)) % 360 + 360) % 360)}
+                          value={groupRotationInput !== '' ? groupRotationInput : String(parseFloat((((groupElements[0]?.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
                           onChange={(e) => { setGroupRotationInput(e.target.value); }}
                           onBlur={(e) => {
                             const currentDeg = ((groupElements[0]?.rotation || 0) % 360 + 360) % 360;
@@ -12794,8 +13011,8 @@ const TattingDesigner = () => {
                               e.currentTarget.blur();
                             }
                           }}
-                          className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm text-white"
-                          style={{minWidth:'3.2rem'}}
+                          className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
+                          style={{width:'6.5ch', minWidth:'6.5ch'}}
                           placeholder="0°"
                         />
                         <button
@@ -13576,6 +13793,10 @@ const TattingDesigner = () => {
           >
             <IconZoomIn size={20} />
           </button>
+          {/* Zoom to Rectangle tool */}
+          <button onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')} className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolZoomRect')}>
+            <IconZoomRect size={20} />
+          </button>
           <button 
             onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')} 
             className={`p-2 rounded col-span-2 pointer-events-auto ${currentTool === 'image' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`}
@@ -13743,7 +13964,9 @@ const TattingDesigner = () => {
           style={
             spaceDown
               ? { cursor: isDragging ? 'grabbing' : 'grab' }
-              : currentTool === 'ruler'
+              : (zDown || currentTool === 'zoomRect')
+                ? { cursor: zoomRectBox ? 'crosshair' : 'crosshair' }
+                : currentTool === 'ruler'
                 ? { cursor: 'crosshair' }
                 : currentTool === 'pan'
                   ? { cursor: isDragging ? 'grabbing' : 'grab' }
@@ -14084,7 +14307,7 @@ const TattingDesigner = () => {
               )}
 
               {/* NEW: Render joint picot connection lines */}
-              {picotConnections.map(conn => {
+              {showEditingArtifacts && picotConnections.map(conn => {
                 if (conn.picots.length < 2) return null;
                 
                 // Get positions of all connected picots
@@ -14185,7 +14408,10 @@ const TattingDesigner = () => {
                 const isUnnumbered = !el.orderNumber || el.orderNumber.toString().trim() === '';
                 const shouldHighlight = (showUnnumbered || activeMode === 'tattingOrder') && isUnnumbered;
                 const activeDraft = draftNotation?.elementId === el.id ? draftNotation.value : null;
-                const hasInvalidNotation = el.type !== 'line' && activeDraft && !isNotationValid(activeDraft.trim());
+                const hasInvalidNotation = el.type !== 'line' && renderMode === 'schematic' && (() => {
+                  const notationToCheck = activeDraft ?? el.notation;
+                  return notationToCheck && !isNotationValid(notationToCheck.trim());
+                })();
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)' : shouldHighlight ? 'url(#pink-glow)' : undefined;
                 // In tattingOrder mode, hide notation labels so only order numbers are visible
                 const hideNotationInMode = activeMode === 'tattingOrder';
@@ -14232,6 +14458,7 @@ const TattingDesigner = () => {
                       )}
                       {el.groupId && (
                         <text
+                          data-layer="groups"
                           x={el.center.x}
                           y={el.center.y + radius + 20}
                           fill="#10B981"
@@ -14243,11 +14470,12 @@ const TattingDesigner = () => {
                           G
                         </text>
                       )}
-                      <g key={`${el.id}-labels`}>{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                         const [_fill, _stroke] = getGroupBadgeColor(el);
                         return (
                           <text
+                            data-layer="order"
                             x={el.center.x}
                             y={el.center.y}
                             fill={_fill}
@@ -14378,7 +14606,7 @@ const TattingDesigner = () => {
                             acc += seg;
                           }
                           const [_f3, _s3] = getGroupBadgeColor(el);
-                          return <text x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                          return <text data-layer="order" x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                       </>
                     ) : (
@@ -14543,7 +14771,7 @@ const TattingDesigner = () => {
                             })}
                           </g>
                         )}
-                        <g key={`${el.id}-labels`}>{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
 {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                           let ox = el.center.x, oy = el.center.y;
                           if (el.type === 'chain' && el.paths && el.paths.length > 0) {
@@ -14568,10 +14796,11 @@ const TattingDesigner = () => {
                             }
                           }
                           const [_f5, _s5] = getGroupBadgeColor(el);
-                          return <text x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                          return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                         {el.groupId && (
                           <text
+                            data-layer="groups"
                             x={el.center.x}
                             y={el.center.y + 60}
                             fill="#10B981"
@@ -14860,12 +15089,12 @@ const TattingDesigner = () => {
               })()}
 
               {/* Snap point indicators - hidden in realistic mode, dimmed in picotJoin mode */}
-              {snapEnabled && renderMode !== 'realistic' && (() => {
+              {snapEnabled && showEditingArtifacts && renderMode !== 'realistic' && (() => {
                 // Show snap points for all non-selected elements
                 return elements
                   .filter(el => !selectedIds.includes(el.id))
                   .map(el => {
-                    const points = getSnapPoints(el);
+                    const points = getSnapPoints(el).filter(p => p.type !== 'picot-guide');
                     return points.map((point, i) => (
                       <g key={`snap-${el.id}-${i}`} data-ui="1" opacity={(activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder') ? 0.15 : 1}>
                         {/* Outer circle for visibility - fixed screen size */}
@@ -15028,6 +15257,20 @@ const TattingDesigner = () => {
                   height={Math.abs(selectionBox.height)}
                   fill="rgba(59, 130, 246, 0.1)"
                   stroke="#3B82F6"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                />
+              )}
+
+              {zoomRectBox && (
+                <rect
+                  data-ui="1"
+                  x={Math.min(zoomRectBox.x, zoomRectBox.x + zoomRectBox.width)}
+                  y={Math.min(zoomRectBox.y, zoomRectBox.y + zoomRectBox.height)}
+                  width={Math.abs(zoomRectBox.width)}
+                  height={Math.abs(zoomRectBox.height)}
+                  fill="rgba(251, 191, 36, 0.1)"
+                  stroke="#FBBF24"
                   strokeWidth="2"
                   strokeDasharray="5,5"
                 />
@@ -16588,6 +16831,52 @@ const TattingDesigner = () => {
             </>
           )}
 
+          {/* Align to Grid Horizontally */}
+          {polarGrids.length <= 1 ? (
+            <button
+              onClick={() => { alignToGridHorizontal(); setShowArrangeMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+            >
+              <IconPolarGrid size={16} />
+              <span>{t('arrangeAlignToGridH')}</span>
+            </button>
+          ) : (
+            <>
+              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridH')}</div>
+              {polarGrids.map(g => (
+                <button key={g.id} onClick={() => { alignToGridHorizontal(g.id); setShowArrangeMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={selectedIds.length === 0}>
+                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* Align to Grid Vertically */}
+          {polarGrids.length <= 1 ? (
+            <button
+              onClick={() => { alignToGridVertical(); setShowArrangeMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+            >
+              <IconPolarGrid size={16} />
+              <span>{t('arrangeAlignToGridV')}</span>
+            </button>
+          ) : (
+            <>
+              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridV')}</div>
+              {polarGrids.map(g => (
+                <button key={g.id} onClick={() => { alignToGridVertical(g.id); setShowArrangeMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={selectedIds.length === 0}>
+                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
+                </button>
+              ))}
+            </>
+          )}
+
           <div className="border-t border-gray-600 my-1"></div>
 
           {/* Array section — all three array types together */}
@@ -16721,7 +17010,7 @@ const TattingDesigner = () => {
             <span>{t('viewTattingOrder')}</span>
           </button>
 
-          {/* Show Invalid Notation */}
+          {/* Show/Hide Invalid Notation */}
           <button
             onClick={() => {
               setShowInvalidNotation(!showInvalidNotation);
@@ -16730,7 +17019,19 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             {showInvalidNotation ? <IconInvalidOff size={16} /> : <IconInvalidOn size={16} />}
-            <span>{t('viewShowInvalidNotation')}</span>
+            <span>{showInvalidNotation ? t('viewHideInvalidNotation') : t('viewShowInvalidNotation')}</span>
+          </button>
+
+          {/* Show/Hide Editing Artifacts */}
+          <button
+            onClick={() => {
+              setShowEditingArtifacts(!showEditingArtifacts);
+              setShowViewMenu(false);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            {showEditingArtifacts ? <IconInvalidOff size={16} /> : <IconInvalidOn size={16} />}
+            <span>{showEditingArtifacts ? t('viewHideEditingArtifacts') : t('viewShowEditingArtifacts')}</span>
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -16929,14 +17230,14 @@ const TattingDesigner = () => {
     {showMaterialsPanel && (
       <>
         <div className="fixed inset-0 bg-black bg-opacity-60" style={{zIndex:10000}} onClick={() => setShowMaterialsPanel(false)} />
-        <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600"
-          style={{backgroundColor:'#1f2937', zIndex:10001, top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(420px, 95vw)', maxHeight:'85dvh', overflowY:'auto'}}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600">
+        <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+          style={{backgroundColor:'#1f2937', zIndex:10001, top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(420px, 95vw)', maxHeight:'85dvh'}}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
             <h2 className="text-gray-100 font-bold text-lg">{t('materialsTitle')}</h2>
             <button onClick={() => setShowMaterialsPanel(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
           </div>
 
-          <div className="px-5 py-4 space-y-3">
+          <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
             {materials.map((mat, idx) => (
               <div key={mat.id} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
                 {/* Color swatch / picker trigger */}
@@ -17001,9 +17302,11 @@ const TattingDesigner = () => {
                 )}
               </div>
             ))}
+          </div>
 
-            {/* Add material */}
-            {materials.length < 10 && (
+          {/* Add button — always visible, outside the scroll area */}
+          {materials.length < 15 && (
+            <div className="px-5 pt-2 pb-3 flex-shrink-0">
               <button
                 onClick={() => {
                   const id = `mat_${Date.now()}`;
@@ -17018,10 +17321,10 @@ const TattingDesigner = () => {
               >
                 {t('materialsAddBtn')}
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="px-5 pb-4">
+          <div className="px-5 pb-4 flex-shrink-0">
             <p className="text-xs text-gray-500">{t('materialsHint')}</p>
           </div>
         </div>

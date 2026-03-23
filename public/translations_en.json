@@ -488,5 +488,12 @@
   "rotateNudgeMinus": "Rotate -1° (hold to repeat)",
 "bakingViewTitle": "Rendering realistic view…",
 "bakingViewSub": "Calculating stitch geometry for all elements. Complex patterns may take a moment.",
-"fileBrowse": "Browse for File…"
+"fileBrowse": "Browse for File…",
+"arrangeAlignToGridH": "Align to PolarGrid Horizontally",
+"arrangeAlignToGridV": "Align to PolarGrid Vertically"
+"toolZoomRect": "Zoom to Rectangle (Z)",
+"viewShowInvalidNotation": "Show Invalid Notation",
+"viewHideInvalidNotation": "Hide Invalid Notation",
+"viewShowEditingArtifacts": "Show Editing Artifacts",
+"viewHideEditingArtifacts": "Hide Editing Artifacts"
 }
