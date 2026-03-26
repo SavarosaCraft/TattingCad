@@ -100,5 +100,10 @@ No pressure. It's free and will stay free.
 [ko-fi.com/savarosacraft](https://ko-fi.com/savarosacraft)
 
 ---
+## FAQ
+
+[Read the FAQ](https://savarosacraft.com/tattingcad-faq/) on my website.
+
+---
 
 *Made by SavarosaCraft*
