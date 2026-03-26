@@ -381,7 +381,7 @@
         <div class="step-num">2</div>
         <div class="step-body">
           <h5>Write Notation</h5>
-          <p>Select an element and type notation like <code class="code-inline">r: 5ds-p-5ds</code> in the properties panel. The pattern updates automatically according to the stitch count!</p>
+          <p>Select an element and type notation like <code class="code-inline">r: 5ds-p-5ds</code> in the properties panel. The pattern updates automatically according to the stitch count! If the notation is invalid the element will have a red glow around it.</p>
         </div>
       </div>
       <div class="step">
@@ -511,7 +511,13 @@
       <div><kbd>Shift+L</kbd> Toggle Line tool</div>
     </div>
   </div>
-
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Picot Join Mode</span></div>
+    <div class="shortcut-grid">
+      <div><kbd>J</kbd> Join selected picots</div>
+      <div><kbd>C</kbd> or &nbsp<kbd>Delete</kbd> Cut connection between selected picots</div>
+    </div>
+  </div>
   <div class="shortcut-group">
     <div class="shortcut-group-title">Modes <span style="font-weight:400; color:#6b7280;">(mutually exclusive — activating one exits the other)</span></div>
     <div class="shortcut-grid">
@@ -528,7 +534,7 @@
 <!-- ══════════════════════════════ NOTATION ══════════════════════════════ -->
 <section id="tab-notation" class="tab-panel">
   <h2>Notation Syntax</h2>
-  <p style="margin-bottom:1rem; font-size:0.875rem;">All notation is <strong>case-insensitive</strong>. Tokens are separated by <code class="code-inline">-</code> or <code class="code-inline">.</code> — both are accepted everywhere.</p>
+  <p style="margin-bottom:1rem; font-size:0.875rem;">All notation is <strong>case-insensitive</strong>. Tokens are separated by <code class="code-inline">-</code> or <code class="code-inline">.</code> — both are accepted everywhere. If the entered notation is invalid, the element will have a red glow.</p>
 
   <!-- Element prefixes -->
   <div class="notation-section">
@@ -561,7 +567,7 @@
   <!-- Picot tokens -->
   <div class="notation-section">
     <div class="notation-label">Picot tokens</div>
-    <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">Picots do <em>not</em> advance the stitch counter. <code class="code-inline">N</code> before any picot repeats it: <code class="code-inline">3p</code> = three picots at the same position.</p>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">Picots do <em>not</em> advance the stitch counter. Two or more picots next to each other are considered invalid notation and will cause a red glow around the element.</p>
     <div class="notation-rows">
       <div><code class="code-inline">p</code> &nbsp;Regular picot (medium length)</div>
       <div><code class="code-inline">sp</code> or <code class="code-inline">cp</code> &nbsp;Small picot</div>
@@ -693,8 +699,8 @@
       Used to connect joint picots (<code class="code-inline">jp</code>) between elements.
       <ul style="margin-top:0.3rem; font-size:0.82rem; color:#6b7280;">
         <li>Green dot = unconnected jp. Yellow dot = already connected.</li>
-        <li>In PJ mode, drag a box to select the picots you want to link, then click Link (🔗).</li>
-        <li>Click Unlink to remove a connection.</li>
+        <li>In PJ mode, drag a box to select the picots you want to link, then click Link (🔗) or use shortcut: J.</li>
+        <li>Click Unlink to remove a connection or use shortcut: C / Delete.</li>
       </ul>
     </div>
   </div>
@@ -788,7 +794,7 @@
     <li><strong>Fast rotation:</strong> Use ↶ and ↷ buttons for instant 90° rotations instead of typing angles.</li>
     <li><strong>Symmetry with flipping:</strong> Duplicate elements and use Flip H or Flip V to create perfectly mirrored patterns.</li>
     <li><strong>Alignment:</strong> Use Arrange menu alignment options to quickly organise multiple elements (requires 2+ selected).</li>
-    <li><strong>Joint picot connections:</strong> Joint picots appear as green dots on paths — yellow once connected. Click them directly to select.</li>
+    <li><strong>Joint picot connections:</strong> Joint picots appear as green dots on paths — yellow once connected. Click them directly to select use buttons or shortcuts: J/C.</li>
     <li><strong>Gradient search:</strong> Use the search bar in the gradient picker to find gradients by name or ID.</li>
     <li><strong>Auto-save:</strong> Your work is automatically saved every 3 minutes to browser storage.</li>
     <li><strong>Undo safety:</strong> Undo/Redo tracks up to 50 states — experiment freely.</li>

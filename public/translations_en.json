@@ -495,5 +495,11 @@
 "viewShowInvalidNotation": "Show Invalid Notation",
 "viewHideInvalidNotation": "Hide Invalid Notation",
 "viewShowEditingArtifacts": "Show Editing Artifacts",
-"viewHideEditingArtifacts": "Hide Editing Artifacts"
+"viewHideEditingArtifacts": "Hide Editing Artifacts",
+"exitConfirmTitle": "Unsaved Changes",
+"exitConfirmMessage": "You have unsaved changes. Quit anyway?",
+"refImagePanX": "X",
+"refImagePanY": "Y",
+"refImageResetPos": "Reset pos",
+"refImageResetPosTooltip": "Reset image position to center"
 }

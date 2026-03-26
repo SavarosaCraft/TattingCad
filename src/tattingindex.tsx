@@ -227,9 +227,11 @@
 // - Clean separation: solids on right, gradients on bottom
 // - Gradient picker matches DMC swatches (search, categories, pagination, preview)
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
+import { save as tauriSave, open as tauriOpen, ask } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen } from '@tauri-apps/api/event';
 const logoUrl = '/logo.png';
 
 // Collision-safe unique ID generator — replaces Date.now()+Math.random() everywhere.
@@ -1117,6 +1119,12 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     refImageHidden: 'Hidden',
     refImageRemove: 'Remove',
     refImageUpload: 'Upload Image',
+    refImagePanX: 'X',
+    refImagePanY: 'Y',
+    refImageResetPos: 'Reset pos',
+    refImageResetPosTooltip: 'Reset image position to center',
+    exitConfirmTitle: 'Unsaved Changes',
+    exitConfirmMessage: 'You have unsaved changes. Quit anyway?',
     regularPicotLabel: 'Regular picot',
     longPicotLabel: 'Long picot (auto: 2×)',
     shortPicotLabel: 'Short picot (auto: ½×)',
@@ -1578,6 +1586,7 @@ const TattingDesigner = () => {
   const [clipboard, setClipboard] = useState([]); // NEW: for copy/paste
   const [projectName, setProjectName] = useState('Untitled Pattern'); // NEW: for save/load
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null); // Tauri: path of currently open file
+  const [lastSavedHistoryIndex, setLastSavedHistoryIndex] = useState(0); // track unsaved changes for exit confirm
   const [picotConnections, setPicotConnections] = useState([]); // NEW: joint picot connections
   const [selectedPicots, setSelectedPicots] = useState([]); // NEW: selected joint picots {elementId, picotId}
   const [showHelp, setShowHelp] = useState(false); // NEW: help modal
@@ -2043,6 +2052,25 @@ const TattingDesigner = () => {
   useEffect(() => {
     setGroupRotationInput('');
   }, [selectedIds]);
+
+  // Tauri v2 exit confirmation — Rust intercepts close and emits event, we show dialog here
+  useEffect(() => {
+    if (!(window as any).__TAURI__) return;
+    let unlisten: (() => void) | null = null;
+    listen('close-requested', async () => {
+      const hasUnsaved = elements.length > 0 && historyIndexRef.current !== lastSavedHistoryIndex;
+      if (hasUnsaved) {
+        const confirmed = await ask(t('exitConfirmMessage'), {
+          title: t('exitConfirmTitle'),
+          kind: 'warning',
+        });
+        if (confirmed) getCurrentWindow().destroy();
+      } else {
+        getCurrentWindow().destroy();
+      }
+    }).then(fn => { unlisten = fn; });
+    return () => { if (unlisten) unlisten(); };
+  }, [elements.length, lastSavedHistoryIndex]);
 
   // Prevent browser zoom (Ctrl+wheel on desktop, pinch on touchpad)
   // Also handles Shift+wheel → zoom in/out
@@ -5249,6 +5277,7 @@ const TattingDesigner = () => {
     await writeTextFile(filePath, json);
     const thumb = generateThumbnail(elements);
     addToRecents(finalName, filePath, thumb);
+    setLastSavedHistoryIndex(historyIndexRef.current);
   }, [buildProjectData, elements]);
 
   // Show native Save As dialog then write
@@ -5596,14 +5625,13 @@ const TattingDesigner = () => {
     }
 
     // ── Step 4: Add order numbers as a separate toggleable layer ───────────
+    // ── Step 4: Add order numbers as a separate toggleable layer ───────────
+    // Only run if Step 1 didn't already extract data-layer="order" nodes from the DOM
+    // (which happens when showUnnumbered is active). This avoids duplicates.
     const numberedEls = elements.filter(el =>
       el.orderNumber != null && String(el.orderNumber).trim() !== '' && el.center
     );
-    if (numberedEls.length > 0) {
-      const orderLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      orderLayer.setAttribute('id', 'order-numbers');
-      orderLayer.setAttribute('inkscape:label', 'Order Numbers');
-      orderLayer.setAttribute('inkscape:groupmode', 'layer');
+    if (numberedEls.length > 0 && layerOrder.childNodes.length === 0) {
       const fontSize = Math.max(8, Math.round(width / 60)); // scale to drawing
       numberedEls.forEach(el => {
         // Pick color by group index — same logic as getGroupBadgeColor():
@@ -5627,9 +5655,8 @@ const TattingDesigner = () => {
         bg.setAttribute('paint-order', 'stroke');
         bg.setAttribute('fill', fillColor);
         bg.textContent = String(el.orderNumber);
-        orderLayer.appendChild(bg);
+        layerOrder.appendChild(bg);
       });
-      clonedSvg.appendChild(orderLayer);
     }
 
     // Serialize AFTER all DOM mutations (including notes)
@@ -5669,9 +5696,16 @@ const TattingDesigner = () => {
       if (!el) return null;
       const num = el.orderNumber?.toString().trim();
       const typeLabel = el.type === 'ring' ? 'R' : el.type === 'chain' ? (el.isSplitChain ? 'SC' : 'CH') : null;
-      if (!typeLabel) return null; // Lines are not referenced in jp output
+      if (!typeLabel) return null;
       if (!num) return `${typeLabel}#?`;
-      if (orderNumberCount[num] > 1) return `${typeLabel}#${num}⚠`;
+      // Check if this number is duplicated across different groups (rounds)
+      const samNumEls = elements.filter(e => e.orderNumber?.toString().trim() === num);
+      if (samNumEls.length > 1) {
+        // Qualify with round/group name if available
+        const grp = el.orderGroup ? orderGroups.find(g => g.id === el.orderGroup) : null;
+        const qualifier = grp ? `/${grp.name.replace(/\s+/g, '')}` : '/ungrouped';
+        return `${typeLabel}#${num}${qualifier}`;
+      }
       return `${typeLabel}#${num}`;
     };
 
@@ -6199,12 +6233,16 @@ const TattingDesigner = () => {
         `\n\nDS: ${countDS}  SS: ${countSS}  Picots: ${countPicots}  Joined: ${countJoined}`
       : '';
 
+    const displayName = currentFilePath
+      ? currentFilePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? projectName
+      : projectName;
+
     const patternText = (fallbackHeader
       ? fallbackHeader + (threadBlock ? threadBlock : '') + beadBlock + notesBlock
-      : patternBody + unnumberedBlock + notesBlock + threadBlock + beadBlock);
+      : `${displayName.trim() || 'Untitled Pattern'}\n\n` + patternBody + unnumberedBlock + notesBlock + threadBlock + beadBlock);
 
     copyToClipboard(patternText, orderedElements.length);
-  }, [elements, picotConnections, patternNotes, threadPresets, activePresetId, materials, dsWidth, orderGroups]);
+  }, [elements, picotConnections, patternNotes, threadPresets, activePresetId, materials, dsWidth, orderGroups, currentFilePath, projectName]);
 
   // Export as PNG
 
@@ -6213,18 +6251,23 @@ const TattingDesigner = () => {
     if (selectedPicots.length < 2) {
       return;
     }
-    
+
+    // First selected picot's element donates the material to the connection
+    const firstEl = elementById.get(selectedPicots[0].elementId);
+    const connMaterialId = firstEl?.materialId || 'default';
+
     // Create a new connection
     const connection = {
       id: generateId(),
-      picots: [...selectedPicots] // Array of {elementId, picotId}
+      picots: [...selectedPicots], // Array of {elementId, picotId}
+      materialId: connMaterialId,
     };
     
     const newConns = [...picotConnectionsRef.current, connection];
     setPicotConnections(newConns);
     setSelectedPicots([]); // Clear selection after joining
     pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
-  }, [selectedPicots]); // Dependency: selectedPicots for creating connection
+  }, [selectedPicots, elementById]);
 
   // Break connections for selected joint picots
   const breakSelectedPicots = useCallback(() => {
@@ -11833,6 +11876,19 @@ const TattingDesigner = () => {
                     <button
                       onClick={() => {
                         const newEls = elementsRef.current.map(e =>
+                          e.id === selectedEl.id ? { ...e, rw: !selectedEl.rw } : e
+                        );
+                        setElements(newEls);
+                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                      }}
+                      className={`px-2 py-1 rounded text-xs font-bold border ${selectedEl.rw ? 'bg-amber-600 hover:bg-amber-700 border-amber-500 text-white' : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-300'}`}
+                      title={t('propRWTooltip')}
+                    >
+                      RW
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newEls = elementsRef.current.map(e =>
                           e.id === selectedEl.id ? { ...e, orderNumber: null, orderGroup: undefined } : e
                         );
                         setElements(newEls);
@@ -13513,13 +13569,52 @@ const TattingDesigner = () => {
                       type="range"
                       min="0"
                       max="360"
-                      step="15"
+                      step="0.1"
                       value={refImageProps.rotation}
                       onChange={(e) => setRefImageProps({...refImageProps, rotation: parseFloat(e.target.value)})}
                       className="w-24"
                     />
-                    <span className="text-xs text-gray-400 w-8">{refImageProps.rotation}°</span>
+                    <span className="text-xs text-gray-400 w-10">{refImageProps.rotation.toFixed(1)}°</span>
                   </div>
+
+                  {/* Pan X slider */}
+                  <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
+                    <label className="text-xs text-gray-400 hide-label-mobile">{t('refImagePanX')}</label>
+                    <input
+                      type="range"
+                      min="-500"
+                      max="500"
+                      step="0.1"
+                      value={refImageProps.x}
+                      onChange={(e) => setRefImageProps({...refImageProps, x: parseFloat(e.target.value)})}
+                      className="w-24"
+                    />
+                    <span className="text-xs text-gray-400 w-12">{refImageProps.x.toFixed(1)}</span>
+                  </div>
+
+                  {/* Pan Y slider */}
+                  <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
+                    <label className="text-xs text-gray-400 hide-label-mobile">{t('refImagePanY')}</label>
+                    <input
+                      type="range"
+                      min="-500"
+                      max="500"
+                      step="0.1"
+                      value={refImageProps.y}
+                      onChange={(e) => setRefImageProps({...refImageProps, y: parseFloat(e.target.value)})}
+                      className="w-24"
+                    />
+                    <span className="text-xs text-gray-400 w-12">{refImageProps.y.toFixed(1)}</span>
+                  </div>
+
+                  {/* Reset position button */}
+                  <button
+                    onClick={() => setRefImageProps({...refImageProps, x: 0, y: 0})}
+                    className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs border border-gray-600"
+                    title={t('refImageResetPosTooltip')}
+                  >
+                    ⌖ {t('refImageResetPos')}
+                  </button>
                   
                   {/* Visibility toggle */}
                   <button
@@ -13707,6 +13802,11 @@ const TattingDesigner = () => {
             <IconRuler size={20} />
           </button>
 
+          {/* Zoom to Rectangle tool */}
+          <button onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')} className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolZoomRect')}>
+            <IconZoomRect size={20} />
+          </button>
+
           {/* Picot Join button */}
           <button 
             onClick={() => {
@@ -13793,9 +13893,13 @@ const TattingDesigner = () => {
           >
             <IconZoomIn size={20} />
           </button>
-          {/* Zoom to Rectangle tool */}
-          <button onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')} className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolZoomRect')}>
-            <IconZoomRect size={20} />
+          <button
+            onClick={fitAllElements}
+            className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto"
+            style={{ touchAction: 'manipulation' }}
+            title="Fit All (F)"
+          >
+            <IconFitView size={20} />
           </button>
           <button 
             onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')} 
@@ -14293,7 +14397,7 @@ const TattingDesigner = () => {
               })}
 
               {/* Reference Image */}
-              {referenceImage && refImageProps.visible && (
+              {referenceImage && refImageProps.visible && renderMode !== 'realistic' && (
                 <image
                   href={referenceImage}
                   x={refImageProps.x - 500}
@@ -14326,15 +14430,21 @@ const TattingDesigner = () => {
                 const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
                 
                 if (renderMode === 'realistic') {
-                  // Realistic mode: each picot → center, solid color + black outline
-                  // Use getSolidColor (material system) — firstEl.color bypasses materials and returns white
+                  // Realistic mode: use the material stored on the connection (set by first-selected picot)
                   const connectedEls = conn.picots.map(p => elementById.get(p.elementId)).filter(Boolean);
                   const firstEl = connectedEls[0];
-                  const pickedEl = connectedEls.find(e => {
-                    const c = getSolidColor(e);
-                    return c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== '#fff';
-                  }) || firstEl;
-                  const lineColor = (pickedEl ? getSolidColor(pickedEl) : null) || '#FF8C00';
+                  // Use stored materialId if present, otherwise fall back to old heuristic
+                  let lineColor;
+                  if (conn.materialId) {
+                    const mat = materialsById.get(conn.materialId);
+                    lineColor = mat ? getSolidColor({ materialId: conn.materialId }) : getSolidColor(firstEl);
+                  } else {
+                    const pickedEl = connectedEls.find(e => {
+                      const c = getSolidColor(e);
+                      return c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== '#fff';
+                    }) || firstEl;
+                    lineColor = (pickedEl ? getSolidColor(pickedEl) : null) || '#FF8C00';
+                  }
                   const lineWidth = firstEl?.lineWidth || 2;
                   const beadSeqForConnR = (() => {
                     for (const p of conn.picots) {

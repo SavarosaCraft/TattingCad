@@ -495,5 +495,11 @@
 "viewShowInvalidNotation": "Hibás minta mutatása",
 "viewHideInvalidNotation": "Hibás minta rejtése",
 "viewShowEditingArtifacts": "Segédjelek mutatása",
-"viewHideEditingArtifacts": "Segédjelek rejtése"
+"viewHideEditingArtifacts": "Segédjelek rejtése",
+"exitConfirmTitle": "Mentetlen változások",
+"exitConfirmMessage": "Mentetlen változások vannak. Biztosan kilép?",
+"refImagePanX": "X",
+"refImagePanY": "Y",
+"refImageResetPos": "Pozíció visszaállítás",
+"refImageResetPosTooltip": "Kép pozíciójának visszaállítása középre"
 }

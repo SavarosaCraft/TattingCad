@@ -905,40 +905,44 @@
 <!-- Joint Picot (blue insert) -->
 <div class="card" style="margin-bottom:0.75rem; border-left:4px solid #2166a8;">  
     <h4 style="color:#2166a8;">Picot Edit Mode</h4>
-    <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">Entered via left toolbar: Joint Picot Tool, or <strong>Shift+J</strong>. Exit via 'Exit mode' button or ESC.<br>In this mode you can select and connect elements that have the joint picot notation. <br><strong>JP</strong> - joined picots, <strong>JPG</strong> - joined picots with guide point, or <strong>BE</strong> beaded element, with joined picot setting.</p>
+    <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">Entered via left toolbar: Joint Picot Tool, or <code class="code-inline">Shift+J</code>. 
+		Exit via 'Exit mode' button or <code class="code-inline">ESC</code>.
+		<br>In this mode you can select and connect elements that have the joint picot notation. 
+		<br><code class="code-inline">JP</code> - joined picots, <code class="code-inline">JPG</code> - joined picots with guide point, or <code class="code-inline">BE</code> beaded element, with joined picot setting.</p>
     <div>
 	
 	<div class="card" style="margin-top:1rem;">
       <div class="menu-item-name">
-        Selecting join points
+        Using join points
       </div>
       <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
         <li>Circle markers indicate where joining points is possible.</li>
         <li>Click to select, or drag to multi-select. Purple colors indicate selected points.</li>
         <li>Yellow circles and dashed lines indicate existing connections.</li>
+		<li>If the selected elements have different materials (colors), then the first selected picot will determine the color of the joints.</li>
       </ul>
     </div></div>
 
     <div class="menu-header">Mode Banner Row</div>
     <div class="field-row">
       <div class="field-label">JOIN</div>
-      <div class="field-desc">After selecting more than one join picots, this button will connect them together.</div>
+      <div class="field-desc">After selecting more than one join picots, this button will connect them together. <br>Shortcut: <code class="code-inline">J</code></div>
     </div>
 	<div class="field-row">
       <div class="field-label">CUT</div>
-      <div class="field-desc">Selecting already connected picots, this button will remove their existing connections.</div>
+      <div class="field-desc">Selecting already connected picots, this button will remove their existing connections. <br>Shortcut: <code class="code-inline">C</code> or <code class="code-inline">DELETE</code></div>
     </div>
 	<div class="field-row">
       <div class="field-label">✕ Exit Mode</div>
-      <div class="field-desc">Exits Mode and returns to the normal property bar.</div>
+      <div class="field-desc">Exits Mode and returns to the normal property bar. <br>Shortcut: <code class="code-inline">ESC</code></div>
     </div>
     </div>
 <!-- Bead Edit Mode -->
 <div class="card" style="margin-bottom:0.75rem; border-left:4px solid #9b5fa5;">
   <h4 style="color:#9b5fa5;">Bead Edit Mode — Assigning Beads to Picots</h4>
   <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">
-    Assign beads to any element containing the '<strong>BE</strong>' (Beaded Element) notation. Exception is the Line element, that handles its own beads in the property bar.<br>
-    Enter with <strong>Shift+B</strong> or the 'Beading mode" on left toolbar. Exit via 'Exit mode' button or ESC.
+    Assign beads to any element containing the <code class="code-inline">BE</code> (Beaded Element) notation. Exception is the Line element, that handles its own beads in the property bar.<br>
+    Enter with <code class="code-inline">Shift+B</code> or the 'Beading mode" on left toolbar. Exit via 'Exit mode' button or ESC.
   </p>
   <div>
     <!-- section -->
@@ -947,7 +951,7 @@
         Selecting bead positions
       </div>
       <ul style="font-size:0.82rem; padding-left:1rem; margin:0;">
-        <li>Diamond markers indicate '<strong>BE</strong>' (Beaded Element) notations.</li>
+        <li>Diamond markers indicate <code class="code-inline">BE</code> (Beaded Element) notations.</li>
         <li>Click to select, or drag to multi-select.</li>
         <li>Edits apply to all selected positions.</li>
       </ul>
@@ -967,7 +971,7 @@
     <!-- section -->
     <div class="card" style="margin-top:1rem;">
 	  <div><h4 class="yellow">Connectable join point TOGGLE</h4></div>
-     <div class="field-desc">A toggle to let a '<strong>BE</strong>' (Beaded Element) behave like a Join picot. In Join Picot mode these will be selectable, and can nonnect to one or more other joined picots.</div>
+     <div class="field-desc">A toggle to let a <code class="code-inline">BE</code>  (Beaded Element) behave like a Join picot. In Join Picot mode these will be selectable, and can nonnect to one or more other joined picots.</div>
     </div>
 	
 	<div class="card" style="margin-top:1rem;">

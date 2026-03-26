@@ -495,5 +495,11 @@
 "viewShowInvalidNotation": "Mostrar notación inválida",
 "viewHideInvalidNotation": "Ocultar notación inválida",
 "viewShowEditingArtifacts": "Mostrar artefactos",
-"viewHideEditingArtifacts": "Ocultar artefactos"
+"viewHideEditingArtifacts": "Ocultar artefactos",
+"exitConfirmTitle": "Cambios sin guardar",
+"exitConfirmMessage": "Hay cambios sin guardar. ¿Salir de todas formas?",
+"refImagePanX": "X",
+"refImagePanY": "Y",
+"refImageResetPos": "Resetear pos.",
+"refImageResetPosTooltip": "Restablecer posición de imagen al centro"
 }

@@ -9,7 +9,7 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
-  "app": {
+"app": {
     "windows": [
       {
         "title": "TattingCAD",
@@ -21,7 +21,8 @@
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
