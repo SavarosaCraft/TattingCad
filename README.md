@@ -22,7 +22,8 @@ Built because nothing like it existed.
 
 No account. No cloud. No trackers. Everything stays on your device.
 
-⚠️ Installation Notes
+⚠️ Installation Notes:
+
 TattingCAD is an independent release and the installers are currently unsigned. 
 This means your OS may show a security warning — this is expected and safe to dismiss.
 
@@ -87,13 +88,13 @@ npm run tauri build
 
 Built with [Tauri v2](https://tauri.app/) + React + TypeScript.
 
-**Bug reports and feedback:** open a [GitHub Issue](../../issues) — or if it's more of a thought than a bug, the Ko-fi has a comment section.
+**Bug reports and feedback:** open a [GitHub Issue](../../issues) — or if it's more of a thought than a bug, [contact me](https://savarosacraft.com/contact/) through my website.
 
 ---
 
 ## Support
 
-If it's been useful, you can buy me a coffee on Ko-fi.  
+If it's been useful, you can tip me on Ko-fi.  
 No pressure. It's free and will stay free.
 
 [ko-fi.com/savarosacraft](https://ko-fi.com/savarosacraft)
