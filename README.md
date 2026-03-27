@@ -22,6 +22,24 @@ Built because nothing like it existed.
 
 No account. No cloud. No trackers. Everything stays on your device.
 
+⚠️ Installation Notes:
+
+TattingCAD is an independent release and the installers are currently unsigned. 
+This means your OS may show a security warning — this is expected and safe to dismiss.
+
+Windows: When prompted by SmartScreen, click More info → Run anyway.
+
+macOS: Apple blocks unsigned apps by default. To open TattingCAD:
+
+Download the .dmg and drag TattingCAD to your Applications folder
+Try to open it — you'll get a warning that it can't be opened
+Go to System Settings → Privacy & Security
+Scroll down and you'll see a message about TattingCAD being blocked — click Open Anyway
+Confirm in the dialog that appears
+You only need to do this once.
+
+Android: Enable Install from unknown sources in your device settings, then open the .apk file to install.
+
 ---
 
 ## Features
@@ -70,16 +88,21 @@ npm run tauri build
 
 Built with [Tauri v2](https://tauri.app/) + React + TypeScript.
 
-**Bug reports and feedback:** open a [GitHub Issue](../../issues) — or if it's more of a thought than a bug, the Ko-fi has a comment section.
+**Bug reports and feedback:** open a [GitHub Issue](../../issues) — or if it's more of a thought than a bug, [contact me](https://savarosacraft.com/contact/) through my website.
 
 ---
 
 ## Support
 
-If it's been useful, you can buy me a coffee on Ko-fi.  
+If it's been useful, you can tip me on Ko-fi.  
 No pressure. It's free and will stay free.
 
 [ko-fi.com/savarosacraft](https://ko-fi.com/savarosacraft)
+
+---
+## FAQ
+
+[Read the FAQ](https://savarosacraft.com/tattingcad-faq/) on my website.
 
 ---
 
