@@ -574,6 +574,8 @@
       <div><code class="code-inline">lp</code> &nbsp;Large picot</div>
       <div><code class="code-inline">jp</code> &nbsp;Join picot — marks a connection point between elements. Green (free) → yellow (connected) → pink (selected)</div>
       <div><code class="code-inline">jpg</code> &nbsp;Guide join picot — rendered as a green arm; selectable in join tool and acts as snap point</div>
+	  <div><code class="code-inline">cj</code> &nbsp;Core join, when the core thread is used to connect to an other join picot.</div>
+	  <div><code class="code-inline">cjp</code> &nbsp;Core join with a picot.</div>
       <div><code class="code-inline">gp</code> &nbsp;Guide point — yellow-green diamond on path, snap anchor, no arm rendered</div>
     </div>
   </div>
@@ -696,7 +698,7 @@
   <div class="tool">
     <div class="tool-name">Picot Join (PJ)</div>
     <div class="tool-desc">
-      Used to connect joint picots (<code class="code-inline">jp</code>) between elements.
+      Used to connect joint points such as: <code class="code-inline">jp</code>, <code class="code-inline">jpg</code>, <code class="code-inline">cj</code>, <code class="code-inline">cjp</code> and <code class="code-inline">BE</code> with join turned on.
       <ul style="margin-top:0.3rem; font-size:0.82rem; color:#6b7280;">
         <li>Green dot = unconnected jp. Yellow dot = already connected.</li>
         <li>In PJ mode, drag a box to select the picots you want to link, then click Link (🔗) or use shortcut: J.</li>
@@ -757,10 +759,13 @@
   </div>
 
   <div class="feature">
-    <div class="feature-name">Guide Points &amp; Guide Joined Picots</div>
+    <div class="feature-name">Joined Picots / Join Points</div>
     <div class="feature-body">
-      <strong>gp</strong> (Guide Point) — yellow-green diamond on the path. Acts as a snap anchor — other elements snap to it. Does not appear in exported images.<br>
-      <strong>jpg</strong> (Guide Joined Picot) — a green picot arm. Acts as a visual guide and snap point for joining picots.
+      <strong>jpg</strong> (Guide Joined Picot) — a green picot arm. Acts as a visual guide and snap point for joining picots.<br>
+	  <strong>cj</strong> (Core Join) — a green dot. Acts as a point to connect to.<br>
+	  <strong>cjp</strong> (Core Join & Picot) — a blue dot with an arm. Acts as a point to connect to with a picot.<br>
+	  <strong>BE with join turned on</strong> (Beaded Picot Join) — A joned picot with beads on them. (visual representation will be inaccurate)<br>	  
+	  
     </div>
   </div>
 

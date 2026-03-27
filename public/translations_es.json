@@ -501,5 +501,9 @@
 "refImagePanX": "X",
 "refImagePanY": "Y",
 "refImageResetPos": "Resetear pos.",
-"refImageResetPosTooltip": "Restablecer posición de imagen al centro"
+"refImageResetPosTooltip": "Restablecer posición de imagen al centro",
+"cjLabel": "Unión de núcleo",
+"cjTooltip": "Unión de núcleo (cj) — unión con el hilo núcleo, longitud cero",
+"cjpLabel": "Picot de unión de núcleo",
+"cjpTooltip": "Picot de unión de núcleo (cjp) — unión de núcleo que también forma un picot"
 }

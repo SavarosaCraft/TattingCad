@@ -1125,6 +1125,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     refImageResetPosTooltip: 'Reset image position to center',
     exitConfirmTitle: 'Unsaved Changes',
     exitConfirmMessage: 'You have unsaved changes. Quit anyway?',
+    cjLabel: 'Core Join',
+    cjTooltip: 'Core Join (cj) — join made with the core thread, zero stitch length',
+    cjpLabel: 'Core Join Picot',
+    cjpTooltip: 'Core Join Picot (cjp) — core thread join that also leaves a picot',
     regularPicotLabel: 'Regular picot',
     longPicotLabel: 'Long picot (auto: 2×)',
     shortPicotLabel: 'Short picot (auto: ½×)',
@@ -1619,6 +1623,10 @@ const TattingDesigner = () => {
     jpUnconnected: '#00CC44',
     jpConnected:   '#FFE600',
     jpSelected:    '#FF1493',
+    // Core join picots (cj / cjp)
+    cjUnconnected: '#00BFFF',
+    cjConnected:   '#FFE600',
+    cjSelected:    '#FF1493',
     // Path edit handles
     handleStart:    '#00FF00',
     handleControl1: '#0088FF',
@@ -3188,12 +3196,12 @@ const TattingDesigner = () => {
         const t = token.toLowerCase().trim();
         if (t === 'be') return true;
         if (t.startsWith('bc:') || t.startsWith('bp:') || t.startsWith('bcp:') || t.startsWith('sb:') || t.startsWith('bjp:')) return true;
-        return /^(\d+)?(p|sp|cp|lp|jp|jpg|bjp|gp)$/i.test(t);
+        return /^(\d+)?(p|sp|cp|lp|jp|jpg|bjp|cj|cjp|gp)$/i.test(t);
       };
       const tokens = expandTokens(pattern); let prevZero = false;
       for (const token of tokens) {
         const t = token.toLowerCase().trim();
-        if (/^\d+(p|sp|cp|lp|jp|jpg|bjp|gp)$/i.test(t)) return false;
+        if (/^\d+(p|sp|cp|lp|jp|jpg|bjp|cj|cjp|gp)$/i.test(t)) return false;
         const zw = isZeroWidth(token);
         if (zw && prevZero) return false;
         prevZero = zw;
@@ -3387,7 +3395,7 @@ const TattingDesigner = () => {
           return pos + beads.length;           // advance path by bead count
         }
 
-        const tokenMatch = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|sp|cp|p|lp|jp|jpg|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|jPg|jpG|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS|P)$/i);
+        const tokenMatch = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|sp|cp|p|lp|jp|jpg|cj|cjp|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|Cj|Cjp|cJ|cJp|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS|P)$/i);
         if (!tokenMatch) {
           if (!silent) setNotationError('Unknown element: ' + token);
           hasInvalidToken = true;
@@ -3406,6 +3414,8 @@ const TattingDesigner = () => {
         let isGuide = false;
         let isGuidePoint = false;
         let beadType = null; // NEW: for beaded picots
+        let isCoreJoin = false; // cj / cjp: join on core thread
+        let hasPicotArm = false; // cjp: core join that also shows a picot arm
         
         if (el === 'jp') {
           size = 'medium';
@@ -3418,6 +3428,15 @@ const TattingDesigner = () => {
           size = 'medium';
           isJoint = true;  // Joinable (selectable in picot join tool)
           isGuide = true;  // Renders as green arm, not orange dot
+        } else if (el === 'cj') {
+          size = 'medium';
+          isJoint = true;
+          isCoreJoin = true;  // Core join — no picot arm rendered
+        } else if (el === 'cjp') {
+          size = 'medium';
+          isJoint = true;
+          isCoreJoin = true;  // Core join with picot arm
+          hasPicotArm = true;
         } else if (el === 'gp') {
           isGuidePoint = true;  // Guide Point: snap dot on path, no arm rendered
           isGuide = true;
@@ -3450,10 +3469,12 @@ const TattingDesigner = () => {
             id: generateId(), 
             stitchesBefore: pos, 
             length: size,
-            isJoint: isJoint,       // Joint picot (for connections)
-            isGuide: isGuide,       // Guide picot (jpg: arm, gp: point)
-            isGuidePoint: isGuidePoint, // Guide Point (gp): dot on path, no arm
-            beadType: beadType // NEW: Beaded picot type
+            isJoint: isJoint,
+            isGuide: isGuide,
+            isGuidePoint: isGuidePoint,
+            beadType: beadType,
+            isCoreJoin: isCoreJoin || undefined,
+            hasPicotArm: hasPicotArm || undefined,
           });
         }
         return pos;
@@ -3574,7 +3595,7 @@ const TattingDesigner = () => {
           return;
         }
         // Skip zero-width tokens
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) return;
+        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
         if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
         if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
         if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
@@ -3676,7 +3697,7 @@ const TattingDesigner = () => {
           for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
           return;
         }
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) return;
+        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
         if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
         if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
         if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
@@ -3763,7 +3784,7 @@ const TattingDesigner = () => {
         }
         
         // Skip picots and beaded picots
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) return;
+        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
         if (token.match(/^bp:/i)) return; // beaded picot — zero width
         if (token.match(/^bjp:/i)) return; // beaded joint picot — zero width
         if (token.match(/^sb:/i)) return; // suspended bead — zero width
@@ -3834,7 +3855,7 @@ const TattingDesigner = () => {
         }
         
         // Skip picots and beaded picots
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) return;
+        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
         if (token.match(/^bp:/i)) return; // beaded picot — zero width
         if (token.match(/^bjp:/i)) return; // beaded joint picot — zero width
         if (token.match(/^sb:/i)) return; // suspended bead — zero width
@@ -3905,7 +3926,7 @@ const TattingDesigner = () => {
       
       for (let part of parts) {
         // Skip picots and beaded picots
-        if (part.match(/^(sp|cp|p|lp|jp|jpg|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|Jpg|GP|Gp|gP|P)$/i)) continue;
+        if (part.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) continue;
         if (part.match(/^bp:/i)) continue; // beaded picot — zero width
         if (part.match(/^bjp:/i)) continue; // beaded joint picot — zero width
         if (part.match(/^sb:/i)) continue; // suspended bead — zero width
@@ -5782,11 +5803,14 @@ const TattingDesigner = () => {
         if (picot.isJoint) {
           // Join picot — inline connection refs
           const refs = picotConnectionMap[key] || [];
-          const token = picot.beadType ? 'bjp' : 'jp';
+          let token: string;
+          if (picot.beadType) token = 'bjp';
+          else if (picot.isCoreJoin && picot.hasPicotArm) token = 'cjp';
+          else if (picot.isCoreJoin) token = 'cj';
+          else token = 'jp';
           if (refs.length === 0) {
             parts.push(`${token}(?)`);
           } else {
-            // Sort lexicographically (matches the order in the desired output spec)
             const refStrs = [...refs].sort().map(refToLower);
             parts.push(token + refStrs.map(r => `//${r}`).join('') + '//');
           }
@@ -6021,7 +6045,7 @@ const TattingDesigner = () => {
         if (tok.match(/^be$/i)) { result.beadDs += 1; continue; }
 
         // Standard stitch tokens: 12ds, 5p, 3jp, etc.
-        const m = tok.match(/^(\d+)(ds|ss|rds|p|lp|sp|jp|gjp|bjp)?$/i);
+        const m = tok.match(/^(\d+)(ds|ss|rds|p|lp|sp|jp|gjp|bjp|cj|cjp)?$/i);
         if (!m) continue;
         const n = parseInt(m[1]);
         const t = (m[2] || 'ds').toLowerCase();
@@ -6032,6 +6056,7 @@ const TattingDesigner = () => {
         else if (t === 'lp') result.long += n;
         else if (t === 'sp') result.short += n;
         else if (t === 'jp' || t === 'gjp') result.joined += n;
+        else if (t === 'cj' || t === 'cjp') result.joined += n;
         // bjp: zero DS width, skip
       }
       return result;
@@ -9563,7 +9588,9 @@ const TattingDesigner = () => {
         const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
         // jpg and jp both use joint dot colors; gp invisible; regular picots use element color
         const color = p.isJoint
-          ? (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected)
+          ? (p.isCoreJoin
+            ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
+            : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected))
           : p.isGuidePoint
           ? theme.gpDiamond
           : getSolidColor(element);
@@ -9590,10 +9617,28 @@ const TattingDesigner = () => {
           );
         }
 
-        // jp / jpg: dot on path — schematic only, hidden when editing artifacts off
+        // jp / jpg / cj / cjp
         if (p.isJoint) {
+          // cjp in realistic: render as picot arm (core join with visible picot)
+          if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
+            return (
+              <g key={p.id}>
+                <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
+              </g>
+            );
+          }
           if (renderMode === 'realistic') return null;
           if (!showEditingArtifacts) return null;
+          // cjp: core join WITH picot arm — render arm + dot
+          if (p.isCoreJoin && p.hasPicotArm) {
+            return (
+              <g key={p.id} data-ui="1">
+                <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={isSelected ? "4" : "2"} />
+                <circle cx={startX} cy={startY} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
+              </g>
+            );
+          }
+          // cj / jp / jpg: dot only
           return (
             <g key={p.id} data-ui="1">
               <circle cx={startX} cy={startY} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
@@ -9691,7 +9736,9 @@ const TattingDesigner = () => {
         const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
         const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
         const color = p.isJoint
-          ? (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected)
+          ? (p.isCoreJoin
+            ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
+            : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected))
           : p.isGuidePoint
           ? theme.gpDiamond
           : getSolidColor(element);
@@ -9717,10 +9764,26 @@ const TattingDesigner = () => {
           );
         }
 
-        // jp / jpg: dot on path — schematic only, hidden when editing artifacts off
+        // jp / jpg / cj / cjp: dot on path — schematic only, hidden when editing artifacts off
         if (p.isJoint) {
+          // cjp in realistic: render as picot arm
+          if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
+            return (
+              <g key={p.id}>
+                <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={strokeWidth} />
+              </g>
+            );
+          }
           if (renderMode === 'realistic') return null;
           if (!showEditingArtifacts) return null;
+          if (p.isCoreJoin && p.hasPicotArm) {
+            return (
+              <g key={p.id} data-ui="1">
+                <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={isSelected ? "4" : "2"} />
+                <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
+              </g>
+            );
+          }
           return <g key={p.id} data-ui="1"><circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} /></g>;
         }
         // Guide Point (gp): no visual — pure snap point on path
@@ -9831,7 +9894,9 @@ const TattingDesigner = () => {
       const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
       const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
       const color = p.isJoint
-        ? (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected)
+        ? (p.isCoreJoin
+          ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
+          : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected))
         : p.isGuidePoint
         ? theme.gpDiamond
         : getSolidColor(element);
@@ -9843,10 +9908,26 @@ const TattingDesigner = () => {
         return renderBE(p, x, y, perpAngle, color, len, isSelected);
       }
       
-      // jp / jpg: dot on path — schematic only, hidden when editing artifacts off
+      // jp / jpg / cj / cjp: dot on path — schematic only, hidden when editing artifacts off
       if (p.isJoint) {
+        // cjp in realistic: render as picot arm
+        if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
+          return (
+            <g key={p.id}>
+              <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={strokeWidth} />
+            </g>
+          );
+        }
         if (renderMode === 'realistic') return null;
         if (!showEditingArtifacts) return null;
+        if (p.isCoreJoin && p.hasPicotArm) {
+          return (
+            <g key={p.id} data-ui="1">
+              <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={isSelected ? "4" : "2"} />
+              <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
+            </g>
+          );
+        }
         return (
           <g key={p.id} data-ui="1">
             <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />

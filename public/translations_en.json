@@ -501,5 +501,9 @@
 "refImagePanX": "X",
 "refImagePanY": "Y",
 "refImageResetPos": "Reset pos",
-"refImageResetPosTooltip": "Reset image position to center"
+"refImageResetPosTooltip": "Reset image position to center",
+"cjLabel": "Core Join",
+"cjTooltip": "Core Join (cj) — join made with the core thread, zero stitch length",
+"cjpLabel": "Core Join Picot",
+"cjpTooltip": "Core Join Picot (cjp) — core thread join that also leaves a picot"
 }

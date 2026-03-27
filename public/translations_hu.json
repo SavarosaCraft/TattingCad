@@ -501,5 +501,9 @@
 "refImagePanX": "X",
 "refImagePanY": "Y",
 "refImageResetPos": "Pozíció visszaállítás",
-"refImageResetPosTooltip": "Kép pozíciójának visszaállítása középre"
+"refImageResetPosTooltip": "Kép pozíciójának visszaállítása középre",
+"cjLabel": "Mag kötés",
+"cjTooltip": "Mag kötés (cj) — csomózás a magfonállal, nulla öltéshossz",
+"cjpLabel": "Mag kötéses pikó",
+"cjpTooltip": "Mag kötéses pikó (cjp) — magfonál kötés pikóval"
 }
