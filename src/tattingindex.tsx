@@ -6769,8 +6769,9 @@ const TattingDesigner = () => {
         const effectivePivotX = polarGridPivot ? polarGridPivot.x : pivotX;
         const effectivePivotY = polarGridPivot ? polarGridPivot.y : pivotY;
         
-        // Check if clicking pivot point (8px radius)
-        if (Math.hypot(effectivePivotX - world.x, effectivePivotY - world.y) < 8) {
+        // Check if clicking pivot point — radius in screen pixels / zoom for consistent click target
+        // Always test against the VISUAL pivot position (pivotX/pivotY), not the effective rotation pivot
+        if (Math.hypot(pivotX - world.x, pivotY - world.y) < 12 / zoom) {
           setMovingPivot(true);
           setDragStart({ x: world.x, y: world.y });
           isInteractingRef.current = true; // Mark as interacting
@@ -10475,6 +10476,48 @@ const TattingDesigner = () => {
         const N = el.stitchCount;
         let out = '';
         for (const picot of el.picots) {
+          // cjp: core join with picot arm — render arm in realistic mode
+          if (picot.isJoint && picot.isCoreJoin && picot.hasPicotArm) {
+            const tMid   = picot.stitchesBefore / N;
+            const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
+            const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
+            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
+            const ptAt = (frac: number) =>
+              getPointAndAngleAtDistanceFast(
+                totalPathLength.allSamples,
+                totalPathLength.pathLengths,
+                frac * totalPathLength.totalLength
+              );
+            const ptMid   = ptAt(tMid);
+            const ptLeft  = ptAt(tLeft);
+            const ptRight = ptAt(tRight);
+            let nx: number, ny: number;
+            const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
+            if (isHalfway) {
+              const ptJoin = ptAt(0);
+              const ax = ptMid.x - ptJoin.x, ay = ptMid.y - ptJoin.y;
+              const al = Math.sqrt(ax*ax + ay*ay) || 1;
+              nx = (ax / al) * picotSideDir;
+              ny = (ay / al) * picotSideDir;
+            } else {
+              nx =  Math.sin(ptMid.angle) * picotSideDir;
+              ny = -Math.cos(ptMid.angle) * picotSideDir;
+            }
+            const bL  = { x: ptLeft.x,  y: ptLeft.y  };
+            const bR  = { x: ptRight.x, y: ptRight.y };
+            const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
+            const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
+            const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
+            const cjColor = elColor.isGradient
+              ? getGradientColorAtPosition(elColor.id, tMid)
+              : elColor.color;
+            const lw = el.lineWidth || 2;
+            const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
+            expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
+            out += `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>`;
+            out += `<path d="${d}" stroke="${cjColor}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
+            continue;
+          }
           if (picot.isJoint || picot.isGuidePoint || picot.beadType) continue;
           const tMid   = picot.stitchesBefore / N;
           const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
@@ -14886,6 +14929,8 @@ const TattingDesigner = () => {
                             return null;
                           });
                         })()}
+                        {/* cjp picots: render arms in realistic mode */}
+                        {renderPicots(el, true)}
                       </>
                     ) : (
                       // Original schematic rendering
