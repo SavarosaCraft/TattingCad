@@ -1,696 +1,76 @@
-// Tatting Pattern Designer - Version 1.05 TEST
-// CHANGES IN SESSION 25:
-// - pasteFromClipboard now preserves picot connections (was silently dropping them)
-// - Ctrl+V keyboard shortcut now calls pasteFromClipboard() instead of reimplementing paste
-// - All load/save/theme error and success messages now go through t() — no more hardcoded English
-// - pushHistoryState() extracted as shared helper (was duplicated in useEffect + mouseUp handler)
-// - filteredSolidColors useMemo removed (dead code — replaced by filteredSolidColorsDebounced)
-// - shouldShowRotationHandles converted from useMemo to plain const (trivial boolean OR)
-// - IDs now use crypto.randomUUID() — replaces Date.now()+Math.random() (17 sites, collision-safe)
-// - console.log calls removed from production code
-// - Autosave comment corrected to 3 minutes (was incorrectly documented as 30 seconds)
-// - Safe area insets added: top header and bottom info bar respect Android status/nav bars
-// - languagePickerLabel: 'Language / Nyelv' → 'Language' (Hungarian removed for other translators)
-// - translations_en.json: all _comment_ section headers translated to English (were Hungarian)
-// - Pattern output: bead block now also lists named beads (BE library beads) by name × count
-// - Materials panel: name input border always visible (border-gray-400, focus ring)
-// - Bead library panel: name input border always visible (was hidden until hover)
-// - Split ring material label changed from 'Material:' to 'Mat A:' (new matALabel key)
-// - Ref image controls: Upload Image, Opacity, Scale, Rotate, Visible/Hidden, Remove → all t()
-// - UI: select-none added to root app div — no accidental text selection on labels/buttons
-//
-// CHANGES IN SESSION 24:
-// - lss / rss token support: same path size as ss (0.5 DS each), stored as distinct types
-//   so on-screen labels and future rendering can distinguish left/right single stitches
-// - On-screen notation labels now type-aware: pure-DS segments show a plain count (e.g. "3"),
-//   mixed or SS/LSS/RSS segments show run-encoded label with middle-dot separator
-//   e.g. "2·7lss·7rss·2" instead of "18"
-// - buildSegmentLabel() replaces raw countStitchesInRange() in all 5 label render sites
-//   (circle no-picot, teardrop/chain no-picot, circle segmented, split ring, path segmented)
-// CHANGES IN v1.05:
-// - Split ring notation labels: A and B sections shown on correct curves
-// - Orphaned notation label ghost fix (stable React keys + <g> wrapper)
-// - Realistic rendering performance: bezier pre-sampling (3-5x faster)
-// - Pan tool no longer changes selection
-// - Path edit tool smart click: chain→stay, ring/other→exit to select, dbl-click empty→exit
-// - Hit testing improved: split rings and lines use path proximity not center distance
-// - Spinner arrows removed from all number inputs
-// - Rotation input minimum width (3 chars always visible)
-// - Default notation: rings/chains 6ds-p-6ds, split rings 3ds-p-3ds
-// - Chain default length calculated from stitch count × dsWidth
-// - Default zoom 180%
-// - Show Unnumbered: pink glow on elements, not the button
-// - Dropdown menus (File/Arrange/Options) open left when near screen edge
-// - BG cycle: dark / half-dark / white
-// - Notation labels always black outline (not affected by bg color)
-// - Split ring sizing fixed: shorter arc defines height, bulge derived from fixed arc length
-// - Split ring squeeze: height varies, bulge conserves chain length geometrically
-// - Split ring reset: only resets rotation + squeeze, stays as split ring
-// - Realistic rendering: stitches render inside path line (offsetAmount fix)
-// - Realistic rendering: 30fps cap on mouse-move redraws
-// - Picot offset calibrated to 10px
-// - Ortho lock: hold Shift or toggle button to constrain movement to X/Y axis
-// - Left toolbar: ortho lock next to rotate, path edit moved to row 3
-// 
-// THIS IS A TEST VERSION FOR SHARING/EXPERIMENTATION
-// The main production version is tatting-designer-v1_04-dev.tsx
-//
-// VERSION 1.04 CHANGES:
-// - WEDGE STITCH RENDERING: Rings use proper trapezoid shapes computed in world
-//   coordinates from exact polar geometry — no more gaps on tight rings.
-//   Chains/teardrops use skew-corrected matrix transform for curved paths.
-// - generatePattern rewritten: jp tokens annotated with connected element refs
-// - Line property bar: Order # only, no notation field
-// - Lines get optional orderNumber field
-// - Fixed zoom buttons to zoom towards center of screen (same fix as pinch zoom)
-// - Zoom in/out buttons now use proper camera transform
-// - Parser accepts both "-" and "." as separators
-// - Help menu fully updated with all features
-//
-// ZOOM BUTTON FIX:
-// - Notation parser now accepts both "-" and "." as separators
-// - Examples: "r: 5ds-p-5ds" or "r: 5ds.p.5ds" both work
-// - Applies to: parseNotation, reverseNotation, countActualStitches, 
-//   countStitchesInRange, and getStitchTypes functions
-//
-// HELP MENU UPDATE:
-// - Added Ctrl+N (New), D (Duplicate in place), F (Fit All) to shortcuts
-// - Added Line Tool documentation
-// - Added Flipping feature (Flip H/V buttons)
-// - Updated Rotation section with fine rotation for groups
-// - Added Arrange Menu documentation (duplicate, alignment)
-// - Added Options Menu documentation (BG, Grid, Snap)
-// - Updated Groups section with rotation input info
-// - Removed non-existent Scissors Tool (LLM error)
-// - Updated Tips with radial pattern workflow and new features
-//
-// PERFORMANCE OPTIMIZATIONS:
-// - Auto-save interval no longer recreates on every state change (uses refs)
-// - RAF batching already implemented for mouse move
-// - useMemo used for expensive calculations
-// - Event listeners properly cleaned up
-//
-// RELEASE v1.02:
-// - Reference image controls moved to top property bar (cleaner UI)
-// - Image tool in left toolbar now acts as tool mode (like Pan, Select, Path)
-// - Controls appear in property bar when Image tool is selected
-// - Path editor now smoothly interpolates control point angles (no more jarring snaps)
-// - Drag endpoints gradually transition instead of instant recalculation
-//
-// Previous (v1.01):
-// - All toolbar buttons now EXACTLY 44px height with flex centering
-// - Icon-only buttons are perfect 44px × 44px squares
-// - File and Schematic buttons match height but can be wider (have text)
-// - Used exact width/height instead of minWidth/minHeight for precision
-// - Updated version display to "Version 1.01" in startup disclaimer
-//
-// Previous (v93.7.4):
-// - ALL Row 1 buttons now px-3 py-2 (Eye, Undo, Redo, Copy, Paste were still p-2)
-// - Added explicit sizing (minWidth: 44px, minHeight: 44px) to text/emoji buttons
-// - Added flex centering (flex items-center justify-center) for uniform appearance
-// - BG, Grid, Snap, and Help buttons now match icon button sizes perfectly
-//
-// Previous (v93.7.3):
-// - Reverted Help button to "?" text (FileQuestionMark icon not supported in artifact)
-// - Kept uniform button heights (all buttons px-3 py-2 in Row 1)
-//
-// Previous (v93.7.2):
-// - Standardized all Row 1 button heights (Grid, Snap, Help buttons now px-3 py-2)
-// - Replaced "?" text with FileQuestionMark icon for consistency
-// - All toolbar buttons now uniform height and professional appearance
-//
-// Previous (v93.7.1):
-// - Shorter labels: "Opac: 50%" instead of two lines
-// - Eye and Remove buttons now in same row (side by side)
-// - Confirmation dialog before removing reference image (prevents accidents)
-// - Image validation: checks file type (must be image/*) and size (max 10MB)
-// - Error handling for corrupted or invalid image files
-//
-// Previous (v93.7):
-// - Reference controls now INLINE in left toolbar (like picot join tool)
-// - Click Image button to show/hide controls
-// - Upload button appears when controls expanded
-// - Sliders and buttons show in toolbar grid
-// - No more floating panels - everything in one place!
-//
-// Previous (v93.3.3):
-// - External JSON loading implemented for DMC colors (dmc_colors.json)
-// - Colors now loaded from external file with fallback to embedded colors
-// - Comprehensive validation for JSON structure and data types
-//
-// FIXES (v93.3.2):
-// - Properties panel now maintains consistent 6rem height on all screen sizes (no more jumping)
-// - Reference image toolbar positioned below main toolbar (top-44 instead of top-20)
-// - Both rows of main toolbar now clear before reference image controls appear
-// MINOR UPDATE (v93.3.1):
-// - Added "Version 0.1" text to disclaimer popup
-// NEW (v93.3):
-// - Gradient picker now uses scrolling instead of pagination
-// - Removed pagination controls (prev/next buttons)
-// - Grid scrolls vertically with max-height: 400px
-// - Shows total gradient count instead of page numbers
-// - Cleaner, more intuitive interface like color swatches
-// FIXES (v93.2):
-// - PNG export completely removed (browser security restrictions prevent it from working)
-// - SVG export now excludes guide picots (green picots with isGuide flag)
-// - Notation numbers always white color (not element color)
-// - Order numbers hidden from rings by default (cleaner view)
-// - Order numbers shown for ALL elements (rings AND chains) when "Show Unnumbered" is toggled on
-// CORRECT IMPLEMENTATION (v93.1):
-// - Flip using mirror rotation formulas
-// - FlipHorizontal (vertical mirror/left-right): newAngle = 180° - θ
-// - FlipVertical (horizontal mirror/top-bottom): newAngle = -θ
-// - Reverses notation (2ds-p-5ds → 5ds-p-2ds)
-// - Applies rotation to paths (doesn't mirror coordinates directly)
-// - Updates rotation angle display to show new angle
-// - This preserves picot orientation correctly!
-// FIXED (v92.7.1):
-// - Order field now scales down on mobile (added top-toolbar-scalable class)
-// - Shape and Squeeze fields also scale down on mobile
-// - "Order:", "Shape:", and "Squeeze:" labels hidden on mobile
-// - Properties panel should now fit in 2 lines on mobile
-// NEW (v92.7):
-// - ADDED: File operations dropdown menu (replaces individual buttons)
-// - Menu includes: Save, Load, Export SVG, Generate Pattern
-// - REMOVED: Project name input field (redundant - name set in save dialog)
-// - Saves significant toolbar space, especially on mobile
-// - Click overlay closes menu when clicking outside
-// FIXED (v92.6):
-// - Properties toolbar now fits in 2 lines max on mobile (max-height: 6rem)
-// - Empty state placeholder matches 2-line height on mobile
-// - Properties panel inputs and buttons scaled smaller on mobile (0.75rem font, smaller padding)
-// - Text labels smaller on mobile (0.65rem) to fit more content
-// FIXED (v92.5.1):
-// - Picots now stay on the same side of the curve when flipping
-// - Label offset: labelsInside (3-state) replaced by labelOffset (number, px, default 8)
-// - When you flip a curve, its "handedness" changes, so we toggle the label side
-// - Works for both rings and chains, circles and teardrops
-// NEW (v92.4):
-// - ADDED: Horizontal and vertical flip/mirror transformations
-// - ADDED: Flip buttons in toolbar (after rotation buttons)
-// - Flip preserves element properties (notation, picots, colors, etc.)
-// - Reverses path order for closed paths to maintain correct direction
-// NEW (v92.3):
-// - ADDED: Save dialog modal (replaces browser prompt that wasn't working)
-// - ADDED: Startup disclaimer modal with test version warning
-// - FIXED: Color picker modal height reduced 20% more on mobile (60vh/55vh/50vh)
-// BUGFIXES (v92.2):
-// - FIXED: Notation labels now display correctly for repeat patterns (e.g., "2x(p-3ds)" shows "3-p-3" not "0-p-0")
-// - FIXED: Copy-paste with Ctrl+V now clears order numbers (was only fixed for button paste)
-// - FIXED: Save dialog now prompts for filename before saving (can change name)
-// BUGFIXES (v92.1):
-// - Copy-paste now clears order numbers to avoid duplicates
-// - Squeezing ring now preserves rotation (was resetting to 0°)
-// - Changing notation now preserves rotation (already worked, confirmed)
-// - Squeezing creates only 2 undo states (start/end) instead of many
-// - Color picker modals now scale down on mobile (85%/75%/65%)
-// - Gradient picker modal now scales down on mobile (85%/75%/65%)
-// NEW in v92: Reduced gradients to 6 test samples (rest will be loaded externally)
-// NEW in v92: Updated icon set for better visual clarity
-// NEW in v92: Pinch-to-zoom support for mobile devices (two-finger gesture)
-// FIXED in v92: Top toolbar scaling now matches side toolbars (0.68, 0.6, 0.5 at different breakpoints)
-// FIXED: Stitch count labels now show actual stitch count from notation (not DS-equivalent path length)
-// EXAMPLE: "5ds, 4ss, 2rds" shows "11" (not "9 DS") - counts 5+4+2=11 stitches
-// FIXED: SS stitches now properly anchored - offset along tangent direction (follow the curve)
-// NEW: Copy/Paste buttons in top toolbar (next to Undo/Redo)
-// ROLLBACK: Mobile responsive changes removed (toolbar hiding, text hiding) - back to full display
-// NEW: Quick Start Guide - comprehensive onboarding in Help modal (default tab)
-// NEW: Order numbers are unique - conflicts auto-reassign to next available number
-// NEW: "Show Unnumbered" toggle button - highlights elements without order numbers (yellow tint)
-// IMPROVED: Reference image toolbar moved higher (top-left), collapsible, redesigned with icons
-// IMPROVED: Gradient toolbar collapse now works on mobile (added touch handler)
-// IMPROVED: Top properties bar now wraps on small screens (flex-wrap)
-// NEW: Squeeze tool for rings - adjust width/height ratio while keeping path length constant
-// FIXED: Teardrop picot angles at tip/bottom now respect element rotation (no more dancing!)
-// - Right palette DMC swatches: ONLY solid colors (gradients filtered out)
-// - Bottom toolbar: Gradient-only picker (click + button)
-// - Clean separation: solids on right, gradients on bottom
-// - Gradient picker matches DMC swatches (search, categories, pagination, preview)
+// TattingCAD — tattingindex.tsx
+// Main application component. See docs/architecture.md for module structure.
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { save as tauriSave, open as tauriOpen, ask } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
+import { ask } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
+import {
+  showSaveDialog,
+  showOpenDialog,
+  showSaveSvgDialog,
+  writeProjectFile,
+  writeTextToFile,
+  readProjectFile,
+  addToRecents,
+  getRecents,
+  generateThumbnail,
+} from './tauri/file';
+import { generateId } from './utils/id';
+import {
+  sampleBezierPath,
+  calculatePathLength,
+  getPointAndAngleAtDistanceFast,
+  getPointAndAngleAtDistance,
+  interpolateColor,
+} from './geometry/bezier';
+import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
+import enStrings from './i18n/translations_en.json';
+import { useUIState } from './hooks/useUIState';
+import { useCanvasInteraction } from './hooks/useCanvasInteraction';
+import { useTattingOrder } from './hooks/useTattingOrder';
+import { useProjectState } from './hooks/useProjectState';
+import { useBeadState, DEFAULT_BEAD_LIBRARY } from './hooks/useBeadState';
+import {
+  IconMove, IconMenu, IconClose, IconChevronDown, IconImage,
+  IconRefImageOn, IconRefImageOff, IconOrtho, IconOrthoOn,
+  IconJoinPicots, IconPan, IconSelect, IconPathEdit,
+  IconAddRing, IconAddSplitRing, IconAddChain, IconAddLine,
+  IconGridOn, IconGridOff, IconSnapOn, IconSnapOff,
+  IconEyeOn, IconEyeOff, IconRenderSchematic, IconRenderRealistic,
+  IconUnnumberedOn, IconUnnumberedOff, IconInvalidOn, IconInvalidOff,
+  IconShapeCircle, IconShapeTeardrop,
+  IconUndo, IconRedo, IconCopy, IconPaste, IconDelete,
+  IconGroup, IconUngroup, IconFlipH, IconFlipV,
+  IconRotateCW, IconRotateCCW, IconRotateMode,
+  IconAlignLeft, IconAlignCenter, IconAlignRight,
+  IconAlignTop, IconAlignMiddle, IconAlignBottom,
+  IconSave, IconLoad, IconExport, IconNew, IconDownload,
+  IconZoomIn, IconZoomOut, IconFitView, IconZoomRect,
+  IconLink, IconUnlink, IconSettings, IconHelp,
+  IconBeadMode, IconBeadCore, IconBeadCorePicot, IconBeadCoreBeaded,
+  IconBeadSpike, IconBeadSuspended,
+  IconLanguage,
+  IconNotationS, IconNotationM, IconNotationH,
+  IconNotes, IconPolarGrid, IconCut,
+  IconNotationOn, IconNotationOff, IconRuler,
+} from './components/icons';
+import {
+  parseNotation as parseNotationPure,
+  reverseNotation,
+  buildSegmentLabel,
+  getSegmentRuns,
+  countActualStitches,
+  countStitchesInRange,
+  getStitchTypes as getStitchTypesPure,
+  isNotationValid,
+  expandTokens,
+  isZeroWidth,
+} from './domain/parser';
 const logoUrl = '/logo.png';
 
-// Collision-safe unique ID generator — replaces Date.now()+Math.random() everywhere.
-const generateId = (): string => crypto.randomUUID();
-
-// ── Tatting Icons (inlined) ─────────────────────────────────────────────
-// tatting-icons.tsx
-// ─────────────────────────────────────────────────────────────────────────────
-// Custom SVG icon library for TattingCAD.
-// Generated from Inkscape SVGs — Session 20.
-// Import from here instead of lucide-react in the main app.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Inline SVGs for icons not yet custom-drawn in Inkscape ───────────────────
-
-export const IconMove = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M480,-80 L310,-250 L367,-307 L440,-234 L440,-440 L235,-440 L308,-368 L250,-310 L80,-480 L249,-649 L306,-592 L234,-520 L440,-520 L440,-726 L367,-653 L310,-710 L480,-880 L650,-710 L593,-653 L520,-726 L520,-520 L725,-520 L652,-592 L710,-650 L880,-480 L710,-310 L653,-367 L726,-440 L520,-440 L520,-235 L592,-308 L650,-250 L480,-80 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconMenu = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M120,-680 L120,-760 L840,-760 L840,-680 L120,-680 Z M120,-200 L120,-280 L840,-280 L840,-200 L120,-200 Z M120,-440 L120,-520 L840,-520 L840,-440 L120,-440 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconClose = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M256,-200 L200,-256 L424,-480 L200,-704 L256,-760 L480,-536 L704,-760 L760,-704 L536,-480 L760,-256 L704,-200 L480,-424 L256,-200 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconChevronDown = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M480,-360 L280,-560 L680,-560 L480,-360 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconImage = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Z M200,-200 L760,-200 L760,-760 L200,-760 L200,-200 Z M240,-280 L720,-280 L570,-480 L450,-320 L360,-440 L240,-280 Z M200,-200 L200,-760 L200,-200 Z M340,-560 Q365,-560 382.5,-577.5 Q400,-595 400,-620 Q400,-645 382.5,-662.5 Q365,-680 340,-680 Q315,-680 297.5,-662.5 Q280,-645 280,-620 Q280,-595 297.5,-577.5 Q315,-560 340,-560 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconRefImageOn = IconImage;
-export const IconRefImageOff = IconImage; // not used — same as on
-
-
-export const IconOrtho = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M480,-80 L310,-250 L367,-307 L440,-234 L440,-400 L520,-400 L520,-235 L592,-308 L650,-250 L480,-80 Z M250,-310 L80,-480 L249,-649 L306,-592 L234,-520 L400,-520 L400,-440 L235,-440 L308,-368 L250,-310 Z M710,-310 L653,-367 L726,-440 L560,-440 L560,-520 L725,-520 L652,-592 L710,-650 L880,-480 L710,-310 Z M440,-560 L440,-726 L367,-653 L310,-710 L480,-880 L650,-710 L593,-653 L520,-726 L520,-560 L440,-560 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconOrthoOn = IconOrtho; // alias for compatibility
-
-
-export const IconJoinPicots = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M155,-75 Q120,-110 120,-160 Q120,-210 155,-245 Q190,-280 240,-280 Q254,-280 266,-277 Q278,-274 289,-269 L346,-340 Q318,-371 307,-410 Q296,-449 302,-488 L221,-515 Q204,-490 178,-475 Q152,-460 120,-460 Q70,-460 35,-495 Q0,-530 0,-580 Q0,-630 35,-665 Q70,-700 120,-700 Q170,-700 205,-665 Q240,-630 240,-580 L240,-572 L321,-544 Q341,-580 374.5,-605 Q408,-630 450,-637 L450,-724 Q411,-735 385.5,-766.5 Q360,-798 360,-840 Q360,-890 395,-925 Q430,-960 480,-960 Q530,-960 565,-925 Q600,-890 600,-840 Q600,-798 574,-766.5 Q548,-735 510,-724 L510,-637 Q552,-630 585.5,-605 Q619,-580 639,-544 L720,-572 L720,-580 Q720,-630 755,-665 Q790,-700 840,-700 Q890,-700 925,-665 Q960,-630 960,-580 Q960,-530 925,-495 Q890,-460 840,-460 Q808,-460 781.5,-475 Q755,-490 739,-515 L658,-488 Q664,-449 653,-410.5 Q642,-372 614,-340 L671,-270 Q682,-275 694,-277.5 Q706,-280 720,-280 Q770,-280 805,-245 Q840,-210 840,-160 Q840,-110 805,-75 Q770,-40 720,-40 Q670,-40 635,-75 Q600,-110 600,-160 Q600,-180 606.5,-198.5 Q613,-217 624,-232 L567,-303 Q526,-280 479.5,-280 Q433,-280 392,-303 L336,-232 Q347,-217 353.5,-198.5 Q360,-180 360,-160 Q360,-110 325,-75 Q290,-40 240,-40 Q190,-40 155,-75 Z M120,-540 Q137,-540 148.5,-551.5 Q160,-563 160,-580 Q160,-597 148.5,-608.5 Q137,-620 120,-620 Q103,-620 91.5,-608.5 Q80,-597 80,-580 Q80,-563 91.5,-551.5 Q103,-540 120,-540 Z M268.5,-131.5 Q280,-143 280,-160 Q280,-177 268.5,-188.5 Q257,-200 240,-200 Q223,-200 211.5,-188.5 Q200,-177 200,-160 Q200,-143 211.5,-131.5 Q223,-120 240,-120 Q257,-120 268.5,-131.5 Z M508.5,-811.5 Q520,-823 520,-840 Q520,-857 508.5,-868.5 Q497,-880 480,-880 Q463,-880 451.5,-868.5 Q440,-857 440,-840 Q440,-823 451.5,-811.5 Q463,-800 480,-800 Q497,-800 508.5,-811.5 Z M480,-360 Q522,-360 551,-389 Q580,-418 580,-460 Q580,-502 551,-531 Q522,-560 480,-560 Q438,-560 409,-531 Q380,-502 380,-460 Q380,-418 409,-389 Q438,-360 480,-360 Z M748.5,-131.5 Q760,-143 760,-160 Q760,-177 748.5,-188.5 Q737,-200 720,-200 Q703,-200 691.5,-188.5 Q680,-177 680,-160 Q680,-143 691.5,-131.5 Q703,-120 720,-120 Q737,-120 748.5,-131.5 Z M868.5,-551.5 Q880,-563 880,-580 Q880,-597 868.5,-608.5 Q857,-620 840,-620 Q823,-620 811.5,-608.5 Q800,-597 800,-580 Q800,-563 811.5,-551.5 Q823,-540 840,-540 Q857,-540 868.5,-551.5 Z M480,-840 Z M120,-580 Z M480,-460 Z M840,-580 Z M240,-160 Z M720,-160 Z" fill="currentColor"/>
-  </svg>
-);
-
-
-// ── Tools — left toolbar ────────────────────────────────────────────────────
-export const IconPan = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M402,-40 Q372,-40 346,-53.5 Q320,-67 303,-92 L48,-465 L72,-488 Q91,-507 117,-510 Q143,-513 164,-498 L280,-417 L280,-800 Q280,-817 291.5,-828.5 Q303,-840 320,-840 Q337,-840 348.5,-828.5 Q360,-817 360,-800 L360,-263 L212,-367 L369,-138 Q374,-130 383,-125 Q392,-120 402,-120 L680,-120 Q713,-120 736.5,-143.5 Q760,-167 760,-200 L760,-760 Q760,-777 771.5,-788.5 Q783,-800 800,-800 Q817,-800 828.5,-788.5 Q840,-777 840,-760 L840,-200 Q840,-134 793,-87 Q746,-40 680,-40 L402,-40 Z M440,-480 L440,-880 Q440,-897 451.5,-908.5 Q463,-920 480,-920 Q497,-920 508.5,-908.5 Q520,-897 520,-880 L520,-480 L440,-480 Z M600,-480 L600,-840 Q600,-857 611.5,-868.5 Q623,-880 640,-880 Q657,-880 668.5,-868.5 Q680,-857 680,-840 L680,-480 L600,-480 Z M486,-300 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconSelect = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 4.7625 4.7625" fill="none" className={className}>
-    <path d="M2.1167,4.7625 L2.1167,2.1167 L4.7625,2.1167 L4.7625,2.6458 L3.0162,2.6458 L4.7625,4.3921 L4.3921,4.7625 L2.6458,3.0162 L2.6458,4.7625 Z M1.0583,4.7625 L1.0583,4.2333 L1.5875,4.2333 L1.5875,4.7625 Z M0.5292,0.5292 L0,0.5292 Q0,0.3109 0.1554,0.1555 Q0.3109,0 0.5292,0 Z M1.0583,0.5292 L1.0583,0 L1.5875,0 L1.5875,0.5292 Z M2.1167,0.5292 L2.1167,0 L2.6458,0 L2.6458,0.5292 Z M3.175,0.5292 L3.175,0 L3.7042,0 L3.7042,0.5292 Z M4.2333,0.5292 L4.2333,0 Q4.4516,0 4.6071,0.1555 Q4.7625,0.3109 4.7625,0.5292 Z M0.5292,4.2333 L0.5292,4.7625 Q0.3109,4.7625 0.1554,4.6071 Q0,4.4516 0,4.2333 Z M0,3.7042 L0,3.175 L0.5292,3.175 L0.5292,3.7042 Z M0,2.6458 L0,2.1167 L0.5292,2.1167 L0.5292,2.6458 Z M0,1.5875 L0,1.0583 L0.5292,1.0583 L0.5292,1.5875 Z M4.2333,1.5875 L4.2333,1.0583 L4.7625,1.0583 L4.7625,1.5875 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconPathEdit = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 4.3656 4.3656" fill="none" className={className}>
-    <path d="M1.5081,3.175 Q0.8731,3.1419 0.4366,2.6855 Q0,2.2291 0,1.5875 Q0,0.926 0.463,0.463 Q0.926,0 1.5875,0 Q2.2291,0 2.6855,0.4366 Q3.1419,0.8731 3.175,1.5081 L2.6194,1.3428 Q2.5334,0.9856 2.249,0.7574 Q1.9645,0.5292 1.5875,0.5292 Q1.1509,0.5292 0.84,0.8401 Q0.5292,1.1509 0.5292,1.5875 Q0.5292,1.9645 0.7574,2.249 Q0.9856,2.5334 1.3428,2.6194 Z M3.8431,4.3656 L2.712,3.2345 L2.3812,4.2333 L1.5875,1.5875 L4.2333,2.3812 L3.2345,2.712 L4.3656,3.8431 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-// ── Element creation ─────────────────────────────────────────────────────────
-export const IconAddRing = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="-0.5292 0 5.2917 5.2917" fill="none" className={className}>
-    <path d="M2.1167,5.2917 C1.5125,5.2917 1.0087,5.0844 0.6052,4.6699 C0.2017,4.2554 0,3.7394 0,3.1221 C0,2.6811 0.1753,2.2016 0.5259,1.6834 C0.8764,1.1653 1.4067,0.6041 2.1167,0 C2.8266,0.6041 3.3569,1.1653 3.7075,1.6834 C4.058,2.2016 4.2333,2.6811 4.2333,3.1221 C4.2333,3.7394 4.0316,4.2554 3.6281,4.6699 C3.2246,5.0844 2.7208,5.2917 2.1167,5.2917 Z M2.1167,4.7625 C2.5753,4.7625 2.9545,4.6071 3.2544,4.2962 C3.5542,3.9853 3.7042,3.5939 3.7042,3.1221 C3.7042,2.8002 3.5708,2.4364 3.304,2.0307 C3.0372,1.625 2.6414,1.1818 2.1167,0.7011 C1.5919,1.1818 1.1961,1.625 0.9293,2.0307 C0.6626,2.4364 0.5292,2.8002 0.5292,3.1221 C0.5292,3.5939 0.6791,3.9853 0.979,4.2962 C1.2788,4.6071 1.6581,4.7625 2.1167,4.7625 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconAddSplitRing = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="-0.5292 0 5.2917 5.2917" fill="none" className={className}>
-    <path d="M2.1167,0 C1.4067,0.6041 0.8766,1.1655 0.5261,1.6836 C0.1755,2.2018 0,2.6813 0,3.1223 C0,3.7396 0.2022,4.2555 0.6056,4.67 C1.0091,5.0845 1.5125,5.2917 2.1167,5.2917 C2.7208,5.2917 3.2247,5.0845 3.6282,4.67 C4.0317,4.2555 4.2333,3.7396 4.2333,3.1223 C4.2333,2.6813 4.0584,2.2018 3.7078,1.6836 C3.3572,1.1655 2.8266,0.6041 2.1167,0 Z M2.1167,0.7012 C2.6414,1.1819 3.0374,1.6252 3.3042,2.0309 C3.571,2.4366 3.7042,2.8004 3.7042,3.1223 C3.7042,3.5941 3.5544,3.9855 3.2546,4.2964 C2.9547,4.6073 2.5753,4.7625 2.1167,4.7625 C1.6581,4.7625 1.2791,4.6073 0.9793,4.2964 C0.6794,3.9855 0.5292,3.5941 0.5292,3.1223 C0.5292,2.8004 0.6629,2.4366 0.9297,2.0309 C1.1964,1.6252 1.5919,1.1819 2.1167,0.7012 Z M1.8521,0.9855 L1.8521,1.5146 L2.3812,1.5146 L2.3812,0.9855 Z M1.8521,2.0438 L1.8521,2.573 L2.3812,2.573 L2.3812,2.0438 Z M1.8521,3.1021 L1.8521,3.6313 L2.3812,3.6313 L2.3812,3.1021 Z M1.8521,4.1605 L1.8521,4.6896 L2.3812,4.6896 L2.3812,4.1605 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconAddChain = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -0.1003 5.821 5.821" fill="none" className={className}>
-    <path d="M2.0086,0 C1.9817,0.0666 1.4949,1.0635 1.2815,1.5005 C0.8741,1.3717 0.4469,1.3073 0,1.3073 L0,1.8464 C0.5212,1.8464 1.0112,1.9451 1.4695,2.1429 C1.9277,2.3405 2.3274,2.6101 2.6688,2.9516 C3.0103,3.293 3.2798,3.6932 3.4775,4.1514 C3.6752,4.6097 3.774,5.0992 3.774,5.6204 L4.3131,5.6204 C4.3131,5.3089 4.282,5.0071 4.2194,4.7148 C4.6872,4.5826 5.7468,4.2833 5.821,4.2567 L5.6725,3.7381 C5.605,3.7624 4.541,4.0636 4.072,4.1962 C4.0418,4.1118 4.0088,4.0282 3.973,3.9456 C3.7993,3.545 3.5777,3.1834 3.308,2.8605 C3.648,2.5391 4.4833,1.7493 4.5379,1.6901 L4.1667,1.2994 C4.1171,1.3535 3.2784,2.1468 2.9373,2.4693 C2.5999,2.1546 2.2162,1.8972 1.7859,1.6974 C2.0073,1.2442 2.4652,0.3064 2.494,0.2353 Z" fill="currentColor" strokeWidth="0.0067"/>
-  </svg>
-);
-export const IconAddLine = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 4.2333 4.2333" fill="none" className={className}>
-    <path d="M0.5292,0 C0.5292,0.5115 0.6262,0.9922 0.8202,1.442 C1.0142,1.8918 1.2788,2.2842 1.614,2.6194 C1.9491,2.9545 2.3416,3.2191 2.7913,3.4131 C3.2411,3.6071 3.7218,3.7042 4.2333,3.7042 L4.2333,4.2333 C3.6512,4.2333 3.1033,4.122 2.5896,3.8993 C2.0759,3.6766 1.6272,3.3734 1.2435,2.9898 C0.8599,2.6061 0.5567,2.1575 0.334,1.6437 C0.1114,1.13 0,0.5821 0,0 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-// Replace one with a distinct design when ready.
-
-// ── View toggles — paired On/Off ─────────────────────────────────────────────
-export const IconGridOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 5.6095 5.609" fill="none" className={className}>
-    <path d="M0.9527,5.1857 Q0.7344,5.1857 0.5789,5.0303 Q0.4235,4.8748 0.4235,4.6566 L0.4235,0.9524 Q0.4235,0.7341 0.5789,0.5787 Q0.7344,0.4232 0.9527,0.4232 L4.6568,0.4232 Q4.8751,0.4232 5.0305,0.5787 Q5.186,0.7341 5.186,0.9524 L5.186,4.6566 Q5.186,4.8748 5.0305,5.0303 Q4.8751,5.1857 4.6568,5.1857 Z M0.9527,4.6566 L1.8324,4.6566 L1.8324,3.7768 L0.9527,3.7768 Z M2.3616,4.6566 L3.2479,4.6566 L3.2479,3.7768 L2.3616,3.7768 Z M3.7771,4.6566 L4.6568,4.6566 L4.6568,3.7768 L3.7771,3.7768 Z M0.9527,3.2477 L1.8324,3.2477 L1.8324,2.3613 L0.9527,2.3613 Z M2.3616,3.2477 L3.2479,3.2477 L3.2479,2.3613 L2.3616,2.3613 Z M3.7771,3.2477 L4.6568,3.2477 L4.6568,2.3613 L3.7771,2.3613 Z M0.9527,1.8321 L1.8324,1.8321 L1.8324,0.9524 L0.9527,0.9524 Z M2.3616,1.8321 L3.2479,1.8321 L3.2479,0.9524 L2.3616,0.9524 Z M3.7771,1.8321 L4.6568,1.8321 L4.6568,0.9524 L3.7771,0.9524 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconGridOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 5.6095 5.609" fill="none" className={className}>
-    <path d="M0.3705,0 L0,0.3705 C0.4895,0.8871 5.239,5.609 5.239,5.609 L5.6095,5.2389 Z M1.4593,0.4232 L2.3616,1.3255 L2.3616,0.9524 L3.2479,0.9524 L3.2479,1.8324 L2.8685,1.8324 L3.777,2.7409 L3.777,2.3616 L4.6566,2.3616 L4.6566,3.2479 L4.284,3.2479 L5.1857,4.1496 L5.1857,0.9524 C5.1857,0.8069 5.1343,0.6824 5.0307,0.5788 C4.9271,0.4751 4.8021,0.4232 4.6566,0.4232 Z M3.777,0.9524 L4.6566,0.9524 L4.6566,1.8324 L3.777,1.8324 Z M0.4232,1.5234 L0.4232,4.6566 C0.4232,4.8021 0.4751,4.9265 0.5788,5.0302 C0.6824,5.1338 0.8069,5.1857 0.9524,5.1857 L4.0953,5.1857 C3.8746,4.9661 3.5812,4.6743 3.2479,4.3424 L3.2479,4.6566 L2.3616,4.6566 L2.3616,3.777 L2.6804,3.777 C2.4061,3.5036 2.1188,3.2173 1.8324,2.9316 L1.8324,3.2479 L0.9524,3.2479 L0.9524,2.3616 L1.2614,2.3616 C0.9657,2.0663 0.6809,1.7815 0.4232,1.5234 Z M0.9524,3.777 L1.8324,3.777 L1.8324,4.6566 L0.9524,4.6566 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconSnapOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 5.6095 5.609" fill="none" className={className}>
-    <path d="M2.8295,0.0348 C2.4635,0.0348 2.1199,0.1041 1.798,0.2431 C1.4761,0.382 1.1959,0.5703 0.9578,0.8084 C0.7196,1.0465 0.5313,1.3267 0.3924,1.6487 C0.2535,1.9706 0.1837,2.3146 0.1837,2.6806 L0.1837,5.3265 L0.2566,5.3265 L0.7129,5.3265 L1.5066,5.3265 L1.9087,5.3265 L2.0358,5.3265 L2.0358,2.6806 C2.0358,2.4601 2.113,2.2727 2.2673,2.1184 C2.4216,1.9641 2.609,1.8869 2.8295,1.8869 C3.05,1.8869 3.2374,1.9641 3.3918,2.1184 C3.5461,2.2727 3.6233,2.4601 3.6233,2.6806 L3.6233,5.3265 L4.1566,5.3265 L5.3581,5.3265 L5.4754,5.3265 L5.4754,2.6806 C5.4754,2.3146 5.4061,1.9706 5.2671,1.6487 C5.1282,1.3267 4.9399,1.0465 4.7018,0.8084 C4.4636,0.5703 4.1834,0.382 3.8615,0.2431 C3.5396,0.1041 3.1955,0.0348 2.8295,0.0348 Z M2.8295,0.564 C3.416,0.564 3.9158,0.7702 4.3281,1.1825 C4.7404,1.5948 4.9462,2.0941 4.9462,2.6806 L4.9462,3.6863 L4.154,3.6863 L4.152,2.6806 C4.152,2.3146 4.0234,2.0027 3.7654,1.7448 C3.5074,1.4868 3.195,1.3577 2.829,1.3577 C2.463,1.3577 2.1511,1.4868 1.8932,1.7448 C1.6352,2.0027 1.5061,2.3146 1.5061,2.6806 L1.5061,3.6863 L0.7124,3.6863 L0.7124,2.6806 C0.7124,2.0941 0.9186,1.5948 1.3309,1.1825 C1.7432,0.7702 2.2425,0.564 2.829,0.564 Z M4.155,4.2154 L4.9462,4.2154 L4.9462,4.7973 L4.1555,4.7973 L4.155,4.3053 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconSnapOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 5.6095 5.609" fill="none" className={className}>
-    <path d="M0.3705,0 L0,0.3705 C0.4895,0.8871 5.239,5.609 5.239,5.609 L5.6095,5.239 Z M2.8045,0.0543 C2.4385,0.0543 2.0949,0.1236 1.773,0.2625 C1.6774,0.3037 1.5858,0.3495 1.4976,0.3995 L1.8836,0.7855 C2.162,0.6506 2.4691,0.5834 2.8045,0.5834 C3.391,0.5834 3.8908,0.7897 4.3031,1.202 C4.7154,1.6143 4.9212,2.1136 4.9212,2.7001 L4.9212,3.7057 L4.8038,3.7057 L5.4503,4.3522 L5.4503,2.7001 C5.4503,2.3341 5.3809,1.99 5.2421,1.6681 C5.1031,1.3462 4.9148,1.066 4.6767,0.8279 C4.4386,0.5897 4.1584,0.4014 3.8365,0.2625 C3.5146,0.1236 3.1705,0.0543 2.8045,0.0543 Z M2.8045,1.3772 C2.7008,1.3772 2.6013,1.3875 2.5063,1.4082 L3.0365,1.9384 C3.1597,1.9744 3.2697,2.0408 3.3667,2.1379 C3.4637,2.2349 3.5302,2.3449 3.5662,2.4681 L4.1279,3.0298 L4.1274,2.7001 C4.1274,2.3341 3.9988,2.0222 3.7409,1.7642 C3.4829,1.5063 3.1705,1.3772 2.8045,1.3772 Z M0.4444,1.5043 C0.4172,1.5578 0.3916,1.6121 0.3674,1.6681 C0.2285,1.99 0.1587,2.3341 0.1587,2.7001 L0.1587,5.3459 L0.2316,5.3459 L0.6879,5.3459 L1.4816,5.3459 L1.8837,5.3459 L2.0108,5.3459 L2.0108,3.0701 C1.8347,2.8944 1.66,2.7197 1.4894,2.5492 C1.4844,2.5984 1.4814,2.6488 1.4814,2.7001 L1.4814,3.7057 L0.6876,3.7057 L0.6876,2.7001 C0.6876,2.4115 0.7376,2.1439 0.8375,1.8976 C0.6988,1.7587 0.5667,1.6273 0.4442,1.5043 Z M3.5982,4.6524 L3.5982,5.3459 L4.1315,5.3459 L4.2948,5.3459 C4.0997,5.1517 3.862,4.9151 3.5982,4.6524 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconEyeOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M607.5,-372.5 Q660,-425 660,-500 Q660,-575 607.5,-627.5 Q555,-680 480,-680 Q405,-680 352.5,-627.5 Q300,-575 300,-500 Q300,-425 352.5,-372.5 Q405,-320 480,-320 Q555,-320 607.5,-372.5 Z M403.5,-423.5 Q372,-455 372,-500 Q372,-545 403.5,-576.5 Q435,-608 480,-608 Q525,-608 556.5,-576.5 Q588,-545 588,-500 Q588,-455 556.5,-423.5 Q525,-392 480,-392 Q435,-392 403.5,-423.5 Z M214,-281.5 Q94,-363 40,-500 Q94,-637 214,-718.5 Q334,-800 480,-800 Q626,-800 746,-718.5 Q866,-637 920,-500 Q866,-363 746,-281.5 Q626,-200 480,-200 Q334,-200 214,-281.5 Z M480,-500 Z M687.5,-339.5 Q782,-399 832,-500 Q782,-601 687.5,-660.5 Q593,-720 480,-720 Q367,-720 272.5,-660.5 Q178,-601 128,-500 Q178,-399 272.5,-339.5 Q367,-280 480,-280 Q593,-280 687.5,-339.5 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconEyeOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M644,-428 L586,-486 Q595,-533 559,-574 Q523,-615 466,-606 L408,-664 Q425,-672 442.5,-676 Q460,-680 480,-680 Q555,-680 607.5,-627.5 Q660,-575 660,-500 Q660,-480 656,-462.5 Q652,-445 644,-428 Z M772,-302 L714,-358 Q752,-387 781.5,-421.5 Q811,-456 832,-500 Q782,-601 688.5,-660.5 Q595,-720 480,-720 Q451,-720 423,-716 Q395,-712 368,-704 L306,-766 Q347,-783 390,-791.5 Q433,-800 480,-800 Q631,-800 749,-716.5 Q867,-633 920,-500 Q897,-441 859.5,-390.5 Q822,-340 772,-302 Z M792,-56 L624,-222 Q589,-211 553.5,-205.5 Q518,-200 480,-200 Q329,-200 211,-283.5 Q93,-367 40,-500 Q61,-553 93,-598.5 Q125,-644 166,-680 L56,-792 L112,-848 L848,-112 L792,-56 Z M222,-624 Q193,-598 169,-567 Q145,-536 128,-500 Q178,-399 271.5,-339.5 Q365,-280 480,-280 Q500,-280 519,-282.5 Q538,-285 558,-288 L522,-326 Q511,-323 501,-321.5 Q491,-320 480,-320 Q405,-320 352.5,-372.5 Q300,-425 300,-500 Q300,-511 301.5,-521 Q303,-531 306,-542 L222,-624 Z M541,-531 Z M390,-456 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconRenderSchematic = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 29.6403 29.6395" fill="none" className={className}>
-    <path d="M0,0 L0,2.5244 L27.1151,29.6395 L29.6401,29.6395 L29.6401,27.4216 L28.0655,25.847 L27.6645,25.446 L26.9312,24.7127 L23.4089,21.1904 L22.8947,20.6763 L21.901,19.6825 L21.0209,18.8025 L17.4976,15.2792 L12.4706,10.2521 L8.9896,6.7712 L2.2185,0 Z M14.7552,2.3146 C12.8286,2.2835 11.5108,2.8579 10.6226,3.6608 L12.9754,6.0136 C13.3189,5.5902 13.8758,5.2605 14.7764,5.2555 C17.3129,5.2414 17.385,7.8967 17.385,7.8967 L17.4274,10.4655 L20.9827,14.0208 L20.8825,7.922 C20.8321,6.4224 19.8966,2.3975 14.7552,2.3146 Z M0,15.1526 L0,18.6495 L6.0523,18.6934 L6.0265,15.1959 Z M6.7557,15.2017 L6.781,18.6986 L11.7739,18.7353 L8.2511,15.2125 Z M22.2762,15.3143 L22.7872,15.8254 L22.7832,15.3179 Z M23.4394,15.3223 L23.4474,16.4856 L25.7987,18.8368 L29.6398,18.8642 L29.6398,15.3678 Z M0,19.5231 L0,25.6426 L1.9503,25.6566 L1.9059,19.5371 Z M2.6345,19.5422 L2.6789,25.6617 L6.1763,25.6875 L6.1313,19.5675 Z M6.7143,19.5722 L6.7587,25.6917 L10.2557,25.717 L10.2113,19.5975 Z M10.9399,19.6027 L10.9843,25.7222 L14.4812,25.748 L14.4497,21.4108 L12.654,19.6151 Z M26.679,19.7169 L26.8965,19.9345 L26.8945,19.7185 Z M27.6231,19.7239 L27.6301,20.6675 L29.6403,22.6777 L29.6403,19.7384 Z M15.1836,22.1444 L15.21,25.753 L18.7069,25.7783 L18.7059,25.6667 Z" fill="currentColor" strokeWidth="0.1531" strokeLinecap="square"/>
-  </svg>
-);
-export const IconRenderRealistic = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 29.6403 29.6395" fill="none" className={className}>
-    <path d="M14.7549,2.3146 C9.6135,2.2317 8.8075,6.4608 8.9341,7.8352 L9.0498,14.8911 L12.5468,14.9164 L12.431,7.8605 C12.431,7.8605 12.2401,5.2696 14.7766,5.2555 C17.3132,5.2414 17.3852,7.8966 17.3852,7.8966 L17.501,14.9526 L20.9979,14.9778 L20.8822,7.9219 C20.8318,6.4224 19.8963,2.3975 14.7549,2.3145 Z M0.0003,15.1526 L0.0003,18.6495 L6.0521,18.6934 L6.0268,15.1959 Z M6.7554,15.2017 L6.7807,18.6986 L14.358,18.7539 L14.3322,15.2565 Z M15.2066,15.2627 L15.2319,18.7601 L22.8092,18.8154 L22.7834,15.318 Z M23.4391,15.3227 L23.4644,18.8201 L29.6398,18.8645 L29.6398,15.3681 Z M0.0003,19.5234 L0.0003,25.643 L1.95,25.657 L1.9056,19.5374 Z M2.6342,19.5425 L2.6786,25.6621 L6.1761,25.6879 L6.1317,19.5678 Z M6.7141,19.5725 L6.7585,25.692 L10.2559,25.7174 L10.2115,19.5978 Z M10.9402,19.603 L10.9846,25.7226 L14.481,25.7484 L14.4366,19.6283 Z M15.1652,19.634 L15.2096,25.7536 L18.7071,25.7789 L18.6627,19.6593 Z M19.3913,19.6645 L19.4357,25.7841 L22.9322,25.8094 L22.8878,19.6898 Z M23.3978,19.6934 L23.4422,25.813 L26.9397,25.8388 L26.8953,19.7187 Z M27.6229,19.7244 L27.6679,25.844 L29.6398,25.8585 L29.6398,19.7389 Z" fill="currentColor" strokeWidth="0.1531" strokeLinecap="square"/>
-  </svg>
-);
-export const IconUnnumberedOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M240,-160 L280,-320 L120,-320 L140,-400 L300,-400 L340,-560 L180,-560 L200,-640 L360,-640 L400,-800 L480,-800 L440,-640 L600,-640 L640,-800 L720,-800 L680,-640 L840,-640 L820,-560 L660,-560 L620,-400 L780,-400 L760,-320 L600,-320 L560,-160 L480,-160 L520,-320 L360,-320 L320,-160 L240,-160 Z M380,-400 L540,-400 L580,-560 L420,-560 L380,-400 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconUnnumberedOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M109.9219,-890.4688 L70.9375,-851.4844 L851.4844,-70.9375 L890.4688,-109.9219 L109.9219,-890.4688 Z M400,-800 L374.6094,-698.5938 L513.2031,-560 L580,-560 L566.6406,-506.5625 L630.625,-442.5781 L660,-560 L820,-560 L840,-640 L680,-640 L720,-800 L640,-800 L600,-640 L440,-640 L480,-800 L400,-800 Z M200,-640 L180,-560 L286.7969,-560 L206.7969,-640 L200,-640 Z M329.375,-517.4219 L300,-400 L140,-400 L120,-320 L280,-320 L240,-160 L320,-160 L360,-320 L520,-320 L480,-160 L560,-160 L585.3906,-261.4062 L446.7969,-400 L380,-400 L393.3594,-453.4375 L329.375,-517.4219 Z M673.2031,-400 L753.2031,-320 L760,-320 L780,-400 L673.2031,-400 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconInvalidOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M480-280q17 0 28.5-11.5T520-320q0-17-11.5-28.5T480-360q-17 0-28.5 11.5T440-320q0 17 11.5 28.5T480-280Zm-40-160h80v-240h-80v240Zm40 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z" fill="currentColor"/>
-  </svg>
-);
-export const IconInvalidOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="m880-194-80-80v-206q0-134-93-227t-227-93H274l-80-80h566q17 0 28.5 11.5T800-840v560l80 80ZM480-360q8 0 14-5.5t7-14.5l-92-92q-9 1-14.5 7.5T389-449l-1 129q0 17 11.5 28.5T428-280l52-80ZM440-572v-148h80v68l-80-80v160ZM792-56 56-792l56-56L848-112l-56 56Z" fill="currentColor"/>
-  </svg>
-);
-
-// IconNoGrid removed — GridOff is the single "grid disabled" icon
-
-// ── Shape mode icons (new in Session 19) ────────────────────────────────────
-export const IconShapeCircle = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="-0.529 0 5.2917 5.2917" fill="none" className={className}>
-    <path d="M2.1166,0.5193 C1.5125,0.5193 1.0091,0.7265 0.6056,1.141 C0.2211,1.536 0.0212,2.0238 0.0031,2.6029 L0.0001,2.6029 C0.0001,2.6173 0.0003,2.6315 0.0006,2.6458 C0.0003,2.6601 0.0001,2.6743 0.0001,2.6887 L0.0031,2.6887 C0.0212,3.2679 0.2211,3.7557 0.6056,4.1507 C1.0091,4.5652 1.5125,4.7723 2.1166,4.7723 C2.7208,4.7723 3.2247,4.5652 3.6281,4.1507 C4.0126,3.7557 4.2126,3.2679 4.2307,2.6887 L4.2337,2.6887 C4.2337,2.6743 4.2339,2.6601 4.2337,2.6458 C4.2339,2.6315 4.2337,2.6173 4.2337,2.6029 L4.2307,2.6029 C4.2126,2.0238 4.0126,1.536 3.6281,1.141 C3.2247,0.7265 2.7208,0.5193 2.1166,0.5193 Z M2.1166,1.0485 C2.5752,1.0485 2.9547,1.2037 3.2545,1.5146 C3.5452,1.816 3.6952,2.1932 3.7041,2.6458 C3.6951,3.0985 3.5452,3.4756 3.2545,3.777 C2.9547,4.0879 2.5752,4.2431 2.1166,4.2431 C1.658,4.2431 1.2791,4.0879 0.9792,3.777 C0.6885,3.4756 0.5385,3.0985 0.5296,2.6458 C0.5306,2.5892 0.5336,2.5336 0.5396,2.4794 C0.5782,2.0999 0.725,1.7783 0.9794,1.5146 C1.2793,1.2037 1.6582,1.0485 2.1168,1.0485 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconShapeTeardrop = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="-0.529 0 5.2917 5.2917" fill="none" className={className}>
-    <path d="M2.1167,0 C1.4067,0.6041 0.8766,1.1655 0.5261,1.6836 C0.1755,2.2018 0,2.6813 0,3.1223 C0,3.7397 0.2016,4.2555 0.6051,4.67 C1.0086,5.0845 1.5125,5.2917 2.1167,5.2917 C2.7208,5.2917 3.2247,5.0845 3.6282,4.67 C4.0317,4.2555 4.2333,3.7397 4.2333,3.1223 C4.2333,2.6813 4.0578,2.2018 3.7073,1.6836 C3.3567,1.1655 2.8266,0.6041 2.1167,0 Z M2.1167,0.7013 C2.6414,1.1819 3.0374,1.6252 3.3042,2.0309 C3.571,2.4366 3.7042,2.8004 3.7042,3.1223 C3.7042,3.5941 3.5544,3.9855 3.2546,4.2964 C2.9547,4.6073 2.5753,4.7625 2.1167,4.7625 C1.6581,4.7625 1.2786,4.6073 0.9787,4.2964 C0.6789,3.9855 0.5292,3.5941 0.5292,3.1223 C0.5292,3.0821 0.5312,3.0409 0.5354,2.9993 C0.5645,2.7085 0.6957,2.3859 0.9291,2.0309 C1.1959,1.6252 1.5919,1.1819 2.1167,0.7013 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-// ── Edit actions ─────────────────────────────────────────────────────────────
-export const IconUndo = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -0.1323 4.2333 4.2333" fill="none" className={className}>
-    <path d="M0.7938,3.9687 L0.7938,3.4396 L2.6723,3.4396 Q3.089,3.4396 3.3966,3.175 Q3.7042,2.9104 3.7042,2.5135 Q3.7042,2.1167 3.3966,1.8521 Q3.089,1.5875 2.6723,1.5875 L1.0054,1.5875 L1.6933,2.2754 L1.3229,2.6458 L0,1.3229 L1.3229,0 L1.6933,0.3704 L1.0054,1.0583 L2.6723,1.0583 Q3.3139,1.0583 3.7736,1.4751 Q4.2333,1.8918 4.2333,2.5135 Q4.2333,3.1353 3.7736,3.552 Q3.3139,3.9687 2.6723,3.9687 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconRedo = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -0.1323 4.2333 4.2333" fill="none" className={className}>
-    <path d="M3.4396,3.9687 L3.4396,3.4396 L1.561,3.4396 Q1.1443,3.4396 0.8367,3.175 Q0.5292,2.9104 0.5292,2.5135 Q0.5292,2.1167 0.8367,1.8521 Q1.1443,1.5875 1.561,1.5875 L3.2279,1.5875 L2.54,2.2754 L2.9104,2.6458 L4.2333,1.3229 L2.9104,0 L2.54,0.3704 L3.2279,1.0583 L1.561,1.0583 Q0.9194,1.0583 0.4597,1.4751 Q0,1.8918 0,2.5135 Q0,3.1353 0.4597,3.552 Q0.9194,3.9687 1.561,3.9687 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconCopy = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M360,-240 Q327,-240 303.5,-263.5 Q280,-287 280,-320 L280,-800 Q280,-833 303.5,-856.5 Q327,-880 360,-880 L720,-880 Q753,-880 776.5,-856.5 Q800,-833 800,-800 L800,-320 Q800,-287 776.5,-263.5 Q753,-240 720,-240 L360,-240 Z M360,-320 L720,-320 L720,-800 L360,-800 L360,-320 Z M200,-80 Q167,-80 143.5,-103.5 Q120,-127 120,-160 L120,-720 L200,-720 L200,-160 L640,-160 L640,-80 L200,-80 Z M360,-320 L360,-800 L360,-320 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconPaste = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L367,-840 Q378,-875 410,-897.5 Q442,-920 480,-920 Q520,-920 551.5,-897.5 Q583,-875 594,-840 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Z M200,-200 L760,-200 L760,-760 L680,-760 L680,-640 L280,-640 L280,-760 L200,-760 L200,-200 Z M508.5,-771.5 Q520,-783 520,-800 Q520,-817 508.5,-828.5 Q497,-840 480,-840 Q463,-840 451.5,-828.5 Q440,-817 440,-800 Q440,-783 451.5,-771.5 Q463,-760 480,-760 Q497,-760 508.5,-771.5 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconDelete = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="-0.2646 0 4.7625 4.7625" fill="none" className={className}>
-    <path d="M1.3229,0 L1.3229,0.2646 L0,0.2646 L0,0.7937 L0.2646,0.7937 L0.2646,4.2333 C0.2646,4.3789 0.3165,4.5033 0.4201,4.6069 C0.5238,4.7106 0.6482,4.7625 0.7937,4.7625 L3.4396,4.7625 C3.5851,4.7625 3.7096,4.7106 3.8132,4.6069 C3.9168,4.5033 3.9688,4.3789 3.9688,4.2333 L3.9688,0.7937 L4.2333,0.7937 L4.2333,0.2646 L2.9104,0.2646 L2.9104,0 L1.3229,0 Z M0.7937,0.7937 L3.4396,0.7937 L3.4396,4.2333 L0.7937,4.2333 L0.7937,0.7937 Z M1.3229,1.3229 L1.3229,3.7042 L1.8521,3.7042 L1.8521,1.3229 L1.3229,1.3229 Z M2.3812,1.3229 L2.3812,3.7042 L2.9104,3.7042 L2.9104,1.3229 L2.3812,1.3229 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconGroup = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M320,-320 L800,-320 L800,-720 L320,-720 L320,-320 Z M320,-240 Q287,-240 263.5,-263.5 Q240,-287 240,-320 L240,-800 Q240,-833 263.5,-856.5 Q287,-880 320,-880 L800,-880 Q833,-880 856.5,-856.5 Q880,-833 880,-800 L880,-320 Q880,-287 856.5,-263.5 Q833,-240 800,-240 L320,-240 Z M160,-80 Q127,-80 103.5,-103.5 Q80,-127 80,-160 L80,-720 L160,-720 L160,-160 L720,-160 L720,-80 L160,-80 Z M320,-800 L320,-320 L320,-800 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconUngroup = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M828,-245 L753,-320 L800,-320 L800,-720 L353,-720 L245,-828 Q253,-852 273.5,-866 Q294,-880 320,-880 L800,-880 Q833,-880 856.5,-856.5 Q880,-833 880,-800 L880,-320 Q880,-294 866,-273.5 Q852,-253 828,-245 Z M820,-28 L608,-240 L320,-240 Q287,-240 263.5,-263.5 Q240,-287 240,-320 L240,-608 L28,-820 L84,-876 L876,-84 L820,-28 Z M320,-320 L528,-320 L320,-528 L320,-320 Z M160,-80 Q127,-80 103.5,-103.5 Q80,-127 80,-160 L80,-720 L160,-720 L160,-160 L720,-160 L720,-80 L160,-80 Z M425,-423 Z M539,-534 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── Transform ───────────────────────────────────────────────────────────────
-export const IconFlipH = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M360,-120 L200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L360,-840 L360,-760 L200,-760 L200,-200 L360,-200 L360,-120 Z M440,-40 L440,-920 L520,-920 L520,-40 L440,-40 Z M600,-120 L600,-200 L680,-200 L680,-120 L600,-120 Z M600,-760 L600,-840 L680,-840 L680,-760 L600,-760 Z M760,-120 L760,-200 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 Z M760,-280 L760,-360 L840,-360 L840,-280 L760,-280 Z M760,-440 L760,-520 L840,-520 L840,-440 L760,-440 Z M760,-600 L760,-680 L840,-680 L840,-600 L760,-600 Z M760,-760 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L760,-760 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconFlipV = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M840,-360 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-360 L200,-360 L200,-200 L760,-200 L760,-360 Z M920,-440 L40,-440 L40,-520 L920,-520 Z M840,-600 L760,-600 L760,-680 L840,-680 Z M200,-600 L120,-600 L120,-680 L200,-680 Z M840,-760 L760,-760 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 Z M680,-760 L600,-760 L600,-840 L680,-840 Z M520,-760 L440,-760 L440,-840 L520,-840 Z M360,-760 L280,-760 L280,-840 L360,-840 Z M200,-760 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconRotateCW = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M440,-80 Q365,-80 299.5,-108.5 Q234,-137 185.5,-185.5 Q137,-234 108.5,-299.5 Q80,-365 80,-440 Q80,-590 185,-695 Q290,-800 440,-800 L446,-800 L384,-862 L440,-920 L600,-760 L440,-600 L384,-658 L446,-720 L440,-720 Q323,-720 241.5,-638.5 Q160,-557 160,-440 Q160,-323 241.5,-241.5 Q323,-160 440,-160 Q475,-160 509,-168.5 Q543,-177 574,-194 L632,-136 Q589,-108 540,-94 Q491,-80 440,-80 Z M680,-200 L440,-440 L680,-680 L920,-440 L680,-200 Z M680,-314 L806,-440 L680,-566 L554,-440 L680,-314 Z M680,-440 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconRotateCCW = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M520,-80 Q469,-80 420,-94 Q371,-108 328,-136 L386,-194 Q417,-177 451,-168.5 Q485,-160 520,-160 Q637,-160 718.5,-241.5 Q800,-323 800,-440 Q800,-557 718.5,-638.5 Q637,-720 520,-720 L514,-720 L576,-658 L520,-600 L360,-760 L520,-920 L576,-862 L514,-800 L520,-800 Q670,-800 775,-695 Q880,-590 880,-440 Q880,-365 851.5,-299.5 Q823,-234 774.5,-185.5 Q726,-137 660.5,-108.5 Q595,-80 520,-80 Z M280,-200 L40,-440 L280,-680 L520,-440 L280,-200 Z M280,-314 L406,-440 L280,-566 L154,-440 L280,-314 Z M280,-440 Z" fill="currentColor"/>
-  </svg>
-);
-
-export const IconRotateMode = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 5.8208 5.8208" fill="none" className={className}>
-    <path d="M2.9104,5.8208 C2.4165,5.8208 1.9623,5.7084 1.5478,5.4835 C1.1333,5.2586 0.7938,4.9587 0.5292,4.5839 L0.5292,5.2917 L0,5.2917 L0,3.7042 L1.5875,3.7042 L1.5875,4.2333 L0.9327,4.2333 C1.1443,4.5508 1.4232,4.8066 1.7694,5.0006 C2.1156,5.1947 2.4959,5.2917 2.9104,5.2917 C3.2412,5.2917 3.5509,5.2289 3.8398,5.1031 C4.1286,4.9775 4.38,4.8077 4.5938,4.5938 C4.8077,4.38 4.9775,4.1286 5.1032,3.8398 C5.2288,3.5509 5.2917,3.2411 5.2917,2.9104 L5.8208,2.9104 C5.8208,3.3117 5.7447,3.6887 5.5926,4.0415 C5.4405,4.3943 5.2321,4.703 4.9676,4.9676 C4.703,5.2321 4.3943,5.4405 4.0415,5.5926 C3.6887,5.7448 3.3117,5.8208 2.9104,5.8208 Z M0,2.9104 C0,2.5091 0.0761,2.1321 0.2282,1.7793 C0.3803,1.4265 0.5887,1.1179 0.8533,0.8533 C1.1179,0.5887 1.4265,0.3803 1.7793,0.2282 C2.1321,0.0761 2.5091,0 2.9104,0 C3.4043,0 3.8585,0.1125 4.273,0.3373 C4.6875,0.5622 5.0271,0.8621 5.2917,1.2369 L5.2917,0.5292 L5.8208,0.5292 L5.8208,2.1167 L4.2333,2.1167 L4.2333,1.5875 L4.8882,1.5875 C4.6765,1.27 4.3976,1.0142 4.0514,0.8202 C3.7053,0.6262 3.3249,0.5292 2.9104,0.5292 C2.5797,0.5292 2.2699,0.592 1.9811,0.7177 C1.6922,0.8434 1.4409,1.0131 1.227,1.227 C1.0131,1.4409 0.8434,1.6922 0.7177,1.9811 C0.592,2.2699 0.5292,2.5797 0.5292,2.9104 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-// ── Align ────────────────────────────────────────────────────────────────────
-export const IconAlignLeft = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M80,-80 L80,-880 L160,-880 L160,-80 L80,-80 Z M240,-280 L240,-400 L640,-400 L640,-280 L240,-280 Z M240,-560 L240,-680 L880,-680 L880,-560 L240,-560 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconAlignCenter = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M440,-80 L440,-280 L240,-280 L240,-400 L440,-400 L440,-560 L120,-560 L120,-680 L440,-680 L440,-880 L520,-880 L520,-680 L840,-680 L840,-560 L520,-560 L520,-400 L720,-400 L720,-280 L520,-280 L520,-80 L440,-80 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconAlignRight = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M800,-80 L800,-880 L880,-880 L880,-80 L800,-80 Z M320,-280 L320,-400 L720,-400 L720,-280 L320,-280 Z M80,-560 L80,-680 L720,-680 L720,-560 L80,-560 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconAlignTop = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M280,-80 L280,-720 L400,-720 L400,-80 L280,-80 Z M560,-320 L560,-720 L680,-720 L680,-320 L560,-320 Z M80,-800 L80,-880 L880,-880 L880,-800 L80,-800 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconAlignMiddle = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M280,-120 L280,-440 L80,-440 L80,-520 L280,-520 L280,-840 L400,-840 L400,-520 L560,-520 L560,-720 L680,-720 L680,-520 L880,-520 L880,-440 L680,-440 L680,-240 L560,-240 L560,-440 L400,-440 L400,-120 L280,-120 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconAlignBottom = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M280,-880 L280,-240 L400,-240 L400,-880 Z M560,-640 L560,-240 L680,-240 L680,-640 Z M80,-160 L80,-80 L880,-80 L880,-160 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── File ─────────────────────────────────────────────────────────────────────
-export const IconSave = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M840,-680 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L680,-840 L840,-680 Z M760,-646 L646,-760 L200,-760 L200,-200 L760,-200 L760,-646 Z M480,-240 Q530,-240 565,-275 Q600,-310 600,-360 Q600,-410 565,-445 Q530,-480 480,-480 Q430,-480 395,-445 Q360,-410 360,-360 Q360,-310 395,-275 Q430,-240 480,-240 Z M240,-560 L600,-560 L600,-720 L240,-720 L240,-560 Z M200,-646 L200,-200 L200,-760 L200,-646 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconLoad = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M440,-320 L440,-646 L336,-542 L280,-600 L480,-800 L680,-600 L624,-542 L520,-646 L520,-320 L440,-320 Z M240,-160 Q207,-160 183.5,-183.5 Q160,-207 160,-240 L160,-360 L240,-360 L240,-240 L720,-240 L720,-360 L800,-360 L800,-240 Q800,-207 776.5,-183.5 Q753,-160 720,-160 L240,-160 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconExport = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M480,-320 L280,-520 L336,-578 L440,-474 L440,-800 L520,-800 L520,-474 L624,-578 L680,-520 L480,-320 Z M240,-160 Q207,-160 183.5,-183.5 Q160,-207 160,-240 L160,-360 L240,-360 L240,-240 L720,-240 L720,-360 L800,-360 L800,-240 Q800,-207 776.5,-183.5 Q753,-160 720,-160 L240,-160 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconNew = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M440,-240 L520,-240 L520,-360 L640,-360 L640,-440 L520,-440 L520,-560 L440,-560 L440,-440 L320,-440 L320,-360 L440,-360 L440,-240 Z M240,-80 Q207,-80 183.5,-103.5 Q160,-127 160,-160 L160,-800 Q160,-833 183.5,-856.5 Q207,-880 240,-880 L560,-880 L800,-640 L800,-160 Q800,-127 776.5,-103.5 Q753,-80 720,-80 L240,-80 Z M520,-600 L520,-800 L240,-800 L240,-160 L720,-160 L720,-600 L520,-600 Z M240,-800 L240,-600 L240,-800 L240,-160 L240,-800 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconDownload = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M400,-280 L560,-280 L560,-360 L400,-360 L400,-280 Z M400,-440 L680,-440 L680,-520 L400,-520 L400,-440 Z M280,-600 L680,-600 L680,-680 L280,-680 L280,-600 Z M480,-480 Z M265,-80 Q186,-80 130.5,-135.5 Q75,-191 75,-270 Q75,-327 104.5,-372 Q134,-417 182,-440 L80,-440 L80,-520 L320,-520 L320,-280 L240,-280 L240,-377 Q203,-369 179,-339 Q155,-309 155,-270 Q155,-224 187.5,-192 Q220,-160 265,-160 L265,-80 Z M400,-120 L400,-200 L760,-200 L760,-760 L200,-760 L200,-600 L120,-600 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L400,-120 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── Zoom / navigation ────────────────────────────────────────────────────────
-export const IconZoomIn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M784,-120 L532,-372 Q502,-348 463,-334 Q424,-320 380,-320 Q271,-320 195.5,-395.5 Q120,-471 120,-580 Q120,-689 195.5,-764.5 Q271,-840 380,-840 Q489,-840 564.5,-764.5 Q640,-689 640,-580 Q640,-536 626,-497 Q612,-458 588,-428 L840,-176 L784,-120 Z M380,-400 Q455,-400 507.5,-452.5 Q560,-505 560,-580 Q560,-655 507.5,-707.5 Q455,-760 380,-760 Q305,-760 252.5,-707.5 Q200,-655 200,-580 Q200,-505 252.5,-452.5 Q305,-400 380,-400 Z M340,-460 L340,-540 L260,-540 L260,-620 L340,-620 L340,-700 L420,-700 L420,-620 L500,-620 L500,-540 L420,-540 L420,-460 L340,-460 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconZoomOut = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M784,-120 L532,-372 Q502,-348 463,-334 Q424,-320 380,-320 Q271,-320 195.5,-395.5 Q120,-471 120,-580 Q120,-689 195.5,-764.5 Q271,-840 380,-840 Q489,-840 564.5,-764.5 Q640,-689 640,-580 Q640,-536 626,-497 Q612,-458 588,-428 L840,-176 L784,-120 Z M380,-400 Q455,-400 507.5,-452.5 Q560,-505 560,-580 Q560,-655 507.5,-707.5 Q455,-760 380,-760 Q305,-760 252.5,-707.5 Q200,-655 200,-580 Q200,-505 252.5,-452.5 Q305,-400 380,-400 Z M280,-540 L280,-620 L480,-620 L480,-540 L280,-540 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconFitView = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 5.2917 5.292" fill="none" className={className}>
-    <path d="M3.175,4.4971 L4.4979,4.4971 L4.4979,3.1722 L3.9687,3.1722 L3.9687,3.9671 L3.175,3.9671 Z M0.7937,2.1198 L1.3229,2.1198 L1.3229,1.3249 L2.1167,1.3249 L2.1167,0.7949 L0.7938,0.7949 Z M0.5292,5.292 C0.3836,5.292 0.2591,5.2401 0.1554,5.1363 C0.0518,5.0325 0,4.9078 0,4.7621 L0,0.5299 C0,0.3842 0.0518,0.2595 0.1554,0.1557 C0.2591,0.0519 0.3836,0 0.5292,0 L4.7625,0 C4.908,0 5.0326,0.0519 5.1362,0.1557 C5.2398,0.2595 5.2917,0.3842 5.2917,0.5299 L5.2917,4.7621 C5.2917,4.9078 5.2399,5.0325 5.1362,5.1363 C5.0326,5.2401 4.908,5.292 4.7625,5.292 Z M0.5292,4.7621 L4.7625,4.7621 L4.7625,0.5299 L0.5292,0.5299 Z M0.5292,4.7621 L0.5292,0.5299 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-export const IconZoomRect = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M784,-120 L532,-372 Q502,-348 463,-334 Q424,-320 380,-320 Q271,-320 195.5,-395.5 Q120,-471 120,-580 Q120,-689 195.5,-764.5 Q271,-840 380,-840 Q489,-840 564.5,-764.5 Q640,-689 640,-580 Q640,-536 626,-497 Q612,-458 588,-428 L840,-176 L784,-120 Z M380,-400 Q455,-400 507.5,-452.5 Q560,-505 560,-580 Q560,-655 507.5,-707.5 Q455,-760 380,-760 Q305,-760 252.5,-707.5 Q200,-655 200,-580 Q200,-505 252.5,-452.5 Q305,-400 380,-400 Z" fill="currentColor"/>
-    <rect x="220" y="-720" width="160" height="110" fill="none" stroke="currentColor" strokeWidth="55" strokeDasharray="30,25" rx="8"/>
-  </svg>
-);
-
-// ── Connection ───────────────────────────────────────────────────────────────
-export const IconLink = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M440,-280 L280,-280 Q197,-280 138.5,-338.5 Q80,-397 80,-480 Q80,-563 138.5,-621.5 Q197,-680 280,-680 L440,-680 L440,-600 L280,-600 Q230,-600 195,-565 Q160,-530 160,-480 Q160,-430 195,-395 Q230,-360 280,-360 L440,-360 L440,-280 Z M320,-440 L320,-520 L640,-520 L640,-440 L320,-440 Z M520,-280 L520,-360 L680,-360 Q730,-360 765,-395 Q800,-430 800,-480 Q800,-530 765,-565 Q730,-600 680,-600 L520,-600 L520,-680 L680,-680 Q763,-680 821.5,-621.5 Q880,-563 880,-480 Q880,-397 821.5,-338.5 Q763,-280 680,-280 L520,-280 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconUnlink = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M770,-302 L710,-364 Q750,-375 775,-406.5 Q800,-438 800,-480 Q800,-530 765,-565 Q730,-600 680,-600 L520,-600 L520,-680 L680,-680 Q763,-680 821.5,-621.5 Q880,-563 880,-480 Q880,-423 850.5,-375 Q821,-327 770,-302 Z M634,-440 L554,-520 L640,-520 L640,-440 L634,-440 Z M792,-56 L56,-792 L112,-848 L848,-112 L792,-56 Z M440,-280 L280,-280 Q197,-280 138.5,-338.5 Q80,-397 80,-480 Q80,-549 122,-603 Q164,-657 230,-674 L304,-600 L280,-600 Q230,-600 195,-565 Q160,-530 160,-480 Q160,-430 195,-395 Q230,-360 280,-360 L440,-360 L440,-280 Z M320,-440 L320,-520 L385,-520 L464,-440 L320,-440 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── Chrome ───────────────────────────────────────────────────────────────────
-export const IconSettings = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M370,-80 L354,-208 Q341,-213 329.5,-220 Q318,-227 307,-235 L188,-185 L78,-375 L181,-453 Q180,-460 180,-466.5 L180,-493.5 Q180,-500 181,-507 L78,-585 L188,-775 L307,-725 Q318,-733 330,-740 Q342,-747 354,-752 L370,-880 L590,-880 L606,-752 Q619,-747 630.5,-740 Q642,-733 653,-725 L772,-775 L882,-585 L779,-507 Q780,-500 780,-493.5 L780,-466.5 Q780,-460 778,-453 L881,-375 L771,-185 L653,-235 Q642,-227 630,-220 Q618,-213 606,-208 L590,-80 L370,-80 Z M440,-160 L519,-160 L533,-266 Q564,-274 590.5,-289.5 Q617,-305 639,-327 L738,-286 L777,-354 L691,-419 Q696,-433 698,-448.5 Q700,-464 700,-480 Q700,-496 698,-511.5 Q696,-527 691,-541 L777,-606 L738,-674 L639,-632 Q617,-655 590.5,-670.5 Q564,-686 533,-694 L520,-800 L441,-800 L427,-694 Q396,-686 369.5,-670.5 Q343,-655 321,-633 L222,-674 L183,-606 L269,-542 Q264,-527 262,-512 Q260,-497 260,-480 Q260,-464 262,-449 Q264,-434 269,-419 L183,-354 L222,-286 L321,-328 Q343,-305 369.5,-289.5 Q396,-274 427,-266 L440,-160 Z M482,-340 Q540,-340 581,-381 Q622,-422 622,-480 Q622,-538 581,-579 Q540,-620 482,-620 Q423,-620 382.5,-579 Q342,-538 342,-480 Q342,-422 382.5,-381 Q423,-340 482,-340 Z M480,-480 Z" fill="currentColor"/>
-  </svg>
-);
-export const IconHelp = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="-0.5292 0 5.2917 5.2917" fill="none" className={className}>
-    <path d="M0.926,0 C0.6659,0 0.4463,0.0905 0.2677,0.2713 C0.0891,0.4521 0,0.6703 0,0.926 L0,4.3656 C0,4.6258 0.0891,4.8454 0.2677,5.024 C0.4463,5.2026 0.6659,5.2917 0.926,5.2917 L4.2333,5.2917 L4.2333,4.7625 C4.1187,4.7625 4.0241,4.7249 3.9491,4.6499 C3.8741,4.5749 3.8365,4.4803 3.8365,4.3656 C3.8365,4.2554 3.8741,4.1617 3.9491,4.0845 C4.0241,4.0073 4.1187,3.9688 4.2333,3.9688 L4.2333,0 Z M0.926,0.5292 L3.7042,0.5292 L3.7042,3.4396 L0.926,3.4396 C0.851,3.4396 0.7817,3.4456 0.7178,3.4592 C0.6539,3.4725 0.5909,3.4944 0.5292,3.5253 L0.5292,0.926 C0.5292,0.8157 0.5669,0.722 0.6418,0.6448 C0.7168,0.5676 0.8114,0.5291 0.926,0.5291 Z M2.0428,0.7364 C1.8611,0.7364 1.7103,0.7868 1.5906,0.8873 C1.4709,0.9877 1.3885,1.106 1.3436,1.2428 L1.6738,1.3839 C1.6973,1.3155 1.7375,1.2481 1.7942,1.1818 C1.8508,1.1155 1.9338,1.0826 2.0428,1.0826 C2.1475,1.0826 2.2289,1.1117 2.2877,1.1694 C2.3465,1.2271 2.3761,1.2999 2.3761,1.3875 C2.3761,1.4602 2.3533,1.5247 2.3074,1.5813 C2.2615,1.6379 2.1945,1.7049 2.1069,1.7818 C2.0065,1.8716 1.9405,1.954 1.9095,2.0299 C1.8785,2.1058 1.863,2.2304 1.863,2.4035 L2.232,2.4035 C2.232,2.2774 2.2431,2.1881 2.2656,2.1358 C2.288,2.0834 2.3516,2.0068 2.4563,1.9063 C2.5546,1.8101 2.6269,1.7243 2.6728,1.6485 C2.7187,1.5726 2.7415,1.4815 2.7415,1.3746 C2.7415,1.1993 2.6814,1.049 2.5606,0.924 C2.4399,0.7989 2.2673,0.7364 2.0428,0.7364 Z M2.0428,2.6603 C1.9722,2.6603 1.9116,2.685 1.8614,2.7352 C1.8112,2.7854 1.7865,2.8461 1.7865,2.9166 C1.7865,2.9872 1.8112,3.0473 1.8614,3.0975 C1.9116,3.1477 1.9722,3.173 2.0428,3.173 C2.1133,3.173 2.1734,3.1478 2.2236,3.0975 C2.2738,3.0473 2.299,2.9871 2.299,2.9166 C2.299,2.8461 2.2738,2.7854 2.2236,2.7352 C2.1734,2.685 2.1133,2.6603 2.0428,2.6603 Z M0.926,3.9688 L3.3931,3.9688 C3.3622,4.0306 3.3402,4.0944 3.327,4.1605 C3.3141,4.2266 3.3074,4.2951 3.3074,4.3656 C3.3074,4.4406 3.3154,4.51 3.3307,4.5739 C3.3461,4.6378 3.3667,4.7008 3.3932,4.7625 L0.9261,4.7625 C0.8115,4.7625 0.7169,4.7249 0.6419,4.6498 C0.5669,4.5748 0.5293,4.4803 0.5293,4.3656 C0.5293,4.2554 0.567,4.1617 0.6419,4.0845 C0.7169,4.0073 0.8115,3.9688 0.9261,3.9688 Z" fill="currentColor" strokeWidth="0.0032"/>
-  </svg>
-);
-
-export const IconBeadMode = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M352.5,-325.5 Q298,-371 284,-440 L80,-440 L80,-520 L284,-520 Q298,-589 352.5,-634.5 Q407,-680 480,-680 Q553,-680 607.5,-634.5 Q662,-589 676,-520 L880,-520 L880,-440 L676,-440 Q662,-371 607.5,-325.5 Q553,-280 480,-280 Q407,-280 352.5,-325.5 Z M480,-360 Q530,-360 565,-395 Q600,-430 600,-480 Q600,-530 565,-565 Q530,-600 480,-600 Q430,-600 395,-565 Q360,-530 360,-480 Q360,-430 395,-395 Q430,-360 480,-360 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── Bead structure icons ─────────────────────────────────────────────────────
-export const IconBeadCore = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 7.2026 7.2026" fill="none" className={className}>
-    <path d="M0.9821,2.2727 L0.6079,2.6468 C1.0195,3.0584 1.4856,3.3671 2.0063,3.5729 C2.1166,3.6165 2.2273,3.6559 2.3386,3.6902 A1.2619,1.2619 0 0,0 3.6005,4.9299 A1.2619,1.2619 0 0,0 4.8625,3.6907 C4.9743,3.6562 5.0855,3.6167 5.1963,3.5729 C5.717,3.3671 6.1831,3.0584 6.5947,2.6468 L6.2205,2.2727 C5.8588,2.6344 5.4505,2.9058 4.9953,3.0866 C4.9174,3.1175 4.8391,3.1457 4.7607,3.1713 A1.2619,1.2619 0 0,0 3.6005,2.406 A1.2619,1.2619 0 0,0 2.4404,3.1713 C2.3624,3.1458 2.2848,3.1173 2.2073,3.0866 C1.7521,2.9058 1.3438,2.6344 0.9821,2.2727 Z M3.6005,2.7869 A0.8811,0.8811 0 0,1 4.3881,3.2732 A0.8811,0.8811 0 0,1 4.4816,3.668 A0.8811,0.8811 0 0,1 4.4726,3.7915 A0.8811,0.8811 0 0,1 3.6003,4.549 A0.8811,0.8811 0 0,1 2.728,3.791 A0.8811,0.8811 0 0,1 2.719,3.668 A0.8811,0.8811 0 0,1 2.8125,3.2726 A0.8811,0.8811 0 0,1 3.6,2.7869 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-export const IconBeadCorePicot = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 7.2026 7.2026" fill="none" className={className}>
-    <path d="M0.9821,1.2957 L0.6079,1.6699 C0.9757,2.0377 1.3865,2.3232 1.8415,2.5267 L1.8415,4.0858 C1.8414,5.0916 2.6572,5.9069 3.663,5.9068 C4.6689,5.9069 5.4842,5.0916 5.4841,4.0858 L5.4841,2.4688 C5.8903,2.2703 6.2604,2.0041 6.5946,1.6699 L6.2205,1.2957 C5.8588,1.6574 5.4505,1.9288 4.9953,2.1097 C4.9174,2.1406 4.8391,2.1689 4.7607,2.1945 A1.2619,1.2619 0 0,0 3.6005,1.4291 A1.2619,1.2619 0 0,0 2.4404,2.1945 C2.3624,2.169 2.2847,2.1404 2.2073,2.1097 C1.7521,1.9288 1.3438,1.6575 0.9821,1.2957 Z M3.6,1.8099 L3.6005,1.8099 A0.8811,0.8811 0 0,1 4.3881,2.2962 A0.8811,0.8811 0 0,1 4.4816,2.691 A0.8811,0.8811 0 0,1 4.4726,2.8145 A0.8811,0.8811 0 0,1 3.6003,3.5721 A0.8811,0.8811 0 0,1 2.728,2.814 A0.8811,0.8811 0 0,1 2.719,2.691 A0.8811,0.8811 0 0,1 2.8125,2.2957 A0.8811,0.8811 0 0,1 3.6,1.8099 Z M5.1343,2.6202 L5.1343,4.0858 C5.1343,4.788 4.3653,5.557 3.663,5.557 C2.9608,5.557 2.1913,4.788 2.1913,4.0858 L2.1913,2.6647 C2.2403,2.6818 2.2894,2.6981 2.3386,2.7133 A1.2619,1.2619 0 0,0 3.6005,3.953 A1.2619,1.2619 0 0,0 4.8625,2.7138 C4.9535,2.6857 5.044,2.6546 5.1343,2.6203 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-export const IconBeadCoreBeaded = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 7.2026 7.2026" fill="none" className={className}>
-    <path d="M0.9819,0.9591 L0.6078,1.3332 C0.9755,1.7009 1.3865,1.9861 1.8413,2.1895 L1.8413,3.5047 C1.8413,4.0132 2.05,4.4729 2.386,4.8033 C2.378,4.8623 2.3732,4.9219 2.3731,4.9816 C2.373,5.6786 2.9381,6.2436 3.635,6.2435 C4.332,6.2436 4.897,5.6786 4.897,4.9816 C4.897,4.9376 4.895,4.8936 4.89,4.8498 C5.2547,4.5168 5.4838,4.0375 5.4837,3.5047 L5.4843,2.1321 C5.8904,1.9336 6.2606,1.6674 6.5948,1.3332 L6.2206,0.9591 C5.8589,1.3208 5.4506,1.5921 4.9954,1.773 C4.9175,1.8039 4.8392,1.8321 4.7608,1.8577 A1.2619,1.2619 0 0,0 3.6007,1.0924 A1.2619,1.2619 0 0,0 2.4405,1.8577 C2.3625,1.8322 2.2849,1.8037 2.2075,1.773 C1.7522,1.5921 1.3439,1.3208 0.9822,0.9591 Z M3.5999,1.4733 L3.6004,1.4733 A0.8811,0.8811 0 0,1 4.3879,1.9595 A0.8811,0.8811 0 0,1 4.4814,2.3544 A0.8811,0.8811 0 0,1 4.4724,2.4779 A0.8811,0.8811 0 0,1 3.6001,3.2354 A0.8811,0.8811 0 0,1 2.7278,2.4773 A0.8811,0.8811 0 0,1 2.7188,2.3544 A0.8811,0.8811 0 0,1 2.8123,1.959 A0.8811,0.8811 0 0,1 3.5999,1.4733 Z M5.1341,2.283 L5.1341,3.5047 C5.1341,3.8148 4.9838,4.1376 4.7559,4.4018 C4.5391,3.9828 4.1068,3.7196 3.635,3.7196 C3.1796,3.7197 2.7595,3.9652 2.5359,4.362 C2.3266,4.1055 2.1912,3.7994 2.1912,3.5047 L2.1912,2.328 C2.2401,2.3451 2.2893,2.3614 2.3385,2.3766 A1.2619,1.2619 0 0,0 3.6004,3.6163 A1.2619,1.2619 0 0,0 4.8623,2.3771 C4.9533,2.349 5.0438,2.3174 5.1341,2.283 Z M3.6629,4.1005 C4.1495,4.1005 4.544,4.495 4.544,4.9816 C4.544,5.4682 4.1495,5.8626 3.6629,5.8627 C3.1763,5.8626 2.7819,5.4682 2.7818,4.9816 C2.7819,4.495 3.1763,4.1005 3.6629,4.1005 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-export const IconBeadSpike = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 7.2026 7.2026" fill="none" className={className}>
-    <path d="M0.9818,0.2759 L0.6077,0.6501 C0.9564,0.9988 1.3443,1.2733 1.7714,1.4743 L1.7714,2.2954 C1.1495,2.3841 0.6876,2.9168 0.6878,3.545 C0.6878,4.2143 1.2407,4.7926 1.8799,4.8043 C1.8911,5.1082 2.1233,5.2969 2.3161,5.4865 C2.2205,6.1503 2.7106,6.9267 3.5651,6.9267 C4.4077,6.9267 4.8864,6.1756 4.8203,5.533 C5.0515,5.3349 5.186,5.0763 5.3071,4.8043 C5.9708,4.761 6.487,4.2101 6.4869,3.545 C6.4871,2.9209 6.0311,2.3905 5.4141,2.297 L5.4141,1.4821 C5.8478,1.2804 6.2416,1.0033 6.5949,0.6501 L6.2203,0.2759 C5.8586,0.6376 5.4503,0.9085 4.995,1.0893 C4.5398,1.2702 4.0753,1.3606 3.6013,1.3606 C3.1273,1.3606 2.6628,1.2701 2.2076,1.0893 C1.7523,0.9085 1.3435,0.6376 0.9818,0.2759 Z M2.1213,1.6195 C2.6052,1.7961 3.0987,1.8846 3.6013,1.8846 C4.0982,1.8846 4.5857,1.7983 5.0643,1.6257 L5.0643,2.2934 C4.4346,2.3742 3.963,2.9102 3.963,3.545 C3.9629,4.1192 4.3505,4.621 4.9061,4.7661 C4.8716,4.9052 4.7842,4.9888 4.686,5.0849 C4.4692,4.6659 4.0369,4.4028 3.5651,4.4028 C3.1097,4.4029 2.6896,4.6484 2.466,5.0451 C2.3783,4.972 2.3111,4.8848 2.2779,4.763 C2.5417,4.761 3.2117,4.1155 3.2117,3.545 C3.2116,2.9144 2.746,2.3806 2.1213,2.2949 Z M1.9497,2.6639 C2.3805,2.6644 2.8307,3.0083 2.8308,3.545 C2.8308,4.0768 2.3859,4.4263 1.9497,4.4261 C1.5205,4.4262 1.0686,4.083 1.0686,3.545 C1.0686,3.0097 1.5174,2.6636 1.9497,2.6639 Z M5.225,2.6639 C5.6596,2.6642 6.106,3.0118 6.106,3.545 C6.1061,4.0807 5.6567,4.4264 5.225,4.4261 C4.7913,4.4258 4.344,4.079 4.3439,3.545 C4.3437,3.0059 4.797,2.6631 5.225,2.6639 Z M3.593,4.7831 C4.0796,4.7832 4.4741,5.1776 4.4741,5.6642 C4.4741,6.1508 4.0796,6.5453 3.593,6.5453 C3.1064,6.5453 2.712,6.1508 2.712,5.6642 C2.712,5.1776 3.1064,4.7832 3.593,4.7831 Z" fill="currentColor" strokeWidth="0.149" strokeLinecap="square"/>
-  </svg>
-);
-
-export const IconBeadSuspended = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 7.2026 7.2026" fill="none" className={className}>
-    <path d="M0.9821,0.4015 L0.6079,0.7756 C1.0195,1.1872 1.4856,1.4959 2.0063,1.7017 C2.3295,1.8294 2.6571,1.9173 2.9887,1.9657 A0.9164,0.9164 0 0,0 2.6802,2.6515 A0.9164,0.9164 0 0,0 3.1799,3.4654 A0.9164,0.9164 0 0,0 2.6802,4.2798 A0.9164,0.9164 0 0,0 3.1442,5.0756 A0.9164,0.9164 0 0,0 2.6548,5.8849 A0.9164,0.9164 0 0,0 3.5711,6.8011 A0.9164,0.9164 0 0,0 4.4878,5.8849 A0.9164,0.9164 0 0,0 4.0238,5.0885 A0.9164,0.9164 0 0,0 4.5131,4.2798 A0.9164,0.9164 0 0,0 4.0134,3.4654 A0.9164,0.9164 0 0,0 4.5131,2.6515 A0.9164,0.9164 0 0,0 4.2062,1.9673 C4.5405,1.9191 4.8705,1.8304 5.1963,1.7017 C5.717,1.4959 6.1831,1.1872 6.5947,0.7756 L6.2205,0.4015 C5.8588,0.7632 5.4505,1.0345 4.9953,1.2154 C4.54,1.3963 4.0755,1.4867 3.6016,1.4867 C3.1276,1.4867 2.6631,1.3962 2.2078,1.2154 C1.7526,1.0345 1.3438,0.7632 0.9821,0.4015 Z M3.5964,2.0117 A0.6399,0.6399 0 0,1 4.2367,2.6515 A0.6399,0.6399 0 0,1 3.5964,3.2912 A0.6399,0.6399 0 0,1 2.9566,2.6515 A0.6399,0.6399 0 0,1 3.5964,2.0117 Z M3.5964,3.6395 A0.6399,0.6399 0 0,1 4.2367,4.2798 A0.6399,0.6399 0 0,1 3.5964,4.9196 A0.6399,0.6399 0 0,1 2.9566,4.2798 A0.6399,0.6399 0 0,1 3.5964,3.6395 Z M3.5711,5.2451 A0.6399,0.6399 0 0,1 4.2108,5.8849 A0.6399,0.6399 0 0,1 3.5711,6.5246 A0.6399,0.6399 0 0,1 2.9313,5.8849 A0.6399,0.6399 0 0,1 3.5711,5.2451 Z" fill="currentColor" strokeWidth="0.0066"/>
-  </svg>
-);
-
-export const IconLanguage = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M325,-111.5 Q252,-143 197.5,-197.5 Q143,-252 111.5,-325 Q80,-398 80,-480.5 Q80,-563 111.5,-635.5 Q143,-708 197.5,-762.5 Q252,-817 325,-848.5 Q398,-880 480.5,-880 Q563,-880 635.5,-848.5 Q708,-817 762.5,-762.5 Q817,-708 848.5,-635.5 Q880,-563 880,-480.5 Q880,-398 848.5,-325 Q817,-252 762.5,-197.5 Q708,-143 635.5,-111.5 Q563,-80 480.5,-80 Q398,-80 325,-111.5 Z M480,-162 Q506,-198 525,-237 Q544,-276 556,-320 L404,-320 Q416,-276 435,-237 Q454,-198 480,-162 Z M376,-178 Q358,-211 344.5,-246.5 Q331,-282 322,-320 L204,-320 Q233,-270 276.5,-233 Q320,-196 376,-178 Z M584,-178 Q640,-196 683.5,-233 Q727,-270 756,-320 L638,-320 Q629,-282 615.5,-246.5 Q602,-211 584,-178 Z M170,-400 L306,-400 Q303,-420 301.5,-439.5 Q300,-459 300,-480 Q300,-501 301.5,-520.5 Q303,-540 306,-560 L170,-560 Q165,-540 162.5,-520.5 Q160,-501 160,-480 Q160,-459 162.5,-439.5 Q165,-420 170,-400 Z M386,-400 L574,-400 Q577,-420 578.5,-439.5 Q580,-459 580,-480 Q580,-501 578.5,-520.5 Q577,-540 574,-560 L386,-560 Q383,-540 381.5,-520.5 Q380,-501 380,-480 Q380,-459 381.5,-439.5 Q383,-420 386,-400 Z M654,-400 L790,-400 Q795,-420 797.5,-439.5 Q800,-459 800,-480 Q800,-501 797.5,-520.5 Q795,-540 790,-560 L654,-560 Q657,-540 658.5,-520.5 Q660,-501 660,-480 Q660,-459 658.5,-439.5 Q657,-420 654,-400 Z M638,-640 L756,-640 Q727,-690 683.5,-727 Q640,-764 584,-782 Q602,-749 615.5,-713.5 Q629,-678 638,-640 Z M404,-640 L556,-640 Q544,-684 525,-723 Q506,-762 480,-798 Q454,-762 435,-723 Q416,-684 404,-640 Z M204,-640 L322,-640 Q331,-678 344.5,-713.5 Q358,-749 376,-782 Q320,-764 276.5,-727 Q233,-690 204,-640 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── Notation position icons ─────────────────────────────────────────────────
-
-export const IconNotationS = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -0.4223 5.821 5.821" fill="none" className={className}>
-    <path d="M0.7753,0 C0.5811,0 0.4149,0.0693 0.2766,0.2076 C0.1383,0.3459 -0.1253,0.506 0.069,0.506 L0.7353,0.506 L0.7353,2.508 L0,2.508 L1.0843,3.5923 L2.1693,2.508 L1.434,2.508 L1.434,0.506 L5.7196,0.506 L5.7196,0 Z M4.6422,1.4775 C4.4871,1.4775 4.338,1.5064 4.1938,1.5665 C4.0508,1.6252 3.9228,1.7093 3.8131,1.819 C3.7022,1.9297 3.6152,2.0596 3.5551,2.2025 C3.4964,2.3454 3.4668,2.4976 3.4668,2.6536 L3.4668,3.8007 C3.4668,3.9567 3.4964,4.1089 3.5551,4.2518 C3.6153,4.3946 3.7022,4.5237 3.8131,4.6346 C3.9227,4.7442 4.0511,4.8277 4.1938,4.8878 L4.1938,4.8908 C4.3378,4.9493 4.4874,4.9763 4.6422,4.9763 C4.7969,4.9763 4.9477,4.9494 5.0905,4.8908 C5.2349,4.8306 5.3642,4.7441 5.474,4.6328 C5.5851,4.5217 5.6705,4.3925 5.7293,4.2493 C5.7895,4.1063 5.821,3.956 5.821,3.8009 L5.821,2.6538 C5.821,2.4975 5.7895,2.3458 5.7293,2.2027 C5.6705,2.0595 5.585,1.9302 5.474,1.8192 C5.3641,1.7094 5.235,1.6254 5.0905,1.5667 C4.9483,1.5073 4.7964,1.4777 4.6422,1.4777 Z M2.1528,1.5196 L2.0017,2.1004 L2.5177,2.1004 L2.5177,4.9374 L3.1433,4.9374 L3.1433,1.9962 C3.1433,1.8613 3.1019,1.7401 3.0157,1.652 C2.9291,1.5635 2.8041,1.5196 2.6687,1.5196 Z M4.6422,2.0563 C4.7863,2.0563 4.9064,2.114 5.0229,2.2439 C5.1397,2.3742 5.1954,2.5133 5.1954,2.6791 L5.1954,3.7793 C5.1954,3.9436 5.1424,4.0836 5.0257,4.2125 L5.0227,4.2125 C4.9078,4.3407 4.7879,4.3973 4.6419,4.3973 C4.4959,4.3973 4.3775,4.3409 4.2612,4.2125 C4.1458,4.0837 4.0922,3.9438 4.0922,3.7793 L4.0922,2.6791 C4.0922,2.5148 4.1443,2.377 4.2612,2.2466 L4.2642,2.2436 C4.3808,2.1123 4.4983,2.056 4.6422,2.056 Z" fill="currentColor" strokeWidth="0.0088"/>
-  </svg>
-);
-
-export const IconNotationM = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -0.4223 5.821 5.821" fill="none" className={className}>
-    <path d="M4.6422,0.0002 C4.4871,0.0002 4.338,0.0284 4.1938,0.0885 C4.0508,0.1472 3.9228,0.2319 3.8131,0.3416 C3.7022,0.4524 3.6152,0.5822 3.5551,0.7251 C3.4964,0.868 3.4668,1.0202 3.4668,1.1762 L3.4668,2.3233 C3.4668,2.4793 3.4964,2.6308 3.5551,2.7737 C3.6153,2.9166 3.7022,3.0464 3.8131,3.1573 C3.9227,3.2668 4.0511,3.3504 4.1938,3.4104 L4.1938,3.4124 C4.3378,3.4709 4.4874,3.4986 4.6422,3.4986 C4.7969,3.4986 4.9477,3.471 5.0905,3.4124 C5.2349,3.3522 5.3642,3.2658 5.474,3.1544 C5.5851,3.0434 5.6705,2.9148 5.7293,2.7716 C5.7895,2.6286 5.821,2.4783 5.821,2.3233 L5.821,1.1762 C5.821,1.0199 5.7895,0.8682 5.7293,0.725 C5.6705,0.5818 5.585,0.4526 5.474,0.3415 C5.3641,0.2317 5.235,0.1477 5.0905,0.0891 C4.9483,0.0297 4.7964,0.0001 4.6422,0.0001 Z M2.1528,0.0416 L2.0017,0.623 L2.5177,0.623 L2.5177,3.4594 L3.1433,3.4594 L3.1433,0.5189 C3.1433,0.384 3.1019,0.2627 3.0157,0.1747 C2.929,0.0862 2.8041,0.0416 2.6687,0.0416 Z M4.6422,0.5789 C4.7863,0.5789 4.9064,0.6366 5.0229,0.7665 C5.1397,0.8968 5.1954,1.0359 5.1954,1.2018 L5.1954,2.302 C5.1954,2.4663 5.1424,2.6062 5.0257,2.7351 L5.0227,2.7351 C4.9078,2.8634 4.7879,2.92 4.6419,2.92 C4.4959,2.92 4.3775,2.8636 4.2612,2.7351 C4.1458,2.6063 4.0922,2.4665 4.0922,2.302 L4.0922,1.2018 C4.0922,1.0375 4.1443,0.8997 4.2612,0.7693 L4.2642,0.7663 C4.3808,0.6349 4.4983,0.5787 4.6422,0.5787 Z M1.0843,1.913 L0,2.998 L0.7353,2.998 L0.7353,4.4702 L0.069,4.4702 C-0.1253,4.4702 0.1383,4.6309 0.2766,4.7693 C0.4149,4.9076 0.5811,4.9762 0.7753,4.9762 L5.7196,4.9762 L5.7196,4.4702 L1.434,4.4702 L1.434,2.998 L2.1693,2.998 Z" fill="currentColor" strokeWidth="0.0088"/>
-  </svg>
-);
-
-export const IconNotationH = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -0.4223 5.821 5.821" fill="none" className={className}>
-    <path d="M4.6422,0.0002 C4.4871,0.0002 4.338,0.0284 4.1938,0.0885 C4.0508,0.1472 3.9228,0.2319 3.8131,0.3416 C3.7022,0.4524 3.6153,0.5822 3.5551,0.7251 C3.4964,0.868 3.4668,1.0202 3.4668,1.1762 L3.4668,2.3233 C3.4668,2.4793 3.4964,2.6308 3.5551,2.7737 C3.6153,2.9166 3.7023,3.0464 3.8131,3.1573 C3.9227,3.2668 4.0511,3.3504 4.1938,3.4104 L4.1938,3.4124 C4.3378,3.4709 4.4874,3.4986 4.6422,3.4986 C4.797,3.4986 4.9478,3.471 5.0906,3.4124 C5.2349,3.3522 5.3643,3.2658 5.4741,3.1544 C5.5851,3.0434 5.6705,2.9148 5.7293,2.7716 C5.7895,2.6286 5.821,2.4783 5.821,2.3233 L5.821,1.1762 C5.821,1.0199 5.7895,0.8682 5.7293,0.725 C5.6705,0.5818 5.5851,0.4526 5.4741,0.3415 C5.3642,0.2317 5.235,0.1477 5.0906,0.0891 C4.9483,0.0297 4.7964,0.0001 4.6422,0.0001 Z M2.1528,0.0416 L2.0018,0.623 L2.5177,0.623 L2.5177,3.4594 L3.1433,3.4594 L3.1433,0.5189 C3.1433,0.384 3.1019,0.2627 3.0157,0.1747 C2.929,0.0862 2.8041,0.0416 2.6688,0.0416 Z M4.6422,0.5789 C4.7863,0.5789 4.9065,0.6366 5.023,0.7665 C5.1397,0.8968 5.1954,1.0359 5.1954,1.2018 L5.1954,2.302 C5.1954,2.4663 5.1424,2.6062 5.0257,2.7351 L5.0227,2.7351 C4.9079,2.8634 4.7879,2.92 4.642,2.92 C4.4959,2.92 4.3775,2.8636 4.2612,2.7351 C4.1458,2.6063 4.0922,2.4665 4.0922,2.302 L4.0922,1.2018 C4.0922,1.0375 4.1443,0.8997 4.2612,0.7693 L4.2642,0.7663 C4.3808,0.6349 4.4983,0.5787 4.6422,0.5787 Z M1.0844,0.3255 L0,1.4105 L0.7353,1.4105 L0.7353,4.4702 L0.069,4.4702 C-0.1252,4.4702 0.1383,4.6309 0.2766,4.7693 C0.4149,4.9076 0.5811,4.9762 0.7753,4.9762 L5.7196,4.9762 L5.7196,4.4702 L1.4341,4.4702 L1.4341,1.4105 L2.1694,1.4105 Z" fill="currentColor" strokeWidth="0.0088"/>
-  </svg>
-);
-
-export const IconNotes = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="none" className={className}>
-    <path d="M280,-280 L364,-280 L604,-518 L518,-604 L280,-366 L280,-280 Z M632,-546 L674,-590 Q680,-596 680,-604 Q680,-612 674,-618 L618,-674 Q612,-680 604,-680 Q596,-680 590,-674 L546,-632 L632,-546 Z M200,-120 Q167,-120 143.5,-143.5 Q120,-167 120,-200 L120,-760 Q120,-793 143.5,-816.5 Q167,-840 200,-840 L368,-840 Q381,-876 411.5,-898 Q442,-920 480,-920 Q518,-920 548.5,-898 Q579,-876 592,-840 L760,-840 Q793,-840 816.5,-816.5 Q840,-793 840,-760 L840,-200 Q840,-167 816.5,-143.5 Q793,-120 760,-120 L200,-120 Z M200,-200 L760,-200 L760,-760 L200,-760 L200,-200 Z M501.5,-798.5 Q510,-807 510,-820 Q510,-833 501.5,-841.5 Q493,-850 480,-850 Q467,-850 458.5,-841.5 Q450,-833 450,-820 Q450,-807 458.5,-798.5 Q467,-790 480,-790 Q493,-790 501.5,-798.5 Z M200,-200 L200,-760 L200,-200 Z" fill="currentColor"/>
-  </svg>
-);
-
-// ── Polar grid + label visibility icons ─────────────────────────────────────
-
-// Polar grid indicator — Material Design concentric circles (target/radar)
-export const IconPolarGrid = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
-    <path d="M440-42v-80q-125-14-214.5-103.5T122-440H42v-80h80q14-125 103.5-214.5T440-838v-80h80v80q125 14 214.5 103.5T838-520h80v80h-80q-14 125-103.5 214.5T520-122v80h-80Zm238-240q82-82 82-198t-82-198q-82-82-198-82t-198 82q-82 82-82 198t82 198q82 82 198 82t198-82Zm-311-85q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47Zm169.5-56.5Q560-447 560-480t-23.5-56.5Q513-560 480-560t-56.5 23.5Q400-513 400-480t23.5 56.5Q447-400 480-400t56.5-23.5ZM480-480Z"/>
-  </svg>
-);
-
-// Label/tag with a number — notation labels visible
-// Scissors / cut — Material Design scissors icon
-export const IconCut = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
-    <path d="M760-120 480-400l-94 94q8 15 11 32t3 34q0 66-47 113T240-80q-66 0-113-47T80-240q0-66 47-113t113-47q17 0 34 3t32 11l94-94-94-94q-15 8-32 11t-34 3q-66 0-113-47T80-720q0-66 47-113t113-47q66 0 113 47t47 113q0 17-3 34t-11 32l494 494v40H760ZM600-520l-80-80 240-240h120v40L600-520ZM296.5-663.5Q320-687 320-720t-23.5-56.5Q273-800 240-800t-56.5 23.5Q160-753 160-720t23.5 56.5Q207-640 240-640t56.5-23.5ZM494-466q6-6 6-14t-6-14q-6-6-14-6t-14 6q-6 6-6 14t6 14q6 6 14 6t14-6ZM296.5-183.5Q320-207 320-240t-23.5-56.5Q273-320 240-320t-56.5 23.5Q160-273 160-240t23.5 56.5Q207-160 240-160t56.5-23.5Z"/>
-  </svg>
-);
-
-// Notation visible — document/text-box (show notation labels in property bar)
-export const IconNotationOn = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
-    <path d="M200-280h560v-80H200v80Zm0-160h560v-80H200v80Zm0-160h400v-80H200v80Zm-40 440q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-480H160v480Zm0 0v-480 480Z"/>
-  </svg>
-);
-
-// Notation hidden — struck-through document (hide notation labels, order number unaffected)
-export const IconNotationOff = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
-    <path d="M200-280v-80h400l80 80H200Zm0-160v-80h240l80 80H200Zm0-160v-80h80l80 80H200Zm434 160h126v-80H554l80 80ZM474-600h126v-80H394l80 80Zm397 397-71-71v-446H354l-80-80h526q33 0 56.5 23.5T880-720v480q0 10-2 19.5t-7 17.5ZM383-463Zm194-34ZM818-28 686-160H160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800l80 80h-80v480h446L26-820l57-57L875-85l-57 57Z"/>
-  </svg>
-);
-
-// Ruler — measurement / ruler tool
-export const IconRuler = ({ size = 20, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
-    <path d="M208-120q-37 0-62.5-25.5T120-208v-548q0-29 27-40.5t47 8.5l90 90-54 54 28 28 54-54 104 104-54 54 28 28 54-54 104 104-54 54 28 28 54-54 104 104-54 54 28 28 54-54 80 80q20 20 8.5 47T756-120H208Zm32-120h332L240-572v332Z"/>
-  </svg>
-);
-
-// ── End Icons ──────────────────────────────────────────────────────────
+// Icons imported from ./components/icons
 
 // Icons inlined — see below React import
 
@@ -727,561 +107,9 @@ const ORDER_GROUP_COLORS: [string, string][] = [
 ];
 
 const TRANSLATIONS: Record<string, Record<string, string>> = {
-  en: {
-
-    languagePickerLabel: 'Language',
-
-    // ── Splash screen ────────────────────────────────────────────────────────
-    splashNewProject: 'New Project',
-    splashLoadProject: 'Load Project',
-    splashResume: 'Resume: {name}',
-    splashNoAutosave: 'No Autosave',
-    splashGettingStarted: 'Getting Started',
-    splashTipPrev: 'Previous tip',
-    splashTipNext: 'Next tip',
-    splashUpdateOverlayTitle: 'Have you checked for updates?',
-    splashUpdateOverlayBody: 'You are on v{version} — click to check',
-    splashUpdatePopupTitle: 'Check for updates',
-    splashUpdatePopupBody: "You're on v{version}. Visit the releases page to see if a newer version is available.",
-    splashUpdatePopupOpen: 'Open Releases Page',
-    splashUpdatePopupDismiss: 'Dismiss for this version',
-    splashTip01: 'Duplicate in place first (D), then rotate around your polar grid for flower patterns.',
-    splashTip02: 'The notation field understands repeats — try r: 4x(3ds-p) instead of writing it out.',
-    splashTip03: 'Zoom with the scroll wheel; hold Space and drag to pan without switching tools.',
-    splashTip04: "Order numbers follow your thread path — number elements in the sequence you'll tat them.",
-    splashTip05: 'Materials carry color and gradient settings — change one material to update all linked elements.',
-    splashTip06: 'Polar Array (Arrange menu) places N copies at equal angles around a grid center automatically.',
-    splashTip07: 'Picot length affects spacing — try shorter picots if a joining area looks crowded.',
-    splashTip08: "Split rings have independent A and B notation — the two stitch counts don't need to match.",
-    splashTip09: 'Press Escape repeatedly to walk back through modes to a safe deselected state.',
-    splashTip10: 'The Ruler tool reads in millimetres — set DS width in Thread Properties first for accuracy.',
-    splashTip11: 'Flip H/V also reverses the notation automatically so stitch sequence stays correct.',
-    splashTip12: 'Schematic and Realistic are display modes, not separate tools — switch any time.',
-    splashTip13: 'Name your polar grids in the panel — useful when a pattern has inner and outer grids.',
-    splashTip14: 'Save all your projects in one folder — TattingCAD builds a visual recent projects browser automatically.',
-    splashTip15: 'Export SVG then open it in Inkscape, Illustrator, or any browser to save as PNG at any size.',
-
-    // ── Top toolbar – buttons ────────────────────────────────────────────────
-    menuFile: 'File',
-    menuFileTitle: 'File operations',
-    menuArrange: 'Arrange',
-    menuArrangeTitle: 'Arrange (Duplicate & Align)',
-    menuOptions: 'Options',
-    menuOptionsTitle: 'Options',
-    renderSchematic: 'Schematic',
-    renderRealistic: 'Realistic',
-    renderToggleTitle: 'Toggle realistic stitch rendering (Press V)',
-    bakingViewTitle: 'Rendering realistic view…',
-    bakingViewSub: 'Calculating stitch geometry for all elements. Complex patterns may take a moment.',
-    btnUndo: 'Undo (Ctrl+Z)',
-    btnRedo: 'Redo (Ctrl+Shift+Z)',
-    btnCopy: 'Copy (Ctrl+C)',
-    btnCut: 'Cut (Ctrl+X)',
-    btnPaste: 'Paste (Ctrl+V)',
-    btnFitAll: 'Fit All Elements (F)',
-
-    // ── File menu ────────────────────────────────────────────────────────────
-    fileNew: 'New',
-    fileSave: 'Save Project',
-    fileSaveAs: 'Save As…',
-    fileLoad: 'Load Project',
-    fileBrowse: 'Browse for File…',
-    fileExportSvg: 'Export SVG',
-    fileExportSvgTitle: 'Export the current pattern as an SVG vector file',
-    fileOutputNotation: 'Output notation to clipboard',
-    notationCopied: 'Notation copied to clipboard',
-    notationCopyFailed: 'Copy failed — check clipboard permissions',
-    fileShowUnnumbered: 'Show Unnumbered',
-    viewTattingOrder: 'Tatting Order…',
-    tattingOrderTitle: 'TATTING ORDER MODE',
-    tattingOrderSub: 'Select an element to assign its order number',
-    tattingOrderProgress: '{numbered} / {total} numbered',
-    tattingOrderAssignNext: 'Assign Next',
-    tattingOrderClear: 'Clear',
-    tattingOrderExitBtn: 'Exit Mode',
-    tattingOrderExitWarning: '{n} element(s) still unnumbered',
-    tattingOrderConflictTitle: 'Number already taken',
-    tattingOrderConflictSwap: 'Swap',
-    tattingOrderConflictShift: 'Shift all higher numbers up',
-    tattingOrderConflictCancel: 'Cancel',
-    tattingOrderNumberLabel: 'Order #',
-    tattingOrderGroup: 'Group',
-    tattingOrderGroupNew: '+ New Group',
-    tattingOrderGroupNamePlaceholder: 'Group name…',
-    tattingOrderGroupDefault: 'Round {n}',
-    tattingOrderGroupRename: 'Rename',
-    tattingOrderGroupDelete: 'Delete Group',
-    tattingOrderGroupDeleteConfirm: 'Delete "{name}"? Elements keep their numbers but lose their group.',
-    tattingOrderUngrouped: 'Ungrouped',
-    tattingOrderAssignGroup: 'Assign to Group',
-
-    // ── Arrange menu ─────────────────────────────────────────────────────────
-    arrangeDuplicate: 'Duplicate in Place',
-    arrangeAlignHeader: 'Align (2+ elements)',
-    arrangeAlignLeft: 'Align Left',
-    arrangeAlignCenterH: 'Align Center H',
-    arrangeAlignRight: 'Align Right',
-    arrangeAlignTop: 'Align Top',
-    arrangeAlignCenterV: 'Align Center V',
-    arrangeAlignBottom: 'Align Bottom',
-    arrangePolarHeader: 'Polar Grid',
-    arrangeCenterToPolarGrid: 'Center to Polar Grid',
-    arrangeAlignToGridH: 'Align to Grid Horizontally',
-    arrangeAlignToGridV: 'Align to Grid Vertically',
-    arrangePolarArray: 'Polar Array…',
-    polarArrayTitle: 'Polar Array',
-    polarArrayCount: 'Total copies (including original)',
-    polarArrayAngle: 'Fill angle (degrees)',
-    polarArrayPivot: 'Pivot point',
-    polarArrayPivotSelection: 'Selection center',
-    polarArrayApply: 'Apply Array',
-    polarArrayPeekHint: 'Hold to peek at canvas',
-    arrangeArrayHeader: 'Array',
-    arrangeLinearArray: 'Linear Array…',
-    arrangeSpiralArray: 'Spiral Array…',
-    linearArrayTitle: 'Linear Array',
-    linearArrayCount: 'Total copies (including original)',
-    linearArrayDirection: 'Direction',
-    linearArraySpacing: 'Spacing (center to center)',
-    linearArrayRotStep: 'Rotation per step (°)',
-    linearArrayApply: 'Apply Array',
-    linearArrayPeekHint: 'Hold to peek at canvas',
-    spiralArrayTitle: 'Spiral Array',
-    spiralArrayCount: 'Total copies (including original)',
-    spiralArrayType: 'Spiral type',
-    spiralArrayArchimedean: 'Uniform gap (Archimedean)',
-    spiralArrayGeometric: 'Growing gap (Geometric)',
-    spiralArrayGap: 'Gap between turns',
-    spiralArrayAngleStep: 'Angle per copy (°)',
-    spiralArrayGrowth: 'Growth factor per step',
-    spiralArrayRotate: 'Rotate elements to follow spiral',
-    spiralArrayApply: 'Apply Array',
-    spiralArrayPeekHint: 'Hold to peek at canvas',
-
-    // ── Options menu ─────────────────────────────────────────────────────────
-    optionsBgColor: 'Background Color',
-    optionsNotationSize: 'Notation Size',
-    optionsSizeSmall: 'Small',
-    optionsSizeMedium: 'Medium',
-    optionsSizeLarge: 'Large',
-    optionsGrid: 'Show Grid',
-    optionsSnap: 'Snap to Point',
-
-    // ── Left toolbar ─────────────────────────────────────────────────────────
-    toolOrthoLock: 'Ortho lock: constrain movement to X or Y axis (or hold Shift)',
-    toolPathEdit: 'Path Edit Tool',
-    toolRuler: 'Ruler Tool (measure distance)',
-    toolZoomRect: 'Zoom to Rectangle (Z)',
-    rulerClickFirst: 'Click to set start point',
-    rulerClickSecond: 'Click to set end point — click again to reset',
-    rulerPx: 'px',
-    toolPicotJoin: 'Joint Picot Tool – Select and connect joint picots (Shift+J)',
-    toolJoinPicots: 'Join selected joint picots',
-    toolBreakPicots: 'Break connections for selected picots',
-    toolAddRing: 'Add Ring (Shift+R)',
-    toolAddSplitRing: 'Add Split Ring (Shift+S)',
-    toolLineTool: 'Line Tool (Shift+L)',
-    toolAddChain: 'Add Chain (Shift+C)',
-    toolGroup: 'Group selected elements',
-    toolUngroup: 'Ungroup selected elements',
-    toolRefImage: 'Reference Image (controls in top bar)',
-    toolNotes: 'Notes',
-    toolPan: 'Pan Tool – drag to scroll the canvas',
-    toolSelect: 'Select Tool – click or drag to select elements',
-    toolDelete: 'Delete selected elements',
-    toolZoomOut: 'Zoom Out',
-    toolZoomIn: 'Zoom In',
-
-    // ── Notes drawer ─────────────────────────────────────────────────────────
-    notesTitle: 'Pattern Notes',
-    notesClose: 'Close notes',
-    notesPlaceholder: 'Add pattern notes, instructions, thread colours used, difficulty level, etc...',
-    notesFooter: 'Saves with project · Exports with SVG',
-
-    // ── Save dialog ──────────────────────────────────────────────────────────
-    saveDialogTitle: 'Save Project',
-    saveDialogLabel: 'Project Name:',
-    saveDialogPlaceholder: 'Enter project name',
-    saveDialogCancel: 'Cancel',
-    saveDialogSave: 'Save',
-
-    // ── Color / gradient picker ───────────────────────────────────────────────
-    colorPickerTab: 'Color Picker',
-    colorSwatchesTab: 'Swatches',
-    colorSearchPlaceholder: 'Search by ID or name...',
-    gradientSearchPlaceholder: 'Search gradients by name or ID...',
-    colorHexPlaceholder: '#FFFFFF',
-
-    // ── Property bar labels ───────────────────────────────────────────────────
-    propOrder: 'Order:',
-    propRWTooltip: 'Reverse Work — appends RW to notation output',
-    propShape: 'Shape:',
-    propSqueeze: 'Squeeze:',
-    propFlipH: 'Flip Horizontal (Vertical Mirror)',
-    propFlipV: 'Flip Vertical (Horizontal Mirror)',
-    propNotationPos: 'Toggle notation position: inside → on path → outside',
-    propResetSqueeze: 'Reset squeeze and rotation to 0',
-    propToggleShape: 'Toggle circle/teardrop',
-    propUploadImage: 'Upload reference image',
-    propToggleVisibility: 'Toggle visibility',
-    propRemoveImage: 'Remove image',
-    propRotateMinus90: 'Rotate -90°',
-    propRotatePlus90: 'Rotate +90°',
-    propRotateGroupMinus90: 'Rotate Group -90°',
-    propRotateGroupPlus90: 'Rotate Group +90°',
-    propFlipGroupH: 'Flip Group Horizontal',
-    propFlipGroupV: 'Flip Group Vertical',
-
-    // ── Help modal tabs ───────────────────────────────────────────────────────
-
-    // ── View menu ────────────────────────────────────────────────────────────
-    menuView: 'View',
-    menuViewTitle: 'View options',
-    viewFitView: 'Fit View',
-    viewShowInvalidNotation: 'Show Invalid Notation',
-    viewHideInvalidNotation: 'Hide Invalid Notation',
-    viewShowEditingArtifacts: 'Show Editing Artifacts',
-    viewHideEditingArtifacts: 'Hide Editing Artifacts',
-    viewMaterials: 'Materials…',
-    viewThreadProperties: 'Thread Properties…',
-    viewBeadLibrary: 'Bead Library…',
-    viewUIScale: 'UI Scale',
-    viewLoadTheme: 'Load Theme…',
-    viewResetTheme: 'Reset Theme',
-    viewThemeHint: 'Edit indicator colors via tatting-theme.json — see Help → Tips for details.',
-
-    // ── Property bar mode banners ─────────────────────────────────────────────
-    modeRealisticTitle: 'REALISTIC VIEW',
-    modeRealisticSub: 'Editing disabled — pan and zoom only',
-    modePicotJoinTitle: 'PICOT EDIT MODE',
-    modePicotJoinSub: 'Click joint picots to select — then join or cut',
-    modeBeadingTitle: 'BEAD EDIT MODE',
-    modeBeadStructure: 'Structure:',
-    modeBeadCore: 'Core:',
-    modeBeadPicot: 'Picot:',
-    modeBeadLibraryBtn: 'Library…',
-
-    // ── Left toolbar extras ───────────────────────────────────────────────────
-    toolRotationHandlesHide: 'Hide rotation handles (or release Shift)',
-    toolRotationHandlesShow: 'Show rotation handles (or hold Shift)',
-    toolBeadingMode: 'Beading mode — select BE elements to configure beads (Shift+B)',
-    toolPanRealistic: 'Pan (only mode in realistic view)',
-    toolPanRealisticSub: 'Pan & scroll',
-    toolPanRealisticSub2: 'only',
-    toolSwitchSchematic: 'Switch back to Schematic mode',
-    toolExitPicotEdit: 'Exit Picot Edit mode (Esc)',
-    toolExitBeadEdit: 'Exit Bead Edit mode (Esc)',
-    toolManageBeadLibrary: 'Manage bead library',
-
-    // ── Multiselect property bar ──────────────────────────────────────────────
-    multiRotateMinus: 'Rotate -90°',
-    multiRotatePlus: 'Rotate +90°',
-    multiFlipH: 'Flip Horizontal',
-    multiFlipV: 'Flip Vertical',
-
-    // ── Edit materials option ─────────────────────────────────────────────────
-    editMaterials: 'Edit materials…',
-
-    // ── Join tip popup ────────────────────────────────────────────────────────
-    joinTipTitle: 'Picot Join Mode',
-    joinTipBody1: 'You are now in Picot Join mode. Elements are dimmed so you can focus on the join points.',
-    joinTipBody2: 'To connect: select two (or more) joint picots at the same time (hold Shift and click both dots), then press Join in the toolbar. Select a connected pair to disconnect.',
-    joinTipBody3: 'Press Esc or click the Join Picots button again to exit.',
-    joinTipDontShow: "Don't show again",
-    joinTipGotIt: 'Got it',
-
-    // ── New canvas dialog ─────────────────────────────────────────────────────
-    newCanvasTitle: 'New Canvas',
-    newCanvasBody: 'This will discard all current work. Make sure to save first if you want to keep it.',
-    newCanvasCancel: 'Cancel',
-    newCanvasConfirm: 'Discard & New',
-
-    // ── Load confirm dialog ───────────────────────────────────────────────────
-    loadConfirmTitle: 'Load Project',
-    loadConfirmBody: 'This will replace the current canvas. Make sure to save first if you want to keep it.',
-    loadConfirmCancel: 'Cancel',
-    loadConfirmConfirm: 'Discard & Load',
-
-    // ── Remove image dialog ───────────────────────────────────────────────────
-    removeImageTitle: 'Remove Reference Image?',
-    removeImageBody: 'This cannot be undone.',
-    removeImageCancel: 'Cancel',
-    removeImageConfirm: 'Remove',
-
-    // ── Generic dialogs ───────────────────────────────────────────────────────
-    confirmDelete: 'Delete',
-    confirmCancel: 'Cancel',
-    alertOk: 'OK',
-
-    // ── Help ──────────────────────────────────────────────────────────────────
-    helpOpenTab: 'Open help in a new browser tab',
-    helpTitle: 'Help',
-    helpOpenInBrowser: '↗ Open in browser',
-    helpWindowTitle: 'Tatting Pattern Designer Help',
-
-    // ── Loading ───────────────────────────────────────────────────────────────
-    loadingDmcColors: 'Loading DMC colors...',
-
-    // ── Canvas labels (SVG title elements) ───────────────────────────────────
-    connectableJoinPoint: 'Connectable join point',
-    joinedPicotLabel: 'Joined picot',
-
-    // ── Bead Library panel ────────────────────────────────────────────────────
-    beadLibraryPanelTitle: 'Bead Library',
-    beadAdd: '+ Add',
-    beadDelete: 'Delete',
-    beadSelectPrompt: 'Select a bead to edit',
-    beadPropertiesHeader: 'Bead Properties',
-    beadSizeLabel: 'Size',
-    beadShapeLabel: 'Shape',
-    beadColorLabel: 'Color',
-    beadSizeClassHeader: 'Size Class Settings',
-    beadDsWidthSuffix: '× DS width',
-
-    // ── Thread Properties panel ───────────────────────────────────────────────
-    threadPresetsTitle: 'Thread Presets',
-    threadMeasurementsHeader: 'Measurements',
-    threadPicotLengthsHeader: 'Picot Lengths',
-    threadAltCalcHeader: 'Alternative Calculation',
-    threadAltBadge: 'Alternative',
-    threadPerStitchHeader: 'Per-Stitch Summary',
-    thread20DSWorking: '20 DS working thread',
-    thread20DSCore: '20 DS core thread',
-    thread20DSRegularSample: '20 DS + 10 regular picots sample',
-    thread20DSShortSample: '20 DS + 10 short picots sample',
-    threadCancelBtn: 'Cancel',
-    threadOkBtn: 'OK',
-    threadFromSample: '(from sample)',
-    threadHalfRegular: '(½× regular)',
-    threadWorkingPerDS: 'Working per DS',
-    threadWorkingPerSS: 'Working per SS',
-    threadCorePerDS: 'Core per DS',
-    threadRegularPicot: 'Regular picot',
-    threadLongPicot: 'Long picot',
-    threadShortPicot: 'Short picot',
-    threadJoinedPicot: 'Joined picot',
-
-    // ── Bead shape names ──────────────────────────────────────────────────────
-    shapeCircle: '● Circle',
-    shapeSquare: '■ Square',
-    shapeRectangle: '▬ Rectangle',
-    shapeDiamond: '◆ Diamond',
-    shapeTearUp: 'Tip Out',
-    shapeTearDown: 'Tip In',
-
-    // ── Click to change / rename labels ──────────────────────────────────────
-    clickToChangeColor: 'Click to change color',
-    clickToChangeSizeColor: 'Click to change default color for this size',
-    clickToRename: 'Click to rename',
-    selectAllWithMaterial: 'Select all elements with this material',
-
-    // ── Gradient picker ───────────────────────────────────────────────────────
-    clickGradientPreview: 'Click a gradient to preview',
-    clickColorPreview: 'Click a color swatch to preview',
-    colorPageIndicator: 'Page {page} of {total} ({count} colors)',
-    rotateNudgePlus: 'Rotate +1° (hold to repeat)',
-    rotateNudgeMinus: 'Rotate -1° (hold to repeat)',
-
-    // ── Notation hint / other ─────────────────────────────────────────────────
-    notationHintFormat: 'offset:color,offset:color,...',
-    beadCountLabel: 'Beads:',
-    matBLabel: 'Mat B:',
-    materialLabel: 'Material:',
-    matALabel: 'Mat A:',
-
-    // ── Property bar empty state ──────────────────────────────────────────────
-    propEmptyState: 'Select an element to edit its properties',
-
-    // ── Polar Grid panel ──────────────────────────────────────────────────────
-    polarGridTitle: 'Polar Grids',
-    polarGridPeekHint: 'Hold to peek at canvas',
-    propHideLabel: 'Hide notation label',
-    propPolarRotation: 'Polar rotation center',
-    propPolarRotationNone: 'Own center',
-    polarGridAdd: '+ Add Grid',
-    polarGridDelete: 'Delete',
-    polarGridSelectPrompt: 'Select a grid to edit',
-    polarGridNamePlaceholder: 'Grid name',
-    polarGridCenterLabel: 'Center',
-    polarGridResetCenter: 'Reset to origin',
-    polarGridOffsetLabel: 'Offset°',
-    polarGridColorLabel: 'Color',
-    polarGridOpacityLabel: 'Opacity',
-    polarGridRingsHeader: 'RINGS',
-    polarGridAddRing: '+ Add Ring',
-    polarGridRadiusLabel: 'r',
-    polarGridDivisionsLabel: '÷',
-    viewPolarGrids: 'Polar Grids…',
-    refImageOpacity: 'Opacity:',
-    refImageScale: 'Scale:',
-    refImageRotate: 'Rotate:',
-    refImageVisible: 'Visible',
-    refImageHidden: 'Hidden',
-    refImageRemove: 'Remove',
-    refImageUpload: 'Upload Image',
-    refImagePanX: 'X',
-    refImagePanY: 'Y',
-    refImageResetPos: 'Reset pos',
-    refImageResetPosTooltip: 'Reset image position to center',
-    exitConfirmTitle: 'Unsaved Changes',
-    exitConfirmMessage: 'You have unsaved changes. Quit anyway?',
-    cjLabel: 'Core Join',
-    cjTooltip: 'Core Join (cj) — join made with the core thread, zero stitch length',
-    cjpLabel: 'Core Join Picot',
-    cjpTooltip: 'Core Join Picot (cjp) — core thread join that also leaves a picot',
-    regularPicotLabel: 'Regular picot',
-    longPicotLabel: 'Long picot (auto: 2×)',
-    shortPicotLabel: 'Short picot (auto: ½×)',
-    noneOption: '— none —',
-    nextBtn: 'Next →',
-    prevBtn: '← Prev',
-    fitViewBtn: 'Fit View',
-
-    // ── View menu render toggle ───────────────────────────────────────────────
-    viewSwitchRealistic: 'Switch to Realistic',
-    viewSwitchSchematic: 'Switch to Schematic',
-
-    // ── UI Scale ──────────────────────────────────────────────────────────────
-    uiScaleNormal: 'Normal',
-    uiScaleLarge: 'Large',
-
-    // ── Materials Manager panel ───────────────────────────────────────────────
-    materialsTitle: 'Materials',
-    materialsSelectAll: 'Select all',
-    materialsAddBtn: '+ Add Material',
-    materialsHint: 'Click a color swatch to change color. All elements with that material update instantly.',
-    materialNewName: 'Material',
-
-    // ── Color Picker tabs ─────────────────────────────────────────────────────
-    colorPickerTabLabel: 'Color Picker',
-    colorDmcTab: 'DMC Colors',
-    colorGradientsTab: 'Gradients',
-
-    // ── Bead Library: size class labels & descriptions ────────────────────────
-    beadSizeSmall: 'Small (S)',
-    beadSizeMedium: 'Medium (M)',
-    beadSizeLarge: 'Large (L)',
-    beadShapeCircle: '● Circle',
-    beadShapeSquare: '■ Square',
-    beadShapeRectangle: '▬ Rectangle',
-    beadShapeDiamond: '◆ Diamond',
-    beadShapeTipOut: 'Tip Out',
-    beadShapeTipIn: 'Tip In',
-    beadSizeClassHint: 'These control how each size class (S/M/L) renders — the DS width multiplier determines the visual diameter on canvas, and the color is used as the default for new beads of that size.',
-
-    // ── Thread Properties: remaining hardcoded strings ────────────────────────
-    threadRegularPicotLabel: 'Regular picot',
-    threadJoinedPicotLabel: 'Joined picot',
-    threadLongPicotLabel: 'Long picot (auto: 2×)',
-    threadLongPicotHint: '= 2 × regular',
-    threadShortPicotLabel: 'Short picot (auto: ½×)',
-    threadShortPicotHintSample: '= from sample',
-    threadShortPicotHintAuto: '= ½ × regular',
-    threadSampleRegularLabel: '20 DS + 10 regular picots sample',
-    threadSampleShortLabel: '20 DS + 10 short picots sample',
-    threadOptional: 'optional',
-    threadAltSampleHint: 'Measure a test sample of 20 DS + 10 picots. Enter total length used.',
-    threadPresetAdd: '+ Add',
-    threadPresetDelete: 'Delete',
-    threadPresetNewName: 'New Preset',
-    threadNewBeadName: 'New Bead',
-
-    // ── Picot Join mode property bar ──────────────────────────────────────────
-    picotJoinBtn: 'Join',
-    picotCutBtn: 'Cut',
-    picotExitBtn: 'Exit Mode',
-
-    // ── Beading mode property bar ─────────────────────────────────────────────
-    beadExitBtn: 'Exit Mode',
-    beadSelectHint: 'tap or drag-select ◆ diamonds',
-    beadSelectedCount: '{n} selected',
-
-    // ── Line bead picker ──────────────────────────────────────────────────────
-    lineBdCountHint: 'Number of beads on this line',
-    lineBdCollapse: 'Collapse: make all beads the same',
-    lineBdExpand: 'Expand: set each bead individually',
-    lineBdCopy: 'Copy line bead setup',
-    lineBdCut: 'Cut line bead setup',
-    lineBdPaste: 'Paste bead setup',
-    lineBdPasteAll: 'Paste bead setup to all {n} lines',
-    lineBdNoClipboard: 'no clipboard — select one line to copy',
-
-    // ── BE copy / cut in beading mode ────────────────────────────────────────
-    beCopySetup: 'Copy bead setup',
-    beCutSetup: 'Cut bead setup (copy then reset)',
-
-    // ── Realistic mode property bar ───────────────────────────────────────────
-    realisticSwitchToSchematic: 'Switch to Schematic',
-
-    // ── Bottom info bar ───────────────────────────────────────────────────────
-    infoNoSelection: 'No selection',
-    info1Selected: '1 object selected',
-    infoNSelected: '{n} objects selected',
-    infoElements: 'Elements',
-    infoZoom: 'Zoom',
-    infoColorPrefix: 'Color',
-    infoRing: 'Ring',
-    infoChain: 'Chain',
-    infoLine: 'Line',
-
-    // ── Property bar — split ring squeeze labels ──────────────────────────────
-    propSqueezeSq: 'Sq:',
-    propSqueezeCA: 'CA:',
-    propsqueezeCB: 'CB:',
-    propResetBtn: 'Reset',
-
-    // ── Help / About dropdown ─────────────────────────────────────────────────
-    menuHelpDropdown: 'Help & Info',
-    helpMenuHelp: 'Help & Quick Reference',
-    helpMenuUiGuide: 'UI Reference Guide',
-    helpMenuAbout: 'About TattingCAD',
-    helpMenuKofi: 'Support on Ko-fi ♥',
-    helpMenuCheckUpdate: 'Check for Updates',
-
-    // ── About panel ───────────────────────────────────────────────────────────
-    aboutTitle: 'About TattingCAD',
-    aboutDescription: 'A visual designer tool for creating and editing needle and shuttle tatting patterns.',
-    aboutVersion: 'Version',
-    aboutLicenseHeader: 'License',
-    aboutLicenseText: 'MIT License — Copyright © 2026 SavarosaCraft',
-    aboutLicenseFull: 'Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the above copyright notice.',
-    aboutGithub: 'View on GitHub',
-    aboutClose: 'Close',
-
-    // ── Update checker ────────────────────────────────────────────────────────
-    updateCurrentVersion: 'You are on v{current}',
-    updateCheckNow: 'Open releases page',
-
-    // ── File / project load errors ────────────────────────────────────────────
-    loadErrFileNotFound: 'File not found — it may have been moved or deleted. Use the Browse button to locate it.',
-    loadErrWrongFormat: 'Wrong file format — please select a .json file.',
-    loadErrTooLarge: 'Failed to load project: file too large (max 10MB).',
-    loadErrCorrupted: 'Failed to load project: corrupted file (invalid JSON).',
-    loadErrMissingElements: 'Failed to load project: unvalidated file (missing elements).',
-    loadErrInvalidElements: 'Failed to load project: {n} invalid element(s) found.',
-    loadSuccess: 'Load completed — {n} element(s) loaded.',
-    loadErrGeneric: 'Failed to load project: {msg}',
-    loadErrReadFailed: 'Failed to load project: error reading file.',
-
-    // ── Theme load / reset ────────────────────────────────────────────────────
-    loadThemeErrInvalid: 'Invalid theme file — expected a JSON object.',
-    loadThemeSuccess: 'Theme loaded.',
-    loadThemeErrJson: 'Failed to load theme: invalid JSON.',
-    themeResetSuccess: 'Theme reset to default.',
-
-    // ── Recent Projects ───────────────────────────────────────────────────────
-    recentProjectsTitle: 'Recent Projects',
-    recentProjectsEmpty: 'No recent projects yet.',
-    recentProjectsEmptyHint: 'Save your first project to see it here.',
-    recentProjectsBrowse: 'Browse for file…',
-    recentProjectsLoadBtn: 'Load',
-    recentProjectsDeleteBtn: 'Remove from recents',
-    recentProjectsSaved: 'Saved {date}',
-    recentProjectsLoadConfirmTitle: 'Discard current project?',
-    recentProjectsLoadConfirmBody: 'Loading a project will replace the current canvas. Any unsaved changes will be lost.',
-    recentProjectsLoadConfirmOk: 'Load anyway',
-    recentProjectsLoadConfirmCancel: 'Cancel',
-  },
+  // English strings are now loaded from ./i18n/translations_en.json
+  // That file is bundled and cannot be deleted by users.
+  // The t() function falls back to this empty object; the loader fills it at startup.
 };
 
 
@@ -1442,18 +270,7 @@ const DEFAULT_THREAD_PRESET = {
   sample20DS10Short: null,    // mm — 20DS + 10 short picots total
 };
 
-// Load presets from localStorage or use default
-const loadThreadPresets = () => {
-  try {
-    const saved = localStorage.getItem('tcad_thread_presets');
-    if (saved) return JSON.parse(saved);
-  } catch {}
-  return [{ ...DEFAULT_THREAD_PRESET }];
-};
-
 // Open an external URL in the system browser.
-// Uses Tauri's invoke directly — no plugin-opener package import needed.
-// Falls back to window.open() in plain browser (invoke will throw without __TAURI__).
 const openExternal = (url: string) => {
   console.log('[openExternal] called with:', url);
   console.log('[openExternal] __TAURI__ present:', !!(window as any).__TAURI__);
@@ -1466,24 +283,6 @@ const openExternal = (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer');
     });
 };
-
-const loadActivePresetId = () => {
-  try { return localStorage.getItem('tcad_active_preset_id') || 'default'; } catch { return 'default'; }
-};
-
-// Load polar grids from localStorage (global, persists across projects)
-const loadPolarGrids = () => {
-  try {
-    const saved = localStorage.getItem('tcad_polar_grids');
-    if (saved) {
-      const grids = JSON.parse(saved);
-      // Always start hidden — user turns on what they need per project
-      return grids.map(g => ({ ...g, visible: false }));
-    }
-  } catch {}
-  return [];
-};
-
 
 const DEFAULT_MATERIALS = [
   { id: 'default', name: 'Default', color: '#FFFFFF', isGradient: false },
@@ -1521,96 +320,167 @@ const ThreadPropertiesNumInput = ({ label, value, onChange = null, unit = 'mm', 
 };
 
 const TattingDesigner = () => {
+  // ── UI state (dialogs, menus, toggles) ──────────────────────────────────
+  const {
+    showFileMenu, setShowFileMenu,
+    showHelpMenu, setShowHelpMenu,
+    showArrangeMenu, setShowArrangeMenu,
+    showOptionsMenu, setShowOptionsMenu,
+    showViewMenu, setShowViewMenu,
+    showHelp, setShowHelp,
+    showAbout, setShowAbout,
+    showUiGuide, setShowUiGuide,
+    showSplash, setShowSplash,
+    showUpdatePopup, setShowUpdatePopup,
+    showUpdateReminder, setShowUpdateReminder,
+    showNewCanvasDialog, setShowNewCanvasDialog,
+    showRecentProjectsDialog, setShowRecentProjectsDialog,
+    showRecentLoadConfirm, setShowRecentLoadConfirm,
+    showLoadConfirmDialog, setShowLoadConfirmDialog,
+    showRemoveConfirm, setShowRemoveConfirm,
+    showBeadLibrary, setShowBeadLibrary,
+    showMaterialsPanel, setShowMaterialsPanel,
+    showThreadProperties, setShowThreadProperties,
+    showPolarGridPanel, setShowPolarGridPanel,
+    showColorPicker, setShowColorPicker,
+    showJoinTip, setShowJoinTip,
+    confirmDialog, setConfirmDialog,
+    alertDialog, setAlertDialog,
+    showPolarArrayDialog, setShowPolarArrayDialog,
+    polarArrayPeek, setPolarArrayPeek,
+    polarArrayCount, setPolarArrayCount,
+    polarArrayAngle, setPolarArrayAngle,
+    polarArrayPivotId, setPolarArrayPivotId,
+    showLinearArrayDialog, setShowLinearArrayDialog,
+    linearArrayPeek, setLinearArrayPeek,
+    linearArrayCount, setLinearArrayCount,
+    linearArrayAngle, setLinearArrayAngle,
+    linearArraySpacing, setLinearArraySpacing,
+    linearArrayRotStep, setLinearArrayRotStep,
+    showSpiralArrayDialog, setShowSpiralArrayDialog,
+    spiralArrayPeek, setSpiralArrayPeek,
+    spiralArrayCount, setSpiralArrayCount,
+    spiralArrayType, setSpiralArrayType,
+    spiralArrayGap, setSpiralArrayGap,
+    spiralArrayGrowth, setSpiralArrayGrowth,
+    spiralArrayRotate, setSpiralArrayRotate,
+    spiralArrayAngleStep, setSpiralArrayAngleStep,
+    polarGridPeek, setPolarGridPeek,
+    colorPickerTab, setColorPickerTab,
+    pickerTabsAllowed, setPickerTabsAllowed,
+    pickerColor, setPickerColor,
+    pickerCallback, setPickerCallback,
+    pickerGradientCallback, setPickerGradientCallback,
+    editingColorIndex, setEditingColorIndex,
+    selectedGradient, setSelectedGradient,
+    gradientSearchTerm, setGradientSearchTerm,
+    gradientCategory, setGradientCategory,
+    gradientPage, setGradientPage,
+    selectedDmcColor, setSelectedDmcColor,
+    dmcSearchTerm, setDmcSearchTerm,
+    dmcPage, setDmcPage,
+    dmcCategory, setDmcCategory,
+    showRotationHandles, setShowRotationHandles,
+    showUnnumbered, setShowUnnumbered,
+    showInvalidNotation, setShowInvalidNotation,
+    showEditingArtifacts, setShowEditingArtifacts,
+    notesOpen, setNotesOpen,
+    loadMsg, setLoadMsg,
+    pendingRecentLoad, setPendingRecentLoad,
+    selectedBeadId, setSelectedBeadId,
+    resolvedHelpUrl, setResolvedHelpUrl,
+    helpUrlReady, setHelpUrlReady,
+    resolvedUiGuideUrl, setResolvedUiGuideUrl,
+    uiGuideUrlReady, setUiGuideUrlReady,
+  } = useUIState();
+
+  // ── Canvas interaction state ─────────────────────────────────────────────
+  const {
+    currentTool, setCurrentTool,
+    activeMode, setActiveMode,
+    orthoLock, setOrthoLock,
+    isDragging, setIsDragging,
+    dragStart, setDragStart,
+    draggedElement, setDraggedElement,
+    dragTick, setDragTick,
+    selectedIds, setSelectedIds,
+    selectionBox, setSelectionBox,
+    rotationHandle, setRotationHandle,
+    pivotOffset, setPivotOffset,
+    movingPivot, setMovingPivot,
+    zoomRectBox, setZoomRectBox,
+    touchState, setTouchState,
+    isShiftHeld, setIsShiftHeld,
+    spaceDown, setSpaceDown,
+    zDown, setZDown,
+    rulerPoints, setRulerPoints,
+    rulerMousePos, setRulerMousePos,
+    groupRotationInput, setGroupRotationInput,
+    singleRotationInput, setSingleRotationInput,
+  } = useCanvasInteraction();
+
+  // ── Tatting order state ──────────────────────────────────────────────────
+  const {
+    orderGroups, setOrderGroups,
+    activeOrderGroupId, setActiveOrderGroupId,
+    tattingOrderConflict, setTattingOrderConflict,
+    tattingOrderInput, setTattingOrderInput,
+    newGroupNameInput, setNewGroupNameInput,
+    showNewGroupInput, setShowNewGroupInput,
+    renamingGroupId, setRenamingGroupId,
+    renameGroupInput, setRenameGroupInput,
+    showGroupDropdown, setShowGroupDropdown,
+    showPropBarGroupDropdown, setShowPropBarGroupDropdown,
+    propBarOrderDraft, setPropBarOrderDraft,
+  } = useTattingOrder();
+
+  // ── Project state ────────────────────────────────────────────────────────
+  const {
+    projectName, setProjectName,
+    currentFilePath, setCurrentFilePath,
+    lastSavedHistoryIndex, setLastSavedHistoryIndex,
+    renderMode, setRenderMode,
+    bakedRealisticSVG, setBakedRealisticSVG,
+    notationError, setNotationError,
+    draftNotation, setDraftNotation,
+  } = useProjectState();
+
+  // ── Bead and picot state ─────────────────────────────────────────────────
+  const {
+    beadLibrary, setBeadLibrary,
+    beadSettings, setBeadSettings,
+    selectedBEs, setSelectedBEs,
+    beClipboard, setBeClipboard,
+    lineBeadClipboard, setLineBeadClipboard,
+    polarGrids, setPolarGrids,
+    selectedPolarGridId, setSelectedPolarGridId,
+    picotConnections, setPicotConnections,
+    selectedPicots, setSelectedPicots,
+    threadPresets, setThreadPresets,
+    activePresetId, setActivePresetId,
+  } = useBeadState();
+
   const [elements, setElements] = useState([]);
-  const [selectedIds, setSelectedIds] = useState([]);
   const [camera, setCamera] = useState(() => ({
     x: Math.round(window.innerWidth / 2),
     y: Math.round(window.innerHeight / 2)
   })); // World origin centered in viewport on first load
   const [zoom, setZoom] = useState(1.8); // Default zoom 180%
   const [dsWidth, setDsWidth] = useState(10);
-  // Bead Library — named beads for BE notation
-  const DEFAULT_BEAD_LIBRARY = [
-    { id: 'bead1', name: 'Small seed',      size: 'Y', color: '#ef4444', shape: 'circle' },
-    { id: 'bead2', name: 'Medium seed',     size: 'Z', color: '#22c55e', shape: 'circle' },
-    { id: 'bead3', name: 'Large seed',      size: 'V', color: '#a855f7', shape: 'circle' },
-    { id: 'bead4', name: 'Square medium',   size: 'Z', color: '#228B22', shape: 'square' },
-    { id: 'bead5', name: 'Rectangular large', size: 'V', color: '#FFD700', shape: 'rectangle' },
-    { id: 'bead6', name: 'Teardrop large tip-out', size: 'V', color: '#0F52BA', shape: 'teardrop-up' },
-    { id: 'bead7', name: 'Teardrop large tip-in',  size: 'V', color: '#ADD8E6', shape: 'teardrop-down' },
-  ];
-  const [beadLibrary, setBeadLibrary] = useState(DEFAULT_BEAD_LIBRARY);
-  const [polarGrids, setPolarGrids] = useState(() => loadPolarGrids()); // Polar grid objects — globally persisted
-  const [showPolarGridPanel, setShowPolarGridPanel] = useState(false);
-  const [polarGridPeek, setPolarGridPeek] = useState(false);
-  const [selectedPolarGridId, setSelectedPolarGridId] = useState(null);
-  const [selectedBEs, setSelectedBEs] = useState([]); // [{ elementId, picotId }] multi-select in beading mode
-  const [beClipboard, setBeClipboard] = useState(null); // { beStructure, beIsJoint, coreBeads, picotBeads }
-  const [lineBeadClipboard, setLineBeadClipboard] = useState(null); // { lineBeadSlots: (string|null)[] }
 
   // Ruler tool state — up to 2 world-coord anchor points + live cursor position
-  const [rulerPoints, setRulerPoints] = useState([]); // [] | [{x,y}] | [{x,y},{x,y}]
-  const [rulerMousePos, setRulerMousePos] = useState(null); // {x,y} in world coords
 
-  const [beadSettings, setBeadSettings] = useState({
-    Y: { dsMultiplier: 1.0, color: '#ef4444' },
-    Z: { dsMultiplier: 1.5, color: '#22c55e' },
-    V: { dsMultiplier: 2.0, color: '#a855f7' },
-  });
   const [gridEnabled, setGridEnabled] = useState(true);
-  const [loadMsg, setLoadMsg] = useState(null); // { type: 'success'|'error', text: string }
-  const [currentTool, setCurrentTool] = useState('pan'); // 'pan' | 'select' | 'path' | 'line' | 'picotJoin' | 'beading' | 'image'
-  const [activeMode, setActiveMode] = useState(null); // 'picotJoin' | 'beading' | 'tattingOrder' | null — persists across pan/select tool switches
-  const [tattingOrderConflict, setTattingOrderConflict] = useState<{ newNum: number; existingElId: string; targetElId: string } | null>(null);
-  const [tattingOrderInput, setTattingOrderInput] = useState('');
   // Order groups — array of { id, name } in display order. Color assigned by index (cycles through GROUP_COLORS).
-  const [orderGroups, setOrderGroups] = useState<{ id: string; name: string }[]>([]);
-  const [activeOrderGroupId, setActiveOrderGroupId] = useState<string | null>(null);
-  const [newGroupNameInput, setNewGroupNameInput] = useState('');
-  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
-  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
-  const [renameGroupInput, setRenameGroupInput] = useState('');
-  const [showGroupDropdown, setShowGroupDropdown] = useState(false);
-  const [showPropBarGroupDropdown, setShowPropBarGroupDropdown] = useState(false);
-  const [propBarOrderDraft, setPropBarOrderDraft] = useState<string | null>(null); // null = not editing
   const [bgColor, setBgColor] = useState<string>(() => {
     try { return localStorage.getItem('tcad_bg_color') || '#1F2937'; } catch { return '#1F2937'; }
   });
   const [customColors, setCustomColors] = useState([]);
   const [referenceImage, setReferenceImage] = useState(null);
   const [refImageProps, setRefImageProps] = useState({ opacity: 0.5, rotation: 0, scale: 1, visible: true, x: 0, y: 0 });
-  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false); // Confirmation dialog for removing ref image
-  const [notationError, setNotationError] = useState(null);
-  const [draftNotation, setDraftNotation] = useState(null); // { elementId, value } — persists invalid text across deselect/reselect
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [pickerCallback, setPickerCallback] = useState(null); // fn(color) called on OK for non-swatch uses
-  const [pickerGradientCallback, setPickerGradientCallback] = useState(null); // fn(gradientId) called when gradient selected
-  const [editingColorIndex, setEditingColorIndex] = useState(null);
-  const [pickerColor, setPickerColor] = useState('#FFFFFF');
   const [clipboard, setClipboard] = useState([]); // NEW: for copy/paste
-  const [projectName, setProjectName] = useState('Untitled Pattern'); // NEW: for save/load
-  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null); // Tauri: path of currently open file
-  const [lastSavedHistoryIndex, setLastSavedHistoryIndex] = useState(0); // track unsaved changes for exit confirm
-  const [picotConnections, setPicotConnections] = useState([]); // NEW: joint picot connections
-  const [selectedPicots, setSelectedPicots] = useState([]); // NEW: selected joint picots {elementId, picotId}
-  const [showHelp, setShowHelp] = useState(false); // NEW: help modal
-  const [resolvedHelpUrl, setResolvedHelpUrl] = useState('./tatting-help.html');
-  const [helpUrlReady, setHelpUrlReady] = useState(false);
-  const [showUiGuide, setShowUiGuide] = useState(false);
-  const [resolvedUiGuideUrl, setResolvedUiGuideUrl] = useState('./tatting-ui-guide.html');
-  const [uiGuideUrlReady, setUiGuideUrlReady] = useState(false);
-  const [showBeadLibrary, setShowBeadLibrary] = useState(false); // Bead Library panel
-  const [selectedBeadId, setSelectedBeadId] = useState(null); // currently editing bead in panel
-  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm } | null
-  const [alertDialog, setAlertDialog] = useState(null);    // { message } | null
   // helpTab state removed — help content now lives in tatting-help.html (iframe)
-  const [colorPickerTab, setColorPickerTab] = useState('picker'); // 'picker' | 'swatches'
-  const [pickerTabsAllowed, setPickerTabsAllowed] = useState(null); // null = all tabs | array of allowed tab ids
   const [dmcColors, setDmcColors] = useState([]); // DMC color database
-  const [selectedDmcColor, setSelectedDmcColor] = useState(null); // Currently selected DMC color for preview
-  const [dmcSearchTerm, setDmcSearchTerm] = useState(''); // Search filter for DMC colors
-  const [dmcPage, setDmcPage] = useState(0); // Current page for DMC colors
-  const [dmcCategory, setDmcCategory] = useState('all'); // Current category filter
   const [snapEnabled, setSnapEnabled] = useState(true); // Toggle for snap to point
 
   // Canvas indicator theme — all user-visible indicator colors in one object.
@@ -1644,54 +514,14 @@ const TattingDesigner = () => {
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [snapRadius, setSnapRadius] = useState(15); // Snap radius in SCREEN pixels — divided by zoom at use sites
 
-  const [selectedGradient, setSelectedGradient] = useState(null); // Currently selected gradient for preview
-  const [gradientSearchTerm, setGradientSearchTerm] = useState(''); // Search filter for gradients
-  const [gradientCategory, setGradientCategory] = useState('all'); // Current category filter
-  const [gradientPage, setGradientPage] = useState(0); // Gradient picker pagination
-  const [isShiftHeld, setIsShiftHeld] = useState(false); // Track if Shift key is held for rotation handles
-  const [spaceDown, setSpaceDown] = useState(false);     // Track if Space is held for temporary pan
   const spaceDownRef = useRef(false);                    // Ref mirror — mouse handlers read this to avoid stale closure
-  const [zDown, setZDown] = useState(false);             // Track if Z is held for temporary zoom-rect
   const zDownRef = useRef(false);                        // Ref mirror for Z key
-  const [zoomRectBox, setZoomRectBox] = useState(null);  // { x, y, width, height } in world coords while dragging
-  const [showRotationHandles, setShowRotationHandles] = useState(false); // Manual toggle for rotation handles (mobile)
-  const [showUnnumbered, setShowUnnumbered] = useState(false); // Toggle to highlight unnumbered elements
-  const [showInvalidNotation, setShowInvalidNotation] = useState(true); // Toggle to highlight elements with invalid notation
-  const [showEditingArtifacts, setShowEditingArtifacts] = useState(true); // Toggle to show/hide JP dots and connection lines in realistic view
-  const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0 }); // NEW: for pinch-to-zoom
-  const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false);
-  const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
-  const [showRecentProjectsDialog, setShowRecentProjectsDialog] = useState(false);
-  const [showRecentLoadConfirm, setShowRecentLoadConfirm] = useState(false);
-  const [pendingRecentLoad, setPendingRecentLoad] = useState<(() => void) | null>(null);
-  const [showLoadConfirmDialog, setShowLoadConfirmDialog] = useState(false);
-  const [showPolarArrayDialog, setShowPolarArrayDialog] = useState(false);
-  const [polarArrayPeek, setPolarArrayPeek] = useState(false);
-  const [polarArrayCount, setPolarArrayCount] = useState(6);
-  const [polarArrayAngle, setPolarArrayAngle] = useState(360);
-  const [polarArrayPivotId, setPolarArrayPivotId] = useState<string | 'selection' | null>(null);
 
   // Linear array state
-  const [showLinearArrayDialog, setShowLinearArrayDialog] = useState(false);
-  const [linearArrayPeek, setLinearArrayPeek] = useState(false);
-  const [linearArrayCount, setLinearArrayCount] = useState(4);
-  const [linearArrayAngle, setLinearArrayAngle] = useState(0);       // 0=H, 90=V, custom
-  const [linearArraySpacing, setLinearArraySpacing] = useState(60);  // center-to-center px
-  const [linearArrayRotStep, setLinearArrayRotStep] = useState(0);   // rotation per step, degrees
 
   // Spiral array state
-  const [showSpiralArrayDialog, setShowSpiralArrayDialog] = useState(false);
-  const [spiralArrayPeek, setSpiralArrayPeek] = useState(false);
-  const [spiralArrayCount, setSpiralArrayCount] = useState(8);
-  const [spiralArrayType, setSpiralArrayType] = useState<'archimedean' | 'geometric'>('archimedean');
-  const [spiralArrayGap, setSpiralArrayGap] = useState(40);          // Archimedean: gap added per step
-  const [spiralArrayGrowth, setSpiralArrayGrowth] = useState(1.2);   // Geometric: growth factor per step
-  const [spiralArrayRotate, setSpiralArrayRotate] = useState(true);  // rotate to follow spiral
-  const [spiralArrayAngleStep, setSpiralArrayAngleStep] = useState(30); // degrees per copy (fixed, not 360/count)
-  const [showJoinTip, setShowJoinTip] = useState(() => localStorage.getItem('tcad_seen_join_tip') !== '1');
   const APP_VERSION = '1.0.0';
 
-  const [showFileMenu, setShowFileMenu] = useState(false); // NEW: file operations dropdown menu
 
   // Update reminder: only after 90 days since install — evaluated once, stored here for the splash to read.
   const updateReminderDue = (() => {
@@ -1706,8 +536,6 @@ const TattingDesigner = () => {
   })();
 
   // Splash screen — shown on every launch
-  const [showSplash, setShowSplash] = useState<boolean>(true);
-  const [showUpdatePopup, setShowUpdatePopup] = useState<boolean>(false);
 
   // Autosave metadata — parsed once for the splash button label
   const splashAutosave = (() => {
@@ -1728,32 +556,17 @@ const TattingDesigner = () => {
   ];
   const [splashTipIndex, setSplashTipIndex] = useState<number>(() => Math.floor(Math.random() * SPLASH_TIP_KEYS.length));
 
-  const [showHelpMenu, setShowHelpMenu] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
-  const [showArrangeMenu, setShowArrangeMenu] = useState(false); // Arrange menu (align/duplicate)
-  const [groupRotationInput, setGroupRotationInput] = useState(''); // Temporary input for group rotation
-  const [singleRotationInput, setSingleRotationInput] = useState(''); // Temporary input for single-element rotation
-  const [showOptionsMenu, setShowOptionsMenu] = useState(false); // Options menu
-  const [showViewMenu, setShowViewMenu] = useState(false); // View menu
 
   // ============================================================================
   // REALISTIC RENDERING STATE
   // ============================================================================
-  const [renderMode, setRenderMode] = useState('schematic'); // 'schematic' | 'realistic'
-  const [bakedRealisticSVG, setBakedRealisticSVG] = useState<string | null>(null); // Baked SVG for realistic view
-  const [orthoLock, setOrthoLock] = useState(false); // Constrain movement to X or Y axis
   const [notationFontSize, setNotationFontSize] = useState('medium'); // 'small' | 'medium' | 'large'
   const [uiScale, setUiScale] = useState<string>(() => {
     try { return localStorage.getItem('tcad_ui_scale') || 'normal'; } catch { return 'normal'; }
   }); // 'normal' | 'large'
   const [patternNotes, setPatternNotes] = useState(''); // Pattern notes / instructions
   const [materials, setMaterials] = useState(DEFAULT_MATERIALS); // Material groups (up to 10)
-  const [showMaterialsPanel, setShowMaterialsPanel] = useState(false); // Materials manager popup
-  const [showThreadProperties, setShowThreadProperties] = useState(false);
-  const [threadPresets, setThreadPresets] = useState(() => loadThreadPresets());
-  const [activePresetId, setActivePresetId] = useState(() => loadActivePresetId());
   const lastUsedMaterialIdRef = useRef('default');
-  const [notesOpen, setNotesOpen] = useState(false); // Notes drawer open/closed
 
   // ── Localisation ────────────────────────────────────────────────────────────
   const [language, setLanguage] = useState<string>(() => {
@@ -1768,11 +581,11 @@ const TattingDesigner = () => {
   const [availableLanguages, setAvailableLanguages] = useState<Record<string, string>>(LANGUAGES_FALLBACK);
 
   const t = React.useCallback((key: string): string => {
-    // Priority: external JSON translation → hardcoded translation → key itself
+    // Priority: current language external JSON → current language hardcoded →
+    //           English external JSON (translations_en.json) → key itself
     return extraTranslations[language]?.[key]
       ?? TRANSLATIONS[language]?.[key]
       ?? extraTranslations['en']?.[key]
-      ?? TRANSLATIONS.en[key]
       ?? key;
   }, [language, extraTranslations]);
 
@@ -1838,20 +651,12 @@ const TattingDesigner = () => {
     historyIndexRef.current = historyIndex;
   }, [history, historyIndex]);
 
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState(null);
   const lastMousePosRef = useRef(null); // was state — now ref to avoid re-render on every move
-  const [draggedElement, setDraggedElement] = useState(null);
   // PERFORMANCE: During element translate-drag, accumulate offset in a ref instead of
   // calling setElements every frame. SVG transform handles the visual update.
   // setElements is called once on mouseup. This keeps stitchCache/elementById valid all drag.
   const dragOffsetRef = useRef({ active: false, dx: 0, dy: 0 });
   const dragTouchIdRef = useRef(null); // identifier of the touch that started the drag
-  const [dragTick, setDragTick] = useState(0); // lightweight render trigger during drag
-  const [selectionBox, setSelectionBox] = useState(null);
-  const [rotationHandle, setRotationHandle] = useState(null);  // NEW: for rotation
-  const [pivotOffset, setPivotOffset] = useState({ x: 0, y: 0 }); // NEW: pivot offset from center
-  const [movingPivot, setMovingPivot] = useState(false);       // NEW: dragging pivot point
 
   const canvasRef = useRef(null);
   const fileButtonRef = useRef(null); // For dropdown positioning
@@ -2239,19 +1044,28 @@ const TattingDesigner = () => {
   //
   // languages.json drives the language picker.
   // Each translations_XX.json is loaded independently — a missing file is silently skipped.
-  // English is always available as the built-in fallback even if translations_en.json is absent.
+  // Load translations on mount.
+  // translations_en.json is statically imported — guaranteed available, no fetch needed.
+  // Other language files are loaded from the public folder if a languages.json manifest exists.
   useEffect(() => {
     const loadTranslations = async () => {
       try {
-        // Step 1: load the language manifest
+        // Step 0: English is always available via static import — seed it immediately
+        const enFlat: Record<string, string> = enStrings as Record<string, string>;
+
+        // Step 1: load the language manifest (optional — may not exist)
         const manifestRes = await fetch('./languages.json');
-        if (!manifestRes.ok) return; // No manifest → use built-in English only
+        if (!manifestRes.ok) {
+          // No manifest — English only
+          setExtraTranslations({ en: enFlat });
+          return;
+        }
         const manifest: Record<string, string> = await manifestRes.json();
         if (typeof manifest !== 'object' || Array.isArray(manifest)) return;
 
         setAvailableLanguages(manifest);
 
-        // Resolve initial language: keep current if valid, else saved, else navigator, else 'en'
+        // Resolve initial language
         setLanguage(prev => {
           if (manifest[prev]) return prev;
           const saved = localStorage.getItem('tcad_language');
@@ -2268,10 +1082,9 @@ const TattingDesigner = () => {
               if (!res.ok) return [code, null];
               const data = await res.json();
               if (typeof data !== 'object' || Array.isArray(data)) return [code, null];
-              // Only accept string values; skip any stray metadata keys
               const flat: Record<string, string> = {};
               for (const [k, v] of Object.entries(data)) {
-                if (!k.startsWith('_') && typeof v === 'string') flat[k] = v;
+                if (!k.startsWith('_') && typeof v === 'string') flat[k] = v as string;
               }
               return [code, flat];
             } catch {
@@ -2280,17 +1093,20 @@ const TattingDesigner = () => {
           })
         );
 
-        const langs: Record<string, Record<string, string>> = {};
+        const langs: Record<string, Record<string, string>> = { en: enFlat };
         for (const [code, flat] of entries) {
           if (flat && Object.keys(flat as object).length > 0) {
-            langs[code as string] = flat as Record<string, string>;
+            // External en file merges over bundled en (allows overrides)
+            if (code === 'en') langs['en'] = { ...enFlat, ...(flat as Record<string, string>) };
+            else langs[code as string] = flat as Record<string, string>;
           }
         }
 
-        if (Object.keys(langs).length > 0) {
-          setExtraTranslations(langs);
-        }
+        setExtraTranslations(langs);
       } catch (err) {
+        console.error('Translation load error:', err);
+        // Last resort — set English from import even if everything else failed
+        setExtraTranslations({ en: enStrings as Record<string, string> });
       }
     };
     loadTranslations();
@@ -2414,131 +1230,33 @@ const TattingDesigner = () => {
     };
   };
 
-  // Helper functions for path calculations
-  const calculatePathLength = (points) => {
-    let length = 0;
-    for (let i = 1; i < points.length; i++) {
-      length += Math.hypot(points[i].x - points[i-1].x, points[i].y - points[i-1].y);
-    }
-    return length;
-  };
+  // bezier functions imported from ./geometry/bezier
 
-  const sampleBezierPath = (path, samples = 20) => {
-    const points = [];
-    for (let i = 0; i <= samples; i++) {
-      const t = i / samples;
-      let x, y;
-      
-      if (path.type === 'cubic') {
-        // Cubic Bezier: (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
-        x = (1-t)*(1-t)*(1-t)*path.x + 
-            3*(1-t)*(1-t)*t*path.control1X + 
-            3*(1-t)*t*t*path.control2X + 
-            t*t*t*path.endX;
-        y = (1-t)*(1-t)*(1-t)*path.y + 
-            3*(1-t)*(1-t)*t*path.control1Y + 
-            3*(1-t)*t*t*path.control2Y + 
-            t*t*t*path.endY;
-      } else {
-        // Quadratic Bezier: (1-t)²P0 + 2(1-t)tP1 + t²P2
-        x = (1-t)*(1-t)*path.x + 2*(1-t)*t*path.controlX + t*t*path.endX;
-        y = (1-t)*(1-t)*path.y + 2*(1-t)*t*path.controlY + t*t*path.endY;
-      }
-      
-      points.push({ x, y });
-    }
-    return points;
-  };
-
-  // ============================================================================
-  // REALISTIC RENDERING: HELPER FUNCTIONS
-  // ============================================================================
-
-  // Interpolate between two hex colors
-  const interpolateColor = (color1, color2, t) => {
-    const r1 = parseInt(color1.slice(1, 3), 16);
-    const g1 = parseInt(color1.slice(3, 5), 16);
-    const b1 = parseInt(color1.slice(5, 7), 16);
-    const r2 = parseInt(color2.slice(1, 3), 16);
-    const g2 = parseInt(color2.slice(3, 5), 16);
-    const b2 = parseInt(color2.slice(5, 7), 16);
-    
-    const r = Math.round(r1 + (r2 - r1) * t);
-    const g = Math.round(g1 + (g2 - g1) * t);
-    const b = Math.round(b1 + (b2 - b1) * t);
-    
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-  };
-
-  // Get color at specific position along a gradient
+  // getGradientColorAtPosition stays here — depends on dmcColors state
   const getGradientColorAtPosition = (gradientId, position) => {
     const gradient = dmcColors.find(c => c.id === gradientId);
     if (!gradient || !gradient.stops) return '#FFFFFF';
-    
     let stops = [];
     if (typeof gradient.stops === 'string') {
-      const parts = gradient.stops.split(',');
-      stops = parts.map(part => {
+      stops = gradient.stops.split(',').map(part => {
         const [pos, color] = part.split(':');
         return { position: parseFloat(pos) / 100, color: color.trim() };
       });
     } else if (Array.isArray(gradient.stops)) {
       stops = gradient.stops;
     }
-    
     if (stops.length === 0) return '#FFFFFF';
     if (stops.length === 1) return stops[0].color;
-    
     position = Math.max(0, Math.min(1, position));
-    
-    let before = stops[0];
-    let after = stops[stops.length - 1];
-    
+    let before = stops[0], after = stops[stops.length - 1];
     for (let i = 0; i < stops.length - 1; i++) {
       if (position >= stops[i].position && position <= stops[i + 1].position) {
-        before = stops[i];
-        after = stops[i + 1];
-        break;
+        before = stops[i]; after = stops[i + 1]; break;
       }
     }
-    
     const range = after.position - before.position;
     const localT = range === 0 ? 0 : (position - before.position) / range;
     return interpolateColor(before.color, after.color, localT);
-  };
-
-  // Fast version: get point and angle using pre-sampled data (avoids redundant bezier resampling)
-  const getPointAndAngleAtDistanceFast = (allSamples, pathLengths, targetDistance) => {
-    let accumulatedDistance = 0;
-    for (let pi = 0; pi < allSamples.length; pi++) {
-      const samples = allSamples[pi];
-      const pathLength = pathLengths[pi];
-      if (accumulatedDistance + pathLength >= targetDistance) {
-        const localDistance = targetDistance - accumulatedDistance;
-        let currentDist = 0;
-        for (let i = 1; i < samples.length; i++) {
-          const dx = samples[i].x - samples[i-1].x;
-          const dy = samples[i].y - samples[i-1].y;
-          const segmentDist = Math.sqrt(dx*dx + dy*dy);
-          if (currentDist + segmentDist >= localDistance) {
-            const t = segmentDist > 0 ? (localDistance - currentDist) / segmentDist : 0;
-            return { x: samples[i-1].x + dx*t, y: samples[i-1].y + dy*t, angle: Math.atan2(dy, dx) };
-          }
-          currentDist += segmentDist;
-        }
-      }
-      accumulatedDistance += pathLength;
-    }
-    const last = allSamples[allSamples.length-1];
-    const a = last[last.length-1], b = last[last.length-2];
-    return { x: a.x, y: a.y, angle: Math.atan2(a.y - b.y, a.x - b.x) };
-  };
-
-  // Legacy wrapper (used by sampleClosedPathOffset and other one-off callers)
-  const getPointAndAngleAtDistance = (paths, targetDistance) => {
-    const allSamples = paths.map(p => sampleBezierPath(p, 50));
-    const pathLengths = allSamples.map(s => calculatePathLength(s));
-    return getPointAndAngleAtDistanceFast(allSamples, pathLengths, targetDistance);
   };
 
   // Sample the entire closed path as a smooth offset curve (for teardrops)
@@ -3164,830 +1882,18 @@ const TattingDesigner = () => {
     };
   };
 
-  // Pure validity check — no setState side-effects, safe to call during render
-  const isNotationValid = (notation) => {
-    if (!notation) return true;
-    if (parseNotation(notation, true) === null) return false;
-    return checkNotationSemantics(notation);
+  // isNotationValid, expandTokens, isZeroWidth imported from ./domain/parser
+
+  // ── Notation parser functions imported from ./domain/parser ──────────────
+
+  // parseNotation wraps the pure function to wire in React setNotationError
+  const parseNotation = (notation: string, silent = false) => {
+    return parseNotationPure(notation, silent, silent ? undefined : setNotationError);
   };
 
-  const checkNotationSemantics = (notation) => {
-    try {
-      const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
-      if (!match) return false;
-      const pattern = match[2];
-      const expandTokens = (pat) => {
-        const parts = []; let current = ''; let depth = 0;
-        for (const char of pat) {
-          if (char === '(') depth++; if (char === ')') depth--;
-          if ((char === '-' || char === '.') && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; }
-          else { current += char; }
-        }
-        if (current.trim()) parts.push(current.trim());
-        const result = [];
-        for (const part of parts) {
-          const repeatMatch = part.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-          if (repeatMatch) { const count = parseInt(repeatMatch[1] || repeatMatch[4]); const inner = repeatMatch[2] || repeatMatch[3]; for (let i = 0; i < count; i++) result.push(...expandTokens(inner)); }
-          else { result.push(part); }
-        }
-        return result;
-      };
-      const isZeroWidth = (token) => {
-        const t = token.toLowerCase().trim();
-        if (t === 'be') return true;
-        if (t.startsWith('bc:') || t.startsWith('bp:') || t.startsWith('bcp:') || t.startsWith('sb:') || t.startsWith('bjp:')) return true;
-        return /^(\d+)?(p|sp|cp|lp|jp|jpg|bjp|cj|cjp|gp)$/i.test(t);
-      };
-      const tokens = expandTokens(pattern); let prevZero = false;
-      for (const token of tokens) {
-        const t = token.toLowerCase().trim();
-        if (/^\d+(p|sp|cp|lp|jp|jpg|bjp|cj|cjp|gp)$/i.test(t)) return false;
-        const zw = isZeroWidth(token);
-        if (zw && prevZero) return false;
-        prevZero = zw;
-      }
-      return true;
-    } catch { return true; }
-  };
-
-  const parseNotation = (notation, silent = false) => {
-    try {
-      if (!silent) setNotationError(null);
-      const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
-      if (!match) {
-        if (!silent) setNotationError('Invalid format');
-        return null;
-      }
-
-      const type = match[1].toLowerCase();
-      const isSplitChain = type === 'sc';
-      // sc behaves identically to c — treat as chain for all parsing purposes
-      const effectiveType = isSplitChain ? 'c' : type;
-      const pattern = match[2];
-      let totalDS = 0;
-      const picots = [];
-      let hasInvalidToken = false;
-
-      const parts = [];
-      let current = '';
-      let depth = 0;
-
-      for (let char of pattern) {
-        if (char === '(') depth++;
-        if (char === ')') depth--;
-        // Accept both "-" and "." as separators
-        if ((char === '-' || char === '.') && depth === 0) {
-          if (current.trim()) parts.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      if (current.trim()) parts.push(current.trim());
-
-      const processToken = (token, pos) => {
-        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-        if (repeatMatch) {
-          const count = parseInt(repeatMatch[1] || repeatMatch[4]);
-          const innerPattern = repeatMatch[2] || repeatMatch[3];
-          // Accept both "-" and "." as separators
-          const innerParts = innerPattern.split(/[-.]/).map(s => s.trim());
-          for (let i = 0; i < count; i++) {
-            for (let part of innerParts) {
-              pos = processToken(part, pos);
-            }
-          }
-          return pos;
-        }
-
-        // Handle BE — Bead Element marker: 1 DS, configured visually in Beading mode
-        if (token.match(/^be$/i)) {
-          picots.push({
-            id: generateId(),
-            stitchesBefore: pos,
-            length: 'medium',
-            isJoint: false,
-            isGuide: false,
-            beadType: 'be',
-            beStructure: 'core',           // 'core'|'core+picot'|'core+beaded'|'suspended'|'beaded'|'joint'|'joint+beaded'
-            beIsJoint: false,
-            coreBeads: [null, null, null], // up to 3 bead library IDs
-            picotBeads: [null, null, null],
-          });
-          return pos + 1;
-        }
-
-        // Handle bjp:SEQ beaded joint picot notation (e.g. bjp:Y, bjp:3Y)
-        const beadedJointPicotMatch = token.match(/^bjp:([YZVyzv0-9]+)$/i);
-        if (beadedJointPicotMatch) {
-          const beadSeq = beadedJointPicotMatch[1].toUpperCase();
-          picots.push({
-            id: generateId(),
-            stitchesBefore: pos,
-            length: 'medium',
-            isJoint: true,
-            isGuide: false,
-            beadType: 'bjp',
-            beadSeq: beadSeq,
-          });
-          return pos;
-        }
-
-        // Handle bp:SEQ beaded picot notation (e.g. bp:YZY, bp:2V)
-        const beadedPicotMatch = token.match(/^bp:([YZVyzv0-9]+)$/i);
-        if (beadedPicotMatch) {
-          const beadSeq = beadedPicotMatch[1].toUpperCase();
-          picots.push({
-            id: generateId(),
-            stitchesBefore: pos,
-            length: 'medium',
-            isJoint: false,
-            isGuide: false,
-            beadType: 'bp',
-            beadSeq: beadSeq,
-          });
-          return pos;
-        }
-
-        // Handle sb:SEQ suspended bead notation (e.g. sb:3Y, sb:YZY)
-        // Zero DS — perpendicular spike off path, adds no path length
-        const suspendedBeadMatch = token.match(/^sb:([YZVyzv0-9]+)$/i);
-        if (suspendedBeadMatch) {
-          const beadSeq = suspendedBeadMatch[1].toUpperCase();
-          picots.push({
-            id: generateId(),
-            stitchesBefore: pos,
-            length: 'medium',
-            isJoint: false,
-            isGuide: false,
-            beadType: 'sb',
-            beadSeq: beadSeq,
-          });
-          return pos;
-        }
-
-        // Handle bcp:CORE — core bead (1ds) + plain unbeaded picot arm
-        const bcpPlainMatch = token.match(/^bcp:([YZVyzv])$/i);
-        if (bcpPlainMatch) {
-          picots.push({
-            id: generateId(),
-            stitchesBefore: pos,
-            length: 'medium',
-            isJoint: false,
-            isGuide: false,
-            beadType: 'bcp',
-            coreSize: bcpPlainMatch[1].toUpperCase(),
-            beadSeq: null,            // null = plain picot, no bead cluster
-          });
-          return pos + 1;
-        }
-
-        // Handle bcp:CORE:SEQ — one core bead (1ds) with picot beads branching from top
-        const bcpMatch = token.match(/^bcp:([YZVyzv]):([YZVyzv0-9]+)$/i);
-        if (bcpMatch) {
-          const coreSize = bcpMatch[1].toUpperCase();
-          const beadSeq = bcpMatch[2].toUpperCase();
-          picots.push({
-            id: generateId(),
-            stitchesBefore: pos,
-            length: 'medium',
-            isJoint: false,
-            isGuide: false,
-            beadType: 'bcp',
-            coreSize: coreSize,
-            beadSeq: beadSeq,
-          });
-          return pos + 1; // 1ds added to path like bc:
-        }
-
-        // Handle bc:SEQ core bead notation (e.g. bc:3Y, bc:YZY)
-        // Each bead adds 1ds to path length — one picot entry per bead
-        const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
-        if (coreBeadMatch) {
-          const rawSeq = coreBeadMatch[1].toUpperCase();
-          // Expand sequence: "3Y" → ["Y","Y","Y"], "YZY" → ["Y","Z","Y"]
-          const expandSeq = (seq) => {
-            const out = [];
-            let i = 0;
-            while (i < seq.length) {
-              let count = 1;
-              if (/\d/.test(seq[i])) { count = parseInt(seq[i]); i++; }
-              if (i < seq.length && /[YZV]/i.test(seq[i])) {
-                for (let j = 0; j < count; j++) out.push(seq[i].toUpperCase());
-                i++;
-              } else { i++; }
-            }
-            return out;
-          };
-          const beads = expandSeq(rawSeq);
-          beads.forEach((size, idx) => {
-            picots.push({
-              id: generateId(),
-              stitchesBefore: pos + idx,      // each bead at its own DS position
-              length: 'medium',
-              isJoint: false,
-              isGuide: false,
-              beadType: 'bc',
-              beadSize: size,                  // single bead size char
-              beadSeq: null,
-            });
-          });
-          return pos + beads.length;           // advance path by bead count
-        }
-
-        const tokenMatch = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|sp|cp|p|lp|jp|jpg|cj|cjp|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|Cj|Cjp|cJ|cJp|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS|P)$/i);
-        if (!tokenMatch) {
-          if (!silent) setNotationError('Unknown element: ' + token);
-          hasInvalidToken = true;
-          return pos;
-        }
-
-        const num = parseInt(tokenMatch[1]) || 1;
-        const el = tokenMatch[2].toLowerCase();
-
-        if (el === 'ds') return pos + num;
-        if (el === 'rds') return pos + num * 2; // Reinforced DS counts as 2 DS
-        if (el === 'ss' || el === 'lss' || el === 'rss') return pos + num * 0.5;
-
-        let size = 'medium';
-        let isJoint = false;
-        let isGuide = false;
-        let isGuidePoint = false;
-        let beadType = null; // NEW: for beaded picots
-        let isCoreJoin = false; // cj / cjp: join on core thread
-        let hasPicotArm = false; // cjp: core join that also shows a picot arm
-        
-        if (el === 'jp') {
-          size = 'medium';
-          isJoint = true;
-        } else if (el === 'bjp') {
-          size = 'medium';
-          isJoint = true;
-          // beadSeq handled below via bjpMatch
-        } else if (el === 'jpg') {
-          size = 'medium';
-          isJoint = true;  // Joinable (selectable in picot join tool)
-          isGuide = true;  // Renders as green arm, not orange dot
-        } else if (el === 'cj') {
-          size = 'medium';
-          isJoint = true;
-          isCoreJoin = true;  // Core join — no picot arm rendered
-        } else if (el === 'cjp') {
-          size = 'medium';
-          isJoint = true;
-          isCoreJoin = true;  // Core join with picot arm
-          hasPicotArm = true;
-        } else if (el === 'gp') {
-          isGuidePoint = true;  // Guide Point: snap dot on path, no arm rendered
-          isGuide = true;
-        } else if (el === 'bp') {
-          size = 'medium';
-          beadType = 'default'; // Default bead
-        } else if (el === 'bp1') {
-          size = 'medium';
-          beadType = 'type1'; // Bead style 1
-        } else if (el === 'bp2') {
-          size = 'medium';
-          beadType = 'type2'; // Bead style 2
-        } else if (el === 'bp3') {
-          size = 'medium';
-          beadType = 'type3'; // Bead style 3
-        } else if (el === 'bp4') {
-          size = 'medium';
-          beadType = 'type4'; // Bead style 4
-        } else if (el === 'bp5') {
-          size = 'medium';
-          beadType = 'type5'; // Bead style 5
-        } else if (el === 'lp') {
-          size = 'large';
-        } else if (el === 'sp' || el === 'cp') {
-          size = 'small';
-        }
-
-        for (let i = 0; i < num; i++) {
-          picots.push({ 
-            id: generateId(), 
-            stitchesBefore: pos, 
-            length: size,
-            isJoint: isJoint,
-            isGuide: isGuide,
-            isGuidePoint: isGuidePoint,
-            beadType: beadType,
-            isCoreJoin: isCoreJoin || undefined,
-            hasPicotArm: hasPicotArm || undefined,
-          });
-        }
-        return pos;
-      };
-
-      let position = 0;
-      for (let part of parts) {
-        position = processToken(part, position);
-      }
-
-      totalDS = position;
-      if (hasInvalidToken) return null;
-      return { type: effectiveType, stitchCount: totalDS, picots, isSplitChain };
-    } catch (err) {
-      if (!silent) setNotationError('Parse error');
-      return null;
-    }
-  };
-
-  // Helper to reverse notation for flipping patterns
-  const reverseNotation = (notation) => {
-    try {
-      const match = notation.match(/^(r|c|sr|jk|fr):\s*(.+)$/i);
-      if (!match) return notation;
-      
-      const type = match[1];
-      const pattern = match[2];
-      
-      // Split by '-' or '.' but respect parentheses
-      const parts = [];
-      let current = '';
-      let depth = 0;
-      
-      for (let char of pattern) {
-        if (char === '(') depth++;
-        if (char === ')') depth--;
-        // Accept both "-" and "." as separators
-        if ((char === '-' || char === '.') && depth === 0) {
-          if (current.trim()) parts.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      if (current.trim()) parts.push(current.trim());
-      
-      // Reverse the array of parts
-      const reversedParts = parts.reverse();
-      
-      // Also reverse content inside repeat patterns
-      const processedParts = reversedParts.map(part => {
-        const repeatMatch = part.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-        if (repeatMatch) {
-          const count = repeatMatch[1] || repeatMatch[4];
-          const innerPattern = repeatMatch[2] || repeatMatch[3];
-          // Accept both "-" and "." as separators
-          const innerParts = innerPattern.split(/[-.]/).map(s => s.trim());
-          const reversedInner = innerParts.reverse().join('-');
-          
-          if (repeatMatch[1]) {
-            return `${count}x(${reversedInner})`;
-          } else {
-            return `(${reversedInner})x${count}`;
-          }
-        }
-        return part;
-      });
-      
-      return `${type}: ${processedParts.join('-')}`;
-    } catch (err) {
-      console.error('Error reversing notation:', err);
-      return notation;
-    }
-  };
-
-  // Helper to count actual stitches (not DS equivalent) from notation
-  // Build a compact on-screen label for a notation segment (between picots).
-  // For pure-DS segments → returns the stitch count as a string (e.g. "3").
-  // For segments containing SS / LSS / RSS → returns a run-encoded string
-  // using middle-dot as separator (e.g. "2·7lss·7rss·2") so type is visible.
-  const buildSegmentLabel = (notation, startDS, endDS) => {
-    try {
-      const pattern = notation.split(':').slice(1).join(':').trim();
-      if (!pattern) return '';
-
-      // Tokenise (respects parentheses)
-      const parts = [];
-      let current = '';
-      let depth = 0;
-      for (let char of pattern) {
-        if (char === '(') depth++;
-        if (char === ')') depth--;
-        if ((char === '-' || char === '.') && depth === 0) {
-          if (current.trim()) parts.push(current.trim());
-          current = '';
-        } else { current += char; }
-      }
-      if (current.trim()) parts.push(current.trim());
-
-      // Collect runs: [{type, count}]
-      const runs = [];
-      let dsPosition = 0;
-
-      const addRun = (type, n) => {
-        if (runs.length > 0 && runs[runs.length - 1].type === type) {
-          runs[runs.length - 1].count += n;
-        } else {
-          runs.push({ type, count: n });
-        }
-      };
-
-      const processToken = (token) => {
-        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-        if (repeatMatch) {
-          const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-          const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
-          for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
-          return;
-        }
-        // Skip zero-width tokens
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
-        if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
-        if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
-        if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
-        if (token.match(/^be$/i)) { dsPosition += 1; return; }
-        const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
-        if (coreBeadMatch) {
-          const seq = coreBeadMatch[1].toUpperCase();
-          let n = 0, i = 0;
-          while (i < seq.length) {
-            let cnt = 1;
-            if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
-            if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
-          }
-          dsPosition += n;
-          return;
-        }
-        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
-        if (!match) return;
-        const num = parseInt(match[1]) || 1;
-        const type = match[2].toLowerCase();
-        const advance = (type === 'rds') ? 2 : (type === 'ds') ? 1 : 0.5; // ss/lss/rss = 0.5
-
-        for (let i = 0; i < num; i++) {
-          const stitchStart = dsPosition;
-          const stitchEnd = dsPosition + advance;
-          if (stitchEnd > startDS && stitchStart < endDS) {
-            addRun(type, 1);
-          }
-          dsPosition = stitchEnd;
-        }
-      };
-
-      for (let part of parts) processToken(part);
-
-      if (runs.length === 0) return '';
-
-      // If all runs are pure DS (or RDS), show a plain total count
-      const allBasic = runs.every(r => r.type === 'ds' || r.type === 'rds');
-      if (allBasic) {
-        return String(runs.reduce((s, r) => s + r.count, 0));
-      }
-
-      // Mixed / SS / LSS / RSS — show type-annotated runs
-      return runs.map(r => {
-        if (r.type === 'ds') return String(r.count);
-        if (r.type === 'rds') return `${r.count}rds`;
-        if (r.type === 'ss') return `${r.count}ss`;
-        if (r.type === 'lss') return `${r.count}lss`;
-        if (r.type === 'rss') return `${r.count}rss`;
-        return String(r.count);
-      }).join('·');
-    } catch (err) {
-      console.error('buildSegmentLabel error:', err);
-      return '';
-    }
-  };
-
-  // Returns [{label, midDS}] — one entry per contiguous same-type run within [startDS, endDS).
-  // Used to position each run as its own label along the path.
-  const getSegmentRuns = (notation, startDS, endDS) => {
-    try {
-      const pattern = notation.split(':').slice(1).join(':').trim();
-      if (!pattern) return [];
-
-      // Tokenise (respects parentheses — same logic as buildSegmentLabel)
-      const parts = [];
-      let current = '';
-      let depth = 0;
-      for (let char of pattern) {
-        if (char === '(') depth++;
-        if (char === ')') depth--;
-        if ((char === '-' || char === '.') && depth === 0) {
-          if (current.trim()) parts.push(current.trim());
-          current = '';
-        } else { current += char; }
-      }
-      if (current.trim()) parts.push(current.trim());
-
-      // Accumulate runs: [{type, count, runStartDS, runEndDS}]
-      const runs = [];
-      let dsPosition = 0;
-
-      const addStitch = (type, stitchStart, stitchEnd) => {
-        if (stitchEnd <= startDS || stitchStart >= endDS) return; // outside range
-        const last = runs[runs.length - 1];
-        if (last && last.type === type && Math.abs(last.runEndDS - stitchStart) < 1e-9) {
-          last.count++;
-          last.runEndDS = stitchEnd;
-        } else {
-          runs.push({ type, count: 1, runStartDS: stitchStart, runEndDS: stitchEnd });
-        }
-      };
-
-      const processToken = (token) => {
-        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-        if (repeatMatch) {
-          const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-          const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
-          for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
-          return;
-        }
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
-        if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
-        if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
-        if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
-        if (token.match(/^be$/i)) { dsPosition += 1; return; }
-        const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
-        if (coreBeadMatch) {
-          const seq = coreBeadMatch[1].toUpperCase();
-          let n = 0, i = 0;
-          while (i < seq.length) {
-            let cnt = 1;
-            if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
-            if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
-          }
-          dsPosition += n;
-          return;
-        }
-        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
-        if (!match) return;
-        const num = parseInt(match[1]) || 1;
-        const type = match[2].toLowerCase();
-        const advance = type === 'rds' ? 2 : type === 'ds' ? 1 : 0.5;
-        for (let i = 0; i < num; i++) {
-          addStitch(type, dsPosition, dsPosition + advance);
-          dsPosition += advance;
-        }
-      };
-
-      for (let part of parts) processToken(part);
-
-      return runs.map(r => ({
-        label: r.type === 'ds'  ? String(r.count)
-             : r.type === 'rds' ? `${r.count}rds`
-             : `${r.count}${r.type}`,            // ss / lss / rss
-        midDS:    (r.runStartDS + r.runEndDS) / 2,
-        startDS:  r.runStartDS,
-        endDS:    r.runEndDS,
-      }));
-    } catch (err) {
-      console.error('getSegmentRuns error:', err);
-      return [];
-    }
-  };
-
-
-  const countActualStitches = (notation) => {
-    let count = 0;
-    
-    try {
-      const pattern = notation.split(':').slice(1).join(':').trim();
-      if (!pattern) return 0;
-      
-      // Split by '-' or '.' but respect parentheses (same logic as parseNotation)
-      const parts = [];
-      let current = '';
-      let depth = 0;
-      
-      for (let char of pattern) {
-        if (char === '(') depth++;
-        if (char === ')') depth--;
-        // Accept both "-" and "." as separators
-        if ((char === '-' || char === '.') && depth === 0) {
-          if (current.trim()) parts.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      if (current.trim()) parts.push(current.trim());
-      
-      const processToken = (token) => {
-        // Handle repeat notation: 2x(p-3ds) or (p-3ds)x2
-        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-        if (repeatMatch) {
-          const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-          const innerPattern = repeatMatch[2] || repeatMatch[3];
-          // Accept both "-" and "." as separators
-          const innerParts = innerPattern.split(/[-.]/).map(s => s.trim());
-          for (let i = 0; i < repeatCount; i++) {
-            for (let part of innerParts) {
-              processToken(part);
-            }
-          }
-          return;
-        }
-        
-        // Skip picots and beaded picots
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
-        if (token.match(/^bp:/i)) return; // beaded picot — zero width
-        if (token.match(/^bjp:/i)) return; // beaded joint picot — zero width
-        if (token.match(/^sb:/i)) return; // suspended bead — zero width
-        if (token.match(/^bc:/i)) return; // core bead — adds to path but not display count
-        if (token.match(/^bcp:/i)) return; // bcp: — core+picot bead, adds to path but not display count
-        
-        // Match stitch tokens
-        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
-        if (match) {
-          const num = parseInt(match[1]) || 1;
-          count += num; // Count actual stitches, not DS equivalent
-        }
-      };
-      
-      for (let part of parts) {
-        processToken(part);
-      }
-    } catch (err) {
-      console.error('Error counting stitches:', err);
-    }
-    
-    return count;
-  };
-
-  // Helper to count actual stitches in a DS position range
-  const countStitchesInRange = (notation, startDS, endDS) => {
-    let count = 0;
-    
-    try {
-      const pattern = notation.split(':').slice(1).join(':').trim();
-      if (!pattern) return 0;
-      
-      // Split by '-' or '.' but respect parentheses (same logic as parseNotation)
-      const parts = [];
-      let current = '';
-      let depth = 0;
-      
-      for (let char of pattern) {
-        if (char === '(') depth++;
-        if (char === ')') depth--;
-        // Accept both "-" and "." as separators
-        if ((char === '-' || char === '.') && depth === 0) {
-          if (current.trim()) parts.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      if (current.trim()) parts.push(current.trim());
-      
-      // Expand repeats and count
-      let dsPosition = 0;
-      
-      const processToken = (token) => {
-        // Handle repeat notation: 2x(p-3ds) or (p-3ds)x2
-        const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
-        if (repeatMatch) {
-          const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-          const innerPattern = repeatMatch[2] || repeatMatch[3];
-          // Accept both "-" and "." as separators
-          const innerParts = innerPattern.split(/[-.]/).map(s => s.trim());
-          for (let i = 0; i < repeatCount; i++) {
-            for (let part of innerParts) {
-              processToken(part);
-            }
-          }
-          return;
-        }
-        
-        // Skip picots and beaded picots
-        if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
-        if (token.match(/^bp:/i)) return; // beaded picot — zero width
-        if (token.match(/^bjp:/i)) return; // beaded joint picot — zero width
-        if (token.match(/^sb:/i)) return; // suspended bead — zero width
-        // bcp/bcjp: core bead — advance by 1ds
-        if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
-        if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
-        if (token.match(/^be$/i)) { dsPosition += 1; return; }
-        // Core bead: advance dsPosition by bead count but don't count as stitches
-        const coreBeadSkipMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
-        if (coreBeadSkipMatch) {
-          const seq = coreBeadSkipMatch[1].toUpperCase();
-          let n = 0, i = 0;
-          while (i < seq.length) {
-            let cnt = 1;
-            if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
-            if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
-          }
-          dsPosition += n;
-          return;
-        }
-        
-        // Match stitch tokens
-        const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
-        if (match) {
-          const num = parseInt(match[1]) || 1;
-          const type = match[2].toLowerCase();
-          
-          for (let i = 0; i < num; i++) {
-            const stitchStartDS = dsPosition;
-            let stitchEndDS = dsPosition;
-            
-            // Calculate DS span for this stitch
-            if (type === 'ds') stitchEndDS = dsPosition + 1;
-            else if (type === 'rds') stitchEndDS = dsPosition + 2;
-            else if (type === 'ss' || type === 'lss' || type === 'rss') stitchEndDS = dsPosition + 0.5;
-            
-            // Check if this stitch overlaps with the range
-            if (stitchEndDS > startDS && stitchStartDS < endDS) {
-              count++;
-            }
-            
-            dsPosition = stitchEndDS;
-          }
-        }
-      };
-      
-      for (let part of parts) {
-        processToken(part);
-      }
-    } catch (err) {
-      console.error('Error counting stitches in range:', err);
-    }
-    
-    return count;
-  };
-
-  // Helper to get stitch types from notation for realistic rendering
-  const getStitchTypes = (notation) => {
-    // PERFORMANCE: return cached result if we've parsed this exact notation string before
-    if (stitchTypesCacheRef.current.has(notation)) {
-      return stitchTypesCacheRef.current.get(notation);
-    }
-    const stitchMap = {}; // Map from DS position to stitch type or array of types
-    
-    try {
-      const parts = notation.split(':').slice(1).join(':').trim().split(/[,.\-]/).map(s => s.trim()) || [];
-      let dsPosition = 0; // Position in DS units
-      
-      for (let part of parts) {
-        // Skip picots and beaded picots
-        if (part.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) continue;
-        if (part.match(/^bp:/i)) continue; // beaded picot — zero width
-        if (part.match(/^bjp:/i)) continue; // beaded joint picot — zero width
-        if (part.match(/^sb:/i)) continue; // suspended bead — zero width
-        // bcp/bcjp: advance DS position by 1
-        if (part.match(/^bcp:/i)) { dsPosition += 1; continue; }
-        if (part.match(/^bcjp:/i)) { dsPosition += 1; continue; }
-        if (part.match(/^be$/i)) { dsPosition += 1; continue; }
-        // Core bead: advance DS position without adding stitch types
-        const coreBeadTypeMatch = part.match(/^bc:([YZVyzv0-9]+)$/i);
-        if (coreBeadTypeMatch) {
-          const seq = coreBeadTypeMatch[1].toUpperCase();
-          let n = 0, si = 0;
-          while (si < seq.length) {
-            let cnt = 1;
-            if (/\d/.test(seq[si])) { cnt = parseInt(seq[si]); si++; }
-            if (si < seq.length && /[YZV]/i.test(seq[si])) { n += cnt; si++; } else { si++; }
-          }
-          dsPosition += n;
-          continue;
-        }
-        
-        // Match stitch tokens
-        const match = part.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
-        if (match) {
-          const count = parseInt(match[1]) || 1;
-          const type = match[2].toLowerCase();
-          
-          for (let i = 0; i < count; i++) {
-            if (type === 'rds') {
-              // RDS takes 2 DS positions. Only the first is rendered (as a double-wide stitch);
-              // the second is a continuation marker so the cache builder can skip it.
-              stitchMap[dsPosition] = 'rds';
-              stitchMap[dsPosition + 1] = 'rds-cont';
-              dsPosition += 2;
-            } else if (type === 'ds') {
-              // DS takes 1 position
-              stitchMap[dsPosition] = 'ds';
-              dsPosition += 1;
-            } else if (type === 'ss') {
-              // SS: 2 stitches take 1 DS position
-              stitchMap[dsPosition] = ['ss', 'ss'];
-              dsPosition += 0.5;
-            } else if (type === 'lss') {
-              // LSS: same size as SS, left-leaning variant
-              stitchMap[dsPosition] = ['lss', 'lss'];
-              dsPosition += 0.5;
-            } else if (type === 'rss') {
-              // RSS: same size as SS, right-leaning variant
-              stitchMap[dsPosition] = ['rss', 'rss'];
-              dsPosition += 0.5;
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Error parsing stitch types:', err);
-    }
-
-    // PERFORMANCE: store result so identical notation strings skip parsing next time
-    stitchTypesCacheRef.current.set(notation, stitchMap);
-    return stitchMap;
+  // getStitchTypes wraps the pure function to wire in the component-level cache
+  const getStitchTypes = (notation: string) => {
+    return getStitchTypesPure(notation, stitchTypesCacheRef.current);
   };
 
   const addRing = useCallback(() => {
@@ -3996,14 +1902,14 @@ const TattingDesigner = () => {
     const squeeze = 0;
     const pathData = createTeardropPath(center.x, center.y, targetLength, squeeze);
     const newEl = {
-      id: Date.now(),
+      id: generateId(),
       type: 'ring',
       materialId: lastUsedMaterialIdRef.current,
       center: { x: center.x, y: center.y },
       rotation: 0,
       stitchCount: 12,
       color: '#FFFFFF',
-      picots: [{ id: Date.now() + 1, stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
+      picots: [{ id: generateId(), stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
       orderNumber: null,
       notation: 'r: 6ds-p-6ds',
       labelOffset: 8,
@@ -4025,17 +1931,16 @@ const TattingDesigner = () => {
     const totalLength = (stitchCountA + stitchCountB) * dsWidth;
     const squeeze = 0.25;
     const pathData = createSplitRingPath(center.x, center.y, totalLength, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
-    const now = Date.now();
     const newEl = {
-      id: now,
+      id: generateId(),
       type: 'ring',
       center: { x: center.x, y: center.y },
       rotation: 0,
       stitchCount: stitchCountA + stitchCountB,
       color: '#FFFFFF',
       picots: [
-        { id: now + 1, stitchesBefore: 3, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null },
-        { id: now + 2, stitchesBefore: 9, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }
+        { id: generateId(), stitchesBefore: 3, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null },
+        { id: generateId(), stitchesBefore: 9, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }
       ],
       orderNumber: null,
       notation: 'sr: 3ds-p-3ds',
@@ -4074,9 +1979,8 @@ const TattingDesigner = () => {
     const startY = center.y;
     const endX = center.x + halfChord;
     const endY = center.y;
-    const now = Date.now();
     const newEl = {
-      id: now,
+      id: generateId(),
       type: 'chain',
       materialId: lastUsedMaterialIdRef.current,
       center: { x: center.x, y: center.y },
@@ -4091,7 +1995,7 @@ const TattingDesigner = () => {
       }],
       stitchCount,
       color: '#FFFFFF',
-      picots: [{ id: now + 1, stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
+      picots: [{ id: generateId(), stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
       notation: 'c: 6ds-p-6ds',
       labelOffset: 8,
       picotSideMultiplier: 1
@@ -4166,7 +2070,7 @@ const TattingDesigner = () => {
     const control2Y = startY + (endY - startY) * 0.67;
     
     setElements(prev => [...prev, {
-      id: Date.now(),
+      id: generateId(),
       type: 'line',
       materialId: lastUsedMaterialIdRef.current,
       center: { x: center.x, y: center.y },
@@ -5213,59 +3117,9 @@ const TattingDesigner = () => {
   // ── Recent Projects helpers ───────────────────────────────────────────────
 
   // Generate a compact SVG thumbnail from elements (paths only, no labels/picots).
-  const generateThumbnail = (els) => {
-    if (!els || els.length === 0) return '';
-    // Collect all path points to compute bounding box
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const expand = (x, y) => { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; };
-    els.forEach(el => {
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
-        expand(el.center.x - r, el.center.y - r); expand(el.center.x + r, el.center.y + r);
-      } else if (el.paths?.length > 0) {
-        el.paths.forEach(p => {
-          expand(p.x, p.y); expand(p.endX, p.endY);
-          if (p.type === 'cubic') { expand(p.control1X, p.control1Y); expand(p.control2X, p.control2Y); }
-          else { expand(p.controlX, p.controlY); }
-        });
-      }
-    });
-    if (!isFinite(minX)) return '';
-    const pad = 16;
-    const W = 300, H = 200;
-    const srcW = maxX - minX + pad * 2, srcH = maxY - minY + pad * 2;
-    const scale = Math.min(W / srcW, H / srcH);
-    const offX = (W - srcW * scale) / 2 - (minX - pad) * scale;
-    const offY = (H - srcH * scale) / 2 - (minY - pad) * scale;
-    const tx = (x) => ((x * scale + offX)).toFixed(1);
-    const ty = (y) => ((y * scale + offY)).toFixed(1);
-    const paths = els.map(el => {
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        const r = ((el.stitchCount * dsWidth) / (2 * Math.PI) * scale).toFixed(1);
-        return `<circle cx="${tx(el.center.x)}" cy="${ty(el.center.y)}" r="${r}" fill="none" stroke="#a78bfa" stroke-width="1.5"/>`;
-      }
-      if (!el.paths?.length) return '';
-      const d = el.paths.map(p => {
-        if (p.type === 'cubic') return `M${tx(p.x)},${ty(p.y)} C${tx(p.control1X)},${ty(p.control1Y)} ${tx(p.control2X)},${ty(p.control2Y)} ${tx(p.endX)},${ty(p.endY)}`;
-        return `M${tx(p.x)},${ty(p.y)} Q${tx(p.controlX)},${ty(p.controlY)} ${tx(p.endX)},${ty(p.endY)}`;
-      }).join(' ');
-      const stroke = el.type === 'ring' ? '#a78bfa' : '#34d399';
-      return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
-    }).join('');
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#1f2937"/>${paths}</svg>`;
-  };
-
-  // Add or update a recent project entry. Dedupes by filename, caps at 20.
-  const addToRecents = (name: string, filename: string, thumbnail: string) => {
-    try {
-      const raw = localStorage.getItem('tcad_recent_projects');
-      const list = raw ? JSON.parse(raw) : [];
-      const filtered = list.filter(e => e.filename !== filename);
-      const entry = { id: Date.now().toString(), name, filename, thumbnail, savedAt: new Date().toISOString() };
-      const updated = [entry, ...filtered].slice(0, 20);
-      localStorage.setItem('tcad_recent_projects', JSON.stringify(updated));
-    } catch (_) {}
-  };
+  // generateThumbnail and addToRecents imported from ./tauri/file
+  // Thin wrapper to bind dsWidth from component state
+  const thumbnail = (els) => generateThumbnail(els, dsWidth);
 
   // Build the project data object (shared by save and autosave)
   const buildProjectData = useCallback((finalName: string) => ({
@@ -5294,23 +3148,18 @@ const TattingDesigner = () => {
 
   // Write to a known path — no dialog, used for Ctrl+S when file already exists
   const saveToPath = useCallback(async (filePath: string, finalName: string) => {
-    const json = JSON.stringify(buildProjectData(finalName), null, 2);
-    await writeTextFile(filePath, json);
-    const thumb = generateThumbnail(elements);
+    await writeProjectFile(filePath, buildProjectData(finalName));
+    const thumb = thumbnail(elements);
     addToRecents(finalName, filePath, thumb);
     setLastSavedHistoryIndex(historyIndexRef.current);
-  }, [buildProjectData, elements]);
+  }, [buildProjectData, elements, dsWidth]);
 
   // Show native Save As dialog then write
   const performSave = useCallback(async (nameOverride?: string) => {
     const finalName = (nameOverride ?? projectName).trim() || 'Untitled Pattern';
     try {
-      const filePath = await tauriSave({
-        title: 'Save Project',
-        defaultPath: `${finalName.replace(/[^a-z0-9]/gi, '_')}.json`,
-        filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
-      });
-      if (!filePath) return; // user cancelled
+      const filePath = await showSaveDialog(finalName);
+      if (!filePath) return;
       setProjectName(finalName);
       await saveToPath(filePath, finalName);
       setCurrentFilePath(filePath);
@@ -5407,21 +3256,14 @@ const TattingDesigner = () => {
     const count = (projectData.elements || []).length;
     setTimeout(() => showLoadMsg('success', t('loadSuccess').replace('{n}', String(count))), 50);
 
-    const thumb = generateThumbnail(projectData.elements || []);
+    const thumb = generateThumbnail(projectData.elements || [], projectData.dsWidth || 10);
     addToRecents(projectData.name || 'Project', filePath, thumb);
   }, []);
 
   // Load directly from a known path — used by recent project cards (no OS dialog)
   const loadFromPath = useCallback(async (filePath: string) => {
     try {
-      const text = await readTextFile(filePath);
-      let projectData: any;
-      try {
-        projectData = JSON.parse(text);
-      } catch {
-        showLoadMsg('error', t('loadErrCorrupted'));
-        return;
-      }
+      const projectData = await readProjectFile(filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
       // Likely moved or deleted — give a friendly message
@@ -5438,21 +3280,10 @@ const TattingDesigner = () => {
 
   // Load project — native OS open dialog (Browse button only)
   const loadProject = useCallback(async () => {
-    const filePath = await tauriOpen({
-      title: 'Open Project',
-      filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
-    });
-    if (!filePath || typeof filePath !== 'string') return;
-
+    const filePath = await showOpenDialog();
+    if (!filePath) return;
     try {
-      const text = await readTextFile(filePath);
-      let projectData: any;
-      try {
-        projectData = JSON.parse(text);
-      } catch {
-        showLoadMsg('error', t('loadErrCorrupted'));
-        return;
-      }
+      const projectData = await readProjectFile(filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
       showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
@@ -5687,15 +3518,11 @@ const TattingDesigner = () => {
     // Add XML declaration
     svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
 
-    // ── Save via Tauri dialog (browser link.click() is blocked in Tauri WebView) ──
+    // ── Save via Tauri dialog ──
     try {
-      const filePath = await tauriSave({
-        title: 'Export SVG',
-        defaultPath: `${projectName.replace(/[^a-z0-9]/gi, '_')}.svg`,
-        filters: [{ name: 'SVG Image', extensions: ['svg'] }],
-      });
-      if (!filePath) return; // user cancelled
-      await writeTextFile(filePath, svgString);
+      const filePath = await showSaveSvgDialog(projectName.replace(/[^a-z0-9]/gi, '_'));
+      if (!filePath) return;
+      await writeTextToFile(filePath, svgString);
     } catch (err) {
       console.error('SVG export failed:', err);
     }
@@ -6525,77 +4352,8 @@ const TattingDesigner = () => {
     } catch { return null; }
   };
 
-  const getBoundingBox = (ids) => {
-    const els = elements.filter(e => ids.includes(e.id));
-    if (els.length === 0) return null;
-    
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
-    els.forEach(el => {
-      // Handle circles (rendered as SVG circle, not paths)
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        const targetCircumference = el.stitchCount * dsWidth;
-        const radius = targetCircumference / (2 * Math.PI);
-        
-        // Add picot lengths to radius if element has picots
-        let maxPicotLength = 0;
-        if (el.picots && el.picots.length > 0) {
-          const picotSize = { small: 13, medium: 20, large: 26 };
-          el.picots.forEach(p => {
-            const len = picotSize[p.length] || 20;
-            maxPicotLength = Math.max(maxPicotLength, len);
-          });
-        }
-        
-        const effectiveRadius = radius + maxPicotLength;
-        
-        minX = Math.min(minX, el.center.x - effectiveRadius);
-        minY = Math.min(minY, el.center.y - effectiveRadius);
-        maxX = Math.max(maxX, el.center.x + effectiveRadius);
-        maxY = Math.max(maxY, el.center.y + effectiveRadius);
-      } else {
-        // Sample all paths to find bounds (for chains, teardrops, lines)
-        let elMinX = Infinity, elMinY = Infinity, elMaxX = -Infinity, elMaxY = -Infinity;
-        el.paths.forEach(path => {
-          const points = sampleBezierPath(path, 20);
-          points.forEach(pt => {
-            elMinX = Math.min(elMinX, pt.x);
-            elMinY = Math.min(elMinY, pt.y);
-            elMaxX = Math.max(elMaxX, pt.x);
-            elMaxY = Math.max(elMaxY, pt.y);
-          });
-        });
-        
-        // Account for picots on this element only — expand element bounds, then merge
-        if (el.picots && el.picots.length > 0) {
-          const picotSize = { small: 13, medium: 20, large: 26 };
-          let maxPicotLength = 0;
-          el.picots.forEach(p => {
-            const len = picotSize[p.length] || 20;
-            maxPicotLength = Math.max(maxPicotLength, len);
-          });
-          elMinX -= maxPicotLength;
-          elMinY -= maxPicotLength;
-          elMaxX += maxPicotLength;
-          elMaxY += maxPicotLength;
-        }
-
-        minX = Math.min(minX, elMinX);
-        minY = Math.min(minY, elMinY);
-        maxX = Math.max(maxX, elMaxX);
-        maxY = Math.max(maxY, elMaxY);
-      }
-    });
-    
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-      centerX: (minX + maxX) / 2,
-      centerY: (minY + maxY) / 2
-    };
-  };
+  // getBoundingBox — thin wrapper over pure function from ./geometry/layout
+  const getBoundingBox = (ids) => getBoundingBoxPure(ids, elements, dsWidth);
 
   // Fit all elements in view
   const fitAllElements = () => {
@@ -6887,7 +4645,7 @@ const TattingDesigner = () => {
       } else {
         // Create new line on click
         const newLine = {
-          id: Date.now(),
+          id: generateId(),
           type: 'line',
           center: { x: world.x, y: world.y },
           isClosed: false,
@@ -16500,13 +14258,12 @@ const TattingDesigner = () => {
 
       {/* ── Recent Projects Dialog ────────────────────────────────────────── */}
       {showRecentProjectsDialog && (() => {
-        const raw = (() => { try { return JSON.parse(localStorage.getItem('tcad_recent_projects') || '[]'); } catch (_) { return []; } })();
-        const recents: Array<{ id: string; name: string; filename: string; thumbnail: string; savedAt: string }> = raw;
+        const recents = getRecents();
 
         const removeEntry = (id: string) => {
           const updated = recents.filter(e => e.id !== id);
           localStorage.setItem('tcad_recent_projects', JSON.stringify(updated));
-          // Force re-render by toggling dialog (quick trick — dialog reads localStorage fresh each render)
+          // Force re-render by toggling dialog (quick trick — dialog reads fresh each render)
           setShowRecentProjectsDialog(false);
           setTimeout(() => setShowRecentProjectsDialog(true), 0);
         };
