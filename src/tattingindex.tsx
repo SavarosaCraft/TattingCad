@@ -31,7 +31,9 @@ import { useUIState } from './hooks/useUIState';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useTattingOrder } from './hooks/useTattingOrder';
 import { useProjectState } from './hooks/useProjectState';
+import { useViewState, DEFAULT_THEME, SPLASH_TIP_COUNT } from './hooks/useViewState';
 import { useBeadState, DEFAULT_BEAD_LIBRARY } from './hooks/useBeadState';
+import { usePatternState, DEFAULT_MATERIALS, LANGUAGES_FALLBACK } from './hooks/usePatternState';
 import {
   IconMove, IconMenu, IconClose, IconChevronDown, IconImage,
   IconRefImageOn, IconRefImageOff, IconOrtho, IconOrthoOn,
@@ -78,12 +80,6 @@ const logoUrl = '/logo.png';
 // TRANSLATIONS — add new languages by duplicating the 'en' block.
 // Notation terms (ds, p, jp …) are universal and are NOT translated.
 // ============================================================================
-// Fallback language list used before translations.json is loaded (or if fetch fails).
-// The canonical list lives in translations.json under "_languages".
-const LANGUAGES_FALLBACK: Record<string, string> = {
-  en: 'English',
-};
-
 // Colors cycled through for order group badges (canvas + SVG export).
 // Each entry is [fillColor, strokeColor] — dark stroke so badges stay readable on any bg.
 const ORDER_GROUP_COLORS: [string, string][] = [
@@ -284,9 +280,6 @@ const openExternal = (url: string) => {
     });
 };
 
-const DEFAULT_MATERIALS = [
-  { id: 'default', name: 'Default', color: '#FFFFFF', isGradient: false },
-];
 
 const ThreadPropertiesNumInput = ({ label, value, onChange = null, unit = 'mm', readOnly = false, hint = null }) => {
   const [localVal, setLocalVal] = React.useState(value?.toString() ?? '');
@@ -445,6 +438,23 @@ const TattingDesigner = () => {
     draftNotation, setDraftNotation,
   } = useProjectState();
 
+  // ── View state ───────────────────────────────────────────────────────────
+  const {
+    bgColor, setBgColor,
+    gridEnabled, setGridEnabled,
+    customColors, setCustomColors,
+    theme, setTheme,
+    snapEnabled, setSnapEnabled,
+    snapRadius, setSnapRadius,
+    referenceImage, setReferenceImage,
+    refImageProps, setRefImageProps,
+    dmcColors, setDmcColors,
+    notationFontSize, setNotationFontSize,
+    uiScale, setUiScale,
+    clipboard, setClipboard,
+    splashTipIndex, setSplashTipIndex,
+  } = useViewState();
+
   // ── Bead and picot state ─────────────────────────────────────────────────
   const {
     beadLibrary, setBeadLibrary,
@@ -460,59 +470,20 @@ const TattingDesigner = () => {
     activePresetId, setActivePresetId,
   } = useBeadState();
 
-  const [elements, setElements] = useState([]);
-  const [camera, setCamera] = useState(() => ({
-    x: Math.round(window.innerWidth / 2),
-    y: Math.round(window.innerHeight / 2)
-  })); // World origin centered in viewport on first load
-  const [zoom, setZoom] = useState(1.8); // Default zoom 180%
-  const [dsWidth, setDsWidth] = useState(10);
-
-  // Ruler tool state — up to 2 world-coord anchor points + live cursor position
-
-  const [gridEnabled, setGridEnabled] = useState(true);
-  // Order groups — array of { id, name } in display order. Color assigned by index (cycles through GROUP_COLORS).
-  const [bgColor, setBgColor] = useState<string>(() => {
-    try { return localStorage.getItem('tcad_bg_color') || '#1F2937'; } catch { return '#1F2937'; }
-  });
-  const [customColors, setCustomColors] = useState([]);
-  const [referenceImage, setReferenceImage] = useState(null);
-  const [refImageProps, setRefImageProps] = useState({ opacity: 0.5, rotation: 0, scale: 1, visible: true, x: 0, y: 0 });
-  const [clipboard, setClipboard] = useState([]); // NEW: for copy/paste
-  // helpTab state removed — help content now lives in tatting-help.html (iframe)
-  const [dmcColors, setDmcColors] = useState([]); // DMC color database
-  const [snapEnabled, setSnapEnabled] = useState(true); // Toggle for snap to point
-
-  // Canvas indicator theme — all user-visible indicator colors in one object.
-  // Users can download this as theme.json, edit it, and reload via Options > Load Theme.
-  const DEFAULT_THEME = {
-    // Snap points
-    snapOuter: '#FFA500',
-    snapInner: '#FFA500',
-    // Joint picots (jp)
-    jpUnconnected: '#00CC44',
-    jpConnected:   '#FFE600',
-    jpSelected:    '#FF1493',
-    // Core join picots (cj / cjp)
-    cjUnconnected: '#00BFFF',
-    cjConnected:   '#FFE600',
-    cjSelected:    '#FF1493',
-    // Path edit handles
-    handleStart:    '#00FF00',
-    handleControl1: '#0088FF',
-    handleControl2: '#00DDFF',
-    handleStroke:   '#000000',
-    // Connection lines & midpoint dot
-    connectionLine: '#FFE600',
-    connectionDot:  '#FFE600',
-    // Guide picot arm (jpg)
-    jpgArm:         '#00FF00',
-    jpgArmSelected: '#66FF66',
-    // Guide point diamond (gp)
-    gpDiamond:      '#ADFF2F',
-  };
-  const [theme, setTheme] = useState(DEFAULT_THEME);
-  const [snapRadius, setSnapRadius] = useState(15); // Snap radius in SCREEN pixels — divided by zoom at use sites
+  // ── Core pattern state ───────────────────────────────────────────────────
+  const {
+    elements, setElements,
+    dsWidth, setDsWidth,
+    camera, setCamera,
+    zoom, setZoom,
+    patternNotes, setPatternNotes,
+    materials, setMaterials,
+    language, setLanguage,
+    extraTranslations, setExtraTranslations,
+    availableLanguages, setAvailableLanguages,
+    history, setHistory,
+    historyIndex, setHistoryIndex,
+  } = usePatternState();
 
   const spaceDownRef = useRef(false);                    // Ref mirror — mouse handlers read this to avoid stale closure
   const zDownRef = useRef(false);                        // Ref mirror for Z key
@@ -549,36 +520,11 @@ const TattingDesigner = () => {
   })();
 
   // Tips — navigable with prev/next
-  const SPLASH_TIP_KEYS = [
-    'splashTip01', 'splashTip02', 'splashTip03', 'splashTip04', 'splashTip05',
-    'splashTip06', 'splashTip07', 'splashTip08', 'splashTip09', 'splashTip10',
-    'splashTip11', 'splashTip12', 'splashTip13', 'splashTip14', 'splashTip15',
-  ];
-  const [splashTipIndex, setSplashTipIndex] = useState<number>(() => Math.floor(Math.random() * SPLASH_TIP_KEYS.length));
+  // SPLASH_TIP_KEYS replaced by SPLASH_TIP_COUNT from ./hooks/useViewState
 
 
-  // ============================================================================
-  // REALISTIC RENDERING STATE
-  // ============================================================================
-  const [notationFontSize, setNotationFontSize] = useState('medium'); // 'small' | 'medium' | 'large'
-  const [uiScale, setUiScale] = useState<string>(() => {
-    try { return localStorage.getItem('tcad_ui_scale') || 'normal'; } catch { return 'normal'; }
-  }); // 'normal' | 'large'
-  const [patternNotes, setPatternNotes] = useState(''); // Pattern notes / instructions
-  const [materials, setMaterials] = useState(DEFAULT_MATERIALS); // Material groups (up to 10)
   const lastUsedMaterialIdRef = useRef('default');
 
-  // ── Localisation ────────────────────────────────────────────────────────────
-  const [language, setLanguage] = useState<string>(() => {
-    const saved = localStorage.getItem('tcad_language');
-    if (saved && TRANSLATIONS[saved]) return saved;
-    const nav = navigator.language?.split('-')[0] ?? 'en';
-    return TRANSLATIONS[nav] ? nav : 'en';
-  });
-  // Extra translations loaded from translations.json (merged on top of hardcoded)
-  const [extraTranslations, setExtraTranslations] = useState<Record<string, Record<string, string>>>({});
-  // Available languages — populated from translations.json "_languages" key
-  const [availableLanguages, setAvailableLanguages] = useState<Record<string, string>>(LANGUAGES_FALLBACK);
 
   const t = React.useCallback((key: string): string => {
     // Priority: current language external JSON → current language hardcoded →
@@ -596,8 +542,6 @@ const TattingDesigner = () => {
   // - picotHorizontalOffset: 0.75 * dsWidth (backwards along path)
 
   // Undo/Redo state - now stores {elements, connections}
-  const [history, setHistory] = useState([{ elements: [], connections: [] }]);
-  const [historyIndex, setHistoryIndex] = useState(0);  // Current position in history
   const isUndoRedoRef = useRef(false);  // Flag to prevent adding history during undo/redo
   const notationEscapeRef = useRef(false); // Flag: ESC was pressed on notation input — suppress blur commit
   const pendingNotationRef = useRef(null); // { elementId, notation, notationB? } — survives re-renders/unmount
@@ -15985,15 +15929,15 @@ const TattingDesigner = () => {
             {/* Navigable tips strip */}
             <div className="flex items-center gap-2 px-3 pb-3">
               <button
-                onClick={() => setSplashTipIndex(i => (i - 1 + SPLASH_TIP_KEYS.length) % SPLASH_TIP_KEYS.length)}
+                onClick={() => setSplashTipIndex(i => (i - 1 + SPLASH_TIP_COUNT) % SPLASH_TIP_COUNT)}
                 className="text-gray-500 hover:text-gray-300 text-sm leading-none flex-shrink-0 px-1"
                 title={t('splashTipPrev')}
               >‹</button>
               <div className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-2 min-h-[2.5rem] flex items-center">
-                <span className="text-gray-400 text-xs leading-relaxed">{t(SPLASH_TIP_KEYS[splashTipIndex])}</span>
+                <span className="text-gray-400 text-xs leading-relaxed">{t(`splashTip${String(splashTipIndex + 1).padStart(2, '0')}`)}</span>
               </div>
               <button
-                onClick={() => setSplashTipIndex(i => (i + 1) % SPLASH_TIP_KEYS.length)}
+                onClick={() => setSplashTipIndex(i => (i + 1) % SPLASH_TIP_COUNT)}
                 className="text-gray-500 hover:text-gray-300 text-sm leading-none flex-shrink-0 px-1"
                 title={t('splashTipNext')}
               >›</button>
