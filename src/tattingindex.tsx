@@ -2117,6 +2117,14 @@ const TattingDesigner = () => {
     }
   };
 
+  // Get element center (works for both regular and ghost elements)
+  const getElementCenter = (el) => {
+    if (el.type === 'ghost') {
+      return el.transform ? { x: el.transform.x, y: el.transform.y } : { x: 0, y: 0 };
+    }
+    return el.center || { x: 0, y: 0 };
+  };
+
   const addLine = useCallback(() => {
     const center = getViewportCenter();
     const startX = center.x - 100;
@@ -2384,8 +2392,8 @@ const TattingDesigner = () => {
     if (delta === 0) return;
     const selEls = elements.filter(e => selectedIds.includes(e.id));
     const polarPivot = getPolarPivot(selectedIds);
-    const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-    const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+    const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
+    const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
     const rad = delta * Math.PI / 180;
     const cos = Math.cos(rad), sin = Math.sin(rad);
 
@@ -11287,8 +11295,8 @@ const TattingDesigner = () => {
                 })();
 
                 // Centroid of ALL selected (for transforms when no polar grid is linked)
-                const cxAll = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-                const cyAll = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                const cxAll = selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
+                const cyAll = selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
 
                 // If all selected elements share a polar grid, use the grid centre + its offset as flip axes.
                 // FlipH = mirror across axis at (angularOffset + 90°) through grid centre.
@@ -13004,11 +13012,11 @@ const TattingDesigner = () => {
                 let pivX: number, pivY: number;
                 if (polarArrayPivotId && polarArrayPivotId !== 'selection') {
                   const grid = polarGrids.find(g => g.id === polarArrayPivotId);
-                  pivX = grid ? grid.center.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-                  pivY = grid ? grid.center.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                  pivX = grid ? grid.center.x : selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
+                  pivY = grid ? grid.center.y : selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
                 } else {
-                  pivX = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-                  pivY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                  pivX = selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
+                  pivY = selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
                 }
 
                 const stepDeg = polarArrayAngle / polarArrayCount;
@@ -13109,8 +13117,8 @@ const TattingDesigner = () => {
                 const linkedGid = (() => { const gid = selEls[0]?.polarRotationGridId; return gid && selEls.every(e => e.polarRotationGridId === gid) ? gid : null; })();
                 const pivGrid = linkedGid ? polarGrids.find(g => g.id === linkedGid) : selectedPolarGridId ? polarGrids.find(g => g.id === selectedPolarGridId) : null;
                 if (pivGrid) { pivX = pivGrid.center.x; pivY = pivGrid.center.y; }
-                const centroidX = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-                const centroidY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+                const centroidX = selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
+                const centroidY = selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
                 const r0 = Math.sqrt((centroidX - pivX) ** 2 + (centroidY - pivY) ** 2);
                 const angle0 = Math.atan2(centroidY - pivY, centroidX - pivX) * 180 / Math.PI;
                 const angularStep = spiralArrayAngleStep; // fixed degrees per copy — independent of count
