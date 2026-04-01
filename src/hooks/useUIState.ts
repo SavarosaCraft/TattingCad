@@ -40,13 +40,15 @@ export function useUIState() {
   const [polarArrayCount, setPolarArrayCount] = useState(6);
   const [polarArrayAngle, setPolarArrayAngle] = useState(360);
   const [polarArrayPivotId, setPolarArrayPivotId] = useState<string | 'selection' | null>(null);
+  const [polarArrayCreateGhosts, setPolarArrayCreateGhosts] = useState(false);
 
   const [showLinearArrayDialog, setShowLinearArrayDialog] = useState(false);
   const [linearArrayPeek, setLinearArrayPeek] = useState(false);
   const [linearArrayCount, setLinearArrayCount] = useState(4);
   const [linearArrayAngle, setLinearArrayAngle] = useState(0);
-  const [linearArraySpacing, setLinearArraySpacing] = useState(60);
+  const [linearArraySpacing, setLinearArraySpacing] = useState(100);
   const [linearArrayRotStep, setLinearArrayRotStep] = useState(0);
+  const [linearArrayCreateGhosts, setLinearArrayCreateGhosts] = useState(false);
 
   const [showSpiralArrayDialog, setShowSpiralArrayDialog] = useState(false);
   const [spiralArrayPeek, setSpiralArrayPeek] = useState(false);
@@ -56,6 +58,9 @@ export function useUIState() {
   const [spiralArrayGrowth, setSpiralArrayGrowth] = useState(1.2);
   const [spiralArrayRotate, setSpiralArrayRotate] = useState(true);
   const [spiralArrayAngleStep, setSpiralArrayAngleStep] = useState(30);
+
+  // Array Manager
+  const [showArrayManager, setShowArrayManager] = useState(false);
 
   // ── Polar grid ─────────────────────────────────────────────────────────
   const [polarGridPeek, setPolarGridPeek] = useState(false);
@@ -127,12 +132,14 @@ export function useUIState() {
     polarArrayCount, setPolarArrayCount,
     polarArrayAngle, setPolarArrayAngle,
     polarArrayPivotId, setPolarArrayPivotId,
+    polarArrayCreateGhosts, setPolarArrayCreateGhosts,
     showLinearArrayDialog, setShowLinearArrayDialog,
     linearArrayPeek, setLinearArrayPeek,
     linearArrayCount, setLinearArrayCount,
     linearArrayAngle, setLinearArrayAngle,
     linearArraySpacing, setLinearArraySpacing,
     linearArrayRotStep, setLinearArrayRotStep,
+    linearArrayCreateGhosts, setLinearArrayCreateGhosts,
     showSpiralArrayDialog, setShowSpiralArrayDialog,
     spiralArrayPeek, setSpiralArrayPeek,
     spiralArrayCount, setSpiralArrayCount,
@@ -141,6 +148,8 @@ export function useUIState() {
     spiralArrayGrowth, setSpiralArrayGrowth,
     spiralArrayRotate, setSpiralArrayRotate,
     spiralArrayAngleStep, setSpiralArrayAngleStep,
+    // Array Manager
+    showArrayManager, setShowArrayManager,
     // Polar grid
     polarGridPeek, setPolarGridPeek,
     // Color picker

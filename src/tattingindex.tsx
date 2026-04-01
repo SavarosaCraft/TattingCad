@@ -351,12 +351,14 @@ const TattingDesigner = () => {
     polarArrayCount, setPolarArrayCount,
     polarArrayAngle, setPolarArrayAngle,
     polarArrayPivotId, setPolarArrayPivotId,
+    polarArrayCreateGhosts, setPolarArrayCreateGhosts,
     showLinearArrayDialog, setShowLinearArrayDialog,
     linearArrayPeek, setLinearArrayPeek,
     linearArrayCount, setLinearArrayCount,
     linearArrayAngle, setLinearArrayAngle,
     linearArraySpacing, setLinearArraySpacing,
     linearArrayRotStep, setLinearArrayRotStep,
+    linearArrayCreateGhosts, setLinearArrayCreateGhosts,
     showSpiralArrayDialog, setShowSpiralArrayDialog,
     spiralArrayPeek, setSpiralArrayPeek,
     spiralArrayCount, setSpiralArrayCount,
@@ -365,6 +367,7 @@ const TattingDesigner = () => {
     spiralArrayGrowth, setSpiralArrayGrowth,
     spiralArrayRotate, setSpiralArrayRotate,
     spiralArrayAngleStep, setSpiralArrayAngleStep,
+    showArrayManager, setShowArrayManager,
     polarGridPeek, setPolarGridPeek,
     colorPickerTab, setColorPickerTab,
     pickerTabsAllowed, setPickerTabsAllowed,
@@ -2744,7 +2747,7 @@ const TattingDesigner = () => {
 
   // Polar Array — duplicate selected elements N times evenly around a pivot point.
   // count = total copies INCLUDING the original. fillAngle = arc to fill (360 = full circle).
-  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null) => {
+  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false) => {
     const currentSelectedIds = selectedIdsRef.current;
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
@@ -2790,6 +2793,12 @@ const TattingDesigner = () => {
 
         // Link to the chosen polar grid
         if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
+
+        // Mark as ghost if requested
+        if (createGhosts) {
+          newEl.isGhost = true;
+          newEl.ghostSourceId = el.id;
+        }
 
         // Rotate center around pivot
         const dx = el.center.x - pivotX;
@@ -2880,11 +2889,38 @@ const TattingDesigner = () => {
     });
   };
 
-  const executeLinearArray = (count: number, angleDeg: number, spacing: number, rotStep: number) => {
+  const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false) => {
     const currentSelectedIds = selectedIdsRef.current;
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
     const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+    
+    // TODO: Bounding box calculation doesn't account for rotation or path transformations.
+    // For rotated elements, bbox should use transformed path points, not raw coordinates.
+    // Current workaround: uses max of width/height, but may be inaccurate for rotated elements.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    selectedEls.forEach(el => {
+      if (el.paths && el.paths.length > 0) {
+        el.paths.forEach(p => {
+          minX = Math.min(minX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
+          maxX = Math.max(maxX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
+          minY = Math.min(minY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
+          maxY = Math.max(maxY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
+        });
+      } else {
+        minX = Math.min(minX, el.center.x);
+        maxX = Math.max(maxX, el.center.x);
+        minY = Math.min(minY, el.center.y);
+        maxY = Math.max(maxY, el.center.y);
+      }
+    });
+    const bboxWidth = maxX - minX;
+    const bboxHeight = maxY - minY;
+    const elementSize = Math.max(bboxWidth, bboxHeight, 1); // At least 1px
+    
+    // Calculate actual spacing from percentage
+    const spacing = (spacingPercent / 100) * elementSize;
+    
     const rad = angleDeg * Math.PI / 180;
     const dx = Math.cos(rad) * spacing;
     const dy = Math.sin(rad) * spacing;
@@ -2900,6 +2936,13 @@ const TattingDesigner = () => {
         newEl.id = generateId();
         delete newEl.orderNumber;
         if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+        
+        // Mark as ghost if requested
+        if (createGhosts) {
+          newEl.isGhost = true;
+          newEl.ghostSourceId = el.id;
+        }
+        
         const newCx = el.center.x + offsetX;
         const newCy = el.center.y + offsetY;
         newEl.center = { x: newCx, y: newCy };
@@ -14932,8 +14975,9 @@ const TattingDesigner = () => {
             onClick={() => {
               setLinearArrayCount(4);
               setLinearArrayAngle(0);
-              setLinearArraySpacing(60);
+              setLinearArraySpacing(100);
               setLinearArrayRotStep(0);
+              setLinearArrayCreateGhosts(false);
               setShowLinearArrayDialog(true);
               setShowArrangeMenu(false);
             }}
@@ -14960,8 +15004,66 @@ const TattingDesigner = () => {
             <IconCopy size={16} />
             <span>{t('arrangeSpiralArray')}</span>
           </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          {/* Array Manager */}
+          <button
+            onClick={() => { 
+              setShowArrayManager(!showArrayManager);
+              setShowArrangeMenu(false); 
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            <span>👻</span>
+            <span>Ghost Array Manager</span>
+          </button>
         </div>
       </>
+    )}
+
+    {/* TEST MODAL - Inline to verify rendering */}
+    {showArrayManager && (
+      <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
+        <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+          style={{ width: 'min(500px, 95vw)', maxHeight: '85dvh' }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
+            <h2 className="text-gray-100 font-bold text-lg">👻 Ghost Array Manager</h2>
+            <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
+          </div>
+          <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
+            {(() => {
+              const ghostArrays = (() => {
+                const map = new Map();
+                elements.filter(el => el.isGhost).forEach(el => {
+                  const sourceId = el.ghostSourceId || 'unknown';
+                  if (!map.has(sourceId)) map.set(sourceId, []);
+                  map.get(sourceId).push(el);
+                });
+                return Array.from(map.entries());
+              })();
+              if (ghostArrays.length === 0) {
+                return <p className="text-gray-400 text-sm text-center py-8">No ghost arrays — create one from the Arrange menu</p>;
+              }
+              return ghostArrays.map(([sourceId, ghosts], idx) => (
+                <div key={sourceId + idx} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
+                  <span className="text-2xl flex-shrink-0">👻</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium">{ghosts.length} ghost{ghosts.length > 1 ? 's' : ''}</div>
+                    <div className="text-gray-400 text-xs">Source: {sourceId.slice(0, 8)}...</div>
+                  </div>
+                  <button onClick={() => { setSelectedIds(ghosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
+                  <button onClick={() => { setElements(prev => prev.map(el => ghosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
+                  <button onClick={() => { setElements(prev => prev.filter(el => !ghosts.find(g => g.id === el.id))); }} className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded">✕</button>
+                </div>
+              ));
+            })()}
+          </div>
+          <div className="px-5 pb-4 flex-shrink-0">
+            <p className="text-xs text-gray-500">Manage ghost arrays created by Polar/Linear Array.</p>
+          </div>
+        </div>
+      </div>
     )}
     
 
@@ -16146,6 +16248,18 @@ const TattingDesigner = () => {
               </select>
             </div>
 
+            {/* Create as ghosts checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="polar-ghosts"
+                checked={polarArrayCreateGhosts}
+                onChange={e => setPolarArrayCreateGhosts(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
+              />
+              <label htmlFor="polar-ghosts" className="text-sm text-gray-300">Create as ghosts</label>
+            </div>
+
             {/* Step preview text */}
             <div className="text-xs text-gray-400 text-center">
               {polarArrayCount} copies · every {(polarArrayAngle / polarArrayCount).toFixed(1)}° · over {polarArrayAngle}°
@@ -16155,8 +16269,9 @@ const TattingDesigner = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  executePolarArray(polarArrayCount, polarArrayAngle, polarArrayPivotId);
+                  executePolarArray(polarArrayCount, polarArrayAngle, polarArrayPivotId, polarArrayCreateGhosts);
                   setShowPolarArrayDialog(false);
+                  setPolarArrayCreateGhosts(false);
                 }}
                 className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
               >{t('polarArrayApply')}</button>
@@ -16211,8 +16326,12 @@ const TattingDesigner = () => {
 
             {/* Spacing */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">{t('linearArraySpacing')}</label>
-              <input type="number" min={1} value={linearArraySpacing} onChange={e => setLinearArraySpacing(parseFloat(e.target.value) || 1)} className="w-28 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+              <label className="text-xs text-gray-400">Spacing (% of element size)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={10} max={500} step={10} value={linearArraySpacing} onChange={e => setLinearArraySpacing(Math.max(10, Math.min(500, parseFloat(e.target.value) || 100)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                <span className="text-gray-400 text-xs">%</span>
+                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100%</button>
+              </div>
             </div>
 
             {/* Rotation per step */}
@@ -16225,13 +16344,32 @@ const TattingDesigner = () => {
               </div>
             </div>
 
+            {/* Create as ghosts checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="linear-ghosts"
+                checked={linearArrayCreateGhosts}
+                onChange={e => setLinearArrayCreateGhosts(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
+              />
+              <label htmlFor="linear-ghosts" className="text-sm text-gray-300">Create as ghosts</label>
+            </div>
+
             {/* Summary */}
             <div className="text-xs text-gray-400 text-center">
-              {linearArrayCount} copies · {linearArrayAngle}° · every {linearArraySpacing}px{linearArrayRotStep !== 0 ? ` · +${linearArrayRotStep}°/step` : ''}
+              {linearArrayCount} copies · {linearArrayAngle}° · {linearArraySpacing}% spacing{linearArrayRotStep !== 0 ? ` · +${linearArrayRotStep}°/step` : ''}
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => { executeLinearArray(linearArrayCount, linearArrayAngle, linearArraySpacing, linearArrayRotStep); setShowLinearArrayDialog(false); }} className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold">{t('linearArrayApply')}</button>
+              <button
+                onClick={() => {
+                  executeLinearArray(linearArrayCount, linearArrayAngle, linearArraySpacing, linearArrayRotStep, linearArrayCreateGhosts);
+                  setShowLinearArrayDialog(false);
+                  setLinearArrayCreateGhosts(false);
+                }}
+                className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
+              >{t('linearArrayApply')}</button>
               <button onClick={() => setShowLinearArrayDialog(false)} className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm">{t('confirmCancel')}</button>
             </div>
 
