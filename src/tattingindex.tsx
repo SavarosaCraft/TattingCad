@@ -2069,10 +2069,11 @@ const TattingDesigner = () => {
   // Apply transform (translate + rotate) to a path
   const applyTransformToPath = (path, transform) => {
     const { x: tx, y: ty, rotation } = transform;
+    console.log('[applyTransform] Input path:', path.x, path.y, 'Transform:', transform);
     if (!rotation || rotation === 0) {
       // Translate only
       if (path.type === 'cubic') {
-        return {
+        const result = {
           ...path,
           x: path.x + tx,
           y: path.y + ty,
@@ -2083,6 +2084,8 @@ const TattingDesigner = () => {
           control2X: path.control2X + tx,
           control2Y: path.control2Y + ty,
         };
+        console.log('[applyTransform] Result:', result.x, result.y);
+        return result;
       } else {
         return {
           ...path,
@@ -2164,7 +2167,31 @@ const TattingDesigner = () => {
   const deleteSelected = useCallback(() => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length === 0) return;
+    
+    // Check if any selected elements are ghosts or mothers
+    const currentElements = elementsRef.current;
+    const selectedElements = currentElements.filter(e => currentSelectedIds.includes(e.id));
+    const deletedGhostIds = selectedElements.filter(e => e.type === 'ghost' || e.isGhost).map(e => e.id);
+    const deletedMotherIds = selectedElements.filter(e => e.isGhostMother).map(e => e.id);
+    
     setElements(prev => prev.filter(e => !currentSelectedIds.includes(e.id)));
+    
+    // Clean up ghost arrays if mothers are deleted
+    if (deletedMotherIds.length > 0) {
+      setGhostArrays(prev => prev.filter(array => 
+        !deletedMotherIds.includes(array.sourceId)
+      ));
+    }
+    
+    // Clean up ghost arrays if ghosts are deleted
+    if (deletedGhostIds.length > 0) {
+      setGhostArrays(prev => prev.map(array => ({
+        ...array,
+        ghostIds: array.ghostIds.filter(id => !deletedGhostIds.includes(id)),
+        boundaryIds: array.boundaryIds.filter(id => !deletedGhostIds.includes(id)),
+      })).filter(array => array.ghostIds.length > 0)); // Remove arrays with no ghosts left
+    }
+    
     setSelectedIds([]);
     // Remove any picot connections that reference a picot on a deleted element
     setPicotConnections(prev => prev.filter(conn =>
@@ -3004,7 +3031,7 @@ const TattingDesigner = () => {
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
     const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
-    
+
     // TODO: Bounding box calculation doesn't account for rotation or path transformations.
     // For rotated elements, bbox should use transformed path points, not raw coordinates.
     // Current workaround: uses max of width/height, but may be inaccurate for rotated elements.
@@ -3018,65 +3045,123 @@ const TattingDesigner = () => {
           maxY = Math.max(maxY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
         });
       } else {
-        minX = Math.min(minX, el.center.x);
-        maxX = Math.max(maxX, el.center.x);
-        minY = Math.min(minY, el.center.y);
-        maxY = Math.max(maxY, el.center.y);
+        minX = Math.min(minX, getElementCenter(el).x);
+        maxX = Math.max(maxX, getElementCenter(el).x);
+        minY = Math.min(minY, getElementCenter(el).y);
+        maxY = Math.max(maxY, getElementCenter(el).y);
       }
     });
     const bboxWidth = maxX - minX;
     const bboxHeight = maxY - minY;
     const elementSize = Math.max(bboxWidth, bboxHeight, 1); // At least 1px
-    
+
     // Calculate actual spacing from percentage
     const spacing = (spacingPercent / 100) * elementSize;
-    
+
     const rad = angleDeg * Math.PI / 180;
     const dx = Math.cos(rad) * spacing;
     const dy = Math.sin(rad) * spacing;
     const newElements = [];
+    const newGhostIds: string[] = [];
+    const boundaryGhostIds: string[] = [];
+
+    // Mark source elements as mothers
+    if (createGhosts) {
+      const arrayId = `linear_${Date.now()}`;
+      setElements(prev => prev.map(el => 
+        currentSelectedIds.includes(el.id) 
+          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), arrayId] }
+          : el
+      ));
+    }
+
     for (let i = 1; i < count; i++) {
       const offsetX = dx * i;
       const offsetY = dy * i;
       const extraRot = rotStep * i;
+      const isBoundary = (i === count - 1); // Last element is boundary for linear
       const groupIdMap = new Map<string, string>();
       selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+      
       selectedEls.forEach(el => {
-        const newEl = JSON.parse(JSON.stringify(el));
-        newEl.id = generateId();
-        delete newEl.orderNumber;
-        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-        
-        // Mark as ghost if requested
         if (createGhosts) {
-          newEl.isGhost = true;
-          newEl.ghostSourceId = el.id;
+          // Create lightweight ghost element
+          const sourceCenter = getElementCenter(el);
+          const newX = sourceCenter.x + offsetX;
+          const newY = sourceCenter.y + offsetY;
+          const newRot = ((el.rotation || 0) + extraRot + 360) % 360;
+          
+          console.log('[LinearGhost] Source:', sourceCenter, 'Offset:', offsetX, offsetY, 'Ghost pos:', newX, newY, 'Rot:', newRot);
+          
+          const ghostEl = {
+            id: generateId(),
+            type: 'ghost' as const,
+            sourceId: el.id,
+            transform: {
+              x: newX,
+              y: newY,
+              rotation: newRot,
+            },
+            isBoundary,
+          };
+          newElements.push(ghostEl);
+          newGhostIds.push(ghostEl.id);
+          if (isBoundary) boundaryGhostIds.push(ghostEl.id);
+        } else {
+          // Create full copy (legacy mode)
+          const newEl = JSON.parse(JSON.stringify(el));
+          newEl.id = generateId();
+          delete newEl.orderNumber;
+          if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+
+          // Mark as ghost if requested
+          if (createGhosts) {
+            newEl.isGhost = true;
+            newEl.ghostSourceId = el.id;
+          }
+
+          const newCx = el.center.x + offsetX;
+          const newCy = el.center.y + offsetY;
+          newEl.center = { x: newCx, y: newCy };
+          // Translate paths to new position first
+          if (newEl.paths) {
+            newEl.paths = newEl.paths.map(p => {
+              if (p.type === 'cubic') {
+                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+              } else {
+                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+              }
+            });
+          }
+          // Then rotate paths around the new center and update rotation field
+          if (extraRot !== 0) {
+            const newAbsRot = ((el.rotation || 0) + extraRot + 360) % 360;
+            newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, el, newAbsRot);
+            newEl.rotation = newAbsRot;
+          }
+          newElements.push(newEl);
         }
-        
-        const newCx = el.center.x + offsetX;
-        const newCy = el.center.y + offsetY;
-        newEl.center = { x: newCx, y: newCy };
-        // Translate paths to new position first
-        if (newEl.paths) {
-          newEl.paths = newEl.paths.map(p => {
-            if (p.type === 'cubic') {
-              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-            } else {
-              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-            }
-          });
-        }
-        // Then rotate paths around the new center and update rotation field
-        if (extraRot !== 0) {
-          const newAbsRot = ((el.rotation || 0) + extraRot + 360) % 360;
-          newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, el, newAbsRot);
-          newEl.rotation = newAbsRot;
-        }
-        newElements.push(newEl);
       });
     }
     setElements(prev => [...prev, ...newElements]);
     setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+
+    // Save ghost array metadata for Update functionality
+    if (createGhosts && newGhostIds.length > 0) {
+      const arrayId = `linear_${Date.now()}`;
+      setGhostArrays(prev => [...prev, {
+        id: arrayId,
+        name: `Linear Array ${prev.length + 1}`,
+        type: 'linear',
+        sourceId: currentSelectedIds[0],
+        instanceCount: count,
+        angle: angleDeg,
+        spacing: spacingPercent,
+        rotStep: rotStep,
+        ghostIds: newGhostIds,
+        boundaryIds: boundaryGhostIds,
+      }]);
+    }
   };
 
   // Spiral Array — place copies along an Archimedean or geometric spiral around a pivot.
@@ -12583,24 +12668,35 @@ const TattingDesigner = () => {
                 const elColorB = renderEl.isSplitRing ? getElementColor({...renderEl, materialId: renderEl.materialIdB || renderEl.materialId}) : elColor;
                 const elStrokeValB = elColorB.isGradient ? `url(#gradient-${elColorB.id})` : elColorB.color;
                 
-                // For ghosts, apply transform to paths
-                // transform.x/y is absolute ghost position, need delta from source center
+                // For ghosts, apply transform to paths using same logic as real copies
                 const renderPaths = isGhost && sourceElement && el.transform
                   ? (() => {
                       const sourceCenter = getElementCenter(sourceElement);
                       const deltaX = el.transform.x - sourceCenter.x;
                       const deltaY = el.transform.y - sourceCenter.y;
-                      const transformWithDelta = {
-                        x: deltaX,
-                        y: deltaY,
-                        rotation: el.transform.rotation,
-                      };
-                      return sourceElement.paths.map(p => applyTransformToPath(p, transformWithDelta));
+                      const rotDelta = el.transform.rotation - (sourceElement.rotation || 0);
+                      
+                      console.log('[GhostRender] Source center:', sourceCenter, 'Ghost transform:', el.transform, 'Delta:', deltaX, deltaY, 'RotDelta:', rotDelta);
+                      console.log('[GhostRender] Source paths[0]:', sourceElement.paths[0].x, sourceElement.paths[0].y);
+                      
+                      // First translate paths to ghost position
+                      let translatedPaths = sourceElement.paths.map(p => applyTransformToPath(p, { x: deltaX, y: deltaY, rotation: 0 }));
+                      
+                      // Then rotate around ghost center if needed
+                      if (rotDelta !== 0) {
+                        translatedPaths = rotatePathsAroundCenter(translatedPaths, el.transform.x, el.transform.y, rotDelta, sourceElement, el.transform.rotation);
+                      }
+                      
+                      console.log('[GhostRender] Translated paths[0]:', translatedPaths[0].x, translatedPaths[0].y);
+                      
+                      return translatedPaths;
                     })()
                   : el.paths;
                 const renderCenter = isGhost && el.transform 
                   ? { x: el.transform.x, y: el.transform.y }
                   : el.center;
+                
+                console.log('[Render] Element:', el.id, 'Type:', el.type, 'Center:', renderCenter, 'IsGhost:', isGhost);
                 const renderRotation = isGhost && el.transform ? el.transform.rotation : (el.rotation || 0);
                 
                 // Ghost visual styling
@@ -12658,8 +12754,8 @@ const TattingDesigner = () => {
                         return (
                           <text
                             data-layer="order"
-                            x={el.center.x}
-                            y={el.center.y}
+                            x={renderCenter.x}
+                            y={renderCenter.y}
                             fill={_fill}
                             fontSize={Math.round(notationFS * 1.57)}
                             fontWeight="bold"
@@ -12676,14 +12772,14 @@ const TattingDesigner = () => {
                     </g>
                   );
                 }
-                
+
                 // Render everything else (teardrops, chains, and lines) using paths
                 return (
                   <g key={el.id} filter={elementFilter} transform={dragTransform}>
                     {/* Line rendering - simple bezier with black outline */}
                     {el.type === 'line' ? (
                       <>
-                        {el.paths.map((path, i) => {
+                        {(renderPaths || el.paths).map((path, i) => {
                           let pathD;
                           if (path.type === 'cubic') {
                             pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
@@ -12733,16 +12829,12 @@ const TattingDesigner = () => {
                           );
                         })}
                         {/* Beaded line — render beads evenly along path */}
-                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (() => {
-                          // Per-slot mode (new): lineBeadSlots[] — each slot has its own bead library ID
-                          // Single-bead legacy mode: lineBeadId + lineBeadCount
-                          // Text legacy mode: lineBeads string
+                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (renderPaths || el.paths) && (() => {
                           const resolveSlot = (bi) => {
                             if (el.lineBeadSlots?.length > 0) {
                               const slotId = el.lineBeadSlots[bi];
                               return slotId ? beadLibrary.find(b => b.id === slotId) : null;
                             }
-                            // fallback: same bead for all slots
                             return el.lineBeadId ? beadLibrary.find(b => b.id === el.lineBeadId) : null;
                           };
                           const legacyBeads = (!el.lineBeadSlots && !el.lineBeadId && el.lineBeads)
@@ -12751,7 +12843,7 @@ const TattingDesigner = () => {
                             ? el.lineBeadSlots.length
                             : el.lineBeadId ? (el.lineBeadCount ?? 1) : legacyBeads.length;
                           if (totalBeads === 0) return null;
-                          const allSamples = el.paths.map(p => sampleBezierPath(p, 40));
+                          const allSamples = (renderPaths || el.paths).map(p => sampleBezierPath(p, 40));
                           const allLens = allSamples.map(s => calculatePathLength(s));
                           const totalLen = allLens.reduce((a, b) => a + b, 0);
                           return Array.from({length: totalBeads}, (_, bi) => {
@@ -12769,9 +12861,9 @@ const TattingDesigner = () => {
                           });
                         })()}
                         {/* Order number label for lines */}
-                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && el.paths?.length > 0 && (() => {
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (renderPaths || el.paths) && (() => {
                           const allPts: {x:number,y:number}[] = [];
-                          el.paths.forEach(p => {
+                          (renderPaths || el.paths).forEach(p => {
                             for (let i = 0; i <= 20; i++) {
                               const t = i / 20, u = 1 - t;
                               if (p.type === 'cubic') {
@@ -12783,7 +12875,7 @@ const TattingDesigner = () => {
                           });
                           let total = 0;
                           for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                          let acc = 0, half = total / 2, ox = el.center.x, oy = el.center.y;
+                          let acc = 0, half = total / 2, ox = renderCenter.x, oy = renderCenter.y;
                           for (let i = 1; i < allPts.length; i++) {
                             const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
                             if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
@@ -12800,7 +12892,7 @@ const TattingDesigner = () => {
                     {el.type === 'line' ? (
                       // Line rendering - simple bezier path without stitches
                       <>
-                        {el.paths.map((path, i) => {
+                        {(renderPaths || el.paths).map((path, i) => {
                           let pathD;
                           if (path.type === 'cubic') {
                             pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
@@ -12831,7 +12923,7 @@ const TattingDesigner = () => {
                           );
                         })}
                         {/* Selection indicator */}
-                        {isSelected && el.paths.map((path, i) => {
+                        {isSelected && (renderPaths || el.paths).map((path, i) => {
                           let pathD;
                           if (path.type === 'cubic') {
                             pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
@@ -12850,7 +12942,7 @@ const TattingDesigner = () => {
                           );
                         })}
                         {/* Beaded line — render beads evenly along path */}
-                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (() => {
+                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (renderPaths || el.paths) && (() => {
                           const resolveSlot = (bi) => {
                             if (el.lineBeadSlots?.length > 0) {
                               const slotId = el.lineBeadSlots[bi];
@@ -12864,7 +12956,7 @@ const TattingDesigner = () => {
                             ? el.lineBeadSlots.length
                             : el.lineBeadId ? (el.lineBeadCount ?? 1) : legacyBeads.length;
                           if (totalBeads === 0) return null;
-                          const allSamples = el.paths.map(p => sampleBezierPath(p, 40));
+                          const allSamples = (renderPaths || el.paths).map(p => sampleBezierPath(p, 40));
                           const allLens = allSamples.map(s => calculatePathLength(s));
                           const totalLen = allLens.reduce((a, b) => a + b, 0);
                           return Array.from({length: totalBeads}, (_, bi) => {
