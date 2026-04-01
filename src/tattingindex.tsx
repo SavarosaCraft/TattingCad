@@ -10850,26 +10850,6 @@ const TattingDesigner = () => {
                 })()}
               </div>
 
-              {/* TEST: Ghost toggle */}
-              <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
-              <div className="flex items-center gap-1 top-toolbar-scalable">
-                <button
-                  onClick={() => {
-                    setElements(prev => prev.map(el =>
-                      selectedIds.includes(el.id) ? { ...el, isGhost: !el.isGhost } : el
-                    ));
-                  }}
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    selectedElement.isGhost
-                      ? 'bg-purple-700 hover:bg-purple-600 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                  }`}
-                  title="Toggle Ghost Mode (TEST)"
-                >
-                  👻 {selectedElement.isGhost ? 'Ghost' : 'Real'}
-                </button>
-              </div>
-
                {/* Material B selector — split rings only, right after Material A */}
                {selectedElement.isSplitRing && (
                  <>
