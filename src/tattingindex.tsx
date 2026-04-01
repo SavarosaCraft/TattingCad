@@ -12584,8 +12584,19 @@ const TattingDesigner = () => {
                 const elStrokeValB = elColorB.isGradient ? `url(#gradient-${elColorB.id})` : elColorB.color;
                 
                 // For ghosts, apply transform to paths
+                // transform.x/y is absolute ghost position, need delta from source center
                 const renderPaths = isGhost && sourceElement && el.transform
-                  ? sourceElement.paths.map(p => applyTransformToPath(p, el.transform))
+                  ? (() => {
+                      const sourceCenter = getElementCenter(sourceElement);
+                      const deltaX = el.transform.x - sourceCenter.x;
+                      const deltaY = el.transform.y - sourceCenter.y;
+                      const transformWithDelta = {
+                        x: deltaX,
+                        y: deltaY,
+                        rotation: el.transform.rotation,
+                      };
+                      return sourceElement.paths.map(p => applyTransformToPath(p, transformWithDelta));
+                    })()
                   : el.paths;
                 const renderCenter = isGhost && el.transform 
                   ? { x: el.transform.x, y: el.transform.y }
