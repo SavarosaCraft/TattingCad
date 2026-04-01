@@ -2768,6 +2768,7 @@ const TattingDesigner = () => {
 
     const stepDeg = fillAngle / count;
     const newElements = [];
+    const newGhostIds: string[] = [];
 
     // Start from copy #1 (original stays as-is), generate copies 1..count-1
     for (let i = 1; i < count; i++) {
@@ -2799,6 +2800,7 @@ const TattingDesigner = () => {
         if (createGhosts) {
           newEl.isGhost = true;
           newEl.ghostSourceId = el.id;
+          newGhostIds.push(newEl.id);
         }
 
         // Rotate center around pivot
@@ -2846,6 +2848,23 @@ const TattingDesigner = () => {
 
     // Select all — originals + new copies
     setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+
+    // Save ghost array metadata for Update functionality
+    if (createGhosts && newGhostIds.length > 0) {
+      const arrayId = `polar_${Date.now()}`;
+      setGhostArrays(prev => [...prev, {
+        id: arrayId,
+        name: `Polar Array ${prev.length + 1}`,
+        type: 'polar',
+        sourceId: currentSelectedIds[0],
+        instanceCount: count,
+        angle: fillAngle,
+        spacing: 0,
+        rotStep: 0,
+        pivotId: pivotId || undefined,
+        ghostIds: newGhostIds,
+      }]);
+    }
   };
 
   // Linear Array — duplicate N times along a direction with optional per-step rotation.
@@ -12464,11 +12483,29 @@ const TattingDesigner = () => {
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})`
                   : undefined;
                 // PERFORMANCE: getElementColor once per element, reused for stroke + picots
-                const elColor = getElementColor(el);
+                // For ghosts, get color from source element
+                const isGhost = el.type === 'ghost' || el.isGhost === true;
+                const sourceElement = isGhost ? (el.sourceId ? elements.find(e => e.id === el.sourceId) : elements.find(e => e.id === el.ghostSourceId)) : null;
+                const renderEl = sourceElement || el;  // Use source for ghosts
+                const elColor = getElementColor(renderEl);
                 const elStrokeVal = elColor.isGradient ? `url(#gradient-${elColor.id})` : elColor.color;
                 // Split ring section B color (only relevant for split rings)
-                const elColorB = el.isSplitRing ? getElementColor({...el, materialId: el.materialIdB || el.materialId}) : elColor;
+                const elColorB = renderEl.isSplitRing ? getElementColor({...renderEl, materialId: renderEl.materialIdB || renderEl.materialId}) : elColor;
                 const elStrokeValB = elColorB.isGradient ? `url(#gradient-${elColorB.id})` : elColorB.color;
+                
+                // For ghosts, apply transform to paths
+                const renderPaths = isGhost && sourceElement && el.transform
+                  ? sourceElement.paths.map(p => applyTransformToPath(p, el.transform))
+                  : el.paths;
+                const renderCenter = isGhost && el.transform 
+                  ? { x: el.transform.x, y: el.transform.y }
+                  : el.center;
+                const renderRotation = isGhost && el.transform ? el.transform.rotation : (el.rotation || 0);
+                
+                // Ghost visual styling
+                const isBoundaryGhost = isGhost && el.isBoundary;
+                const ghostOpacity = isGhost ? (renderMode === 'schematic' ? 0.4 : 1) : undefined;
+                const ghostDash = isGhost && renderMode === 'schematic' ? '5,5' : undefined;
                 
                 // Render circles as SVG circle element for smooth rendering
                 if (el.isClosed && el.shapeStyle === 'circle') {
@@ -15013,80 +15050,50 @@ const TattingDesigner = () => {
             <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
           </div>
           <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
-            {(() => {
-              const ghostArrays = (() => {
-                const map = new Map();
-                elements.filter(el => el.isGhost).forEach(el => {
-                  const sourceId = el.ghostSourceId || 'unknown';
-                  if (!map.has(sourceId)) map.set(sourceId, []);
-                  map.get(sourceId).push(el);
-                });
-                return Array.from(map.entries());
-              })();
-              if (ghostArrays.length === 0) {
-                return <p className="text-gray-400 text-sm text-center py-8">No ghost arrays — create one from the Arrange menu</p>;
-              }
-              return ghostArrays.map(([sourceId, ghosts], idx) => {
-                const sourceEl = elements.find(el => el.id === sourceId);
+            {ghostArrays.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-8">No ghost arrays — create one from the Arrange menu</p>
+            ) : (
+              ghostArrays.map((array) => {
+                const sourceEl = elements.find(el => el.id === array.sourceId);
+                const existingGhosts = elements.filter(el => array.ghostIds.includes(el.id));
                 return (
-                  <div key={sourceId + idx} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
+                  <div key={array.id} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
                     <span className="text-2xl flex-shrink-0">👻</span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium">{ghosts.length} ghost{ghosts.length > 1 ? 's' : ''}</div>
-                      <div className="text-gray-400 text-xs">Source: {sourceId.slice(0, 8)}... {sourceEl ? '✓' : '⚠️'}</div>
+                      <div className="text-white text-sm font-medium">{array.instanceCount} {array.type} ghosts</div>
+                      <div className="text-gray-400 text-xs">Source: {array.sourceId.slice(0, 8)}... {sourceEl ? '✓' : '⚠️ Deleted'}</div>
                     </div>
                     <button
                       onClick={() => {
                         if (!sourceEl) return;
-                        // Recalculate ghost positions based on source element's current state
-                        const dx = sourceEl.center.x - (ghosts[0]?.center.x || 0);
-                        const dy = sourceEl.center.y - (ghosts[0]?.center.y || 0);
-                        const dRot = (sourceEl.rotation || 0) - (ghosts[0]?.rotation || 0);
-                        setElements(prev => prev.map(el => {
-                          if (!ghosts.find(g => g.id === el.id)) return el;
-                          // Translate ghost
-                          const newPaths = el.paths.map(p => {
-                            const rotatePoint = (px, py) => {
-                              const rad = dRot * Math.PI / 180;
-                              const cos = Math.cos(rad), sin = Math.sin(rad);
-                              const cx = el.center.x, cy = el.center.y;
-                              const tx = px + dx, ty = py + dy;
-                              return { x: cx + (tx - cx) * cos - (ty - cy) * sin, y: cy + (tx - cx) * sin + (ty - cy) * cos };
-                            };
-                            if (p.type === 'cubic') {
-                              const s = rotatePoint(p.x, p.y);
-                              const e = rotatePoint(p.endX, p.endY);
-                              const c1 = rotatePoint(p.control1X, p.control1Y);
-                              const c2 = rotatePoint(p.control2X, p.control2Y);
-                              return { ...p, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                            } else {
-                              const s = rotatePoint(p.x, p.y);
-                              const e = rotatePoint(p.endX, p.endY);
-                              const c = rotatePoint(p.controlX, p.controlY);
-                              return { ...p, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
-                            }
-                          });
-                          return {
-                            ...el,
-                            center: { x: el.center.x + dx, y: el.center.y + dy },
-                            rotation: (el.rotation || 0) + dRot,
-                            paths: newPaths
-                          };
-                        }));
+                        // Delete old ghosts first
+                        setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
+                        // Recreate ghosts with stored parameters
+                        setTimeout(() => {
+                          if (array.type === 'polar') {
+                            executePolarArray(array.instanceCount, array.angle, array.pivotId || 'selection', true);
+                          }
+                        }, 50);
                       }}
                       disabled={!sourceEl}
                       className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                      title={sourceEl ? 'Update ghost positions from source' : 'Source element not found'}
+                      title={sourceEl ? '⚡ Recreate ghosts from source (deletes old ghosts first)' : 'Source deleted'}
                     >
-                      ⚡ Update
+                      ⚡ Recreate
                     </button>
-                    <button onClick={() => { setSelectedIds(ghosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
-                    <button onClick={() => { setElements(prev => prev.map(el => ghosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
-                    <button onClick={() => { setElements(prev => prev.filter(el => !ghosts.find(g => g.id === el.id))); }} className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded">✕</button>
+                    <button onClick={() => { setSelectedIds(existingGhosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
+                    <button onClick={() => { setElements(prev => prev.map(el => existingGhosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
+                    <button
+                      onClick={() => {
+                        setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
+                        setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+                      }}
+                      className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
+                    >✕</button>
                   </div>
                 );
-              });
-            })()}
+              })
+            )}
           </div>
           <div className="px-5 pb-4 flex-shrink-0">
             <p className="text-xs text-gray-500">Manage ghost arrays created by Polar/Linear Array.</p>

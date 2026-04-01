@@ -67,10 +67,10 @@ export function useUIState() {
     type: 'polar' | 'linear';
     sourceId: string;
     instanceCount: number;
-    angle: number;
-    spacing: number;
+    angle: number;        // For polar: fill angle, For linear: direction
+    spacing: number;      // For polar: unused, For linear: spacing % 
     rotStep: number;
-    pivotId?: string;
+    pivotId?: string;     // For polar: grid ID
     ghostIds: string[];
   }>>([]);
 
