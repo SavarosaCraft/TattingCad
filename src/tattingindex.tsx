@@ -12679,8 +12679,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
-                                strokeDasharray={el.isGhost ? '5,5' : undefined}
+                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                                strokeDasharray={ghostDash}
                               />
                               {/* Colored line on top */}
                               <path
@@ -12688,8 +12688,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
-                                strokeDasharray={el.isGhost ? '5,5' : undefined}
+                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                                strokeDasharray={ghostDash}
                               />
                             </g>
                           );
@@ -12796,8 +12796,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
-                                strokeDasharray={el.isGhost ? '5,5' : undefined}
+                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                                strokeDasharray={ghostDash}
                               />
                               {/* Colored line on top */}
                               <path
@@ -12805,8 +12805,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
-                                strokeDasharray={el.isGhost ? '5,5' : undefined}
+                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                                strokeDasharray={ghostDash}
                               />
                             </g>
                           );
