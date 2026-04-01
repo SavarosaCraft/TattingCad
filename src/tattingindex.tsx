@@ -2066,6 +2066,57 @@ const TattingDesigner = () => {
     }
   };
 
+  // Apply transform (translate + rotate) to a path
+  const applyTransformToPath = (path, transform) => {
+    const { x: tx, y: ty, rotation } = transform;
+    if (!rotation || rotation === 0) {
+      // Translate only
+      if (path.type === 'cubic') {
+        return {
+          ...path,
+          x: path.x + tx,
+          y: path.y + ty,
+          endX: path.endX + tx,
+          endY: path.endY + ty,
+          control1X: path.control1X + tx,
+          control1Y: path.control1Y + ty,
+          control2X: path.control2X + tx,
+          control2Y: path.control2Y + ty,
+        };
+      } else {
+        return {
+          ...path,
+          x: path.x + tx,
+          y: path.y + ty,
+          endX: path.endX + tx,
+          endY: path.endY + ty,
+          controlX: path.controlX + tx,
+          controlY: path.controlY + ty,
+        };
+      }
+    }
+    // Translate + rotate
+    const rad = rotation * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const rotatePoint = (px, py) => ({
+      x: tx + px * cos - py * sin,
+      y: ty + px * sin + py * cos,
+    });
+    if (path.type === 'cubic') {
+      const s = rotatePoint(path.x, path.y);
+      const e = rotatePoint(path.endX, path.endY);
+      const c1 = rotatePoint(path.control1X, path.control1Y);
+      const c2 = rotatePoint(path.control2X, path.control2Y);
+      return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+    } else {
+      const s = rotatePoint(path.x, path.y);
+      const e = rotatePoint(path.endX, path.endY);
+      const c = rotatePoint(path.controlX, path.controlY);
+      return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
+    }
+  };
+
   const addLine = useCallback(() => {
     const center = getViewportCenter();
     const startX = center.x - 100;
@@ -2769,6 +2820,16 @@ const TattingDesigner = () => {
     const stepDeg = fillAngle / count;
     const newElements = [];
     const newGhostIds: string[] = [];
+    const boundaryGhostIds: string[] = [];
+
+    // Mark source elements as mothers
+    if (createGhosts) {
+      setElements(prev => prev.map(el => 
+        currentSelectedIds.includes(el.id) 
+          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), `polar_${Date.now()}`] }
+          : el
+      ));
+    }
 
     // Start from copy #1 (original stays as-is), generate copies 1..count-1
     for (let i = 1; i < count; i++) {
@@ -2786,53 +2847,73 @@ const TattingDesigner = () => {
       });
 
       selectedEls.forEach(el => {
-        const newEl = JSON.parse(JSON.stringify(el));
-        newEl.id = generateId();
-        delete newEl.orderNumber;
-
-        // Remap group id
-        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-
-        // Link to the chosen polar grid
-        if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
-
-        // Mark as ghost if requested
+        const isBoundary = (i === 1 || i === count - 1);
+        
         if (createGhosts) {
-          newEl.isGhost = true;
-          newEl.ghostSourceId = el.id;
-          newGhostIds.push(newEl.id);
+          // Create lightweight ghost element
+          const dx = el.center.x - pivotX;
+          const dy = el.center.y - pivotY;
+          const newX = pivotX + dx * cos - dy * sin;
+          const newY = pivotY + dx * sin + dy * cos;
+          const newRot = ((el.rotation || 0) + angleDeg) % 360;
+          
+          const ghostEl = {
+            id: generateId(),
+            type: 'ghost' as const,
+            sourceId: el.id,
+            transform: {
+              x: newX,
+              y: newY,
+              rotation: newRot,
+            },
+            isBoundary,
+          };
+          newElements.push(ghostEl);
+          newGhostIds.push(ghostEl.id);
+          if (isBoundary) boundaryGhostIds.push(ghostEl.id);
+        } else {
+          // Create full copy (legacy mode)
+          const newEl = JSON.parse(JSON.stringify(el));
+          newEl.id = generateId();
+          delete newEl.orderNumber;
+
+          // Remap group id
+          if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+
+          // Link to the chosen polar grid
+          if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
+
+          // Rotate center around pivot
+          const dx = el.center.x - pivotX;
+          const dy = el.center.y - pivotY;
+          newEl.center = {
+            x: pivotX + dx * cos - dy * sin,
+            y: pivotY + dx * sin + dy * cos,
+          };
+
+          // Rotate element's own rotation angle
+          newEl.rotation = ((el.rotation || 0) + angleDeg) % 360;
+
+          // Rotate path control points if present
+          if (newEl.paths) {
+            newEl.paths = newEl.paths.map(p => {
+              const rotPt = (px, py) => {
+                const rx = px - pivotX, ry = py - pivotY;
+                return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+              };
+              const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+              if (p.type === 'cubic') {
+                const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+              } else {
+                const c = rotPt(p.controlX, p.controlY);
+                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+              }
+            });
+          }
+
+          newElements.push(newEl);
         }
-
-        // Rotate center around pivot
-        const dx = el.center.x - pivotX;
-        const dy = el.center.y - pivotY;
-        newEl.center = {
-          x: pivotX + dx * cos - dy * sin,
-          y: pivotY + dx * sin + dy * cos,
-        };
-
-        // Rotate element's own rotation angle
-        newEl.rotation = ((el.rotation || 0) + angleDeg) % 360;
-
-        // Rotate path control points if present
-        if (newEl.paths) {
-          newEl.paths = newEl.paths.map(p => {
-            const rotPt = (px, py) => {
-              const rx = px - pivotX, ry = py - pivotY;
-              return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-            };
-            const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-            if (p.type === 'cubic') {
-              const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-            } else {
-              const c = rotPt(p.controlX, p.controlY);
-              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-            }
-          });
-        }
-
-        newElements.push(newEl);
       });
     }
 
@@ -2863,6 +2944,7 @@ const TattingDesigner = () => {
         rotStep: 0,
         pivotId: pivotId || undefined,
         ghostIds: newGhostIds,
+        boundaryIds: boundaryGhostIds,
       }]);
     }
   };
@@ -12508,22 +12590,22 @@ const TattingDesigner = () => {
                 const ghostDash = isGhost && renderMode === 'schematic' ? '5,5' : undefined;
                 
                 // Render circles as SVG circle element for smooth rendering
-                if (el.isClosed && el.shapeStyle === 'circle') {
-                  const targetCircumference = el.stitchCount * dsWidth;
+                if (renderEl.isClosed && renderEl.shapeStyle === 'circle') {
+                  const targetCircumference = renderEl.stitchCount * dsWidth;
                   const radius = targetCircumference / (2 * Math.PI);
-                  
+
                   // Original schematic rendering for circles
                   return (
                     <g key={el.id} filter={elementFilter} transform={dragTransform}>
                       <circle
-                        cx={el.center.x}
-                        cy={el.center.y}
+                        cx={renderCenter.x}
+                        cy={renderCenter.y}
                         r={radius}
                         fill="none"
                         stroke={elStrokeVal}
                         strokeWidth="3.75"
-                        opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
-                        strokeDasharray={el.isGhost ? '5,5' : undefined}
+                        opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                        strokeDasharray={ghostDash}
                       />
                       {renderPicots(el)}
                       {isSelected && (

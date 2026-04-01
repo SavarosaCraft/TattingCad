@@ -72,6 +72,7 @@ export function useUIState() {
     rotStep: number;
     pivotId?: string;     // For polar: grid ID
     ghostIds: string[];
+    boundaryIds: string[];  // Ghosts with active picot joins
   }>>([]);
 
   // ── Polar grid ─────────────────────────────────────────────────────────
