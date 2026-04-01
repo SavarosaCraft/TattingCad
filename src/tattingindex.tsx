@@ -12876,10 +12876,10 @@ const TattingDesigner = () => {
                     ) : (
                       // Original schematic rendering
                       <>
-                        {el.paths.map((path, i) => {
+                        {(renderPaths || el.paths).map((path, i) => {
                           // Use path directly (curveType system removed)
                           const renderPath = path;
-                          
+
                           let pathD;
                           if (renderPath.type === 'cubic') {
                             pathD = `M ${renderPath.x},${renderPath.y} C ${renderPath.control1X},${renderPath.control1Y} ${renderPath.control2X},${renderPath.control2Y} ${renderPath.endX},${renderPath.endY}`;
@@ -12891,45 +12891,43 @@ const TattingDesigner = () => {
                               key={i}
                               d={pathD}
                               fill="none"
-                              stroke={(i === 1 && el.isSplitRing && el.materialIdB) ? elStrokeValB : elStrokeVal}
+                              stroke={(i === 1 && renderEl.isSplitRing && renderEl.materialIdB) ? elStrokeValB : elStrokeVal}
                               strokeWidth="3.75"
-                              opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
-                              strokeDasharray={el.isGhost ? '5,5' : undefined}
+                              opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                              strokeDasharray={ghostDash}
                             />
                           );
                         })}
                         {/* Dashed connection line for split rings - along height line */}
-                        {el.isSplitRing && el.paths.length >= 2 && (
+                        {renderEl.isSplitRing && (renderPaths || el.paths).length >= 2 && (
                           <>
                             <line
-                              x1={el.paths[0].endX}
-                              y1={el.paths[0].endY}
-                              x2={el.paths[0].x}
-                              y2={el.paths[0].y}
+                              x1={(renderPaths || el.paths)[0].endX}
+                              y1={(renderPaths || el.paths)[0].endY}
+                              x2={(renderPaths || el.paths)[0].x}
+                              y2={(renderPaths || el.paths)[0].y}
                               stroke="#000000"
                               strokeWidth={(el.lineWidth || 2) + 2}
                               strokeDasharray="5,5"
-                              opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                              opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
                             />
                             <line
-                              x1={el.paths[0].endX}
-                              y1={el.paths[0].endY}
-                              x2={el.paths[0].x}
-                              y2={el.paths[0].y}
+                              x1={(renderPaths || el.paths)[0].endX}
+                              y1={(renderPaths || el.paths)[0].endY}
+                              x2={(renderPaths || el.paths)[0].x}
+                              y2={(renderPaths || el.paths)[0].y}
                               stroke={elStrokeValB}
                               strokeWidth={el.lineWidth || 2}
                               strokeDasharray="5,5"
-                              opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                              opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
                             />
                           </>
                         )}
                         {renderPicots(el)}
                         {isSelected && (
                           <g>
-                            {el.paths.map((path, i) => {
-                              // Use path directly (curveType system removed)
+                            {(renderPaths || el.paths).map((path, i) => {
                               const renderPath = path;
-                              
                               let pathD;
                               if (renderPath.type === 'cubic') {
                                 pathD = `M ${renderPath.x},${renderPath.y} C ${renderPath.control1X},${renderPath.control1Y} ${renderPath.control2X},${renderPath.control2Y} ${renderPath.endX},${renderPath.endY}`;
@@ -12951,10 +12949,10 @@ const TattingDesigner = () => {
                         )}
                         <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
 {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                          let ox = el.center.x, oy = el.center.y;
-                          if (el.type === 'chain' && el.paths && el.paths.length > 0) {
+                          let ox = renderCenter.x, oy = renderCenter.y;
+                          if (el.type === 'chain' && (renderPaths || el.paths) && (renderPaths || el.paths).length > 0) {
                             const allPts: {x:number,y:number}[] = [];
-                            el.paths.forEach(p => {
+                            (renderPaths || el.paths).forEach(p => {
                               for (let i = 0; i <= 40; i++) {
                                 const t = i / 40, u = 1 - t;
                                 if (p.type === 'cubic') {
