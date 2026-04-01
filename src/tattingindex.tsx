@@ -368,6 +368,7 @@ const TattingDesigner = () => {
     spiralArrayRotate, setSpiralArrayRotate,
     spiralArrayAngleStep, setSpiralArrayAngleStep,
     showArrayManager, setShowArrayManager,
+    ghostArrays, setGhostArrays,
     polarGridPeek, setPolarGridPeek,
     colorPickerTab, setColorPickerTab,
     pickerTabsAllowed, setPickerTabsAllowed,
@@ -15025,18 +15026,66 @@ const TattingDesigner = () => {
               if (ghostArrays.length === 0) {
                 return <p className="text-gray-400 text-sm text-center py-8">No ghost arrays — create one from the Arrange menu</p>;
               }
-              return ghostArrays.map(([sourceId, ghosts], idx) => (
-                <div key={sourceId + idx} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
-                  <span className="text-2xl flex-shrink-0">👻</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white text-sm font-medium">{ghosts.length} ghost{ghosts.length > 1 ? 's' : ''}</div>
-                    <div className="text-gray-400 text-xs">Source: {sourceId.slice(0, 8)}...</div>
+              return ghostArrays.map(([sourceId, ghosts], idx) => {
+                const sourceEl = elements.find(el => el.id === sourceId);
+                return (
+                  <div key={sourceId + idx} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
+                    <span className="text-2xl flex-shrink-0">👻</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium">{ghosts.length} ghost{ghosts.length > 1 ? 's' : ''}</div>
+                      <div className="text-gray-400 text-xs">Source: {sourceId.slice(0, 8)}... {sourceEl ? '✓' : '⚠️'}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!sourceEl) return;
+                        // Recalculate ghost positions based on source element's current state
+                        const dx = sourceEl.center.x - (ghosts[0]?.center.x || 0);
+                        const dy = sourceEl.center.y - (ghosts[0]?.center.y || 0);
+                        const dRot = (sourceEl.rotation || 0) - (ghosts[0]?.rotation || 0);
+                        setElements(prev => prev.map(el => {
+                          if (!ghosts.find(g => g.id === el.id)) return el;
+                          // Translate ghost
+                          const newPaths = el.paths.map(p => {
+                            const rotatePoint = (px, py) => {
+                              const rad = dRot * Math.PI / 180;
+                              const cos = Math.cos(rad), sin = Math.sin(rad);
+                              const cx = el.center.x, cy = el.center.y;
+                              const tx = px + dx, ty = py + dy;
+                              return { x: cx + (tx - cx) * cos - (ty - cy) * sin, y: cy + (tx - cx) * sin + (ty - cy) * cos };
+                            };
+                            if (p.type === 'cubic') {
+                              const s = rotatePoint(p.x, p.y);
+                              const e = rotatePoint(p.endX, p.endY);
+                              const c1 = rotatePoint(p.control1X, p.control1Y);
+                              const c2 = rotatePoint(p.control2X, p.control2Y);
+                              return { ...p, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+                            } else {
+                              const s = rotatePoint(p.x, p.y);
+                              const e = rotatePoint(p.endX, p.endY);
+                              const c = rotatePoint(p.controlX, p.controlY);
+                              return { ...p, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
+                            }
+                          });
+                          return {
+                            ...el,
+                            center: { x: el.center.x + dx, y: el.center.y + dy },
+                            rotation: (el.rotation || 0) + dRot,
+                            paths: newPaths
+                          };
+                        }));
+                      }}
+                      disabled={!sourceEl}
+                      className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
+                      title={sourceEl ? 'Update ghost positions from source' : 'Source element not found'}
+                    >
+                      ⚡ Update
+                    </button>
+                    <button onClick={() => { setSelectedIds(ghosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
+                    <button onClick={() => { setElements(prev => prev.map(el => ghosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
+                    <button onClick={() => { setElements(prev => prev.filter(el => !ghosts.find(g => g.id === el.id))); }} className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded">✕</button>
                   </div>
-                  <button onClick={() => { setSelectedIds(ghosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
-                  <button onClick={() => { setElements(prev => prev.map(el => ghosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
-                  <button onClick={() => { setElements(prev => prev.filter(el => !ghosts.find(g => g.id === el.id))); }} className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded">✕</button>
-                </div>
-              ));
+                );
+              });
             })()}
           </div>
           <div className="px-5 pb-4 flex-shrink-0">

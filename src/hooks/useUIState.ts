@@ -61,6 +61,18 @@ export function useUIState() {
 
   // Array Manager
   const [showArrayManager, setShowArrayManager] = useState(false);
+  const [ghostArrays, setGhostArrays] = useState<Array<{
+    id: string;
+    name: string;
+    type: 'polar' | 'linear';
+    sourceId: string;
+    instanceCount: number;
+    angle: number;
+    spacing: number;
+    rotStep: number;
+    pivotId?: string;
+    ghostIds: string[];
+  }>>([]);
 
   // ── Polar grid ─────────────────────────────────────────────────────────
   const [polarGridPeek, setPolarGridPeek] = useState(false);
@@ -150,6 +162,7 @@ export function useUIState() {
     spiralArrayAngleStep, setSpiralArrayAngleStep,
     // Array Manager
     showArrayManager, setShowArrayManager,
+    ghostArrays, setGhostArrays,
     // Polar grid
     polarGridPeek, setPolarGridPeek,
     // Color picker
