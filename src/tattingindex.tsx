@@ -2112,7 +2112,16 @@ const TattingDesigner = () => {
     const deletedGhostIds = selectedElements.filter(e => e.type === 'ghost').map(e => e.id);
     const deletedMotherIds = selectedElements.filter(e => e.isGhostMother).map(e => e.id);
 
-    setElements(prev => prev.filter(e => !currentSelectedIds.includes(e.id)));
+    // When mothers are deleted, also delete their associated ghosts
+    let idsToDelete = new Set(currentSelectedIds);
+    if (deletedMotherIds.length > 0) {
+      const ghostsToDelete = currentElements.filter(e => 
+        e.type === 'ghost' && e.sourceId && deletedMotherIds.includes(e.sourceId)
+      ).map(e => e.id);
+      ghostsToDelete.forEach(id => idsToDelete.add(id));
+    }
+
+    setElements(prev => prev.filter(e => !idsToDelete.has(e.id)));
 
     // Clean up ghost arrays if mothers are deleted
     if (deletedMotherIds.length > 0) {
@@ -2121,12 +2130,20 @@ const TattingDesigner = () => {
       ));
     }
 
-    // Clean up ghost arrays if ghosts are deleted
-    if (deletedGhostIds.length > 0) {
+    // Clean up ghost arrays if ghosts are deleted (including auto-deleted ones)
+    const allDeletedGhostIds = [...deletedGhostIds];
+    if (deletedMotherIds.length > 0) {
+      const autoDeletedGhosts = currentElements.filter(e => 
+        e.type === 'ghost' && e.sourceId && deletedMotherIds.includes(e.sourceId)
+      ).map(e => e.id);
+      allDeletedGhostIds.push(...autoDeletedGhosts);
+    }
+    
+    if (allDeletedGhostIds.length > 0) {
       setGhostArrays(prev => prev.map(array => ({
         ...array,
-        ghostIds: array.ghostIds.filter(id => !deletedGhostIds.includes(id)),
-        boundaryIds: array.boundaryIds.filter(id => !deletedGhostIds.includes(id)),
+        ghostIds: array.ghostIds.filter(id => !allDeletedGhostIds.includes(id)),
+        boundaryIds: array.boundaryIds.filter(id => !allDeletedGhostIds.includes(id)),
       })).filter(array => array.ghostIds.length > 0)); // Remove arrays with no ghosts left
     }
 
@@ -6084,8 +6101,9 @@ const TattingDesigner = () => {
           setSelectedPicots(selectedJointPicots);
         }
       } else {
-        // Regular element selection
+        // Regular element selection - ghosts are not selectable
         const boxHit = elements.filter(el =>
+          el.type !== 'ghost' &&
           el.center.x >= minX && el.center.x <= maxX && el.center.y >= minY && el.center.y <= maxY
         );
         // Groups: only select a group if ALL its members are inside the box
@@ -6250,10 +6268,10 @@ const TattingDesigner = () => {
         return;
       }
 
-      // Select All: Ctrl+A
+      // Select All: Ctrl+A - ghosts are not selectable
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
-        setSelectedIds(elementsRef.current.map(el => el.id));
+        setSelectedIds(elementsRef.current.filter(el => el.type !== 'ghost').map(el => el.id));
         return;
       }
 
@@ -15206,7 +15224,20 @@ const TattingDesigner = () => {
                     >
                       ⚡ Recreate
                     </button>
-                    <button onClick={() => { setSelectedIds(existingGhosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
+                    <button
+                      onClick={() => {
+                        if (sourceEl) {
+                          setSelectedIds([sourceEl.id]);
+                        } else {
+                          // Source deleted, select first ghost as fallback
+                          const firstGhost = existingGhosts[0];
+                          if (firstGhost) setSelectedIds([firstGhost.id]);
+                        }
+                        setShowArrayManager(false);
+                      }}
+                      className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
+                      title={sourceEl ? 'Select source element' : 'Select first ghost (source deleted)'}
+                    >Select</button>
                     <button
                       onClick={() => {
                         // Delete ghosts and remove from ghostArrays
@@ -15567,7 +15598,7 @@ const TattingDesigner = () => {
                 {/* Select all */}
                 <button
                   onClick={() => {
-                    const ids = elements.filter(el => (el.materialId || 'default') === mat.id || (el.isSplitRing && (el.materialIdB || el.materialId || 'default') === mat.id)).map(el => el.id);
+                    const ids = elements.filter(el => el.type !== 'ghost' && ((el.materialId || 'default') === mat.id || (el.isSplitRing && (el.materialIdB || el.materialId || 'default') === mat.id))).map(el => el.id);
                     setSelectedIds(ids);
                     setShowMaterialsPanel(false);
                   }}
