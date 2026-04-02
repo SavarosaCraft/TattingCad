@@ -2066,68 +2066,6 @@ const TattingDesigner = () => {
     }
   };
 
-  // Apply transform (translate + rotate) to a path
-  const applyTransformToPath = (path, transform) => {
-    const { x: tx, y: ty, rotation } = transform;
-    console.log('[applyTransform] Input path:', path.x, path.y, 'Transform:', transform);
-    if (!rotation || rotation === 0) {
-      // Translate only
-      if (path.type === 'cubic') {
-        const result = {
-          ...path,
-          x: path.x + tx,
-          y: path.y + ty,
-          endX: path.endX + tx,
-          endY: path.endY + ty,
-          control1X: path.control1X + tx,
-          control1Y: path.control1Y + ty,
-          control2X: path.control2X + tx,
-          control2Y: path.control2Y + ty,
-        };
-        console.log('[applyTransform] Result:', result.x, result.y);
-        return result;
-      } else {
-        return {
-          ...path,
-          x: path.x + tx,
-          y: path.y + ty,
-          endX: path.endX + tx,
-          endY: path.endY + ty,
-          controlX: path.controlX + tx,
-          controlY: path.controlY + ty,
-        };
-      }
-    }
-    // Translate + rotate
-    const rad = rotation * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const rotatePoint = (px, py) => ({
-      x: tx + px * cos - py * sin,
-      y: ty + px * sin + py * cos,
-    });
-    if (path.type === 'cubic') {
-      const s = rotatePoint(path.x, path.y);
-      const e = rotatePoint(path.endX, path.endY);
-      const c1 = rotatePoint(path.control1X, path.control1Y);
-      const c2 = rotatePoint(path.control2X, path.control2Y);
-      return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-    } else {
-      const s = rotatePoint(path.x, path.y);
-      const e = rotatePoint(path.endX, path.endY);
-      const c = rotatePoint(path.controlX, path.controlY);
-      return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
-    }
-  };
-
-  // Get element center (works for both regular and ghost elements)
-  const getElementCenter = (el) => {
-    if (el.type === 'ghost') {
-      return el.transform ? { x: el.transform.x, y: el.transform.y } : { x: 0, y: 0 };
-    }
-    return el.center || { x: 0, y: 0 };
-  };
-
   const addLine = useCallback(() => {
     const center = getViewportCenter();
     const startX = center.x - 100;
@@ -2167,22 +2105,22 @@ const TattingDesigner = () => {
   const deleteSelected = useCallback(() => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length === 0) return;
-    
+
     // Check if any selected elements are ghosts or mothers
     const currentElements = elementsRef.current;
     const selectedElements = currentElements.filter(e => currentSelectedIds.includes(e.id));
-    const deletedGhostIds = selectedElements.filter(e => e.type === 'ghost' || e.isGhost).map(e => e.id);
+    const deletedGhostIds = selectedElements.filter(e => e.type === 'ghost').map(e => e.id);
     const deletedMotherIds = selectedElements.filter(e => e.isGhostMother).map(e => e.id);
-    
+
     setElements(prev => prev.filter(e => !currentSelectedIds.includes(e.id)));
-    
+
     // Clean up ghost arrays if mothers are deleted
     if (deletedMotherIds.length > 0) {
-      setGhostArrays(prev => prev.filter(array => 
+      setGhostArrays(prev => prev.filter(array =>
         !deletedMotherIds.includes(array.sourceId)
       ));
     }
-    
+
     // Clean up ghost arrays if ghosts are deleted
     if (deletedGhostIds.length > 0) {
       setGhostArrays(prev => prev.map(array => ({
@@ -2191,7 +2129,7 @@ const TattingDesigner = () => {
         boundaryIds: array.boundaryIds.filter(id => !deletedGhostIds.includes(id)),
       })).filter(array => array.ghostIds.length > 0)); // Remove arrays with no ghosts left
     }
-    
+
     setSelectedIds([]);
     // Remove any picot connections that reference a picot on a deleted element
     setPicotConnections(prev => prev.filter(conn =>
@@ -2419,8 +2357,8 @@ const TattingDesigner = () => {
     if (delta === 0) return;
     const selEls = elements.filter(e => selectedIds.includes(e.id));
     const polarPivot = getPolarPivot(selectedIds);
-    const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
-    const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
+    const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+    const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
     const rad = delta * Math.PI / 180;
     const cos = Math.cos(rad), sin = Math.sin(rad);
 
@@ -2859,8 +2797,8 @@ const TattingDesigner = () => {
 
     // Mark source elements as mothers
     if (createGhosts) {
-      setElements(prev => prev.map(el => 
-        currentSelectedIds.includes(el.id) 
+      setElements(prev => prev.map(el =>
+        currentSelectedIds.includes(el.id)
           ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), `polar_${Date.now()}`] }
           : el
       ));
@@ -2883,31 +2821,42 @@ const TattingDesigner = () => {
 
       selectedEls.forEach(el => {
         const isBoundary = (i === 1 || i === count - 1);
-        
+
         if (createGhosts) {
-          // Create lightweight ghost element
-          const dx = el.center.x - pivotX;
-          const dy = el.center.y - pivotY;
-          const newX = pivotX + dx * cos - dy * sin;
-          const newY = pivotY + dx * sin + dy * cos;
-          const newRot = ((el.rotation || 0) + angleDeg) % 360;
-          
+          // Create lightweight ghost - has paths for rendering but is non-interactive
           const ghostEl = {
             id: generateId(),
             type: 'ghost' as const,
             sourceId: el.id,
-            transform: {
-              x: newX,
-              y: newY,
-              rotation: newRot,
-            },
             isBoundary,
+            // Transformed center for hit-testing exclusion and bounding box
+            center: {
+              x: pivotX + (el.center.x - pivotX) * cos - (el.center.y - pivotY) * sin,
+              y: pivotY + (el.center.x - pivotX) * sin + (el.center.y - pivotY) * cos,
+            },
+            // Transformed paths for rendering only
+            paths: el.paths ? el.paths.map(p => {
+              const rotPt = (px, py) => {
+                const rx = px - pivotX, ry = py - pivotY;
+                return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+              };
+              const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+              if (p.type === 'cubic') {
+                const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+              } else {
+                const c = rotPt(p.controlX, p.controlY);
+                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+              }
+            }) : [],
+            // Ghost rotation (for rendering orientation)
+            rotation: ((el.rotation || 0) + angleDeg) % 360,
           };
           newElements.push(ghostEl);
           newGhostIds.push(ghostEl.id);
           if (isBoundary) boundaryGhostIds.push(ghostEl.id);
         } else {
-          // Create full copy (legacy mode)
+          // Create full copy (legacy mode - not a ghost)
           const newEl = JSON.parse(JSON.stringify(el));
           newEl.id = generateId();
           delete newEl.orderNumber;
@@ -3031,7 +2980,7 @@ const TattingDesigner = () => {
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
     const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
-
+    
     // TODO: Bounding box calculation doesn't account for rotation or path transformations.
     // For rotated elements, bbox should use transformed path points, not raw coordinates.
     // Current workaround: uses max of width/height, but may be inaccurate for rotated elements.
@@ -3045,19 +2994,19 @@ const TattingDesigner = () => {
           maxY = Math.max(maxY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
         });
       } else {
-        minX = Math.min(minX, getElementCenter(el).x);
-        maxX = Math.max(maxX, getElementCenter(el).x);
-        minY = Math.min(minY, getElementCenter(el).y);
-        maxY = Math.max(maxY, getElementCenter(el).y);
+        minX = Math.min(minX, el.center.x);
+        maxX = Math.max(maxX, el.center.x);
+        minY = Math.min(minY, el.center.y);
+        maxY = Math.max(maxY, el.center.y);
       }
     });
     const bboxWidth = maxX - minX;
     const bboxHeight = maxY - minY;
     const elementSize = Math.max(bboxWidth, bboxHeight, 1); // At least 1px
-
+    
     // Calculate actual spacing from percentage
     const spacing = (spacingPercent / 100) * elementSize;
-
+    
     const rad = angleDeg * Math.PI / 180;
     const dx = Math.cos(rad) * spacing;
     const dy = Math.sin(rad) * spacing;
@@ -3068,8 +3017,8 @@ const TattingDesigner = () => {
     // Mark source elements as mothers
     if (createGhosts) {
       const arrayId = `linear_${Date.now()}`;
-      setElements(prev => prev.map(el => 
-        currentSelectedIds.includes(el.id) 
+      setElements(prev => prev.map(el =>
+        currentSelectedIds.includes(el.id)
           ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), arrayId] }
           : el
       ));
@@ -3079,46 +3028,50 @@ const TattingDesigner = () => {
       const offsetX = dx * i;
       const offsetY = dy * i;
       const extraRot = rotStep * i;
-      const isBoundary = (i === count - 1); // Last element is boundary for linear
       const groupIdMap = new Map<string, string>();
       selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
-      
       selectedEls.forEach(el => {
+        const isBoundary = (i === count - 1); // Last element is boundary for linear
+
         if (createGhosts) {
-          // Create lightweight ghost element
-          const sourceCenter = getElementCenter(el);
-          const newX = sourceCenter.x + offsetX;
-          const newY = sourceCenter.y + offsetY;
+          // Create lightweight ghost - has paths for rendering but is non-interactive
+          const newCx = el.center.x + offsetX;
+          const newCy = el.center.y + offsetY;
           const newRot = ((el.rotation || 0) + extraRot + 360) % 360;
-          
-          console.log('[LinearGhost] Source:', sourceCenter, 'Offset:', offsetX, offsetY, 'Ghost pos:', newX, newY, 'Rot:', newRot);
-          
+
+          // First translate paths to new position
+          let translatedPaths = el.paths ? el.paths.map(p => {
+            if (p.type === 'cubic') {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+            } else {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+            }
+          }) : [];
+
+          // Then rotate paths around the new center if needed
+          let finalPaths = translatedPaths;
+          if (extraRot !== 0) {
+            finalPaths = rotatePathsAroundCenter(translatedPaths, newCx, newCy, extraRot, el, newRot);
+          }
+
           const ghostEl = {
             id: generateId(),
             type: 'ghost' as const,
             sourceId: el.id,
-            transform: {
-              x: newX,
-              y: newY,
-              rotation: newRot,
-            },
             isBoundary,
+            center: { x: newCx, y: newCy },
+            paths: finalPaths,
+            rotation: newRot,
           };
           newElements.push(ghostEl);
           newGhostIds.push(ghostEl.id);
           if (isBoundary) boundaryGhostIds.push(ghostEl.id);
         } else {
-          // Create full copy (legacy mode)
+          // Create full copy (legacy mode - not a ghost)
           const newEl = JSON.parse(JSON.stringify(el));
           newEl.id = generateId();
           delete newEl.orderNumber;
           if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-
-          // Mark as ghost if requested
-          if (createGhosts) {
-            newEl.isGhost = true;
-            newEl.ghostSourceId = el.id;
-          }
 
           const newCx = el.center.x + offsetX;
           const newCy = el.center.y + offsetY;
@@ -4396,6 +4349,9 @@ const TattingDesigner = () => {
   // Returns minimum distance from (worldX, worldY) to any sampled point on the element's paths.
   // Used for both hit-testing and tie-breaking between overlapping elements.
   const minPathDistance = (element, worldX, worldY) => {
+    // Ghost elements don't have paths and are not directly interactable
+    if (element.type === 'ghost' || !element.paths) return Infinity;
+    
     let minDist = Infinity;
     for (let path of element.paths) {
       const points = sampleBezierPath(path, 20);
@@ -4414,6 +4370,8 @@ const TattingDesigner = () => {
   // Find closest element by minimum path distance (works correctly for split rings and lines)
   const findClosestElement = (worldX, worldY, filterFn = null) => {
     const candidates = elements.filter(el => {
+      // Ghost elements are not directly interactable
+      if (el.type === 'ghost') return false;
       if (filterFn && !filterFn(el)) return false;
       return isPointInElement(el, worldX, worldY);
     });
@@ -11380,8 +11338,8 @@ const TattingDesigner = () => {
                 })();
 
                 // Centroid of ALL selected (for transforms when no polar grid is linked)
-                const cxAll = selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
-                const cyAll = selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
+                const cxAll = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                const cyAll = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
 
                 // If all selected elements share a polar grid, use the grid centre + its offset as flip axes.
                 // FlipH = mirror across axis at (angularOffset + 90°) through grid centre.
@@ -12652,6 +12610,8 @@ const TattingDesigner = () => {
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)' : shouldHighlight ? 'url(#pink-glow)' : undefined;
                 // In tattingOrder mode, hide notation labels so only order numbers are visible
                 const hideNotationInMode = activeMode === 'tattingOrder';
+                // Ghost elements are non-interactive visual copies
+                const isGhost = el.type === 'ghost';
                 // PERFORMANCE: During translate-drag, apply offset via SVG transform instead of
                 // mutating element state. Keeps stitchCache valid throughout the drag.
                 const dragTransform = (isSelected && dragOffsetRef.current.active)
@@ -12659,71 +12619,35 @@ const TattingDesigner = () => {
                   : undefined;
                 // PERFORMANCE: getElementColor once per element, reused for stroke + picots
                 // For ghosts, get color from source element
-                const isGhost = el.type === 'ghost' || el.isGhost === true;
-                const sourceElement = isGhost ? (el.sourceId ? elements.find(e => e.id === el.sourceId) : elements.find(e => e.id === el.ghostSourceId)) : null;
-                const renderEl = sourceElement || el;  // Use source for ghosts
+                const sourceElement = isGhost ? elements.find(e => e.id === el.sourceId) : null;
+                const renderEl = sourceElement || el;
                 const elColor = getElementColor(renderEl);
                 const elStrokeVal = elColor.isGradient ? `url(#gradient-${elColor.id})` : elColor.color;
                 // Split ring section B color (only relevant for split rings)
                 const elColorB = renderEl.isSplitRing ? getElementColor({...renderEl, materialId: renderEl.materialIdB || renderEl.materialId}) : elColor;
                 const elStrokeValB = elColorB.isGradient ? `url(#gradient-${elColorB.id})` : elColorB.color;
-                
-                // For ghosts, apply transform to paths using same logic as real copies
-                const renderPaths = isGhost && sourceElement && el.transform
-                  ? (() => {
-                      const sourceCenter = getElementCenter(sourceElement);
-                      const deltaX = el.transform.x - sourceCenter.x;
-                      const deltaY = el.transform.y - sourceCenter.y;
-                      const rotDelta = el.transform.rotation - (sourceElement.rotation || 0);
-                      
-                      console.log('[GhostRender] Source center:', sourceCenter, 'Ghost transform:', el.transform, 'Delta:', deltaX, deltaY, 'RotDelta:', rotDelta);
-                      console.log('[GhostRender] Source paths[0]:', sourceElement.paths[0].x, sourceElement.paths[0].y);
-                      
-                      // First translate paths to ghost position
-                      let translatedPaths = sourceElement.paths.map(p => applyTransformToPath(p, { x: deltaX, y: deltaY, rotation: 0 }));
-                      
-                      // Then rotate around ghost center if needed
-                      if (rotDelta !== 0) {
-                        translatedPaths = rotatePathsAroundCenter(translatedPaths, el.transform.x, el.transform.y, rotDelta, sourceElement, el.transform.rotation);
-                      }
-                      
-                      console.log('[GhostRender] Translated paths[0]:', translatedPaths[0].x, translatedPaths[0].y);
-                      
-                      return translatedPaths;
-                    })()
-                  : el.paths;
-                const renderCenter = isGhost && el.transform 
-                  ? { x: el.transform.x, y: el.transform.y }
-                  : el.center;
-                
-                console.log('[Render] Element:', el.id, 'Type:', el.type, 'Center:', renderCenter, 'IsGhost:', isGhost);
-                const renderRotation = isGhost && el.transform ? el.transform.rotation : (el.rotation || 0);
-                
-                // Ghost visual styling
-                const isBoundaryGhost = isGhost && el.isBoundary;
-                const ghostOpacity = isGhost ? (renderMode === 'schematic' ? 0.4 : 1) : undefined;
-                const ghostDash = isGhost && renderMode === 'schematic' ? '5,5' : undefined;
-                
+
                 // Render circles as SVG circle element for smooth rendering
-                if (renderEl.isClosed && renderEl.shapeStyle === 'circle') {
-                  const targetCircumference = renderEl.stitchCount * dsWidth;
+                if (el.isClosed && el.shapeStyle === 'circle') {
+                  const targetCircumference = el.stitchCount * dsWidth;
                   const radius = targetCircumference / (2 * Math.PI);
 
                   // Original schematic rendering for circles
                   return (
-                    <g key={el.id} filter={elementFilter} transform={dragTransform}>
+                    <g key={el.id} filter={elementFilter} transform={dragTransform} style={isGhost ? { pointerEvents: 'none' } : undefined}>
                       <circle
-                        cx={renderCenter.x}
-                        cy={renderCenter.y}
+                        cx={el.center.x}
+                        cy={el.center.y}
                         r={radius}
                         fill="none"
                         stroke={elStrokeVal}
                         strokeWidth="3.75"
-                        opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
-                        strokeDasharray={ghostDash}
+                        opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                        strokeDasharray={isGhost ? '5,5' : undefined}
                       />
-                      {renderPicots(el)}
-                      {isSelected && (
+                      {/* Ghosts don't show picots, notation, or selection handles */}
+                      {!isGhost && renderPicots(el)}
+                      {!isGhost && isSelected && (
                         <circle
                           cx={el.center.x}
                           cy={el.center.y}
@@ -12754,8 +12678,8 @@ const TattingDesigner = () => {
                         return (
                           <text
                             data-layer="order"
-                            x={renderCenter.x}
-                            y={renderCenter.y}
+                            x={el.center.x}
+                            y={el.center.y}
                             fill={_fill}
                             fontSize={Math.round(notationFS * 1.57)}
                             fontWeight="bold"
@@ -12772,14 +12696,14 @@ const TattingDesigner = () => {
                     </g>
                   );
                 }
-
+                
                 // Render everything else (teardrops, chains, and lines) using paths
                 return (
                   <g key={el.id} filter={elementFilter} transform={dragTransform}>
                     {/* Line rendering - simple bezier with black outline */}
                     {el.type === 'line' ? (
                       <>
-                        {(renderPaths || el.paths).map((path, i) => {
+                        {el.paths.map((path, i) => {
                           let pathD;
                           if (path.type === 'cubic') {
                             pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
@@ -12794,8 +12718,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
-                                strokeDasharray={ghostDash}
+                                opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                               {/* Colored line on top */}
                               <path
@@ -12803,8 +12727,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
-                                strokeDasharray={ghostDash}
+                                opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                             </g>
                           );
@@ -12829,12 +12753,16 @@ const TattingDesigner = () => {
                           );
                         })}
                         {/* Beaded line — render beads evenly along path */}
-                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (renderPaths || el.paths) && (() => {
+                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (() => {
+                          // Per-slot mode (new): lineBeadSlots[] — each slot has its own bead library ID
+                          // Single-bead legacy mode: lineBeadId + lineBeadCount
+                          // Text legacy mode: lineBeads string
                           const resolveSlot = (bi) => {
                             if (el.lineBeadSlots?.length > 0) {
                               const slotId = el.lineBeadSlots[bi];
                               return slotId ? beadLibrary.find(b => b.id === slotId) : null;
                             }
+                            // fallback: same bead for all slots
                             return el.lineBeadId ? beadLibrary.find(b => b.id === el.lineBeadId) : null;
                           };
                           const legacyBeads = (!el.lineBeadSlots && !el.lineBeadId && el.lineBeads)
@@ -12843,7 +12771,7 @@ const TattingDesigner = () => {
                             ? el.lineBeadSlots.length
                             : el.lineBeadId ? (el.lineBeadCount ?? 1) : legacyBeads.length;
                           if (totalBeads === 0) return null;
-                          const allSamples = (renderPaths || el.paths).map(p => sampleBezierPath(p, 40));
+                          const allSamples = el.paths.map(p => sampleBezierPath(p, 40));
                           const allLens = allSamples.map(s => calculatePathLength(s));
                           const totalLen = allLens.reduce((a, b) => a + b, 0);
                           return Array.from({length: totalBeads}, (_, bi) => {
@@ -12861,9 +12789,9 @@ const TattingDesigner = () => {
                           });
                         })()}
                         {/* Order number label for lines */}
-                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (renderPaths || el.paths) && (() => {
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && el.paths?.length > 0 && (() => {
                           const allPts: {x:number,y:number}[] = [];
-                          (renderPaths || el.paths).forEach(p => {
+                          el.paths.forEach(p => {
                             for (let i = 0; i <= 20; i++) {
                               const t = i / 20, u = 1 - t;
                               if (p.type === 'cubic') {
@@ -12875,7 +12803,7 @@ const TattingDesigner = () => {
                           });
                           let total = 0;
                           for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                          let acc = 0, half = total / 2, ox = renderCenter.x, oy = renderCenter.y;
+                          let acc = 0, half = total / 2, ox = el.center.x, oy = el.center.y;
                           for (let i = 1; i < allPts.length; i++) {
                             const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
                             if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
@@ -12892,7 +12820,7 @@ const TattingDesigner = () => {
                     {el.type === 'line' ? (
                       // Line rendering - simple bezier path without stitches
                       <>
-                        {(renderPaths || el.paths).map((path, i) => {
+                        {el.paths.map((path, i) => {
                           let pathD;
                           if (path.type === 'cubic') {
                             pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
@@ -12907,8 +12835,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
-                                strokeDasharray={ghostDash}
+                                opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                               {/* Colored line on top */}
                               <path
@@ -12916,14 +12844,14 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
-                                strokeDasharray={ghostDash}
+                                opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                             </g>
                           );
                         })}
                         {/* Selection indicator */}
-                        {isSelected && (renderPaths || el.paths).map((path, i) => {
+                        {isSelected && el.paths.map((path, i) => {
                           let pathD;
                           if (path.type === 'cubic') {
                             pathD = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
@@ -12942,7 +12870,7 @@ const TattingDesigner = () => {
                           );
                         })}
                         {/* Beaded line — render beads evenly along path */}
-                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (renderPaths || el.paths) && (() => {
+                        {(el.lineBeadSlots?.length > 0 || el.lineBeadId || el.lineBeads) && (() => {
                           const resolveSlot = (bi) => {
                             if (el.lineBeadSlots?.length > 0) {
                               const slotId = el.lineBeadSlots[bi];
@@ -12956,7 +12884,7 @@ const TattingDesigner = () => {
                             ? el.lineBeadSlots.length
                             : el.lineBeadId ? (el.lineBeadCount ?? 1) : legacyBeads.length;
                           if (totalBeads === 0) return null;
-                          const allSamples = (renderPaths || el.paths).map(p => sampleBezierPath(p, 40));
+                          const allSamples = el.paths.map(p => sampleBezierPath(p, 40));
                           const allLens = allSamples.map(s => calculatePathLength(s));
                           const totalLen = allLens.reduce((a, b) => a + b, 0);
                           return Array.from({length: totalBeads}, (_, bi) => {
@@ -12979,10 +12907,10 @@ const TattingDesigner = () => {
                     ) : (
                       // Original schematic rendering
                       <>
-                        {(renderPaths || el.paths).map((path, i) => {
+                        {el.paths.map((path, i) => {
                           // Use path directly (curveType system removed)
                           const renderPath = path;
-
+                          
                           let pathD;
                           if (renderPath.type === 'cubic') {
                             pathD = `M ${renderPath.x},${renderPath.y} C ${renderPath.control1X},${renderPath.control1Y} ${renderPath.control2X},${renderPath.control2Y} ${renderPath.endX},${renderPath.endY}`;
@@ -12994,43 +12922,46 @@ const TattingDesigner = () => {
                               key={i}
                               d={pathD}
                               fill="none"
-                              stroke={(i === 1 && renderEl.isSplitRing && renderEl.materialIdB) ? elStrokeValB : elStrokeVal}
+                              stroke={(i === 1 && el.isSplitRing && el.materialIdB) ? elStrokeValB : elStrokeVal}
                               strokeWidth="3.75"
-                              opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
-                              strokeDasharray={ghostDash}
+                              opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                              strokeDasharray={isGhost ? '5,5' : undefined}
                             />
                           );
                         })}
                         {/* Dashed connection line for split rings - along height line */}
-                        {renderEl.isSplitRing && (renderPaths || el.paths).length >= 2 && (
+                        {el.isSplitRing && el.paths.length >= 2 && (
                           <>
                             <line
-                              x1={(renderPaths || el.paths)[0].endX}
-                              y1={(renderPaths || el.paths)[0].endY}
-                              x2={(renderPaths || el.paths)[0].x}
-                              y2={(renderPaths || el.paths)[0].y}
+                              x1={el.paths[0].endX}
+                              y1={el.paths[0].endY}
+                              x2={el.paths[0].x}
+                              y2={el.paths[0].y}
                               stroke="#000000"
                               strokeWidth={(el.lineWidth || 2) + 2}
                               strokeDasharray="5,5"
-                              opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                              opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
                             />
                             <line
-                              x1={(renderPaths || el.paths)[0].endX}
-                              y1={(renderPaths || el.paths)[0].endY}
-                              x2={(renderPaths || el.paths)[0].x}
-                              y2={(renderPaths || el.paths)[0].y}
+                              x1={el.paths[0].endX}
+                              y1={el.paths[0].endY}
+                              x2={el.paths[0].x}
+                              y2={el.paths[0].y}
                               stroke={elStrokeValB}
                               strokeWidth={el.lineWidth || 2}
                               strokeDasharray="5,5"
-                              opacity={ghostOpacity ?? (isSelected ? 0.7 : 1)}
+                              opacity={isGhost ? 0.4 : isSelected ? 0.7 : 1}
                             />
                           </>
                         )}
-                        {renderPicots(el)}
-                        {isSelected && (
+                        {/* Ghosts don't show picots or selection handles */}
+                        {!isGhost && renderPicots(el)}
+                        {!isGhost && isSelected && (
                           <g>
-                            {(renderPaths || el.paths).map((path, i) => {
+                            {el.paths.map((path, i) => {
+                              // Use path directly (curveType system removed)
                               const renderPath = path;
+                              
                               let pathD;
                               if (renderPath.type === 'cubic') {
                                 pathD = `M ${renderPath.x},${renderPath.y} C ${renderPath.control1X},${renderPath.control1Y} ${renderPath.control2X},${renderPath.control2Y} ${renderPath.endX},${renderPath.endY}`;
@@ -13052,10 +12983,10 @@ const TattingDesigner = () => {
                         )}
                         <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
 {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                          let ox = renderCenter.x, oy = renderCenter.y;
-                          if (el.type === 'chain' && (renderPaths || el.paths) && (renderPaths || el.paths).length > 0) {
+                          let ox = el.center.x, oy = el.center.y;
+                          if (el.type === 'chain' && el.paths && el.paths.length > 0) {
                             const allPts: {x:number,y:number}[] = [];
-                            (renderPaths || el.paths).forEach(p => {
+                            el.paths.forEach(p => {
                               for (let i = 0; i <= 40; i++) {
                                 const t = i / 40, u = 1 - t;
                                 if (p.type === 'cubic') {
@@ -13113,11 +13044,11 @@ const TattingDesigner = () => {
                 let pivX: number, pivY: number;
                 if (polarArrayPivotId && polarArrayPivotId !== 'selection') {
                   const grid = polarGrids.find(g => g.id === polarArrayPivotId);
-                  pivX = grid ? grid.center.x : selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
-                  pivY = grid ? grid.center.y : selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
+                  pivX = grid ? grid.center.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                  pivY = grid ? grid.center.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
                 } else {
-                  pivX = selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
-                  pivY = selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
+                  pivX = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                  pivY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
                 }
 
                 const stepDeg = polarArrayAngle / polarArrayCount;
@@ -13218,8 +13149,8 @@ const TattingDesigner = () => {
                 const linkedGid = (() => { const gid = selEls[0]?.polarRotationGridId; return gid && selEls.every(e => e.polarRotationGridId === gid) ? gid : null; })();
                 const pivGrid = linkedGid ? polarGrids.find(g => g.id === linkedGid) : selectedPolarGridId ? polarGrids.find(g => g.id === selectedPolarGridId) : null;
                 if (pivGrid) { pivX = pivGrid.center.x; pivY = pivGrid.center.y; }
-                const centroidX = selEls.reduce((s, e) => s + getElementCenter(e).x, 0) / selEls.length;
-                const centroidY = selEls.reduce((s, e) => s + getElementCenter(e).y, 0) / selEls.length;
+                const centroidX = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+                const centroidY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
                 const r0 = Math.sqrt((centroidX - pivX) ** 2 + (centroidY - pivY) ** 2);
                 const angle0 = Math.atan2(centroidY - pivY, centroidX - pivX) * 180 / Math.PI;
                 const angularStep = spiralArrayAngleStep; // fixed degrees per copy — independent of count
@@ -15231,7 +15162,7 @@ const TattingDesigner = () => {
       </>
     )}
 
-    {/* TEST MODAL - Inline to verify rendering */}
+    {/* Ghost Array Manager Modal */}
     {showArrayManager && (
       <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
         <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
@@ -15261,8 +15192,11 @@ const TattingDesigner = () => {
                         setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
                         // Recreate ghosts with stored parameters
                         setTimeout(() => {
+                          setSelectedIds([sourceEl.id]);
                           if (array.type === 'polar') {
                             executePolarArray(array.instanceCount, array.angle, array.pivotId || 'selection', true);
+                          } else if (array.type === 'linear') {
+                            executeLinearArray(array.instanceCount, array.angle, array.spacing, array.rotStep, true);
                           }
                         }, 50);
                       }}
@@ -15273,9 +15207,9 @@ const TattingDesigner = () => {
                       ⚡ Recreate
                     </button>
                     <button onClick={() => { setSelectedIds(existingGhosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
-                    <button onClick={() => { setElements(prev => prev.map(el => existingGhosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
                     <button
                       onClick={() => {
+                        // Delete ghosts and remove from ghostArrays
                         setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
                         setGhostArrays(prev => prev.filter(a => a.id !== array.id));
                       }}
