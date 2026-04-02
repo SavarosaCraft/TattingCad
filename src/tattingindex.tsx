@@ -6202,8 +6202,19 @@ const TattingDesigner = () => {
     setDraggedElement(null);
     draggedHandleRef.current = null; // NEW: clear path edit handle
     pathDragStartRef.current = null; // Clear interpolation start data
+    // Save rotation handle state before clearing to detect rotation changes
+    const wasRotating = rotationHandle !== null;
     setRotationHandle(null);         // NEW: clear rotation handle
     setMovingPivot(false);           // NEW: clear pivot movement
+
+    // Update ghosts for mothers that were rotated (not dragged - ghosts stay in place)
+    if (isInteractingRef.current && wasRotating && selectedIdsRef.current.length > 0) {
+      setTimeout(() => {
+        selectedIdsRef.current.forEach(id => {
+          updateGhostArraysForMother(id);
+        });
+      }, 100);
+    }
 
     // Minimum line length guard — remove lines that were placed as accidental dots.
     // A line whose start and end are within 12 world-units of each other is a misclick.
@@ -6708,16 +6719,157 @@ const TattingDesigner = () => {
         return p;
       });
 
-      return { 
-        ...el, 
-        notation, 
-        stitchCount: parsed.stitchCount, 
+      return {
+        ...el,
+        notation,
+        stitchCount: parsed.stitchCount,
         picots: restoreBEConfigs(mergedPicots, el.beConfigs),
         beConfigs: extractBEConfigs(restoreBEConfigs(mergedPicots, el.beConfigs)),
         isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
         ...(Object.keys(newPathData).length > 0 ? newPathData : {})
       };
     }));
+
+    // Update ghosts if this element is a ghost mother
+    setTimeout(() => {
+      updateGhostArraysForMother(targetId);
+    }, 100);
+  };
+
+  // Update ghosts when mother element changes (notation, rotation, shape, etc.)
+  const updateGhostArraysForMother = (motherId: string) => {
+    const motherEl = elements.find(e => e.id === motherId);
+    if (!motherEl || !motherEl.isGhostMother) return;
+
+    // Find all ghost arrays where this element is the source
+    const relevantArrays = ghostArrays.filter(array => array.sourceId === motherId);
+
+    relevantArrays.forEach(array => {
+      // Delete old ghosts and recreate in same state update to avoid race conditions
+      setElements(prev => {
+        // Filter out old ghosts
+        const withoutGhosts = prev.filter(el => !array.ghostIds.includes(el.id));
+        
+        // Find the source element in the current state (might have been updated)
+        const sourceEl = withoutGhosts.find(e => e.id === motherId);
+        if (!sourceEl) return prev;
+
+        // Recreate ghosts with stored parameters using current mother state
+        const newGhosts = [];
+        const newGhostIds = [];
+        const boundaryGhostIds = [];
+
+        if (array.type === 'polar') {
+          // Recreate polar array ghosts
+          const count = array.instanceCount;
+          const fillAngle = array.angle;
+          const pivotId = array.pivotId || 'selection';
+          const stepDeg = fillAngle / count;
+
+          let pivotX: number, pivotY: number;
+          if (pivotId && pivotId !== 'selection') {
+            const grid = polarGrids.find(g => g.id === pivotId);
+            pivotX = grid ? grid.center.x : sourceEl.center.x;
+            pivotY = grid ? grid.center.y : sourceEl.center.y;
+          } else {
+            pivotX = sourceEl.center.x;
+            pivotY = sourceEl.center.y;
+          }
+
+          for (let i = 1; i < count; i++) {
+            const angleDeg = stepDeg * i;
+            const rad = angleDeg * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const isBoundary = (i === 1 || i === count - 1);
+
+            const ghostEl = {
+              id: generateId(),
+              type: 'ghost' as const,
+              sourceId: motherId,
+              isBoundary,
+              center: {
+                x: pivotX + (sourceEl.center.x - pivotX) * cos - (sourceEl.center.y - pivotY) * sin,
+                y: pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos,
+              },
+              paths: sourceEl.paths ? sourceEl.paths.map(p => {
+                const rotPt = (px, py) => {
+                  const rx = px - pivotX, ry = py - pivotY;
+                  return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+                };
+                const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+                if (p.type === 'cubic') {
+                  const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+                  return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+                } else {
+                  const c = rotPt(p.controlX, p.controlY);
+                  return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+                }
+              }) : [],
+              rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
+            };
+            newGhosts.push(ghostEl);
+            newGhostIds.push(ghostEl.id);
+            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
+          }
+        } else if (array.type === 'linear') {
+          // Recreate linear array ghosts
+          const count = array.instanceCount;
+          const angleDeg = array.angle;
+          const spacingPercent = array.spacing;
+          const rotStep = array.rotStep;
+
+          const rad = angleDeg * Math.PI / 180;
+          const dx = Math.cos(rad) * spacingPercent;
+          const dy = Math.sin(rad) * spacingPercent;
+
+          for (let i = 1; i < count; i++) {
+            const offsetX = dx * i;
+            const offsetY = dy * i;
+            const extraRot = rotStep * i;
+            const isBoundary = (i === count - 1);
+            const newRot = ((sourceEl.rotation || 0) + extraRot + 360) % 360;
+
+            let translatedPaths = sourceEl.paths ? sourceEl.paths.map(p => {
+              if (p.type === 'cubic') {
+                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+              } else {
+                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+              }
+            }) : [];
+
+            let finalPaths = translatedPaths;
+            if (extraRot !== 0) {
+              const newCx = sourceEl.center.x + offsetX;
+              const newCy = sourceEl.center.y + offsetY;
+              finalPaths = rotatePathsAroundCenter(translatedPaths, newCx, newCy, extraRot, sourceEl, newRot);
+            }
+
+            const ghostEl = {
+              id: generateId(),
+              type: 'ghost' as const,
+              sourceId: motherId,
+              isBoundary,
+              center: { x: sourceEl.center.x + offsetX, y: sourceEl.center.y + offsetY },
+              paths: finalPaths,
+              rotation: newRot,
+            };
+            newGhosts.push(ghostEl);
+            newGhostIds.push(ghostEl.id);
+            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
+          }
+        }
+
+        // Update ghostArrays state
+        setGhostArrays(prev => prev.map(a => 
+          a.id === array.id 
+            ? { ...a, ghostIds: newGhostIds, boundaryIds: boundaryGhostIds }
+            : a
+        ));
+
+        return [...withoutGhosts, ...newGhosts];
+      });
+    });
   };
 
   const toggleShape = () => {
@@ -6775,11 +6927,16 @@ const TattingDesigner = () => {
             }
           });
         }
-        
+
         return { ...el, shapeStyle: newStyle, ...tempPathData };
       }
       return el;
     }));
+
+    // Update ghosts if this element is a ghost mother
+    setTimeout(() => {
+      updateGhostArraysForMother(selectedIds[0]);
+    }, 100);
   };
 
   const setLabelOffset = useCallback((value: number) => {
