@@ -153,3 +153,72 @@ export function applyPathPresetToPaths(
 ): BezierPath[] {
   return paths.map(p => applyPathPreset(p, presetDegrees, targetLength));
 }
+
+/**
+ * Apply a preset angle to a line's control points.
+ * Lines have no length constraint — handle lengths are preserved as-is.
+ *
+ * @param path - The cubic bezier path of the line
+ * @param presetDegrees - The angle offset from the chord (e.g. 90, 60, 45, 0)
+ * @returns New path with control points at preset angles
+ */
+export function applyLinePreset(
+  path: BezierPath,
+  presetDegrees: number
+): BezierPath {
+  if (path.type !== 'cubic') return path;
+
+  const P0 = { x: path.x, y: path.y };
+  const P3 = { x: path.endX, y: path.endY };
+
+  const chordDx = P3.x - P0.x;
+  const chordDy = P3.y - P0.y;
+  const chordAngle = Math.atan2(chordDy, chordDx);
+  const chordLength = Math.hypot(chordDx, chordDy);
+
+  if (chordLength < 0.001) return path;
+
+  // Determine which side of the chord each control point currently sits on
+  const side1 = sideOfChord(P0.x, P0.y, P3.x, P3.y, path.control1X!, path.control1Y!);
+  const side2 = sideOfChord(P0.x, P0.y, P3.x, P3.y, path.control2X!, path.control2Y!);
+
+  const effectiveSide1 = side1 !== 0 ? side1 : (side2 !== 0 ? side2 : 1);
+  const effectiveSide2 = side2 !== 0 ? side2 : (side1 !== 0 ? side1 : 1);
+
+  // For 0° preset (straight line), place control points on the chord
+  if (presetDegrees === 0) {
+    // Preserve the proportional distance along the chord (1/3 and 2/3 positions)
+    const c1Dist = Math.hypot(path.control1X! - P0.x, path.control1Y! - P0.y);
+    const c2Dist = Math.hypot(path.control2X! - P3.x, path.control2Y! - P3.y);
+    const targetC1Dist = Math.min(c1Dist, chordLength / 3);
+    const targetC2Dist = Math.min(c2Dist, chordLength / 3);
+
+    return {
+      ...path,
+      control1X: P0.x + Math.cos(chordAngle) * targetC1Dist,
+      control1Y: P0.y + Math.sin(chordAngle) * targetC1Dist,
+      control2X: P3.x + Math.cos(chordAngle + Math.PI) * targetC2Dist,
+      control2Y: P3.y + Math.sin(chordAngle + Math.PI) * targetC2Dist,
+    };
+  }
+
+  // Preset angles: control1 from start, control2 from end (+180°)
+  const angle1 = chordAngle + (presetDegrees * Math.PI / 180) * effectiveSide1;
+  const angle2 = chordAngle + Math.PI - (presetDegrees * Math.PI / 180) * effectiveSide2;
+
+  // Preserve existing handle lengths (no length constraint for lines).
+  // If handles are at zero (fresh line), default to chordLength / 3.
+  const len1 = Math.hypot(path.control1X! - P0.x, path.control1Y! - P0.y);
+  const len2 = Math.hypot(path.control2X! - P3.x, path.control2Y! - P3.y);
+  const defaultLen = chordLength / 3;
+  const effectiveLen1 = len1 < 0.01 ? defaultLen : len1;
+  const effectiveLen2 = len2 < 0.01 ? defaultLen : len2;
+
+  return {
+    ...path,
+    control1X: P0.x + Math.cos(angle1) * effectiveLen1,
+    control1Y: P0.y + Math.sin(angle1) * effectiveLen1,
+    control2X: P3.x + Math.cos(angle2) * effectiveLen2,
+    control2Y: P3.y + Math.sin(angle2) * effectiveLen2,
+  };
+}

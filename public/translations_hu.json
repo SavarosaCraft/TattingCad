@@ -364,6 +364,7 @@
   "rulerClickSecond": "Kattints a végpont megadásához — kattints újra az alaphelyzetbe állításhoz",
   "_comment_arrange_polar": "Elrendezés menü — Polárrács szekció",
   "arrangePolarHeader": "Polárrács",
+  "arrangeGridSelectorLabel": "Rács:",
   "arrangeCenterToPolarGrid": "Középre a polárrácshoz",
   "arrangePolarArray": "Poláris tömb…",
   "polarArrayTitle": "Poláris tömb",

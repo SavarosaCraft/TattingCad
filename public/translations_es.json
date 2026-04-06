@@ -364,6 +364,7 @@
   "rulerClickSecond": "Haz clic para establecer el punto final — haz clic de nuevo para reiniciar",
   "_comment_arrange_polar": "Menú Organizar — sección cuadrícula polar",
   "arrangePolarHeader": "Cuadrícula polar",
+  "arrangeGridSelectorLabel": "Cuadrícula:",
   "arrangeCenterToPolarGrid": "Centrar en cuadrícula polar",
   "arrangePolarArray": "Arreglo polar…",
   "polarArrayTitle": "Arreglo polar",

@@ -25,7 +25,7 @@ import {
   getPointAndAngleAtDistance,
   interpolateColor,
 } from './geometry/bezier';
-import { applyPathPreset } from './geometry/pathPresets';
+import { applyPathPreset, applyLinePreset } from './geometry/pathPresets';
 import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { useUIState } from './hooks/useUIState';
@@ -613,6 +613,7 @@ const TattingDesigner = () => {
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
   const nudgeAccumulatedDeltaRef = useRef(0); // Track total rotation during hold for single history push
   const nudgeActiveRef = useRef(false); // Whether a nudge hold is in progress
+  const createdNewLineRef = useRef(false); // Track if a new line was created (for auto-switch back to select)
   const groupDropdownButtonRef = useRef<HTMLButtonElement>(null); // For fixed-position group dropdown on mobile
   const propBarGroupButtonRef = useRef<HTMLButtonElement>(null); // For property bar group dropdown
   const dragOriginRef = useRef(null); // World position at drag start, for ortho axis lock
@@ -4921,6 +4922,7 @@ const TattingDesigner = () => {
         };
         setElements(prev => [...prev, newLine]);
         setSelectedIds([newLine.id]);
+        createdNewLineRef.current = true;
         // Start dragging the endpoint
         draggedHandleRef.current = { type: 'end', elementId: newLine.id };
         lastMousePosRef.current = { x: world.x, y: world.y };
@@ -6260,6 +6262,12 @@ const TattingDesigner = () => {
       const len = Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y);
       return len >= 12;
     }));
+
+    // Auto-switch back to select after creating a new line
+    if (createdNewLineRef.current) {
+      setCurrentTool('select');
+      createdNewLineRef.current = false;
+    }
   };
 
   useEffect(() => {
@@ -6355,6 +6363,34 @@ const TattingDesigner = () => {
             const targetLength = el.stitchCount * dsWidth;
             if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
               const newPath = applyPathPreset(path, presetDeg, targetLength);
+              if (newPath !== path) {
+                setElements(prev => prev.map(e =>
+                  e.id === el.id ? { ...e, paths: [newPath] } : e
+                ));
+                pushHistoryState(
+                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                  picotConnectionsRef.current,
+                  orderGroupsRef.current
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Line preset angles: Shift+1=90°, Shift+2=60°, Shift+3=45°, Shift+0=straight
+      // Only when line tool is active and a line is selected
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && currentTool === 'line') {
+        const presetMap: Record<string, number> = { '1': 90, '2': 60, '3': 45, '0': 0, '!': 90, '@': 60, '#': 45, ')': 0 };
+        const presetDeg = presetMap[e.key];
+        if (presetDeg !== undefined) {
+          e.preventDefault();
+          const sel = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
+          if (sel.length === 1 && sel[0].type === 'line' && sel[0].paths && sel[0].paths.length > 0) {
+            const el = sel[0];
+            const path = el.paths[0];
+            if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
+              const newPath = applyLinePreset(path, presetDeg);
               if (newPath !== path) {
                 setElements(prev => prev.map(e =>
                   e.id === el.id ? { ...e, paths: [newPath] } : e
@@ -12051,6 +12087,47 @@ const TattingDesigner = () => {
           );
         })()}
 
+        {/* ── Line Preset Panel — floating overlay, line tool + line selected ── */}
+        {currentTool === 'line' && selectedIds.length === 1 && (() => {
+          const line = elementById.get(selectedIds[0]);
+          if (line?.type !== 'line' || !line?.paths?.length || line.paths[0].type !== 'cubic') return null;
+          return (
+            <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
+              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
+                {[
+                  { label: '90°', key: '1', deg: 90 },
+                  { label: '60°', key: '2', deg: 60 },
+                  { label: '45°', key: '3', deg: 45 },
+                  { label: '0°', key: '0', deg: 0 },
+                ].map(preset => (
+                  <button
+                    key={preset.key}
+                    onClick={() => {
+                      const el = line;
+                      const path = el.paths[0];
+                      const newPath = applyLinePreset(path, preset.deg);
+                      if (newPath !== path) {
+                        setElements(prev => prev.map(e =>
+                          e.id === el.id ? { ...e, paths: [newPath] } : e
+                        ));
+                        pushHistoryState(
+                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                          picotConnectionsRef.current,
+                          orderGroupsRef.current
+                        );
+                      }
+                    }}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
+                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Notes Drawer ─────────────────────────────────────── */}
         {notesOpen && (
           <div
@@ -15333,81 +15410,54 @@ const TattingDesigner = () => {
           {/* Polar Grid section */}
           <div className="px-3 py-1 text-xs text-gray-400 font-semibold">{t('arrangePolarHeader')}</div>
 
-          {polarGrids.length <= 1 ? (
+          {/* Grid selector — only shown when 2+ grids exist */}
+          {polarGrids.length > 1 && (
+            <div className="flex items-center gap-2 px-4 py-1">
+              <span className="text-xs text-gray-400">{t('arrangeGridSelectorLabel')}</span>
+              <select
+                value={selectedPolarGridId || ''}
+                onChange={(e) => setSelectedPolarGridId(e.target.value)}
+                className="flex-1 px-2 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
+              >
+                {polarGrids.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {polarGrids.length > 0 ? (
             <button
-              onClick={() => { centerToPolarGrid(); setShowArrangeMenu(false); }}
+              onClick={() => { centerToPolarGrid(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
               className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
-                (selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
+                selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+              disabled={selectedIds.length === 0}
             >
               <IconPolarGrid size={16} />
               <span>{t('arrangeCenterToPolarGrid')}</span>
             </button>
           ) : (
-            <>
-              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeCenterToPolarGrid')}</div>
-              {polarGrids.map(g => (
-                <button
-                  key={g.id}
-                  onClick={() => { centerToPolarGrid(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${
-                    selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                  disabled={selectedIds.length === 0}
-                >
-                  <IconPolarGrid size={14} className="text-gray-400" />
-                  <span>{g.name}</span>
-                </button>
-              ))}
-            </>
+            <div className="px-4 py-2 text-xs text-gray-500 italic">No polar grids</div>
           )}
 
-          {/* Align to Grid Horizontally */}
-          {polarGrids.length <= 1 ? (
-            <button
-              onClick={() => { alignToGridHorizontal(); setShowArrangeMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={selectedIds.length === 0 || polarGrids.length === 0}
-            >
-              <IconPolarGrid size={16} />
-              <span>{t('arrangeAlignToGridH')}</span>
-            </button>
-          ) : (
-            <>
-              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridH')}</div>
-              {polarGrids.map(g => (
-                <button key={g.id} onClick={() => { alignToGridHorizontal(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={selectedIds.length === 0}>
-                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
-                </button>
-              ))}
-            </>
-          )}
+          <button
+            onClick={() => { alignToGridHorizontal(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0 || polarGrids.length === 0}
+          >
+            <IconPolarGrid size={16} />
+            <span>{t('arrangeAlignToGridH')}</span>
+          </button>
 
-          {/* Align to Grid Vertically */}
-          {polarGrids.length <= 1 ? (
-            <button
-              onClick={() => { alignToGridVertical(); setShowArrangeMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={selectedIds.length === 0 || polarGrids.length === 0}
-            >
-              <IconPolarGrid size={16} />
-              <span>{t('arrangeAlignToGridV')}</span>
-            </button>
-          ) : (
-            <>
-              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridV')}</div>
-              {polarGrids.map(g => (
-                <button key={g.id} onClick={() => { alignToGridVertical(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={selectedIds.length === 0}>
-                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
-                </button>
-              ))}
-            </>
-          )}
+          <button
+            onClick={() => { alignToGridVertical(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0 || polarGrids.length === 0}
+          >
+            <IconPolarGrid size={16} />
+            <span>{t('arrangeAlignToGridV')}</span>
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 

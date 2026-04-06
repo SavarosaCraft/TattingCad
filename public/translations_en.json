@@ -364,6 +364,7 @@
   "rulerClickSecond": "Click to set end point — click again to reset",
   "_comment_arrange_polar": "Arrange menu — Polar Grid section",
   "arrangePolarHeader": "Polar Grid",
+  "arrangeGridSelectorLabel": "Grid:",
   "arrangeCenterToPolarGrid": "Center to Polar Grid",
   "arrangePolarArray": "Polar Array…",
   "polarArrayTitle": "Polar Array",

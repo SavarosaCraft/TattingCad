@@ -87,6 +87,7 @@
   "arrangeAlignCenterV": "Align Center V",
   "arrangeAlignBottom": "Align Bottom",
   "arrangePolarHeader": "Polar Grid",
+  "arrangeGridSelectorLabel": "Grid:",
   "arrangeCenterToPolarGrid": "Center to Polar Grid",
   "arrangeAlignToGridH": "Align to Grid Horizontally",
   "arrangeAlignToGridV": "Align to Grid Vertically",
