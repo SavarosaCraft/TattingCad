@@ -15539,7 +15539,7 @@ const TattingDesigner = () => {
     {showArrayManager && (
       <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
         <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-          style={{ width: 'min(500px, 95vw)', maxHeight: '85dvh' }}>
+          style={{ width: 'min(560px, 95vw)', maxHeight: '85dvh' }}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
             <h2 className="text-gray-100 font-bold text-lg">👻 Ghost Array Manager</h2>
             <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
@@ -15552,62 +15552,130 @@ const TattingDesigner = () => {
                 const sourceEl = elements.find(el => el.id === array.sourceId);
                 const existingGhosts = elements.filter(el => array.ghostIds.includes(el.id));
                 return (
-                  <div key={array.id} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
-                    <span className="text-2xl flex-shrink-0">👻</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium">{array.instanceCount} {array.type} ghosts</div>
-                      <div className="text-gray-400 text-xs">Source: {array.sourceId.slice(0, 8)}... {sourceEl ? '✓' : '⚠️ Deleted'}</div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (!sourceEl) return;
-                        // Delete old ghosts first
-                        setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
-                        // Recreate ghosts with stored parameters
-                        setTimeout(() => {
-                          setSelectedIds([sourceEl.id]);
-                          if (array.type === 'polar') {
-                            executePolarArray(array.instanceCount, array.angle, array.pivotId || 'selection', true);
-                          } else if (array.type === 'linear') {
-                            executeLinearArray(array.instanceCount, array.angle, array.spacing, array.rotStep, true);
+                  <div key={array.id} className="flex flex-col gap-2 bg-gray-700 rounded-lg px-3 py-3">
+                    {/* Header row: type + source status + action buttons */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl flex-shrink-0">👻</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-sm font-medium capitalize">{array.type} array</div>
+                        <div className="text-gray-400 text-xs">Source: {sourceEl ? '✓' : '⚠️ Deleted'}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (sourceEl) {
+                            setSelectedIds([sourceEl.id]);
+                          } else {
+                            const firstGhost = existingGhosts[0];
+                            if (firstGhost) setSelectedIds([firstGhost.id]);
                           }
-                        }, 50);
-                      }}
-                      disabled={!sourceEl}
-                      className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                      title={sourceEl ? '⚡ Recreate ghosts from source (deletes old ghosts first)' : 'Source deleted'}
-                    >
-                      ⚡ Recreate
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (sourceEl) {
-                          setSelectedIds([sourceEl.id]);
-                        } else {
-                          // Source deleted, select first ghost as fallback
-                          const firstGhost = existingGhosts[0];
-                          if (firstGhost) setSelectedIds([firstGhost.id]);
-                        }
-                        setShowArrayManager(false);
-                      }}
-                      className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
-                      title={sourceEl ? 'Select source element' : 'Select first ghost (source deleted)'}
-                    >Select</button>
-                    <button
-                      onClick={() => {
-                        // Delete ghosts and remove from ghostArrays
-                        setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
-                        setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-                      }}
-                      className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
-                    >✕</button>
+                          setShowArrayManager(false);
+                        }}
+                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
+                        title={sourceEl ? 'Select source element' : 'Select first ghost (source deleted)'}
+                      >Select</button>
+                      <button
+                        onClick={() => {
+                          setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
+                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+                        }}
+                        className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
+                      >✕</button>
+                    </div>
+
+                    {/* Editable fields row */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-gray-400">Count:</label>
+                        <input
+                          type="number"
+                          min={2}
+                          max={100}
+                          defaultValue={array.instanceCount}
+                          id={`ghost-count-${array.id}`}
+                          className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-gray-400">{array.type === 'polar' ? 'Angle:' : 'Dir:'}</label>
+                        <input
+                          type="number"
+                          step={0.5}
+                          defaultValue={array.angle}
+                          id={`ghost-angle-${array.id}`}
+                          className="w-16 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
+                        />
+                        <span className="text-xs text-gray-500">°</span>
+                      </div>
+                      {array.type === 'polar' && (
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-400">Grid:</label>
+                          <select
+                            defaultValue={array.pivotId || 'selection'}
+                            id={`ghost-grid-${array.id}`}
+                            className="px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
+                          >
+                            <option value="selection">Selection center</option>
+                            {polarGrids.map(g => (
+                              <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {array.type === 'linear' && (
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-400">Space%:</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            defaultValue={array.spacing}
+                            id={`ghost-spacing-${array.id}`}
+                            className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
+                          />
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (!sourceEl) return;
+                          const countInput = document.getElementById(`ghost-count-${array.id}`) as HTMLInputElement;
+                          const angleInput = document.getElementById(`ghost-angle-${array.id}`) as HTMLInputElement;
+                          const gridSelect = document.getElementById(`ghost-grid-${array.id}`) as HTMLSelectElement;
+                          const spacingInput = document.getElementById(`ghost-spacing-${array.id}`) as HTMLInputElement | null;
+                          const count = parseInt(countInput?.value || '2', 10);
+                          const angle = parseFloat(angleInput?.value || '0');
+                          const pivot = gridSelect?.value || array.pivotId || 'selection';
+                          const spacing = spacingInput ? parseFloat(spacingInput.value || '0') : 0;
+                          if (count < 2) return;
+
+                          // Delete old ghosts and remove the old array entry
+                          setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
+                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+
+                          // Recreate with new parameters
+                          setTimeout(() => {
+                            setSelectedIds([sourceEl.id]);
+                            if (array.type === 'polar') {
+                              executePolarArray(count, angle, pivot, true);
+                            } else if (array.type === 'linear') {
+                              executeLinearArray(count, angle, spacing, array.rotStep, true);
+                            }
+                          }, 50);
+                        }}
+                        disabled={!sourceEl}
+                        className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
+                        title={sourceEl ? 'Apply new parameters (recreates ghosts)' : 'Source deleted'}
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
           <div className="px-5 pb-4 flex-shrink-0">
-            <p className="text-xs text-gray-500">Manage ghost arrays created by Polar/Linear Array.</p>
+            <p className="text-xs text-gray-500">Change parameters and click Apply to recreate ghosts. Select button selects the source element.</p>
           </div>
         </div>
       </div>
