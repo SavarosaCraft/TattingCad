@@ -25,6 +25,7 @@ import {
   getPointAndAngleAtDistance,
   interpolateColor,
 } from './geometry/bezier';
+import { applyPathPreset } from './geometry/pathPresets';
 import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { useUIState } from './hooks/useUIState';
@@ -610,6 +611,8 @@ const TattingDesigner = () => {
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
+  const nudgeAccumulatedDeltaRef = useRef(0); // Track total rotation during hold for single history push
+  const nudgeActiveRef = useRef(false); // Whether a nudge hold is in progress
   const groupDropdownButtonRef = useRef<HTMLButtonElement>(null); // For fixed-position group dropdown on mobile
   const propBarGroupButtonRef = useRef<HTMLButtonElement>(null); // For property bar group dropdown
   const dragOriginRef = useRef(null); // World position at drag start, for ortho axis lock
@@ -703,6 +706,7 @@ const TattingDesigner = () => {
       needsHistoryPushRef.current = true; // Push after interaction ends instead
       return;
     }
+    if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
     pushHistoryState(elements, picotConnections, orderGroupsRef.current);
   }, [elements, picotConnections]); // Depend on both elements and connections
 
@@ -2459,6 +2463,38 @@ const TattingDesigner = () => {
       return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
     }));
     needsHistoryPushRef.current = true;
+  }, []);
+
+  // Same rotation logic but WITHOUT setting the history flag — for nudge hold-to-repeat
+  const applySingleRotationDeltaNoHistory = useCallback((elId: string, delta: number) => {
+    if (delta === 0) return;
+    const rad = delta * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    setElements(prev => prev.map(el => {
+      if (el.id !== elId) return el;
+      const polarPivot = getPolarPivot([el.id]);
+      const pivot = polarPivot || getElementPivot(el);
+      const cx = pivot.x, cy = pivot.y;
+      const rotatePt = (px, py) => {
+        const dx = px - cx, dy = py - cy;
+        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+      };
+      const newPaths = el.paths.map(path => {
+        if (path.type === 'cubic') {
+          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY);
+          const c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
+          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+        } else {
+          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
+          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
+        }
+      });
+      const newRotation = (el.rotation || 0) + delta;
+      const newPivot = polarPivot
+        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+        : getElementPivot({ ...el, paths: newPaths });
+      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
+    }));
   }, []);
 
   // PERFORMANCE: O(1) element lookup by id — replaces elements.find(e => e.id === x) everywhere
@@ -6289,12 +6325,12 @@ const TattingDesigner = () => {
       // Zoom in/out: + / - (no modifier needed)
       if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(0.1);
+        zoomToCenter(0.2);
         return;
       }
       if (e.key === '-' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(-0.1);
+        zoomToCenter(-0.2);
         return;
       }
       
@@ -6305,6 +6341,35 @@ const TattingDesigner = () => {
         return;
       }
       
+      // Path preset angles: Shift+1=90°, Shift+2=60°, Shift+3=45°
+      // Only when path tool is active and a chain is selected
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && currentTool === 'path') {
+        const presetMap: Record<string, number> = { '1': 90, '2': 60, '3': 45, '!': 90, '@': 60, '#': 45 };
+        const presetDeg = presetMap[e.key];
+        if (presetDeg !== undefined) {
+          e.preventDefault();
+          const sel = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
+          if (sel.length === 1 && sel[0].type === 'chain' && sel[0].paths && sel[0].paths.length > 0) {
+            const el = sel[0];
+            const path = el.paths[0];
+            const targetLength = el.stitchCount * dsWidth;
+            if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
+              const newPath = applyPathPreset(path, presetDeg, targetLength);
+              if (newPath !== path) {
+                setElements(prev => prev.map(e =>
+                  e.id === el.id ? { ...e, paths: [newPath] } : e
+                ));
+                pushHistoryState(
+                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                  picotConnectionsRef.current,
+                  orderGroupsRef.current
+                );
+              }
+            }
+          }
+        }
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
@@ -10684,25 +10749,64 @@ const TattingDesigner = () => {
                   style={{width:'6.5ch', minWidth:'6.5ch'}}
                   placeholder="0°"
                 />
-                {/* ±1° nudge arrows — side by side, press-and-hold to repeat */}
+                {/* ±1° nudge arrows — side by side, press-and-hold to repeat.
+                    All intermediate rotations skip history; one push on mouseUp captures the full delta. */}
                 <button
                   onMouseDown={() => {
+                    nudgeActiveRef.current = true;
+                    nudgeAccumulatedDeltaRef.current = 1;
                     applySingleRotationDelta(selectedElement.id, 1);
-                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, 1), 80);
+                    nudgeIntervalRef.current = setInterval(() => {
+                      nudgeAccumulatedDeltaRef.current += 1;
+                      applySingleRotationDeltaNoHistory(selectedElement.id, 1);
+                    }, 80);
                   }}
-                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
-                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseUp={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
+                  onMouseLeave={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
                   className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
                   style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
                   title={t('rotateNudgePlus')}
                 >▲</button>
                 <button
                   onMouseDown={() => {
+                    nudgeActiveRef.current = true;
+                    nudgeAccumulatedDeltaRef.current = -1;
                     applySingleRotationDelta(selectedElement.id, -1);
-                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, -1), 80);
+                    nudgeIntervalRef.current = setInterval(() => {
+                      nudgeAccumulatedDeltaRef.current -= 1;
+                      applySingleRotationDeltaNoHistory(selectedElement.id, -1);
+                    }, 80);
                   }}
-                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
-                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseUp={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
+                  onMouseLeave={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
                   className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
                   style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
                   title={t('rotateNudgeMinus')}
@@ -11906,6 +12010,47 @@ const TattingDesigner = () => {
 
       <div className="flex-1 relative">
 
+        {/* ── Path Preset Panel — floating overlay, path tool + chain selected ── */}
+        {currentTool === 'path' && selectedIds.length === 1 && (() => {
+          const chain = elementById.get(selectedIds[0]);
+          if (chain?.type !== 'chain' || !chain?.paths?.length || chain.paths[0].type !== 'cubic') return null;
+          return (
+            <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
+              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
+                {[
+                  { label: '90°', key: '1', deg: 90 },
+                  { label: '60°', key: '2', deg: 60 },
+                  { label: '45°', key: '3', deg: 45 },
+                ].map(preset => (
+                  <button
+                    key={preset.key}
+                    onClick={() => {
+                      const el = chain;
+                      const path = el.paths[0];
+                      const targetLength = el.stitchCount * dsWidth;
+                      const newPath = applyPathPreset(path, preset.deg, targetLength);
+                      if (newPath !== path) {
+                        setElements(prev => prev.map(e =>
+                          e.id === el.id ? { ...e, paths: [newPath] } : e
+                        ));
+                        pushHistoryState(
+                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                          picotConnectionsRef.current,
+                          orderGroupsRef.current
+                        );
+                      }
+                    }}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
+                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Notes Drawer ─────────────────────────────────────── */}
         {notesOpen && (
           <div
@@ -12062,11 +12207,6 @@ const TattingDesigner = () => {
             <IconRuler size={20} />
           </button>
 
-          {/* Zoom to Rectangle tool */}
-          <button onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')} className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolZoomRect')}>
-            <IconZoomRect size={20} />
-          </button>
-
           {/* Picot Join button */}
           <button 
             onClick={() => {
@@ -12138,15 +12278,15 @@ const TattingDesigner = () => {
             <IconUngroup size={20} />
           </button>
           <button 
-            onClick={() => zoomToCenter(-0.1)} 
+            onClick={() => zoomToCenter(-0.2)} 
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title={t('toolZoomOut')}
           >
             <IconZoomOut size={20} />
           </button>
-          <button 
-            onClick={() => zoomToCenter(0.1)} 
+          <button
+            onClick={() => zoomToCenter(0.1)}
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title={t('toolZoomIn')}
@@ -12155,14 +12295,22 @@ const TattingDesigner = () => {
           </button>
           <button
             onClick={fitAllElements}
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto"
+            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title="Fit All (F)"
           >
             <IconFitView size={20} />
           </button>
-          <button 
-            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')} 
+          <button
+            onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')}
+            className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`}
+            style={{ touchAction: 'manipulation' }}
+            title={t('toolZoomRect')}
+          >
+            <IconZoomRect size={20} />
+          </button>
+          <button
+            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')}
             className={`p-2 rounded col-span-2 pointer-events-auto ${currentTool === 'image' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`}
             style={{ touchAction: 'manipulation' }}
             title={t('toolRefImage')}
