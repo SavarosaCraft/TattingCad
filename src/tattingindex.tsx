@@ -369,6 +369,7 @@ const TattingDesigner = () => {
     spiralArrayRotate, setSpiralArrayRotate,
     spiralArrayAngleStep, setSpiralArrayAngleStep,
     showArrayManager, setShowArrayManager,
+    convertConfirm, setConvertConfirm,
     ghostArrays, setGhostArrays,
     polarGridPeek, setPolarGridPeek,
     colorPickerTab, setColorPickerTab,
@@ -2824,10 +2825,116 @@ const TattingDesigner = () => {
     setSelectedIds(newElements.map(el => el.id));
   };
 
+  // Convert a ghost array to real elements (called after confirmation)
+  const convertGhostArray = (array: any) => {
+    // Find ghosts by sourceId (ghostIds may be stale after undo)
+    const currentGhosts = elements.filter(e => e.type === 'ghost' && e.sourceId === array.sourceId);
+    const sourceEl = elements.find(e => e.id === array.sourceId);
+    const newIds: string[] = [];
+    setElements(prev => {
+      const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId));
+      const realElements = currentGhosts.map(ghost => {
+        const newEl = JSON.parse(JSON.stringify(ghost));
+        newEl.type = sourceEl?.type || newEl.type;
+        delete newEl.sourceId;
+        delete newEl.isBoundary;
+        delete newEl.isGhostMother;
+        delete newEl.ghostArrayIds;
+        newIds.push(newEl.id);
+        return newEl;
+      });
+      return [...withoutGhosts, ...realElements];
+    });
+    setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+    setSelectedIds(sourceEl ? [sourceEl.id, ...newIds] : [...newIds]);
+    setConvertConfirm(null);
+  };
+
+  // ── Pure helper: create one polar array instance ──
+  // Designed to be extracted to src/geometry/ later.
+  // Returns a new element (ghost or real) placed at position i in the array.
+  const createPolarInstance = (
+    sourceEl: any,
+    index: number,
+    pivotX: number,
+    pivotY: number,
+    count: number,
+    fillAngle: number,
+    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string>; polarGridId?: string }
+  ) => {
+    const stepDeg = fillAngle / count;
+    const angleDeg = stepDeg * index;
+    const rad = angleDeg * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const asGhost = options?.asGhost ?? false;
+
+    // Rotate center around pivot
+    const newCx = pivotX + (sourceEl.center.x - pivotX) * cos - (sourceEl.center.y - pivotY) * sin;
+    const newCy = pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos;
+
+    if (asGhost) {
+      // Build ghost element with transformed paths
+      return {
+        id: generateId(),
+        type: 'ghost' as const,
+        sourceId: options?.sourceId || sourceEl.id,
+        isBoundary: options?.isBoundary ?? false,
+        center: { x: newCx, y: newCy },
+        paths: sourceEl.paths ? sourceEl.paths.map((p: any) => {
+          const rotPt = (px: number, py: number) => {
+            const rx = px - pivotX, ry = py - pivotY;
+            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+          };
+          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+          if (p.type === 'cubic') {
+            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+          } else {
+            const c = rotPt(p.controlX, p.controlY);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+          }
+        }) : [],
+        rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
+      };
+    } else {
+      // Build real copy element
+      const newEl = JSON.parse(JSON.stringify(sourceEl));
+      newEl.id = generateId();
+      delete newEl.orderNumber;
+      if (sourceEl.groupId && options?.groupIdMap) {
+        newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
+      }
+      if (options?.polarGridId) newEl.polarRotationGridId = options.polarGridId;
+
+      newEl.center = { x: newCx, y: newCy };
+      newEl.rotation = ((sourceEl.rotation || 0) + angleDeg) % 360;
+
+      if (newEl.paths) {
+        newEl.paths = newEl.paths.map((p: any) => {
+          const rotPt = (px: number, py: number) => {
+            const rx = px - pivotX, ry = py - pivotY;
+            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+          };
+          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+          if (p.type === 'cubic') {
+            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+          } else {
+            const c = rotPt(p.controlX, p.controlY);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+          }
+        });
+      }
+
+      return newEl;
+    }
+  };
+
   // Polar Array — duplicate selected elements N times evenly around a pivot point.
   // count = total copies INCLUDING the original. fillAngle = arc to fill (360 = full circle).
-  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false) => {
-    const currentSelectedIds = selectedIdsRef.current;
+  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false, sourceIds?: string[]) => {
+    const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
 
@@ -2844,7 +2951,6 @@ const TattingDesigner = () => {
       pivotY = selectedEls.reduce((s, e) => s + e.center.y, 0) / selectedEls.length;
     }
 
-    const stepDeg = fillAngle / count;
     const newElements = [];
     const newGhostIds: string[] = [];
     const boundaryGhostIds: string[] = [];
@@ -2858,99 +2964,33 @@ const TattingDesigner = () => {
       ));
     }
 
+    // Build groupId mapping once for all instances
+    const groupIdMap = new Map<string, string>();
+    selectedEls.forEach(el => {
+      if (el.groupId && !groupIdMap.has(el.groupId)) {
+        groupIdMap.set(el.groupId, generateId());
+      }
+    });
+
+    const polarGridId = (pivotId && pivotId !== 'selection') ? pivotId : undefined;
+
     // Start from copy #1 (original stays as-is), generate copies 1..count-1
     for (let i = 1; i < count; i++) {
-      const angleDeg = stepDeg * i;
-      const rad = angleDeg * Math.PI / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-
-      // Build groupId mapping so each copy's group integrity is preserved
-      const groupIdMap = new Map<string, string>();
-      selectedEls.forEach(el => {
-        if (el.groupId && !groupIdMap.has(el.groupId)) {
-          groupIdMap.set(el.groupId, generateId());
-        }
-      });
+      const isBoundary = (i === 1 || i === count - 1);
 
       selectedEls.forEach(el => {
-        const isBoundary = (i === 1 || i === count - 1);
+        const newEl = createPolarInstance(el, i, pivotX, pivotY, count, fillAngle, {
+          asGhost: createGhosts,
+          sourceId: createGhosts ? el.id : undefined,
+          isBoundary: createGhosts ? isBoundary : undefined,
+          groupIdMap,
+          polarGridId,
+        });
 
+        newElements.push(newEl);
         if (createGhosts) {
-          // Create lightweight ghost - has paths for rendering but is non-interactive
-          const ghostEl = {
-            id: generateId(),
-            type: 'ghost' as const,
-            sourceId: el.id,
-            isBoundary,
-            // Transformed center for hit-testing exclusion and bounding box
-            center: {
-              x: pivotX + (el.center.x - pivotX) * cos - (el.center.y - pivotY) * sin,
-              y: pivotY + (el.center.x - pivotX) * sin + (el.center.y - pivotY) * cos,
-            },
-            // Transformed paths for rendering only
-            paths: el.paths ? el.paths.map(p => {
-              const rotPt = (px, py) => {
-                const rx = px - pivotX, ry = py - pivotY;
-                return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-              };
-              const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-              if (p.type === 'cubic') {
-                const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-              } else {
-                const c = rotPt(p.controlX, p.controlY);
-                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-              }
-            }) : [],
-            // Ghost rotation (for rendering orientation)
-            rotation: ((el.rotation || 0) + angleDeg) % 360,
-          };
-          newElements.push(ghostEl);
-          newGhostIds.push(ghostEl.id);
-          if (isBoundary) boundaryGhostIds.push(ghostEl.id);
-        } else {
-          // Create full copy (legacy mode - not a ghost)
-          const newEl = JSON.parse(JSON.stringify(el));
-          newEl.id = generateId();
-          delete newEl.orderNumber;
-
-          // Remap group id
-          if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-
-          // Link to the chosen polar grid
-          if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
-
-          // Rotate center around pivot
-          const dx = el.center.x - pivotX;
-          const dy = el.center.y - pivotY;
-          newEl.center = {
-            x: pivotX + dx * cos - dy * sin,
-            y: pivotY + dx * sin + dy * cos,
-          };
-
-          // Rotate element's own rotation angle
-          newEl.rotation = ((el.rotation || 0) + angleDeg) % 360;
-
-          // Rotate path control points if present
-          if (newEl.paths) {
-            newEl.paths = newEl.paths.map(p => {
-              const rotPt = (px, py) => {
-                const rx = px - pivotX, ry = py - pivotY;
-                return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-              };
-              const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-              if (p.type === 'cubic') {
-                const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-              } else {
-                const c = rotPt(p.controlX, p.controlY);
-                return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-              }
-            });
-          }
-
-          newElements.push(newEl);
+          newGhostIds.push(newEl.id);
+          if (isBoundary) boundaryGhostIds.push(newEl.id);
         }
       });
     }
@@ -2965,8 +3005,8 @@ const TattingDesigner = () => {
       setElements(prev => [...prev, ...newElements]);
     }
 
-    // Select all — originals + new copies
-    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+    // After ghost creation, only select the mother element(s) — ghosts are non-interactive
+    setSelectedIds([...currentSelectedIds]);
 
     // Save ghost array metadata for Update functionality
     if (createGhosts && newGhostIds.length > 0) {
@@ -3029,17 +3069,56 @@ const TattingDesigner = () => {
     });
   };
 
-  const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false) => {
-    const currentSelectedIds = selectedIdsRef.current;
-    const currentElements = elementsRef.current;
-    if (currentSelectedIds.length === 0 || count < 2) return;
-    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
-    
-    // TODO: Bounding box calculation doesn't account for rotation or path transformations.
-    // For rotated elements, bbox should use transformed path points, not raw coordinates.
-    // Current workaround: uses max of width/height, but may be inaccurate for rotated elements.
+  // ── Pure helper: calculate bounding box from actual path curves ──
+  // Samples bezier curves (not control-point hull) and excludes picots.
+  // For elements without paths, falls back to center position.
+  // If angleDeg is provided, elementSize is projected along that direction.
+  // Designed to be extracted to src/geometry/ later.
+  const calculatePathBbox = (els: any[], angleDeg?: number) => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    selectedEls.forEach(el => {
+    let hasPaths = false;
+
+    els.forEach(el => {
+      if (el.paths && el.paths.length > 0) {
+        el.paths.forEach(p => {
+          const samples = sampleBezierPath(p, 20);
+          samples.forEach(pt => {
+            minX = Math.min(minX, pt.x);
+            minY = Math.min(minY, pt.y);
+            maxX = Math.max(maxX, pt.x);
+            maxY = Math.max(maxY, pt.y);
+          });
+        });
+        hasPaths = true;
+      } else {
+        // Fallback: element with no paths — use center
+        minX = Math.min(minX, el.center.x);
+        minY = Math.min(minY, el.center.y);
+        maxX = Math.max(maxX, el.center.x);
+        maxY = Math.max(maxY, el.center.y);
+      }
+    });
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    let elementSize: number;
+    if (angleDeg !== undefined) {
+      // Project bounding box extent onto the array direction vector
+      const rad = angleDeg * Math.PI / 180;
+      elementSize = Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad));
+    } else {
+      // Use the larger dimension (fallback)
+      elementSize = hasPaths ? Math.max(width, height, 1) : 1;
+    }
+    return { minX, minY, maxX, maxY, elementSize };
+  };
+
+  // ── Pure helper: calculate bounding box for a set of elements ──
+  // Uses control-point hull (fast but overestimates). Kept for backward compatibility.
+  const calculateBbox = (els: any[]) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    els.forEach(el => {
       if (el.paths && el.paths.length > 0) {
         el.paths.forEach(p => {
           minX = Math.min(minX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
@@ -3054,13 +3133,78 @@ const TattingDesigner = () => {
         maxY = Math.max(maxY, el.center.y);
       }
     });
-    const bboxWidth = maxX - minX;
-    const bboxHeight = maxY - minY;
-    const elementSize = Math.max(bboxWidth, bboxHeight, 1); // At least 1px
-    
-    // Calculate actual spacing from percentage
-    const spacing = (spacingPercent / 100) * elementSize;
-    
+    return { minX, minY, maxX, maxY, elementSize: Math.max(maxX - minX, maxY - minY, 1) };
+  };
+
+  // ── Pure helper: create one linear array instance ──
+  // Designed to be extracted to src/geometry/ later.
+  // Returns a new element (ghost or real) placed at position i in the array.
+  const createLinearInstance = (
+    sourceEl: any,
+    index: number,
+    dx: number,
+    dy: number,
+    rotStep: number,
+    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string> }
+  ) => {
+    const offsetX = dx * index;
+    const offsetY = dy * index;
+    const extraRot = rotStep * index;
+    const asGhost = options?.asGhost ?? false;
+
+    const newEl = JSON.parse(JSON.stringify(sourceEl));
+    newEl.id = generateId();
+    delete newEl.orderNumber;
+    if (sourceEl.groupId && options?.groupIdMap) {
+      newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
+    }
+
+    const newCx = sourceEl.center.x + offsetX;
+    const newCy = sourceEl.center.y + offsetY;
+    newEl.center = { x: newCx, y: newCy };
+
+    // Translate paths to new position
+    if (newEl.paths) {
+      newEl.paths = newEl.paths.map((p: any) => {
+        if (p.type === 'cubic') {
+          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+        } else {
+          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+        }
+      });
+    }
+
+    // Rotate paths around the new center
+    if (extraRot !== 0) {
+      const newAbsRot = ((sourceEl.rotation || 0) + extraRot + 360) % 360;
+      newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, sourceEl, newAbsRot);
+      newEl.rotation = newAbsRot;
+    }
+
+    // Convert to ghost if requested
+    if (asGhost) {
+      newEl.type = 'ghost';
+      newEl.sourceId = options?.sourceId || sourceEl.id;
+      newEl.isBoundary = options?.isBoundary ?? false;
+      delete newEl.isGhostMother;
+      delete newEl.ghostArrayIds;
+    }
+
+    return newEl;
+  };
+
+  const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false, sourceIds?: string[]) => {
+    const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
+    const currentElements = elementsRef.current;
+    if (currentSelectedIds.length === 0 || count < 2) return;
+    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+
+    // Calculate bounding box and element size projected along array direction
+    const { elementSize } = calculatePathBbox(selectedEls, angleDeg);
+
+    // Center-to-center distance: 100% = just touching, 200% = 1 element gap
+    const spacing = elementSize * spacingPercent / 100;
+
     const rad = angleDeg * Math.PI / 180;
     const dx = Math.cos(rad) * spacing;
     const dy = Math.sin(rad) * spacing;
@@ -3078,80 +3222,31 @@ const TattingDesigner = () => {
       ));
     }
 
+    // Build groupId map once for all instances
+    const groupIdMap = new Map<string, string>();
+    selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+
     for (let i = 1; i < count; i++) {
-      const offsetX = dx * i;
-      const offsetY = dy * i;
-      const extraRot = rotStep * i;
-      const groupIdMap = new Map<string, string>();
-      selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+      const isBoundary = (i === count - 1); // Last element is boundary for linear
+
       selectedEls.forEach(el => {
-        const isBoundary = (i === count - 1); // Last element is boundary for linear
+        const newEl = createLinearInstance(el, i, dx, dy, rotStep, {
+          asGhost: createGhosts,
+          sourceId: createGhosts ? el.id : undefined,
+          isBoundary: createGhosts ? isBoundary : undefined,
+          groupIdMap,
+        });
 
+        newElements.push(newEl);
         if (createGhosts) {
-          // Create lightweight ghost - has paths for rendering but is non-interactive
-          const newCx = el.center.x + offsetX;
-          const newCy = el.center.y + offsetY;
-          const newRot = ((el.rotation || 0) + extraRot + 360) % 360;
-
-          // First translate paths to new position
-          let translatedPaths = el.paths ? el.paths.map(p => {
-            if (p.type === 'cubic') {
-              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-            } else {
-              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-            }
-          }) : [];
-
-          // Then rotate paths around the new center if needed
-          let finalPaths = translatedPaths;
-          if (extraRot !== 0) {
-            finalPaths = rotatePathsAroundCenter(translatedPaths, newCx, newCy, extraRot, el, newRot);
-          }
-
-          const ghostEl = {
-            id: generateId(),
-            type: 'ghost' as const,
-            sourceId: el.id,
-            isBoundary,
-            center: { x: newCx, y: newCy },
-            paths: finalPaths,
-            rotation: newRot,
-          };
-          newElements.push(ghostEl);
-          newGhostIds.push(ghostEl.id);
-          if (isBoundary) boundaryGhostIds.push(ghostEl.id);
-        } else {
-          // Create full copy (legacy mode - not a ghost)
-          const newEl = JSON.parse(JSON.stringify(el));
-          newEl.id = generateId();
-          delete newEl.orderNumber;
-          if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-
-          const newCx = el.center.x + offsetX;
-          const newCy = el.center.y + offsetY;
-          newEl.center = { x: newCx, y: newCy };
-          // Translate paths to new position first
-          if (newEl.paths) {
-            newEl.paths = newEl.paths.map(p => {
-              if (p.type === 'cubic') {
-                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-              } else {
-                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-              }
-            });
-          }
-          // Then rotate paths around the new center and update rotation field
-          if (extraRot !== 0) {
-            const newAbsRot = ((el.rotation || 0) + extraRot + 360) % 360;
-            newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, el, newAbsRot);
-            newEl.rotation = newAbsRot;
-          }
-          newElements.push(newEl);
+          newGhostIds.push(newEl.id);
+          if (isBoundary) boundaryGhostIds.push(newEl.id);
         }
       });
     }
     setElements(prev => [...prev, ...newElements]);
-    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+    // After ghost creation, only select the mother element(s) — ghosts are non-interactive
+    setSelectedIds([...currentSelectedIds]);
 
     // Save ghost array metadata for Update functionality
     if (createGhosts && newGhostIds.length > 0) {
@@ -3164,6 +3259,7 @@ const TattingDesigner = () => {
         instanceCount: count,
         angle: angleDeg,
         spacing: spacingPercent,
+        elementSize: elementSize,
         rotStep: rotStep,
         ghostIds: newGhostIds,
         boundaryIds: boundaryGhostIds,
@@ -6848,9 +6944,9 @@ const TattingDesigner = () => {
     relevantArrays.forEach(array => {
       // Delete old ghosts and recreate in same state update to avoid race conditions
       setElements(prev => {
-        // Filter out old ghosts
-        const withoutGhosts = prev.filter(el => !array.ghostIds.includes(el.id));
-        
+        // Filter out old ghosts (find by sourceId, not stale ghostIds)
+        const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === motherId));
+
         // Find the source element in the current state (might have been updated)
         const sourceEl = withoutGhosts.find(e => e.id === motherId);
         if (!sourceEl) return prev;
@@ -6861,7 +6957,7 @@ const TattingDesigner = () => {
         const boundaryGhostIds = [];
 
         if (array.type === 'polar') {
-          // Recreate polar array ghosts
+          // Recreate polar array ghosts using shared helper
           const count = array.instanceCount;
           const fillAngle = array.angle;
           const pivotId = array.pivotId || 'selection';
@@ -6878,83 +6974,40 @@ const TattingDesigner = () => {
           }
 
           for (let i = 1; i < count; i++) {
-            const angleDeg = stepDeg * i;
-            const rad = angleDeg * Math.PI / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
             const isBoundary = (i === 1 || i === count - 1);
 
-            const ghostEl = {
-              id: generateId(),
-              type: 'ghost' as const,
+            const ghostEl = createPolarInstance(sourceEl, i, pivotX, pivotY, count, fillAngle, {
+              asGhost: true,
               sourceId: motherId,
               isBoundary,
-              center: {
-                x: pivotX + (sourceEl.center.x - pivotX) * cos - (sourceEl.center.y - pivotY) * sin,
-                y: pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos,
-              },
-              paths: sourceEl.paths ? sourceEl.paths.map(p => {
-                const rotPt = (px, py) => {
-                  const rx = px - pivotX, ry = py - pivotY;
-                  return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-                };
-                const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-                if (p.type === 'cubic') {
-                  const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-                  return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                } else {
-                  const c = rotPt(p.controlX, p.controlY);
-                  return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-                }
-              }) : [],
-              rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
-            };
+            });
             newGhosts.push(ghostEl);
             newGhostIds.push(ghostEl.id);
             if (isBoundary) boundaryGhostIds.push(ghostEl.id);
           }
         } else if (array.type === 'linear') {
-          // Recreate linear array ghosts
+          // Recreate linear array ghosts using shared helper
           const count = array.instanceCount;
           const angleDeg = array.angle;
           const spacingPercent = array.spacing;
           const rotStep = array.rotStep;
+          const storedElementSize = array.elementSize;
 
           const rad = angleDeg * Math.PI / 180;
-          const dx = Math.cos(rad) * spacingPercent;
-          const dy = Math.sin(rad) * spacingPercent;
+          // Center-to-center: 100% = just touching, 200% = 1 element gap
+          const spacing = storedElementSize ? storedElementSize * spacingPercent / 100 : storedElementSize;
+          const dx = Math.cos(rad) * spacing;
+          const dy = Math.sin(rad) * spacing;
 
           for (let i = 1; i < count; i++) {
-            const offsetX = dx * i;
-            const offsetY = dy * i;
-            const extraRot = rotStep * i;
             const isBoundary = (i === count - 1);
-            const newRot = ((sourceEl.rotation || 0) + extraRot + 360) % 360;
 
-            let translatedPaths = sourceEl.paths ? sourceEl.paths.map(p => {
-              if (p.type === 'cubic') {
-                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-              } else {
-                return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-              }
-            }) : [];
-
-            let finalPaths = translatedPaths;
-            if (extraRot !== 0) {
-              const newCx = sourceEl.center.x + offsetX;
-              const newCy = sourceEl.center.y + offsetY;
-              finalPaths = rotatePathsAroundCenter(translatedPaths, newCx, newCy, extraRot, sourceEl, newRot);
-            }
-
-            const ghostEl = {
-              id: generateId(),
-              type: 'ghost' as const,
+            const ghostEl = createLinearInstance(sourceEl, i, dx, dy, rotStep, {
+              asGhost: true,
               sourceId: motherId,
               isBoundary,
-              center: { x: sourceEl.center.x + offsetX, y: sourceEl.center.y + offsetY },
-              paths: finalPaths,
-              rotation: newRot,
-            };
+            });
+
             newGhosts.push(ghostEl);
             newGhostIds.push(ghostEl.id);
             if (isBoundary) boundaryGhostIds.push(ghostEl.id);
@@ -13072,7 +13125,7 @@ const TattingDesigner = () => {
                           G
                         </text>
                       )}
-                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                         const [_fill, _stroke] = getGroupBadgeColor(el);
                         return (
@@ -13381,7 +13434,7 @@ const TattingDesigner = () => {
                             })}
                           </g>
                         )}
-                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
 {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                           let ox = el.center.x, oy = el.center.y;
                           if (el.type === 'chain' && el.paths && el.paths.length > 0) {
@@ -13451,51 +13504,30 @@ const TattingDesigner = () => {
                   pivY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
                 }
 
-                const stepDeg = polarArrayAngle / polarArrayCount;
+                // Use createPolarInstance for each preview ghost — ensures positioning matches creation
                 const ghosts = [];
-
                 for (let i = 1; i < polarArrayCount; i++) {
-                  const rad = (stepDeg * i) * Math.PI / 180;
-                  const cos = Math.cos(rad);
-                  const sin = Math.sin(rad);
-
                   selEls.forEach(el => {
-                    const dx = el.center.x - pivX;
-                    const dy = el.center.y - pivY;
-                    const cx = pivX + dx * cos - dy * sin;
-                    const cy = pivY + dx * sin + dy * cos;
+                    const previewEl = createPolarInstance(el, i, pivX, pivY, polarArrayCount, polarArrayAngle, {});
 
                     if (el.isClosed && el.shapeStyle === 'circle') {
                       const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
                       ghosts.push(
                         <circle key={`ghost-${i}-${el.id}`}
-                          cx={cx} cy={cy} r={r}
+                          cx={previewEl.center.x} cy={previewEl.center.y} r={r}
                           fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
                         />
                       );
-                    } else if (el.paths && el.paths.length > 0) {
-                      // Rotate path points and draw a dashed stroke
-                      const rotPt = (px, py) => {
-                        const rx = px - pivX, ry = py - pivY;
-                        return { x: pivX + rx * cos - ry * sin, y: pivY + rx * sin + ry * cos };
-                      };
-                      const pathStrs = el.paths.map(p => {
-                        const s = rotPt(p.x, p.y);
-                        const e2 = rotPt(p.endX, p.endY);
-                        if (p.type === 'cubic') {
-                          const c1 = rotPt(p.control1X, p.control1Y);
-                          const c2 = rotPt(p.control2X, p.control2Y);
-                          return `M${s.x},${s.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${e2.x},${e2.y}`;
-                        } else {
-                          const c = rotPt(p.controlX, p.controlY);
-                          return `M${s.x},${s.y} Q${c.x},${c.y} ${e2.x},${e2.y}`;
-                        }
-                      });
+                    } else if (previewEl.paths && previewEl.paths.length > 0) {
+                      const pathStrs = previewEl.paths.map((p: any) => {
+                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                      }).join(' ');
                       ghosts.push(
                         <path key={`ghost-${i}-${el.id}`}
-                          d={pathStrs.join(' ')}
+                          d={pathStrs}
                           fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
@@ -13512,29 +13544,26 @@ const TattingDesigner = () => {
               {showLinearArrayDialog && (() => {
                 const selEls = elements.filter(e => selectedIds.includes(e.id));
                 if (selEls.length === 0 || linearArrayCount < 2) return null;
+
+                // Project bbox onto array direction for accurate spacing
+                const { elementSize } = calculatePathBbox(selEls, linearArrayAngle);
+                // Center-to-center: 100% = just touching, 200% = 1 element gap
+                const spacing = elementSize * linearArraySpacing / 100;
                 const rad = linearArrayAngle * Math.PI / 180;
-                const dx = Math.cos(rad) * linearArraySpacing;
-                const dy = Math.sin(rad) * linearArraySpacing;
+                const dx = Math.cos(rad) * spacing;
+                const dy = Math.sin(rad) * spacing;
+
+                // Use createLinearInstance for each preview ghost — ensures positioning matches creation
                 const ghosts = [];
                 for (let i = 1; i < linearArrayCount; i++) {
-                  const ox = dx * i, oy = dy * i;
-                  const extraRot = linearArrayRotStep * i;
                   selEls.forEach(el => {
-                    const newCx = el.center.x + ox;
-                    const newCy = el.center.y + oy;
-                    // Use SVG transform: rotate around original center, then translate to new pos
-                    const transform = extraRot !== 0
-                      ? `translate(${ox},${oy}) rotate(${extraRot},${el.center.x},${el.center.y})`
-                      : `translate(${ox},${oy})`;
-                    if (el.isClosed && el.shapeStyle === 'circle') {
-                      const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
-                      ghosts.push(<circle key={`lgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
-                    } else if (el.paths?.length > 0) {
-                      const d = el.paths.map(p => {
-                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
-                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
-                      }).join(' ');
-                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    const previewEl = createLinearInstance(el, i, dx, dy, linearArrayRotStep, {});
+                    const d = previewEl.paths?.map((p: any) => {
+                      if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                      return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                    }).join(' ');
+                    if (d) {
+                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
                     }
                   });
                 }
@@ -15529,7 +15558,7 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>👻</span>
-            <span>Ghost Array Manager</span>
+            <span>{t('ghostArrayManagerTitle')}</span>
           </button>
         </div>
       </>
@@ -15541,16 +15570,16 @@ const TattingDesigner = () => {
         <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
           style={{ width: 'min(560px, 95vw)', maxHeight: '85dvh' }}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
-            <h2 className="text-gray-100 font-bold text-lg">👻 Ghost Array Manager</h2>
+            <h2 className="text-gray-100 font-bold text-lg">{t('ghostArrayManagerTitle')}</h2>
             <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
           </div>
           <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
             {ghostArrays.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">No ghost arrays — create one from the Arrange menu</p>
+              <p className="text-gray-400 text-sm text-center py-8">{t('ghostArrayManagerEmpty')}</p>
             ) : (
               ghostArrays.map((array) => {
                 const sourceEl = elements.find(el => el.id === array.sourceId);
-                const existingGhosts = elements.filter(el => array.ghostIds.includes(el.id));
+                const existingGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === array.sourceId);
                 return (
                   <div key={array.id} className="flex flex-col gap-2 bg-gray-700 rounded-lg px-3 py-3">
                     {/* Header row: type + source status + action buttons */}
@@ -15558,7 +15587,7 @@ const TattingDesigner = () => {
                       <span className="text-2xl flex-shrink-0">👻</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-white text-sm font-medium capitalize">{array.type} array</div>
-                        <div className="text-gray-400 text-xs">Source: {sourceEl ? '✓' : '⚠️ Deleted'}</div>
+                        <div className="text-gray-400 text-xs">{t('ghostArraySource')}: {sourceEl ? '✓' : t('ghostArraySourceDeleted')}</div>
                       </div>
                       <button
                         onClick={() => {
@@ -15571,11 +15600,12 @@ const TattingDesigner = () => {
                           setShowArrayManager(false);
                         }}
                         className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
-                        title={sourceEl ? 'Select source element' : 'Select first ghost (source deleted)'}
-                      >Select</button>
+                        title={sourceEl ? t('ghostArraySelectTitle') : t('ghostArraySelectGhostTitle')}
+                      >{t('ghostArraySelect')}</button>
                       <button
                         onClick={() => {
-                          setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
+                          // Delete ghosts by sourceId (ghostIds may be stale after undo)
+                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId)));
                           setGhostArrays(prev => prev.filter(a => a.id !== array.id));
                         }}
                         className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
@@ -15585,7 +15615,7 @@ const TattingDesigner = () => {
                     {/* Editable fields row */}
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">Count:</label>
+                        <label className="text-xs text-gray-400">{t('ghostArrayCount')}:</label>
                         <input
                           type="number"
                           min={2}
@@ -15596,7 +15626,7 @@ const TattingDesigner = () => {
                         />
                       </div>
                       <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">{array.type === 'polar' ? 'Angle:' : 'Dir:'}</label>
+                        <label className="text-xs text-gray-400">{array.type === 'polar' ? t('ghostArrayAngle') : t('ghostArrayDir')}:</label>
                         <input
                           type="number"
                           step={0.5}
@@ -15608,13 +15638,13 @@ const TattingDesigner = () => {
                       </div>
                       {array.type === 'polar' && (
                         <div className="flex items-center gap-1">
-                          <label className="text-xs text-gray-400">Grid:</label>
+                          <label className="text-xs text-gray-400">{t('ghostArrayGrid')}:</label>
                           <select
                             defaultValue={array.pivotId || 'selection'}
                             id={`ghost-grid-${array.id}`}
                             className="px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
                           >
-                            <option value="selection">Selection center</option>
+                            <option value="selection">{t('ghostArraySelectionCenter')}</option>
                             {polarGrids.map(g => (
                               <option key={g.id} value={g.id}>{g.name}</option>
                             ))}
@@ -15623,14 +15653,19 @@ const TattingDesigner = () => {
                       )}
                       {array.type === 'linear' && (
                         <div className="flex items-center gap-1">
-                          <label className="text-xs text-gray-400">Space%:</label>
+                          <label className="text-xs text-gray-400">{t('ghostArraySpacePct')}:</label>
                           <input
                             type="number"
                             min={0}
-                            max={100}
+                            max={500}
                             step={0.5}
                             defaultValue={array.spacing}
                             id={`ghost-spacing-${array.id}`}
+                            onBlur={e => {
+                              const val = parseFloat(e.target.value);
+                              if (isNaN(val) || val < 0) e.target.value = '0';
+                              else if (val > 500) e.target.value = '500';
+                            }}
                             className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
                           />
                         </div>
@@ -15648,25 +15683,34 @@ const TattingDesigner = () => {
                           const spacing = spacingInput ? parseFloat(spacingInput.value || '0') : 0;
                           if (count < 2) return;
 
-                          // Delete old ghosts and remove the old array entry
-                          setElements(prev => prev.filter(el => !array.ghostIds.includes(el.id)));
+                          // Delete old ghosts (find by sourceId, not stale ghostIds which may be outdated after undo)
+                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === sourceEl.id)));
+                          // Also clean up the array entry from ghostArrays
                           setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+                          setSelectedIds([sourceEl.id]);
 
-                          // Recreate with new parameters
+                          // Recreate with new parameters — pass sourceId directly to avoid ref race condition
                           setTimeout(() => {
-                            setSelectedIds([sourceEl.id]);
                             if (array.type === 'polar') {
-                              executePolarArray(count, angle, pivot, true);
+                              executePolarArray(count, angle, pivot, true, [sourceEl.id]);
                             } else if (array.type === 'linear') {
-                              executeLinearArray(count, angle, spacing, array.rotStep, true);
+                              executeLinearArray(count, angle, spacing, array.rotStep, true, [sourceEl.id]);
                             }
                           }, 50);
                         }}
                         disabled={!sourceEl}
                         className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                        title={sourceEl ? 'Apply new parameters (recreates ghosts)' : 'Source deleted'}
+                        title={sourceEl ? t('ghostArrayApplyTitle') : t('ghostArraySourceDeleted')}
                       >
-                        Apply
+                        {t('ghostArrayApply')}
+                      </button>
+                      <button
+                        onClick={() => setConvertConfirm(array)}
+                        disabled={existingGhosts.length === 0}
+                        className="text-xs px-2 py-1 bg-amber-700 hover:bg-amber-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
+                        title={t('ghostArrayConvertTitle')}
+                      >
+                        {t('ghostArrayConvert')}
                       </button>
                     </div>
                   </div>
@@ -15674,13 +15718,112 @@ const TattingDesigner = () => {
               })
             )}
           </div>
+          <div className="px-5 pb-2 flex-shrink-0">
+            <button
+              onClick={() => setConvertConfirm('all')}
+              className="w-full px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm font-medium"
+            >
+              {t('ghostArrayConvertAll')}
+            </button>
+          </div>
           <div className="px-5 pb-4 flex-shrink-0">
-            <p className="text-xs text-gray-500">Change parameters and click Apply to recreate ghosts. Select button selects the source element.</p>
+            <p className="text-xs text-gray-500">{t('ghostArrayApplyTitle')}</p>
           </div>
         </div>
       </div>
     )}
-    
+
+    {/* Convert Ghost Array confirmation modal */}
+    {convertConfirm && (
+      <>
+        <div className="fixed inset-0 bg-black/50" style={{zIndex: 2147483646}} onClick={() => setConvertConfirm(null)}></div>
+        <div
+          className="fixed bg-gray-700 rounded-lg shadow-xl border border-gray-600 p-5 w-80"
+          style={{zIndex: 2147483647, top: '50%', left: '50%', transform: 'translate(-50%, -50%)'}}
+        >
+          {convertConfirm === 'all' ? (
+            <>
+              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertAllTitle')}</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                {t('ghostArrayConvertAllConfirm')
+                  .replace('{total}', String(ghostArrays.reduce((sum, a) => sum + a.ghostIds.length, 0)))
+                  .replace('{arrays}', String(ghostArrays.length))}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setConvertConfirm(null)}
+                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                >
+                  {t('ghostArrayCancel')}
+                </button>
+                <button
+                  onClick={() => {
+                    let allNewIds: string[] = [];
+                    // Find all ghosts by sourceId (ghostIds may be stale after undo)
+                    const allGhostsToConvert = ghostArrays.flatMap(a =>
+                      elements.filter(e => e.type === 'ghost' && e.sourceId === a.sourceId)
+                    );
+                    // Deduplicate in case multiple arrays share the same ghost
+                    const seen = new Set<string>();
+                    const uniqueGhosts = allGhostsToConvert.filter(e => {
+                      if (seen.has(e.id)) return false;
+                      seen.add(e.id);
+                      return true;
+                    });
+                    setElements(prev => {
+                      const withoutGhosts = prev.filter(el => el.type !== 'ghost');
+                      const realElements = uniqueGhosts.map(ghost => {
+                        const newEl = JSON.parse(JSON.stringify(ghost));
+                        const source = elements.find(e => e.id === ghost.sourceId);
+                        newEl.type = source?.type || newEl.type;
+                        delete newEl.sourceId;
+                        delete newEl.isBoundary;
+                        delete newEl.isGhostMother;
+                        delete newEl.ghostArrayIds;
+                        allNewIds.push(newEl.id);
+                        return newEl;
+                      });
+                      return [...withoutGhosts, ...realElements];
+                    });
+                    const sourceIds = ghostArrays.map(a => a.sourceId).filter(Boolean);
+                    setSelectedIds([...sourceIds, ...allNewIds]);
+                    setGhostArrays([]);
+                    setConvertConfirm(null);
+                  }}
+                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
+                >
+                  {t('ghostArrayConvert')} {t('ghostArrayConvertAll').split(' ').slice(0,2).join(' ')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertTitle')}</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                {t('ghostArrayConvertConfirm')
+                  .replace('{count}', String(convertConfirm.instanceCount - 1))
+                  .replace('{name}', convertConfirm.name)}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setConvertConfirm(null)}
+                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                >
+                  {t('ghostArrayCancel')}
+                </button>
+                <button
+                  onClick={() => convertGhostArray(convertConfirm)}
+                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
+                >
+                  {t('ghostArrayConvert')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </>
+    )}
+
 
     {/* View dropdown menu - rendered at top level to avoid clipping */}
     {showViewMenu && (
@@ -16941,11 +17084,12 @@ const TattingDesigner = () => {
 
             {/* Spacing */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">Spacing (% of element size)</label>
+              <label className="text-xs text-gray-400">Spacing (100% = touching, 200% = 1 element gap)</label>
               <div className="flex items-center gap-2">
-                <input type="number" min={10} max={500} step={10} value={linearArraySpacing} onChange={e => setLinearArraySpacing(Math.max(10, Math.min(500, parseFloat(e.target.value) || 100)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                <input type="number" min={0} max={500} step={10} value={linearArraySpacing} onChange={e => setLinearArraySpacing(parseFloat(e.target.value) || 0)} onBlur={e => setLinearArraySpacing(Math.max(0, Math.min(500, parseFloat(e.target.value) || 0)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">%</span>
-                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100%</button>
+                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100% touch</button>
+                <button onClick={() => setLinearArraySpacing(200)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">200%</button>
               </div>
             </div>
 

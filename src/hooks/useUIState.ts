@@ -61,6 +61,7 @@ export function useUIState() {
 
   // Array Manager
   const [showArrayManager, setShowArrayManager] = useState(false);
+  const [convertConfirm, setConvertConfirm] = useState<any>(null); // Holds the array being confirmed for conversion
   const [ghostArrays, setGhostArrays] = useState<Array<{
     id: string;
     name: string;
@@ -68,7 +69,8 @@ export function useUIState() {
     sourceId: string;
     instanceCount: number;
     angle: number;        // For polar: fill angle, For linear: direction
-    spacing: number;      // For polar: unused, For linear: spacing % 
+    spacing: number;      // For polar: unused, For linear: spacing %
+    elementSize?: number; // For linear: cached element size at creation
     rotStep: number;
     pivotId?: string;     // For polar: grid ID
     ghostIds: string[];
@@ -163,6 +165,7 @@ export function useUIState() {
     spiralArrayAngleStep, setSpiralArrayAngleStep,
     // Array Manager
     showArrayManager, setShowArrayManager,
+    convertConfirm, setConvertConfirm,
     ghostArrays, setGhostArrays,
     // Polar grid
     polarGridPeek, setPolarGridPeek,
