@@ -25,7 +25,6 @@ import {
   getPointAndAngleAtDistance,
   interpolateColor,
 } from './geometry/bezier';
-import { applyPathPreset, applyLinePreset } from './geometry/pathPresets';
 import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { useUIState } from './hooks/useUIState';
@@ -369,8 +368,6 @@ const TattingDesigner = () => {
     spiralArrayRotate, setSpiralArrayRotate,
     spiralArrayAngleStep, setSpiralArrayAngleStep,
     showArrayManager, setShowArrayManager,
-    convertConfirm, setConvertConfirm,
-    ghostArrays, setGhostArrays,
     polarGridPeek, setPolarGridPeek,
     colorPickerTab, setColorPickerTab,
     pickerTabsAllowed, setPickerTabsAllowed,
@@ -612,9 +609,6 @@ const TattingDesigner = () => {
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
-  const nudgeAccumulatedDeltaRef = useRef(0); // Track total rotation during hold for single history push
-  const nudgeActiveRef = useRef(false); // Whether a nudge hold is in progress
-  const createdNewLineRef = useRef(false); // Track if a new line was created (for auto-switch back to select)
   const groupDropdownButtonRef = useRef<HTMLButtonElement>(null); // For fixed-position group dropdown on mobile
   const propBarGroupButtonRef = useRef<HTMLButtonElement>(null); // For property bar group dropdown
   const dragOriginRef = useRef(null); // World position at drag start, for ortho axis lock
@@ -679,16 +673,11 @@ const TattingDesigner = () => {
   const themeInputRef = useRef(null);    // for loading theme JSON files
   const elementsRef = useRef([]);        // NEW: for copy/paste
   const selectedIdsRef = useRef([]);     // NEW: for copy/paste
-  const clipboardRef = useRef([]);       // for copy/paste - ensures sync in Tauri WebView
 
   // Keep refs updated
   useEffect(() => {
     elementsRef.current = elements;
   }, [elements]);
-
-  useEffect(() => {
-    clipboardRef.current = clipboard;
-  }, [clipboard]);
 
   // Commit any pending notation change when the selection changes (e.g. clicking canvas deselects)
   useEffect(() => {
@@ -713,7 +702,6 @@ const TattingDesigner = () => {
       needsHistoryPushRef.current = true; // Push after interaction ends instead
       return;
     }
-    if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
     pushHistoryState(elements, picotConnections, orderGroupsRef.current);
   }, [elements, picotConnections]); // Depend on both elements and connections
 
@@ -2116,48 +2104,7 @@ const TattingDesigner = () => {
   const deleteSelected = useCallback(() => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length === 0) return;
-
-    // Check if any selected elements are ghosts or mothers
-    const currentElements = elementsRef.current;
-    const selectedElements = currentElements.filter(e => currentSelectedIds.includes(e.id));
-    const deletedGhostIds = selectedElements.filter(e => e.type === 'ghost').map(e => e.id);
-    const deletedMotherIds = selectedElements.filter(e => e.isGhostMother).map(e => e.id);
-
-    // When mothers are deleted, also delete their associated ghosts
-    let idsToDelete = new Set(currentSelectedIds);
-    if (deletedMotherIds.length > 0) {
-      const ghostsToDelete = currentElements.filter(e => 
-        e.type === 'ghost' && e.sourceId && deletedMotherIds.includes(e.sourceId)
-      ).map(e => e.id);
-      ghostsToDelete.forEach(id => idsToDelete.add(id));
-    }
-
-    setElements(prev => prev.filter(e => !idsToDelete.has(e.id)));
-
-    // Clean up ghost arrays if mothers are deleted
-    if (deletedMotherIds.length > 0) {
-      setGhostArrays(prev => prev.filter(array =>
-        !deletedMotherIds.includes(array.sourceId)
-      ));
-    }
-
-    // Clean up ghost arrays if ghosts are deleted (including auto-deleted ones)
-    const allDeletedGhostIds = [...deletedGhostIds];
-    if (deletedMotherIds.length > 0) {
-      const autoDeletedGhosts = currentElements.filter(e => 
-        e.type === 'ghost' && e.sourceId && deletedMotherIds.includes(e.sourceId)
-      ).map(e => e.id);
-      allDeletedGhostIds.push(...autoDeletedGhosts);
-    }
-    
-    if (allDeletedGhostIds.length > 0) {
-      setGhostArrays(prev => prev.map(array => ({
-        ...array,
-        ghostIds: array.ghostIds.filter(id => !allDeletedGhostIds.includes(id)),
-        boundaryIds: array.boundaryIds.filter(id => !allDeletedGhostIds.includes(id)),
-      })).filter(array => array.ghostIds.length > 0)); // Remove arrays with no ghosts left
-    }
-
+    setElements(prev => prev.filter(e => !currentSelectedIds.includes(e.id)));
     setSelectedIds([]);
     // Remove any picot connections that reference a picot on a deleted element
     setPicotConnections(prev => prev.filter(conn =>
@@ -2210,21 +2157,7 @@ const TattingDesigner = () => {
     if (el.isClosed && el.shapeStyle === 'circle') {
       return {
         ...el,
-        center: { x: el.center.x + dx, y: el.center.y + dy },
-        // Also update paths so hit-testing (minPathDistance) stays in sync with visual position
-        paths: el.paths.map(path => ({
-          ...path,
-          x: path.x + dx,
-          y: path.y + dy,
-          endX: path.endX + dx,
-          endY: path.endY + dy,
-          control1X: path.control1X ? path.control1X + dx : undefined,
-          control1Y: path.control1Y ? path.control1Y + dy : undefined,
-          control2X: path.control2X ? path.control2X + dx : undefined,
-          control2Y: path.control2Y ? path.control2Y + dy : undefined,
-          controlX: path.controlX ? path.controlX + dx : undefined,
-          controlY: path.controlY ? path.controlY + dy : undefined
-        }))
+        center: { x: el.center.x + dx, y: el.center.y + dy }
       };
     } else {
       // Move paths
@@ -2486,38 +2419,6 @@ const TattingDesigner = () => {
     needsHistoryPushRef.current = true;
   }, []);
 
-  // Same rotation logic but WITHOUT setting the history flag — for nudge hold-to-repeat
-  const applySingleRotationDeltaNoHistory = useCallback((elId: string, delta: number) => {
-    if (delta === 0) return;
-    const rad = delta * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    setElements(prev => prev.map(el => {
-      if (el.id !== elId) return el;
-      const polarPivot = getPolarPivot([el.id]);
-      const pivot = polarPivot || getElementPivot(el);
-      const cx = pivot.x, cy = pivot.y;
-      const rotatePt = (px, py) => {
-        const dx = px - cx, dy = py - cy;
-        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-      };
-      const newPaths = el.paths.map(path => {
-        if (path.type === 'cubic') {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY);
-          const c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      });
-      const newRotation = (el.rotation || 0) + delta;
-      const newPivot = polarPivot
-        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
-        : getElementPivot({ ...el, paths: newPaths });
-      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-    }));
-  }, []);
-
   // PERFORMANCE: O(1) element lookup by id — replaces elements.find(e => e.id === x) everywhere
   // Defined early because it is used in event handlers and callbacks throughout the component.
   const elementById = useMemo(() => new Map(elements.map(e => [e.id, e])), [elements]);
@@ -2744,7 +2645,7 @@ const TattingDesigner = () => {
   // Paste elements from clipboard with offset — canonical paste implementation.
   // Ctrl+V keyboard shortcut calls this directly so behaviour is always identical.
   const pasteFromClipboard = useCallback(() => {
-    const currentClipboard = clipboardRef.current;
+    const currentClipboard = clipboard;
     if (currentClipboard.length === 0) return;
 
     const offset = 30;
@@ -2808,7 +2709,7 @@ const TattingDesigner = () => {
     setElements(prev => [...prev, ...newElements]);
     setPicotConnections(prev => [...prev, ...newConnections]);
     setSelectedIds(newElements.map(el => el.id));
-  }, []); // clipboard read via ref (always current); picotConnections read via ref
+  }, [clipboard]); // clipboard from state; picotConnections read via ref (always current)
 
   // Duplicate in place (no offset) - for creating flower patterns
   const duplicateInPlace = () => {
@@ -2844,141 +2745,10 @@ const TattingDesigner = () => {
     setSelectedIds(newElements.map(el => el.id));
   };
 
-  // Convert a ghost array to real elements (called after confirmation)
-  const convertGhostArray = (array: any) => {
-    // Find ghosts by sourceId (ghostIds may be stale after undo)
-    const currentGhosts = elements.filter(e => e.type === 'ghost' && e.sourceId === array.sourceId);
-    const sourceEl = elements.find(e => e.id === array.sourceId);
-    const newIds: string[] = [];
-    const oldToNewId = new Map<string, string>();
-
-    setElements(prev => {
-      const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId));
-      const realElements = currentGhosts.map(ghost => {
-        const newEl = JSON.parse(JSON.stringify(ghost));
-        oldToNewId.set(ghost.id, newEl.id);
-        newEl.type = sourceEl?.type || newEl.type;
-        delete newEl.sourceId;
-        delete newEl.isBoundary;
-        delete newEl.isGhostMother;
-        delete newEl.ghostArrayIds;
-        newIds.push(newEl.id);
-        return newEl;
-      });
-      return [...withoutGhosts, ...realElements];
-    });
-
-    // Update picotConnections: replace old ghost IDs with new real element IDs
-    setPicotConnections(prev => prev.map(conn => ({
-      ...conn,
-      picots: conn.picots.map(p => ({
-        ...p,
-        elementId: oldToNewId.get(p.elementId) || p.elementId,
-      })),
-    })));
-
-    setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-    setSelectedIds(sourceEl ? [sourceEl.id, ...newIds] : [...newIds]);
-    setConvertConfirm(null);
-  };
-
-  // ── Pure helper: create one polar array instance ──
-  // Designed to be extracted to src/geometry/ later.
-  // Returns a new element (ghost or real) placed at position i in the array.
-  const createPolarInstance = (
-    sourceEl: any,
-    index: number,
-    pivotX: number,
-    pivotY: number,
-    count: number,
-    fillAngle: number,
-    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string>; polarGridId?: string }
-  ) => {
-    const stepDeg = fillAngle / count;
-    const angleDeg = stepDeg * index;
-    const rad = angleDeg * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const asGhost = options?.asGhost ?? false;
-
-    // Rotate center around pivot
-    const newCx = pivotX + (sourceEl.center.x - pivotX) * cos - (sourceEl.center.y - pivotY) * sin;
-    const newCy = pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos;
-
-    if (asGhost) {
-      // Build ghost element with transformed paths and copied picots
-      return {
-        id: generateId(),
-        type: 'ghost' as const,
-        sourceId: options?.sourceId || sourceEl.id,
-        isBoundary: options?.isBoundary ?? false,
-        center: { x: newCx, y: newCy },
-        paths: sourceEl.paths ? sourceEl.paths.map((p: any) => {
-          const rotPt = (px: number, py: number) => {
-            const rx = px - pivotX, ry = py - pivotY;
-            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-          };
-          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-          if (p.type === 'cubic') {
-            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const c = rotPt(p.controlX, p.controlY);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-          }
-        }) : [],
-        picots: sourceEl.picots ? JSON.parse(JSON.stringify(sourceEl.picots)) : [],
-        rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
-        // Properties needed for rendering and picot position calculation
-        isClosed: sourceEl.isClosed,
-        shapeStyle: sourceEl.shapeStyle,
-        stitchCount: sourceEl.stitchCount,
-        picotSideMultiplier: sourceEl.picotSideMultiplier,
-        color: sourceEl.color,
-        materialId: sourceEl.materialId,
-        materialIdB: sourceEl.materialIdB,
-        isSplitRing: sourceEl.isSplitRing,
-        splitPosition: sourceEl.splitPosition,
-        lineWidth: sourceEl.lineWidth,
-      };
-    } else {
-      // Build real copy element
-      const newEl = JSON.parse(JSON.stringify(sourceEl));
-      newEl.id = generateId();
-      delete newEl.orderNumber;
-      if (sourceEl.groupId && options?.groupIdMap) {
-        newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
-      }
-      if (options?.polarGridId) newEl.polarRotationGridId = options.polarGridId;
-
-      newEl.center = { x: newCx, y: newCy };
-      newEl.rotation = ((sourceEl.rotation || 0) + angleDeg) % 360;
-
-      if (newEl.paths) {
-        newEl.paths = newEl.paths.map((p: any) => {
-          const rotPt = (px: number, py: number) => {
-            const rx = px - pivotX, ry = py - pivotY;
-            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-          };
-          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-          if (p.type === 'cubic') {
-            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const c = rotPt(p.controlX, p.controlY);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-          }
-        });
-      }
-
-      return newEl;
-    }
-  };
-
   // Polar Array — duplicate selected elements N times evenly around a pivot point.
   // count = total copies INCLUDING the original. fillAngle = arc to fill (360 = full circle).
-  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false, sourceIds?: string[]) => {
-    const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
+  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false) => {
+    const currentSelectedIds = selectedIdsRef.current;
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
 
@@ -2995,47 +2765,71 @@ const TattingDesigner = () => {
       pivotY = selectedEls.reduce((s, e) => s + e.center.y, 0) / selectedEls.length;
     }
 
+    const stepDeg = fillAngle / count;
     const newElements = [];
-    const newGhostIds: string[] = [];
-    const boundaryGhostIds: string[] = [];
-
-    // Mark source elements as mothers
-    if (createGhosts) {
-      setElements(prev => prev.map(el =>
-        currentSelectedIds.includes(el.id)
-          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), `polar_${Date.now()}`] }
-          : el
-      ));
-    }
-
-    // Build groupId mapping once for all instances
-    const groupIdMap = new Map<string, string>();
-    selectedEls.forEach(el => {
-      if (el.groupId && !groupIdMap.has(el.groupId)) {
-        groupIdMap.set(el.groupId, generateId());
-      }
-    });
-
-    const polarGridId = (pivotId && pivotId !== 'selection') ? pivotId : undefined;
 
     // Start from copy #1 (original stays as-is), generate copies 1..count-1
     for (let i = 1; i < count; i++) {
-      const isBoundary = (i === 1 || i === count - 1);
+      const angleDeg = stepDeg * i;
+      const rad = angleDeg * Math.PI / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+
+      // Build groupId mapping so each copy's group integrity is preserved
+      const groupIdMap = new Map<string, string>();
+      selectedEls.forEach(el => {
+        if (el.groupId && !groupIdMap.has(el.groupId)) {
+          groupIdMap.set(el.groupId, generateId());
+        }
+      });
 
       selectedEls.forEach(el => {
-        const newEl = createPolarInstance(el, i, pivotX, pivotY, count, fillAngle, {
-          asGhost: createGhosts,
-          sourceId: createGhosts ? el.id : undefined,
-          isBoundary: createGhosts ? isBoundary : undefined,
-          groupIdMap,
-          polarGridId,
-        });
+        const newEl = JSON.parse(JSON.stringify(el));
+        newEl.id = generateId();
+        delete newEl.orderNumber;
+
+        // Remap group id
+        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+
+        // Link to the chosen polar grid
+        if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
+
+        // Mark as ghost if requested
+        if (createGhosts) {
+          newEl.isGhost = true;
+          newEl.ghostSourceId = el.id;
+        }
+
+        // Rotate center around pivot
+        const dx = el.center.x - pivotX;
+        const dy = el.center.y - pivotY;
+        newEl.center = {
+          x: pivotX + dx * cos - dy * sin,
+          y: pivotY + dx * sin + dy * cos,
+        };
+
+        // Rotate element's own rotation angle
+        newEl.rotation = ((el.rotation || 0) + angleDeg) % 360;
+
+        // Rotate path control points if present
+        if (newEl.paths) {
+          newEl.paths = newEl.paths.map(p => {
+            const rotPt = (px, py) => {
+              const rx = px - pivotX, ry = py - pivotY;
+              return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+            };
+            const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+            if (p.type === 'cubic') {
+              const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+            } else {
+              const c = rotPt(p.controlX, p.controlY);
+              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+            }
+          });
+        }
 
         newElements.push(newEl);
-        if (createGhosts) {
-          newGhostIds.push(newEl.id);
-          if (isBoundary) boundaryGhostIds.push(newEl.id);
-        }
       });
     }
 
@@ -3049,27 +2843,8 @@ const TattingDesigner = () => {
       setElements(prev => [...prev, ...newElements]);
     }
 
-    // After ghost creation, only select the mother element(s) — ghosts are non-interactive
-    setSelectedIds([...currentSelectedIds]);
-
-    // Save ghost array metadata for Update functionality
-    if (createGhosts && newGhostIds.length > 0) {
-      const arrayId = `polar_${Date.now()}`;
-      setGhostArrays(prev => [...prev, {
-        id: arrayId,
-        name: `Polar Array ${prev.length + 1}`,
-        type: 'polar',
-        sourceId: currentSelectedIds[0],
-        instanceCount: count,
-        angle: fillAngle,
-        spacing: 0,
-        rotStep: 0,
-        pivotId: pivotId || undefined,
-        ghostIds: newGhostIds,
-        boundaryIds: boundaryGhostIds,
-        inheritedJoins: [],
-      }]);
-    }
+    // Select all — originals + new copies
+    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
   };
 
   // Linear Array — duplicate N times along a direction with optional per-step rotation.
@@ -3114,56 +2889,17 @@ const TattingDesigner = () => {
     });
   };
 
-  // ── Pure helper: calculate bounding box from actual path curves ──
-  // Samples bezier curves (not control-point hull) and excludes picots.
-  // For elements without paths, falls back to center position.
-  // If angleDeg is provided, elementSize is projected along that direction.
-  // Designed to be extracted to src/geometry/ later.
-  const calculatePathBbox = (els: any[], angleDeg?: number) => {
+  const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false) => {
+    const currentSelectedIds = selectedIdsRef.current;
+    const currentElements = elementsRef.current;
+    if (currentSelectedIds.length === 0 || count < 2) return;
+    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+    
+    // TODO: Bounding box calculation doesn't account for rotation or path transformations.
+    // For rotated elements, bbox should use transformed path points, not raw coordinates.
+    // Current workaround: uses max of width/height, but may be inaccurate for rotated elements.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    let hasPaths = false;
-
-    els.forEach(el => {
-      if (el.paths && el.paths.length > 0) {
-        el.paths.forEach(p => {
-          const samples = sampleBezierPath(p, 20);
-          samples.forEach(pt => {
-            minX = Math.min(minX, pt.x);
-            minY = Math.min(minY, pt.y);
-            maxX = Math.max(maxX, pt.x);
-            maxY = Math.max(maxY, pt.y);
-          });
-        });
-        hasPaths = true;
-      } else {
-        // Fallback: element with no paths — use center
-        minX = Math.min(minX, el.center.x);
-        minY = Math.min(minY, el.center.y);
-        maxX = Math.max(maxX, el.center.x);
-        maxY = Math.max(maxY, el.center.y);
-      }
-    });
-
-    const width = maxX - minX;
-    const height = maxY - minY;
-
-    let elementSize: number;
-    if (angleDeg !== undefined) {
-      // Project bounding box extent onto the array direction vector
-      const rad = angleDeg * Math.PI / 180;
-      elementSize = Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad));
-    } else {
-      // Use the larger dimension (fallback)
-      elementSize = hasPaths ? Math.max(width, height, 1) : 1;
-    }
-    return { minX, minY, maxX, maxY, elementSize };
-  };
-
-  // ── Pure helper: calculate bounding box for a set of elements ──
-  // Uses control-point hull (fast but overestimates). Kept for backward compatibility.
-  const calculateBbox = (els: any[]) => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    els.forEach(el => {
+    selectedEls.forEach(el => {
       if (el.paths && el.paths.length > 0) {
         el.paths.forEach(p => {
           minX = Math.min(minX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
@@ -3178,139 +2914,59 @@ const TattingDesigner = () => {
         maxY = Math.max(maxY, el.center.y);
       }
     });
-    return { minX, minY, maxX, maxY, elementSize: Math.max(maxX - minX, maxY - minY, 1) };
-  };
-
-  // ── Pure helper: create one linear array instance ──
-  // Designed to be extracted to src/geometry/ later.
-  // Returns a new element (ghost or real) placed at position i in the array.
-  const createLinearInstance = (
-    sourceEl: any,
-    index: number,
-    dx: number,
-    dy: number,
-    rotStep: number,
-    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string> }
-  ) => {
-    const offsetX = dx * index;
-    const offsetY = dy * index;
-    const extraRot = rotStep * index;
-    const asGhost = options?.asGhost ?? false;
-
-    const newEl = JSON.parse(JSON.stringify(sourceEl));
-    newEl.id = generateId();
-    delete newEl.orderNumber;
-    if (sourceEl.groupId && options?.groupIdMap) {
-      newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
-    }
-
-    const newCx = sourceEl.center.x + offsetX;
-    const newCy = sourceEl.center.y + offsetY;
-    newEl.center = { x: newCx, y: newCy };
-
-    // Translate paths to new position
-    if (newEl.paths) {
-      newEl.paths = newEl.paths.map((p: any) => {
-        if (p.type === 'cubic') {
-          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-        } else {
-          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-        }
-      });
-    }
-
-    // Rotate paths around the new center
-    if (extraRot !== 0) {
-      const newAbsRot = ((sourceEl.rotation || 0) + extraRot + 360) % 360;
-      newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, sourceEl, newAbsRot);
-      newEl.rotation = newAbsRot;
-    }
-
-    // Convert to ghost if requested
-    if (asGhost) {
-      newEl.type = 'ghost';
-      newEl.sourceId = options?.sourceId || sourceEl.id;
-      newEl.isBoundary = options?.isBoundary ?? false;
-      delete newEl.isGhostMother;
-      delete newEl.ghostArrayIds;
-    }
-
-    return newEl;
-  };
-
-  const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false, sourceIds?: string[]) => {
-    const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
-    const currentElements = elementsRef.current;
-    if (currentSelectedIds.length === 0 || count < 2) return;
-    const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
-
-    // Calculate bounding box and element size projected along array direction
-    const { elementSize } = calculatePathBbox(selectedEls, angleDeg);
-
-    // Center-to-center distance: 100% = just touching, 200% = 1 element gap
-    const spacing = elementSize * spacingPercent / 100;
-
+    const bboxWidth = maxX - minX;
+    const bboxHeight = maxY - minY;
+    const elementSize = Math.max(bboxWidth, bboxHeight, 1); // At least 1px
+    
+    // Calculate actual spacing from percentage
+    const spacing = (spacingPercent / 100) * elementSize;
+    
     const rad = angleDeg * Math.PI / 180;
     const dx = Math.cos(rad) * spacing;
     const dy = Math.sin(rad) * spacing;
     const newElements = [];
-    const newGhostIds: string[] = [];
-    const boundaryGhostIds: string[] = [];
-
-    // Mark source elements as mothers
-    if (createGhosts) {
-      const arrayId = `linear_${Date.now()}`;
-      setElements(prev => prev.map(el =>
-        currentSelectedIds.includes(el.id)
-          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), arrayId] }
-          : el
-      ));
-    }
-
-    // Build groupId map once for all instances
-    const groupIdMap = new Map<string, string>();
-    selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
-
     for (let i = 1; i < count; i++) {
-      const isBoundary = (i === count - 1); // Last element is boundary for linear
-
+      const offsetX = dx * i;
+      const offsetY = dy * i;
+      const extraRot = rotStep * i;
+      const groupIdMap = new Map<string, string>();
+      selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
       selectedEls.forEach(el => {
-        const newEl = createLinearInstance(el, i, dx, dy, rotStep, {
-          asGhost: createGhosts,
-          sourceId: createGhosts ? el.id : undefined,
-          isBoundary: createGhosts ? isBoundary : undefined,
-          groupIdMap,
-        });
-
-        newElements.push(newEl);
+        const newEl = JSON.parse(JSON.stringify(el));
+        newEl.id = generateId();
+        delete newEl.orderNumber;
+        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+        
+        // Mark as ghost if requested
         if (createGhosts) {
-          newGhostIds.push(newEl.id);
-          if (isBoundary) boundaryGhostIds.push(newEl.id);
+          newEl.isGhost = true;
+          newEl.ghostSourceId = el.id;
         }
+        
+        const newCx = el.center.x + offsetX;
+        const newCy = el.center.y + offsetY;
+        newEl.center = { x: newCx, y: newCy };
+        // Translate paths to new position first
+        if (newEl.paths) {
+          newEl.paths = newEl.paths.map(p => {
+            if (p.type === 'cubic') {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+            } else {
+              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+            }
+          });
+        }
+        // Then rotate paths around the new center and update rotation field
+        if (extraRot !== 0) {
+          const newAbsRot = ((el.rotation || 0) + extraRot + 360) % 360;
+          newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, el, newAbsRot);
+          newEl.rotation = newAbsRot;
+        }
+        newElements.push(newEl);
       });
     }
     setElements(prev => [...prev, ...newElements]);
-    // After ghost creation, only select the mother element(s) — ghosts are non-interactive
-    setSelectedIds([...currentSelectedIds]);
-
-    // Save ghost array metadata for Update functionality
-    if (createGhosts && newGhostIds.length > 0) {
-      const arrayId = `linear_${Date.now()}`;
-      setGhostArrays(prev => [...prev, {
-        id: arrayId,
-        name: `Linear Array ${prev.length + 1}`,
-        type: 'linear',
-        sourceId: currentSelectedIds[0],
-        instanceCount: count,
-        angle: angleDeg,
-        spacing: spacingPercent,
-        elementSize: elementSize,
-        rotStep: rotStep,
-        ghostIds: newGhostIds,
-        boundaryIds: boundaryGhostIds,
-        inheritedJoins: [],
-      }]);
-    }
+    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
   };
 
   // Spiral Array — place copies along an Archimedean or geometric spiral around a pivot.
@@ -4507,185 +4163,22 @@ const TattingDesigner = () => {
       picots: [...selectedPicots], // Array of {elementId, picotId}
       materialId: connMaterialId,
     };
-
+    
     const newConns = [...picotConnectionsRef.current, connection];
     setPicotConnections(newConns);
-    picotConnectionsRef.current = newConns; // Update ref immediately to avoid race condition
-
-    // Phase 2: Detect boundary ghost joins and store inherited join template
-    checkAndStoreInheritedJoin(selectedPicots, elementsRef.current);
-
     setSelectedPicots([]); // Clear selection after joining
     pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
   }, [selectedPicots, elementById]);
-
-  // Phase 2: Check if selected picots are from boundary ghosts (or source ring) of the same array
-  // If so, extract relative picot indices and create inherited join connections for ALL ghosts
-  const checkAndStoreInheritedJoin = (selPicots, currentElements) => {
-    if (selPicots.length < 2) return;
-
-    const el1 = currentElements.find(e => e.id === selPicots[0].elementId);
-    const el2 = currentElements.find(e => e.id === selPicots[1].elementId);
-
-    // Determine which is ghost and which is source/boundary
-    const ghostEl = el1?.type === 'ghost' ? el1 : el2?.type === 'ghost' ? el2 : null;
-    const otherEl = ghostEl === el1 ? el2 : el1;
-
-    if (!ghostEl || !otherEl) return;
-    if (!ghostEl.isBoundary) return;
-
-    // Find the ghost array that contains this boundary ghost
-    const matchingArray = ghostArrays.find(a =>
-      a.boundaryIds?.includes(ghostEl.id)
-    );
-    if (!matchingArray) return;
-
-    // The "other" element must be either the source element or another boundary ghost
-    const isSourceElement = otherEl.id === matchingArray.sourceId;
-    const isOtherBoundary = otherEl.type === 'ghost' && otherEl.isBoundary && matchingArray.boundaryIds?.includes(otherEl.id);
-    if (!isSourceElement && !isOtherBoundary) return;
-
-    // Find picot indices in each element's picots array
-    const ghostPicotIdx = ghostEl.picots?.findIndex(p => p.id === selPicots[ghostEl === el1 ? 0 : 1].picotId) ?? -1;
-    const otherPicotIdx = otherEl.picots?.findIndex(p => p.id === selPicots[otherEl === el1 ? 0 : 1].picotId) ?? -1;
-    if (ghostPicotIdx < 0 || otherPicotIdx < 0) return;
-
-    // Determine picot propagation pattern based on what was joined
-    let sourcePicotIndex, targetPicotIndex;
-
-    if (isSourceElement) {
-      // Source ring → boundary ghost: ghost[i]'s picot[ghostPicotIdx] connects to ghost[i-1]'s picot[otherPicotIdx]
-      sourcePicotIndex = ghostPicotIdx;
-      targetPicotIndex = otherPicotIdx;
-    } else {
-      // Boundary ghost → boundary ghost: use rotation to determine order
-      const isGhostEarlier = ghostEl.rotation < otherEl.rotation;
-      sourcePicotIndex = isGhostEarlier ? ghostPicotIdx : otherPicotIdx;
-      targetPicotIndex = isGhostEarlier ? otherPicotIdx : ghostPicotIdx;
-    }
-
-    // Check if this inherited join already exists
-    const alreadyExists = matchingArray.inheritedJoins?.some(
-      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex
-    );
-    if (alreadyExists) return;
-
-    // Get all ghosts in this array, sorted by rotation
-    const allGhosts = currentElements.filter(e => matchingArray.ghostIds?.includes(e.id));
-    const sortedGhosts = [...allGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0));
-    if (sortedGhosts.length < 2) return;
-
-    // Create picot connections for ALL inherited joins
-    const newInheritedConns = [];
-
-    if (isSourceElement) {
-      // Source → boundary: User joined mother.picot[otherPicotIdx] ← ghost[0].picot[ghostPicotIdx]
-      // Inherited pattern: ghost[i].picot[otherPicotIdx] → ghost[i+1].picot[ghostPicotIdx]
-      // Close loop: ghost[last].picot[otherPicotIdx] → mother.picot[ghostPicotIdx]
-      const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
-      if (!sourceEl) return;
-
-      const sendPicotIdx = otherPicotIdx;   // picot that sends (on current element)
-      const recvPicotIdx = ghostPicotIdx;   // picot that receives (on next element)
-
-      // Propagate forward: ghost[i] → ghost[i+1] for i = 0 to last-1
-      for (let i = 0; i < sortedGhosts.length - 1; i++) {
-        const ghost = sortedGhosts[i];
-        const nextGhost = sortedGhosts[i + 1];
-
-        const srcPicot = ghost.picots?.[sendPicotIdx];
-        const tgtPicot = nextGhost.picots?.[recvPicotIdx];
-        if (!srcPicot || !tgtPicot) continue;
-
-        const exists = picotConnectionsRef.current.some(conn =>
-          conn.picots.some(p => p.elementId === ghost.id && p.picotId === srcPicot.id) &&
-          conn.picots.some(p => p.elementId === nextGhost.id && p.picotId === tgtPicot.id)
-        );
-        if (exists) continue;
-
-        newInheritedConns.push({
-          id: generateId(),
-          picots: [
-            { elementId: ghost.id, picotId: srcPicot.id },
-            { elementId: nextGhost.id, picotId: tgtPicot.id },
-          ],
-          materialId: ghostEl.materialId || 'default',
-          isInheritedJoin: matchingArray.id,
-        });
-      }
-
-      // Close loop: last ghost → mother
-      const lastGhost = sortedGhosts[sortedGhosts.length - 1];
-      const srcPicotLast = lastGhost.picots?.[sendPicotIdx];
-      const tgtPicotLast = sourceEl.picots?.[recvPicotIdx];
-      if (srcPicotLast && tgtPicotLast) {
-        const exists = picotConnectionsRef.current.some(conn =>
-          conn.picots.some(p => p.elementId === lastGhost.id && p.picotId === srcPicotLast.id) &&
-          conn.picots.some(p => p.elementId === sourceEl.id && p.picotId === tgtPicotLast.id)
-        );
-        if (!exists) {
-          newInheritedConns.push({
-            id: generateId(),
-            picots: [
-              { elementId: lastGhost.id, picotId: srcPicotLast.id },
-              { elementId: sourceEl.id, picotId: tgtPicotLast.id },
-            ],
-            materialId: ghostEl.materialId || 'default',
-            isInheritedJoin: matchingArray.id,
-          });
-        }
-      }
-    } else {
-      // Boundary → boundary: wrap-around chain
-      for (let i = 0; i < sortedGhosts.length; i++) {
-        const ghost = sortedGhosts[i];
-        const prevIndex = (i - 1 + sortedGhosts.length) % sortedGhosts.length;
-        const prevGhost = sortedGhosts[prevIndex];
-
-        const srcPicot = ghost.picots?.[sourcePicotIndex];
-        const tgtPicot = prevGhost.picots?.[targetPicotIndex];
-        if (!srcPicot || !tgtPicot) continue;
-
-        const exists = picotConnectionsRef.current.some(conn =>
-          conn.picots.some(p => p.elementId === ghost.id && p.picotId === srcPicot.id) &&
-          conn.picots.some(p => p.elementId === prevGhost.id && p.picotId === tgtPicot.id)
-        );
-        if (exists) continue;
-
-        newInheritedConns.push({
-          id: generateId(),
-          picots: [
-            { elementId: ghost.id, picotId: srcPicot.id },
-            { elementId: prevGhost.id, picotId: tgtPicot.id },
-          ],
-          materialId: ghostEl.materialId || 'default',
-          isInheritedJoin: matchingArray.id,
-        });
-      }
-    }
-
-    // Update both picotConnections and inheritedJoins
-    const allNewConns = [...picotConnectionsRef.current, ...newInheritedConns];
-    setPicotConnections(allNewConns);
-    setGhostArrays(prev => prev.map(a =>
-      a.id === matchingArray.id
-        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex }] }
-        : a
-    ));
-  };
 
   // Break connections for selected joint picots
   const breakSelectedPicots = useCallback(() => {
     if (selectedPicots.length === 0) {
       return;
     }
-
-    // Phase 2: Remove inherited join templates if breaking boundary ghost picots
-    removeInheritedJoins(selectedPicots, elementsRef.current);
-
+    
     // Remove any connections that include any of the selected picots
     const newConns = picotConnectionsRef.current.filter(conn => {
-      return !conn.picots.some(p =>
+      return !conn.picots.some(p => 
         selectedPicots.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId)
       );
     });
@@ -4693,40 +4186,6 @@ const TattingDesigner = () => {
     setSelectedPicots([]); // Clear selection after breaking
     pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
   }, [selectedPicots]); // Dependency: selectedPicots for filtering
-
-  // Phase 2: Remove inherited join connections and templates when breaking boundary ghost picots
-  const removeInheritedJoins = (selPicots, currentElements) => {
-    // Find which boundary ghosts have picots being broken
-    const affectedGhostIds = new Set<string>();
-    selPicots.forEach(sp => {
-      const el = currentElements.find(e => e.id === sp.elementId);
-      if (el?.type === 'ghost' && el.isBoundary) {
-        affectedGhostIds.add(el.id);
-      }
-    });
-    if (affectedGhostIds.size === 0) return;
-
-    // Remove inherited join connections from picotConnections
-    const newConns = picotConnectionsRef.current.filter(conn => {
-      for (const p of conn.picots) {
-        if (affectedGhostIds.has(p.elementId)) return false;
-      }
-      return true;
-    });
-
-    if (newConns.length !== picotConnectionsRef.current.length) {
-      setPicotConnections(newConns);
-    }
-
-    // Find affected ghost arrays and remove inherited joins
-    setGhostArrays(prev => prev.map(a => {
-      const hasAffectedBoundary = a.boundaryIds?.some(bid => affectedGhostIds.has(bid));
-      if (!hasAffectedBoundary) return a;
-
-      // Remove all inherited joins for this array
-      return { ...a, inheritedJoins: [] };
-    }));
-  };
 
 
   const allColors = [...COLORS, ...customColors];
@@ -4742,9 +4201,6 @@ const TattingDesigner = () => {
   // Returns minimum distance from (worldX, worldY) to any sampled point on the element's paths.
   // Used for both hit-testing and tie-breaking between overlapping elements.
   const minPathDistance = (element, worldX, worldY) => {
-    // Ghost elements don't have paths and are not directly interactable
-    if (element.type === 'ghost' || !element.paths) return Infinity;
-    
     let minDist = Infinity;
     for (let path of element.paths) {
       const points = sampleBezierPath(path, 20);
@@ -4763,8 +4219,6 @@ const TattingDesigner = () => {
   // Find closest element by minimum path distance (works correctly for split rings and lines)
   const findClosestElement = (worldX, worldY, filterFn = null) => {
     const candidates = elements.filter(el => {
-      // Ghost elements are not directly interactable
-      if (el.type === 'ghost') return false;
       if (filterFn && !filterFn(el)) return false;
       return isPointInElement(el, worldX, worldY);
     });
@@ -4888,24 +4342,9 @@ const TattingDesigner = () => {
         return { ...el, center: newCenter, paths: newPaths, notation: `sr: ${reversedB}`, notationB: reversedA, stitchCount: sca + scb, picots: allPicots, rotation: newAngle, splitPosition: sca };
       }
 
-      // ── Circle rings ─────────────────────────────────────────────────────
+      // ── Circle rings (path-less) ─────────────────────────────────────────
       if (el.isClosed && el.shapeStyle === 'circle') {
-        // Mirror the paths to keep hit-testing in sync with visual position
-        const newPaths = el.paths.map(path => {
-          if (path.type === 'cubic') {
-            const s  = mirrorPt(path.endX,      path.endY);
-            const e2 = mirrorPt(path.x,          path.y);
-            const c1 = mirrorPt(path.control2X,  path.control2Y);
-            const c2 = mirrorPt(path.control1X,  path.control1Y);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const s    = mirrorPt(path.endX,     path.endY);
-            const e2   = mirrorPt(path.x,         path.y);
-            const ctrl = mirrorPt(path.controlX,  path.controlY);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-          }
-        }).reverse();
-        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle };
+        return { ...el, center: newCenter, rotation: newAngle };
       }
 
       // ── Path-based elements (chains, lines, teardrops) ───────────────────
@@ -5276,7 +4715,6 @@ const TattingDesigner = () => {
         };
         setElements(prev => [...prev, newLine]);
         setSelectedIds([newLine.id]);
-        createdNewLineRef.current = true;
         // Start dragging the endpoint
         draggedHandleRef.current = { type: 'end', elementId: newLine.id };
         lastMousePosRef.current = { x: world.x, y: world.y };
@@ -6493,9 +5931,8 @@ const TattingDesigner = () => {
           setSelectedPicots(selectedJointPicots);
         }
       } else {
-        // Regular element selection - ghosts are not selectable
+        // Regular element selection
         const boxHit = elements.filter(el =>
-          el.type !== 'ghost' &&
           el.center.x >= minX && el.center.x <= maxX && el.center.y >= minY && el.center.y <= maxY
         );
         // Groups: only select a group if ALL its members are inside the box
@@ -6594,19 +6031,8 @@ const TattingDesigner = () => {
     setDraggedElement(null);
     draggedHandleRef.current = null; // NEW: clear path edit handle
     pathDragStartRef.current = null; // Clear interpolation start data
-    // Save rotation handle state before clearing to detect rotation changes
-    const wasRotating = rotationHandle !== null;
     setRotationHandle(null);         // NEW: clear rotation handle
     setMovingPivot(false);           // NEW: clear pivot movement
-
-    // Update ghosts for mothers that were rotated (not dragged - ghosts stay in place)
-    if (isInteractingRef.current && wasRotating && selectedIdsRef.current.length > 0) {
-      setTimeout(() => {
-        selectedIdsRef.current.forEach(id => {
-          updateGhostArraysForMother(id);
-        });
-      }, 100);
-    }
 
     // Minimum line length guard — remove lines that were placed as accidental dots.
     // A line whose start and end are within 12 world-units of each other is a misclick.
@@ -6616,12 +6042,6 @@ const TattingDesigner = () => {
       const len = Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y);
       return len >= 12;
     }));
-
-    // Auto-switch back to select after creating a new line
-    if (createdNewLineRef.current) {
-      setCurrentTool('select');
-      createdNewLineRef.current = false;
-    }
   };
 
   useEffect(() => {
@@ -6677,22 +6097,22 @@ const TattingDesigner = () => {
         return;
       }
 
-      // Select All: Ctrl+A - ghosts are not selectable
+      // Select All: Ctrl+A
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
-        setSelectedIds(elementsRef.current.filter(el => el.type !== 'ghost').map(el => el.id));
+        setSelectedIds(elementsRef.current.map(el => el.id));
         return;
       }
 
       // Zoom in/out: + / - (no modifier needed)
       if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(0.2);
+        zoomToCenter(0.1);
         return;
       }
       if (e.key === '-' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(-0.2);
+        zoomToCenter(-0.1);
         return;
       }
       
@@ -6703,63 +6123,6 @@ const TattingDesigner = () => {
         return;
       }
       
-      // Path preset angles: Shift+1=90°, Shift+2=60°, Shift+3=45°
-      // Only when path tool is active and a chain is selected
-      if (e.shiftKey && !e.ctrlKey && !e.metaKey && currentTool === 'path') {
-        const presetMap: Record<string, number> = { '1': 90, '2': 60, '3': 45, '!': 90, '@': 60, '#': 45 };
-        const presetDeg = presetMap[e.key];
-        if (presetDeg !== undefined) {
-          e.preventDefault();
-          const sel = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
-          if (sel.length === 1 && sel[0].type === 'chain' && sel[0].paths && sel[0].paths.length > 0) {
-            const el = sel[0];
-            const path = el.paths[0];
-            const targetLength = el.stitchCount * dsWidth;
-            if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
-              const newPath = applyPathPreset(path, presetDeg, targetLength);
-              if (newPath !== path) {
-                setElements(prev => prev.map(e =>
-                  e.id === el.id ? { ...e, paths: [newPath] } : e
-                ));
-                pushHistoryState(
-                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                  picotConnectionsRef.current,
-                  orderGroupsRef.current
-                );
-              }
-            }
-          }
-        }
-      }
-
-      // Line preset angles: Shift+1=90°, Shift+2=60°, Shift+3=45°, Shift+0=straight
-      // Only when line tool is active and a line is selected
-      if (e.shiftKey && !e.ctrlKey && !e.metaKey && currentTool === 'line') {
-        const presetMap: Record<string, number> = { '1': 90, '2': 60, '3': 45, '0': 0, '!': 90, '@': 60, '#': 45, ')': 0 };
-        const presetDeg = presetMap[e.key];
-        if (presetDeg !== undefined) {
-          e.preventDefault();
-          const sel = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
-          if (sel.length === 1 && sel[0].type === 'line' && sel[0].paths && sel[0].paths.length > 0) {
-            const el = sel[0];
-            const path = el.paths[0];
-            if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
-              const newPath = applyLinePreset(path, presetDeg);
-              if (newPath !== path) {
-                setElements(prev => prev.map(e =>
-                  e.id === el.id ? { ...e, paths: [newPath] } : e
-                ));
-                pushHistoryState(
-                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                  picotConnectionsRef.current,
-                  orderGroupsRef.current
-                );
-              }
-            }
-          }
-        }
-      }
-
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
@@ -6778,8 +6141,6 @@ const TattingDesigner = () => {
           const connection = { id: generateId(), picots: [...selectedPicotsRef.current] };
           const newConns = [...picotConnectionsRef.current, connection];
           setPicotConnections(newConns);
-          picotConnectionsRef.current = newConns; // Update ref immediately for inherited join detection
-          checkAndStoreInheritedJoin(selectedPicotsRef.current, elementsRef.current);
           setSelectedPicots([]);
           pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
         }
@@ -6930,7 +6291,7 @@ const TattingDesigner = () => {
     };
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [saveProject]);
+  }, [clipboard, pasteFromClipboard, saveProject]);
 
   const updateNotation = (notation, notationB = null, elementId = null) => {
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
@@ -7176,114 +6537,16 @@ const TattingDesigner = () => {
         return p;
       });
 
-      return {
-        ...el,
-        notation,
-        stitchCount: parsed.stitchCount,
+      return { 
+        ...el, 
+        notation, 
+        stitchCount: parsed.stitchCount, 
         picots: restoreBEConfigs(mergedPicots, el.beConfigs),
         beConfigs: extractBEConfigs(restoreBEConfigs(mergedPicots, el.beConfigs)),
         isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
         ...(Object.keys(newPathData).length > 0 ? newPathData : {})
       };
     }));
-
-    // Update ghosts if this element is a ghost mother
-    setTimeout(() => {
-      updateGhostArraysForMother(targetId);
-    }, 100);
-  };
-
-  // Update ghosts when mother element changes (notation, rotation, shape, etc.)
-  const updateGhostArraysForMother = (motherId: string) => {
-    const motherEl = elements.find(e => e.id === motherId);
-    if (!motherEl || !motherEl.isGhostMother) return;
-
-    // Find all ghost arrays where this element is the source
-    const relevantArrays = ghostArrays.filter(array => array.sourceId === motherId);
-
-    relevantArrays.forEach(array => {
-      // Delete old ghosts and recreate in same state update to avoid race conditions
-      setElements(prev => {
-        // Filter out old ghosts (find by sourceId, not stale ghostIds)
-        const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === motherId));
-
-        // Find the source element in the current state (might have been updated)
-        const sourceEl = withoutGhosts.find(e => e.id === motherId);
-        if (!sourceEl) return prev;
-
-        // Recreate ghosts with stored parameters using current mother state
-        const newGhosts = [];
-        const newGhostIds = [];
-        const boundaryGhostIds = [];
-
-        if (array.type === 'polar') {
-          // Recreate polar array ghosts using shared helper
-          const count = array.instanceCount;
-          const fillAngle = array.angle;
-          const pivotId = array.pivotId || 'selection';
-          const stepDeg = fillAngle / count;
-
-          let pivotX: number, pivotY: number;
-          if (pivotId && pivotId !== 'selection') {
-            const grid = polarGrids.find(g => g.id === pivotId);
-            pivotX = grid ? grid.center.x : sourceEl.center.x;
-            pivotY = grid ? grid.center.y : sourceEl.center.y;
-          } else {
-            pivotX = sourceEl.center.x;
-            pivotY = sourceEl.center.y;
-          }
-
-          for (let i = 1; i < count; i++) {
-            const isBoundary = (i === 1 || i === count - 1);
-
-            const ghostEl = createPolarInstance(sourceEl, i, pivotX, pivotY, count, fillAngle, {
-              asGhost: true,
-              sourceId: motherId,
-              isBoundary,
-            });
-            newGhosts.push(ghostEl);
-            newGhostIds.push(ghostEl.id);
-            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
-          }
-        } else if (array.type === 'linear') {
-          // Recreate linear array ghosts using shared helper
-          const count = array.instanceCount;
-          const angleDeg = array.angle;
-          const spacingPercent = array.spacing;
-          const rotStep = array.rotStep;
-          const storedElementSize = array.elementSize;
-
-          const rad = angleDeg * Math.PI / 180;
-          // Center-to-center: 100% = just touching, 200% = 1 element gap
-          const spacing = storedElementSize ? storedElementSize * spacingPercent / 100 : storedElementSize;
-          const dx = Math.cos(rad) * spacing;
-          const dy = Math.sin(rad) * spacing;
-
-          for (let i = 1; i < count; i++) {
-            const isBoundary = (i === count - 1);
-
-            const ghostEl = createLinearInstance(sourceEl, i, dx, dy, rotStep, {
-              asGhost: true,
-              sourceId: motherId,
-              isBoundary,
-            });
-
-            newGhosts.push(ghostEl);
-            newGhostIds.push(ghostEl.id);
-            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
-          }
-        }
-
-        // Update ghostArrays state
-        setGhostArrays(prev => prev.map(a =>
-          a.id === array.id
-            ? { ...a, ghostIds: newGhostIds, boundaryIds: boundaryGhostIds, inheritedJoins: a.inheritedJoins || [] }
-            : a
-        ));
-
-        return [...withoutGhosts, ...newGhosts];
-      });
-    });
   };
 
   const toggleShape = () => {
@@ -7341,16 +6604,11 @@ const TattingDesigner = () => {
             }
           });
         }
-
+        
         return { ...el, shapeStyle: newStyle, ...tempPathData };
       }
       return el;
     }));
-
-    // Update ghosts if this element is a ghost mother
-    setTimeout(() => {
-      updateGhostArraysForMother(selectedIds[0]);
-    }, 100);
   };
 
   const setLabelOffset = useCallback((value: number) => {
@@ -11098,64 +10356,25 @@ const TattingDesigner = () => {
                   style={{width:'6.5ch', minWidth:'6.5ch'}}
                   placeholder="0°"
                 />
-                {/* ±1° nudge arrows — side by side, press-and-hold to repeat.
-                    All intermediate rotations skip history; one push on mouseUp captures the full delta. */}
+                {/* ±1° nudge arrows — side by side, press-and-hold to repeat */}
                 <button
                   onMouseDown={() => {
-                    nudgeActiveRef.current = true;
-                    nudgeAccumulatedDeltaRef.current = 1;
                     applySingleRotationDelta(selectedElement.id, 1);
-                    nudgeIntervalRef.current = setInterval(() => {
-                      nudgeAccumulatedDeltaRef.current += 1;
-                      applySingleRotationDeltaNoHistory(selectedElement.id, 1);
-                    }, 80);
+                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, 1), 80);
                   }}
-                  onMouseUp={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
-                  onMouseLeave={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
+                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
                   className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
                   style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
                   title={t('rotateNudgePlus')}
                 >▲</button>
                 <button
                   onMouseDown={() => {
-                    nudgeActiveRef.current = true;
-                    nudgeAccumulatedDeltaRef.current = -1;
                     applySingleRotationDelta(selectedElement.id, -1);
-                    nudgeIntervalRef.current = setInterval(() => {
-                      nudgeAccumulatedDeltaRef.current -= 1;
-                      applySingleRotationDeltaNoHistory(selectedElement.id, -1);
-                    }, 80);
+                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, -1), 80);
                   }}
-                  onMouseUp={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
-                  onMouseLeave={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
+                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
                   className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
                   style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
                   title={t('rotateNudgeMinus')}
@@ -11629,6 +10848,26 @@ const TattingDesigner = () => {
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* TEST: Ghost toggle */}
+              <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
+              <div className="flex items-center gap-1 top-toolbar-scalable">
+                <button
+                  onClick={() => {
+                    setElements(prev => prev.map(el =>
+                      selectedIds.includes(el.id) ? { ...el, isGhost: !el.isGhost } : el
+                    ));
+                  }}
+                  className={`px-2 py-1 rounded text-xs font-medium ${
+                    selectedElement.isGhost
+                      ? 'bg-purple-700 hover:bg-purple-600 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  }`}
+                  title="Toggle Ghost Mode (TEST)"
+                >
+                  👻 {selectedElement.isGhost ? 'Ghost' : 'Real'}
+                </button>
               </div>
 
                {/* Material B selector — split rings only, right after Material A */}
@@ -12359,88 +11598,6 @@ const TattingDesigner = () => {
 
       <div className="flex-1 relative">
 
-        {/* ── Path Preset Panel — floating overlay, path tool + chain selected ── */}
-        {currentTool === 'path' && selectedIds.length === 1 && (() => {
-          const chain = elementById.get(selectedIds[0]);
-          if (chain?.type !== 'chain' || !chain?.paths?.length || chain.paths[0].type !== 'cubic') return null;
-          return (
-            <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
-              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
-                {[
-                  { label: '90°', key: '1', deg: 90 },
-                  { label: '60°', key: '2', deg: 60 },
-                  { label: '45°', key: '3', deg: 45 },
-                ].map(preset => (
-                  <button
-                    key={preset.key}
-                    onClick={() => {
-                      const el = chain;
-                      const path = el.paths[0];
-                      const targetLength = el.stitchCount * dsWidth;
-                      const newPath = applyPathPreset(path, preset.deg, targetLength);
-                      if (newPath !== path) {
-                        setElements(prev => prev.map(e =>
-                          e.id === el.id ? { ...e, paths: [newPath] } : e
-                        ));
-                        pushHistoryState(
-                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                          picotConnectionsRef.current,
-                          orderGroupsRef.current
-                        );
-                      }
-                    }}
-                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
-                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Line Preset Panel — floating overlay, line tool + line selected ── */}
-        {currentTool === 'line' && selectedIds.length === 1 && (() => {
-          const line = elementById.get(selectedIds[0]);
-          if (line?.type !== 'line' || !line?.paths?.length || line.paths[0].type !== 'cubic') return null;
-          return (
-            <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
-              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
-                {[
-                  { label: '90°', key: '1', deg: 90 },
-                  { label: '60°', key: '2', deg: 60 },
-                  { label: '45°', key: '3', deg: 45 },
-                  { label: '0°', key: '0', deg: 0 },
-                ].map(preset => (
-                  <button
-                    key={preset.key}
-                    onClick={() => {
-                      const el = line;
-                      const path = el.paths[0];
-                      const newPath = applyLinePreset(path, preset.deg);
-                      if (newPath !== path) {
-                        setElements(prev => prev.map(e =>
-                          e.id === el.id ? { ...e, paths: [newPath] } : e
-                        ));
-                        pushHistoryState(
-                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                          picotConnectionsRef.current,
-                          orderGroupsRef.current
-                        );
-                      }
-                    }}
-                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
-                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
         {/* ── Notes Drawer ─────────────────────────────────────── */}
         {notesOpen && (
           <div
@@ -12597,6 +11754,11 @@ const TattingDesigner = () => {
             <IconRuler size={20} />
           </button>
 
+          {/* Zoom to Rectangle tool */}
+          <button onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')} className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolZoomRect')}>
+            <IconZoomRect size={20} />
+          </button>
+
           {/* Picot Join button */}
           <button 
             onClick={() => {
@@ -12668,15 +11830,15 @@ const TattingDesigner = () => {
             <IconUngroup size={20} />
           </button>
           <button 
-            onClick={() => zoomToCenter(-0.2)} 
+            onClick={() => zoomToCenter(-0.1)} 
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title={t('toolZoomOut')}
           >
             <IconZoomOut size={20} />
           </button>
-          <button
-            onClick={() => zoomToCenter(0.1)}
+          <button 
+            onClick={() => zoomToCenter(0.1)} 
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title={t('toolZoomIn')}
@@ -12685,22 +11847,14 @@ const TattingDesigner = () => {
           </button>
           <button
             onClick={fitAllElements}
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
+            className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title="Fit All (F)"
           >
             <IconFitView size={20} />
           </button>
-          <button
-            onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')}
-            className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
-            title={t('toolZoomRect')}
-          >
-            <IconZoomRect size={20} />
-          </button>
-          <button
-            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')}
+          <button 
+            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')} 
             className={`p-2 rounded col-span-2 pointer-events-auto ${currentTool === 'image' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`}
             style={{ touchAction: 'manipulation' }}
             title={t('toolRefImage')}
@@ -13323,34 +12477,26 @@ const TattingDesigner = () => {
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)' : shouldHighlight ? 'url(#pink-glow)' : undefined;
                 // In tattingOrder mode, hide notation labels so only order numbers are visible
                 const hideNotationInMode = activeMode === 'tattingOrder';
-                // Ghost elements are non-interactive visual copies
-                const isGhost = el.type === 'ghost';
-                // Single source of truth: ghost opacity and pointer events
-                const ghostOpacity = isGhost ? (el.isBoundary ? 0.65 : 0.4) : 1;
-                const ghostPointerEvents = isGhost && !el.isBoundary ? 'none' as const : undefined;
                 // PERFORMANCE: During translate-drag, apply offset via SVG transform instead of
                 // mutating element state. Keeps stitchCache valid throughout the drag.
                 const dragTransform = (isSelected && dragOffsetRef.current.active)
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})`
                   : undefined;
                 // PERFORMANCE: getElementColor once per element, reused for stroke + picots
-                // For ghosts, get color from source element
-                const sourceElement = isGhost ? elements.find(e => e.id === el.sourceId) : null;
-                const renderEl = sourceElement || el;
-                const elColor = getElementColor(renderEl);
+                const elColor = getElementColor(el);
                 const elStrokeVal = elColor.isGradient ? `url(#gradient-${elColor.id})` : elColor.color;
                 // Split ring section B color (only relevant for split rings)
-                const elColorB = renderEl.isSplitRing ? getElementColor({...renderEl, materialId: renderEl.materialIdB || renderEl.materialId}) : elColor;
+                const elColorB = el.isSplitRing ? getElementColor({...el, materialId: el.materialIdB || el.materialId}) : elColor;
                 const elStrokeValB = elColorB.isGradient ? `url(#gradient-${elColorB.id})` : elColorB.color;
-
+                
                 // Render circles as SVG circle element for smooth rendering
                 if (el.isClosed && el.shapeStyle === 'circle') {
                   const targetCircumference = el.stitchCount * dsWidth;
                   const radius = targetCircumference / (2 * Math.PI);
-
+                  
                   // Original schematic rendering for circles
                   return (
-                    <g key={el.id} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
+                    <g key={el.id} filter={elementFilter} transform={dragTransform}>
                       <circle
                         cx={el.center.x}
                         cy={el.center.y}
@@ -13358,16 +12504,15 @@ const TattingDesigner = () => {
                         fill="none"
                         stroke={elStrokeVal}
                         strokeWidth="3.75"
-                        opacity={isSelected ? 0.7 : ghostOpacity}
-                        strokeDasharray={isGhost ? '5,5' : undefined}
+                        opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                        strokeDasharray={el.isGhost ? '5,5' : undefined}
                       />
-                      {/* Ghosts don't show picots, EXCEPT boundary ghosts */}
-                      {(!isGhost || el.isBoundary) && renderPicots(el)}
-                      {!isGhost && isSelected && (
+                      {renderPicots(el)}
+                      {isSelected && (
                         <circle
                           cx={el.center.x}
                           cy={el.center.y}
-                          r={radius}
+                          r={radius + 5}
                           fill="none"
                           stroke="#3B82F6"
                           strokeWidth="2"
@@ -13388,7 +12533,7 @@ const TattingDesigner = () => {
                           G
                         </text>
                       )}
-                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
+                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                         const [_fill, _stroke] = getGroupBadgeColor(el);
                         return (
@@ -13415,7 +12560,7 @@ const TattingDesigner = () => {
                 
                 // Render everything else (teardrops, chains, and lines) using paths
                 return (
-                  <g key={el.id} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
+                  <g key={el.id} filter={elementFilter} transform={dragTransform}>
                     {/* Line rendering - simple bezier with black outline */}
                     {el.type === 'line' ? (
                       <>
@@ -13434,8 +12579,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={isSelected ? 0.7 : ghostOpacity}
-                                strokeDasharray={isGhost ? '5,5' : undefined}
+                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={el.isGhost ? '5,5' : undefined}
                               />
                               {/* Colored line on top */}
                               <path
@@ -13443,8 +12588,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={isSelected ? 0.7 : ghostOpacity}
-                                strokeDasharray={isGhost ? '5,5' : undefined}
+                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={el.isGhost ? '5,5' : undefined}
                               />
                             </g>
                           );
@@ -13551,8 +12696,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={isSelected ? 0.7 : ghostOpacity}
-                                strokeDasharray={isGhost ? '5,5' : undefined}
+                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={el.isGhost ? '5,5' : undefined}
                               />
                               {/* Colored line on top */}
                               <path
@@ -13560,8 +12705,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={isSelected ? 0.7 : ghostOpacity}
-                                strokeDasharray={isGhost ? '5,5' : undefined}
+                                opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                                strokeDasharray={el.isGhost ? '5,5' : undefined}
                               />
                             </g>
                           );
@@ -13640,8 +12785,8 @@ const TattingDesigner = () => {
                               fill="none"
                               stroke={(i === 1 && el.isSplitRing && el.materialIdB) ? elStrokeValB : elStrokeVal}
                               strokeWidth="3.75"
-                              opacity={isSelected ? 0.7 : ghostOpacity}
-                              strokeDasharray={isGhost ? '5,5' : undefined}
+                              opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
+                              strokeDasharray={el.isGhost ? '5,5' : undefined}
                             />
                           );
                         })}
@@ -13656,7 +12801,7 @@ const TattingDesigner = () => {
                               stroke="#000000"
                               strokeWidth={(el.lineWidth || 2) + 2}
                               strokeDasharray="5,5"
-                              opacity={isSelected ? 0.7 : ghostOpacity}
+                              opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
                             />
                             <line
                               x1={el.paths[0].endX}
@@ -13666,13 +12811,12 @@ const TattingDesigner = () => {
                               stroke={elStrokeValB}
                               strokeWidth={el.lineWidth || 2}
                               strokeDasharray="5,5"
-                              opacity={isSelected ? 0.7 : ghostOpacity}
+                              opacity={el.isGhost ? 0.4 : isSelected ? 0.7 : 1}
                             />
                           </>
                         )}
-                        {/* Ghosts don't show picots, EXCEPT boundary ghosts */}
-                        {(!isGhost || el.isBoundary) && renderPicots(el)}
-                        {!isGhost && isSelected && (
+                        {renderPicots(el)}
+                        {isSelected && (
                           <g>
                             {el.paths.map((path, i) => {
                               // Use path directly (curveType system removed)
@@ -13697,7 +12841,7 @@ const TattingDesigner = () => {
                             })}
                           </g>
                         )}
-                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
+                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
 {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                           let ox = el.center.x, oy = el.center.y;
                           if (el.type === 'chain' && el.paths && el.paths.length > 0) {
@@ -13767,30 +12911,51 @@ const TattingDesigner = () => {
                   pivY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
                 }
 
-                // Use createPolarInstance for each preview ghost — ensures positioning matches creation
+                const stepDeg = polarArrayAngle / polarArrayCount;
                 const ghosts = [];
+
                 for (let i = 1; i < polarArrayCount; i++) {
+                  const rad = (stepDeg * i) * Math.PI / 180;
+                  const cos = Math.cos(rad);
+                  const sin = Math.sin(rad);
+
                   selEls.forEach(el => {
-                    const previewEl = createPolarInstance(el, i, pivX, pivY, polarArrayCount, polarArrayAngle, {});
+                    const dx = el.center.x - pivX;
+                    const dy = el.center.y - pivY;
+                    const cx = pivX + dx * cos - dy * sin;
+                    const cy = pivY + dx * sin + dy * cos;
 
                     if (el.isClosed && el.shapeStyle === 'circle') {
                       const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
                       ghosts.push(
                         <circle key={`ghost-${i}-${el.id}`}
-                          cx={previewEl.center.x} cy={previewEl.center.y} r={r}
+                          cx={cx} cy={cy} r={r}
                           fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
                         />
                       );
-                    } else if (previewEl.paths && previewEl.paths.length > 0) {
-                      const pathStrs = previewEl.paths.map((p: any) => {
-                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
-                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
-                      }).join(' ');
+                    } else if (el.paths && el.paths.length > 0) {
+                      // Rotate path points and draw a dashed stroke
+                      const rotPt = (px, py) => {
+                        const rx = px - pivX, ry = py - pivY;
+                        return { x: pivX + rx * cos - ry * sin, y: pivY + rx * sin + ry * cos };
+                      };
+                      const pathStrs = el.paths.map(p => {
+                        const s = rotPt(p.x, p.y);
+                        const e2 = rotPt(p.endX, p.endY);
+                        if (p.type === 'cubic') {
+                          const c1 = rotPt(p.control1X, p.control1Y);
+                          const c2 = rotPt(p.control2X, p.control2Y);
+                          return `M${s.x},${s.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${e2.x},${e2.y}`;
+                        } else {
+                          const c = rotPt(p.controlX, p.controlY);
+                          return `M${s.x},${s.y} Q${c.x},${c.y} ${e2.x},${e2.y}`;
+                        }
+                      });
                       ghosts.push(
                         <path key={`ghost-${i}-${el.id}`}
-                          d={pathStrs}
+                          d={pathStrs.join(' ')}
                           fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
@@ -13807,26 +12972,29 @@ const TattingDesigner = () => {
               {showLinearArrayDialog && (() => {
                 const selEls = elements.filter(e => selectedIds.includes(e.id));
                 if (selEls.length === 0 || linearArrayCount < 2) return null;
-
-                // Project bbox onto array direction for accurate spacing
-                const { elementSize } = calculatePathBbox(selEls, linearArrayAngle);
-                // Center-to-center: 100% = just touching, 200% = 1 element gap
-                const spacing = elementSize * linearArraySpacing / 100;
                 const rad = linearArrayAngle * Math.PI / 180;
-                const dx = Math.cos(rad) * spacing;
-                const dy = Math.sin(rad) * spacing;
-
-                // Use createLinearInstance for each preview ghost — ensures positioning matches creation
+                const dx = Math.cos(rad) * linearArraySpacing;
+                const dy = Math.sin(rad) * linearArraySpacing;
                 const ghosts = [];
                 for (let i = 1; i < linearArrayCount; i++) {
+                  const ox = dx * i, oy = dy * i;
+                  const extraRot = linearArrayRotStep * i;
                   selEls.forEach(el => {
-                    const previewEl = createLinearInstance(el, i, dx, dy, linearArrayRotStep, {});
-                    const d = previewEl.paths?.map((p: any) => {
-                      if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
-                      return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
-                    }).join(' ');
-                    if (d) {
-                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    const newCx = el.center.x + ox;
+                    const newCy = el.center.y + oy;
+                    // Use SVG transform: rotate around original center, then translate to new pos
+                    const transform = extraRot !== 0
+                      ? `translate(${ox},${oy}) rotate(${extraRot},${el.center.x},${el.center.y})`
+                      : `translate(${ox},${oy})`;
+                    if (el.isClosed && el.shapeStyle === 'circle') {
+                      const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
+                      ghosts.push(<circle key={`lgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    } else if (el.paths?.length > 0) {
+                      const d = el.paths.map(p => {
+                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                      }).join(' ');
+                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
                     }
                   });
                 }
@@ -15702,54 +14870,81 @@ const TattingDesigner = () => {
           {/* Polar Grid section */}
           <div className="px-3 py-1 text-xs text-gray-400 font-semibold">{t('arrangePolarHeader')}</div>
 
-          {/* Grid selector — only shown when 2+ grids exist */}
-          {polarGrids.length > 1 && (
-            <div className="flex items-center gap-2 px-4 py-1">
-              <span className="text-xs text-gray-400">{t('arrangeGridSelectorLabel')}</span>
-              <select
-                value={selectedPolarGridId || ''}
-                onChange={(e) => setSelectedPolarGridId(e.target.value)}
-                className="flex-1 px-2 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
-              >
-                {polarGrids.map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {polarGrids.length > 0 ? (
+          {polarGrids.length <= 1 ? (
             <button
-              onClick={() => { centerToPolarGrid(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
+              onClick={() => { centerToPolarGrid(); setShowArrangeMenu(false); }}
               className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
-                selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                (selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              disabled={selectedIds.length === 0}
+              disabled={selectedIds.length === 0 || polarGrids.length === 0}
             >
               <IconPolarGrid size={16} />
               <span>{t('arrangeCenterToPolarGrid')}</span>
             </button>
           ) : (
-            <div className="px-4 py-2 text-xs text-gray-500 italic">No polar grids</div>
+            <>
+              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeCenterToPolarGrid')}</div>
+              {polarGrids.map(g => (
+                <button
+                  key={g.id}
+                  onClick={() => { centerToPolarGrid(g.id); setShowArrangeMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${
+                    selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  disabled={selectedIds.length === 0}
+                >
+                  <IconPolarGrid size={14} className="text-gray-400" />
+                  <span>{g.name}</span>
+                </button>
+              ))}
+            </>
           )}
 
-          <button
-            onClick={() => { alignToGridHorizontal(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={selectedIds.length === 0 || polarGrids.length === 0}
-          >
-            <IconPolarGrid size={16} />
-            <span>{t('arrangeAlignToGridH')}</span>
-          </button>
+          {/* Align to Grid Horizontally */}
+          {polarGrids.length <= 1 ? (
+            <button
+              onClick={() => { alignToGridHorizontal(); setShowArrangeMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+            >
+              <IconPolarGrid size={16} />
+              <span>{t('arrangeAlignToGridH')}</span>
+            </button>
+          ) : (
+            <>
+              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridH')}</div>
+              {polarGrids.map(g => (
+                <button key={g.id} onClick={() => { alignToGridHorizontal(g.id); setShowArrangeMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={selectedIds.length === 0}>
+                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
+                </button>
+              ))}
+            </>
+          )}
 
-          <button
-            onClick={() => { alignToGridVertical(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={selectedIds.length === 0 || polarGrids.length === 0}
-          >
-            <IconPolarGrid size={16} />
-            <span>{t('arrangeAlignToGridV')}</span>
-          </button>
+          {/* Align to Grid Vertically */}
+          {polarGrids.length <= 1 ? (
+            <button
+              onClick={() => { alignToGridVertical(); setShowArrangeMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+            >
+              <IconPolarGrid size={16} />
+              <span>{t('arrangeAlignToGridV')}</span>
+            </button>
+          ) : (
+            <>
+              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridV')}</div>
+              {polarGrids.map(g => (
+                <button key={g.id} onClick={() => { alignToGridVertical(g.id); setShowArrangeMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={selectedIds.length === 0}>
+                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
+                </button>
+              ))}
+            </>
+          )}
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -15821,320 +15016,56 @@ const TattingDesigner = () => {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span>👻</span>
-            <span>{t('ghostArrayManagerTitle')}</span>
+            <span>Ghost Array Manager</span>
           </button>
         </div>
       </>
     )}
 
-    {/* Ghost Array Manager Modal */}
+    {/* TEST MODAL - Inline to verify rendering */}
     {showArrayManager && (
       <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
         <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-          style={{ width: 'min(560px, 95vw)', maxHeight: '85dvh' }}>
+          style={{ width: 'min(500px, 95vw)', maxHeight: '85dvh' }}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
-            <h2 className="text-gray-100 font-bold text-lg">{t('ghostArrayManagerTitle')}</h2>
+            <h2 className="text-gray-100 font-bold text-lg">👻 Ghost Array Manager</h2>
             <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
           </div>
           <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
-            {ghostArrays.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">{t('ghostArrayManagerEmpty')}</p>
-            ) : (
-              ghostArrays.map((array) => {
-                const sourceEl = elements.find(el => el.id === array.sourceId);
-                const existingGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === array.sourceId);
-                return (
-                  <div key={array.id} className="flex flex-col gap-2 bg-gray-700 rounded-lg px-3 py-3">
-                    {/* Header row: type + source status + action buttons */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl flex-shrink-0">👻</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-sm font-medium capitalize">{array.type} array</div>
-                        <div className="text-gray-400 text-xs">{t('ghostArraySource')}: {sourceEl ? '✓' : t('ghostArraySourceDeleted')}</div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (sourceEl) {
-                            setSelectedIds([sourceEl.id]);
-                          } else {
-                            const firstGhost = existingGhosts[0];
-                            if (firstGhost) setSelectedIds([firstGhost.id]);
-                          }
-                          setShowArrayManager(false);
-                        }}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
-                        title={sourceEl ? t('ghostArraySelectTitle') : t('ghostArraySelectGhostTitle')}
-                      >{t('ghostArraySelect')}</button>
-                      <button
-                        onClick={() => {
-                          // Delete ghosts by sourceId (ghostIds may be stale after undo)
-                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId)));
-                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-                        }}
-                        className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
-                      >✕</button>
-                    </div>
-
-                    {/* Editable fields row */}
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">{t('ghostArrayCount')}:</label>
-                        <input
-                          type="number"
-                          min={2}
-                          max={100}
-                          defaultValue={array.instanceCount}
-                          id={`ghost-count-${array.id}`}
-                          className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
-                        />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">{array.type === 'polar' ? t('ghostArrayAngle') : t('ghostArrayDir')}:</label>
-                        <input
-                          type="number"
-                          step={0.5}
-                          defaultValue={array.angle}
-                          id={`ghost-angle-${array.id}`}
-                          className="w-16 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
-                        />
-                        <span className="text-xs text-gray-500">°</span>
-                      </div>
-                      {array.type === 'polar' && (
-                        <div className="flex items-center gap-1">
-                          <label className="text-xs text-gray-400">{t('ghostArrayGrid')}:</label>
-                          <select
-                            defaultValue={array.pivotId || 'selection'}
-                            id={`ghost-grid-${array.id}`}
-                            className="px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
-                          >
-                            <option value="selection">{t('ghostArraySelectionCenter')}</option>
-                            {polarGrids.map(g => (
-                              <option key={g.id} value={g.id}>{g.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                      {array.type === 'linear' && (
-                        <div className="flex items-center gap-1">
-                          <label className="text-xs text-gray-400">{t('ghostArraySpacePct')}:</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={500}
-                            step={0.5}
-                            defaultValue={array.spacing}
-                            id={`ghost-spacing-${array.id}`}
-                            onBlur={e => {
-                              const val = parseFloat(e.target.value);
-                              if (isNaN(val) || val < 0) e.target.value = '0';
-                              else if (val > 500) e.target.value = '500';
-                            }}
-                            className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
-                          />
-                        </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          if (!sourceEl) return;
-                          const countInput = document.getElementById(`ghost-count-${array.id}`) as HTMLInputElement;
-                          const angleInput = document.getElementById(`ghost-angle-${array.id}`) as HTMLInputElement;
-                          const gridSelect = document.getElementById(`ghost-grid-${array.id}`) as HTMLSelectElement;
-                          const spacingInput = document.getElementById(`ghost-spacing-${array.id}`) as HTMLInputElement | null;
-                          const count = parseInt(countInput?.value || '2', 10);
-                          const angle = parseFloat(angleInput?.value || '0');
-                          const pivot = gridSelect?.value || array.pivotId || 'selection';
-                          const spacing = spacingInput ? parseFloat(spacingInput.value || '0') : 0;
-                          if (count < 2) return;
-
-                          // Save state BEFORE deletion
-                          const oldGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === sourceEl.id);
-                          const oldGhostById = new Map(oldGhosts.map(g => [g.id, g]));
-                          const oldGhostIdsSorted = [...oldGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0)).map(g => g.id);
-
-                          // Save picotConnections involving these ghosts
-                          const savedConnections = picotConnectionsRef.current.filter(conn =>
-                            conn.picots.some(p => oldGhostById.has(p.elementId))
-                          );
-
-                          // Delete old ghosts
-                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === sourceEl.id)));
-                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-                          setSelectedIds([sourceEl.id]);
-
-                          // Recreate with new parameters
-                          setTimeout(() => {
-                            if (array.type === 'polar') {
-                              executePolarArray(count, angle, pivot, true, [sourceEl.id]);
-                            } else if (array.type === 'linear') {
-                              executeLinearArray(count, angle, spacing, array.rotStep, true, [sourceEl.id]);
-                            }
-                            // After recreation, remap connections: old ghost[i] → new ghost[i] by sorted order
-                            setTimeout(() => {
-                              const newGhosts = elementsRef.current.filter(e => e.type === 'ghost' && e.sourceId === sourceEl.id);
-                              const newGhostIdsSorted = [...newGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0)).map(g => g.id);
-
-                              if (savedConnections.length > 0 && newGhostIdsSorted.length > 0) {
-                                const oldToNew = new Map<string, string>();
-                                for (let i = 0; i < Math.min(oldGhostIdsSorted.length, newGhostIdsSorted.length); i++) {
-                                  oldToNew.set(oldGhostIdsSorted[i], newGhostIdsSorted[i]);
-                                }
-                                // Remove old connections and add remapped ones
-                                const currentConns = picotConnectionsRef.current.filter(conn =>
-                                  !conn.picots.some(p => oldGhostById.has(p.elementId))
-                                );
-                                const remappedConns = savedConnections.map(conn => ({
-                                  ...conn,
-                                  id: generateId(),
-                                  picots: conn.picots.map(p => ({
-                                    ...p,
-                                    elementId: oldToNew.get(p.elementId) || p.elementId,
-                                  })),
-                                }));
-                                const merged = [...currentConns, ...remappedConns];
-                                setPicotConnections(merged);
-                                picotConnectionsRef.current = merged;
-                              }
-                            }, 60);
-                          }, 50);
-                        }}
-                        disabled={!sourceEl}
-                        className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                        title={sourceEl ? t('ghostArrayApplyTitle') : t('ghostArraySourceDeleted')}
-                      >
-                        {t('ghostArrayApply')}
-                      </button>
-                      <button
-                        onClick={() => setConvertConfirm(array)}
-                        disabled={existingGhosts.length === 0}
-                        className="text-xs px-2 py-1 bg-amber-700 hover:bg-amber-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                        title={t('ghostArrayConvertTitle')}
-                      >
-                        {t('ghostArrayConvert')}
-                      </button>
-                    </div>
+            {(() => {
+              const ghostArrays = (() => {
+                const map = new Map();
+                elements.filter(el => el.isGhost).forEach(el => {
+                  const sourceId = el.ghostSourceId || 'unknown';
+                  if (!map.has(sourceId)) map.set(sourceId, []);
+                  map.get(sourceId).push(el);
+                });
+                return Array.from(map.entries());
+              })();
+              if (ghostArrays.length === 0) {
+                return <p className="text-gray-400 text-sm text-center py-8">No ghost arrays — create one from the Arrange menu</p>;
+              }
+              return ghostArrays.map(([sourceId, ghosts], idx) => (
+                <div key={sourceId + idx} className="flex flex-wrap items-center gap-2 bg-gray-700 rounded-lg px-3 py-2">
+                  <span className="text-2xl flex-shrink-0">👻</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium">{ghosts.length} ghost{ghosts.length > 1 ? 's' : ''}</div>
+                    <div className="text-gray-400 text-xs">Source: {sourceId.slice(0, 8)}...</div>
                   </div>
-                );
-              })
-            )}
-          </div>
-          <div className="px-5 pb-2 flex-shrink-0">
-            <button
-              onClick={() => setConvertConfirm('all')}
-              className="w-full px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm font-medium"
-            >
-              {t('ghostArrayConvertAll')}
-            </button>
+                  <button onClick={() => { setSelectedIds(ghosts.map(g => g.id)); setShowArrayManager(false); }} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Select</button>
+                  <button onClick={() => { setElements(prev => prev.map(el => ghosts.find(g => g.id === el.id) ? { ...el, isGhost: false, ghostSourceId: null } : el)); }} className="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded">Convert</button>
+                  <button onClick={() => { setElements(prev => prev.filter(el => !ghosts.find(g => g.id === el.id))); }} className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded">✕</button>
+                </div>
+              ));
+            })()}
           </div>
           <div className="px-5 pb-4 flex-shrink-0">
-            <p className="text-xs text-gray-500">{t('ghostArrayApplyTitle')}</p>
+            <p className="text-xs text-gray-500">Manage ghost arrays created by Polar/Linear Array.</p>
           </div>
         </div>
       </div>
     )}
-
-    {/* Convert Ghost Array confirmation modal */}
-    {convertConfirm && (
-      <>
-        <div className="fixed inset-0 bg-black/50" style={{zIndex: 2147483646}} onClick={() => setConvertConfirm(null)}></div>
-        <div
-          className="fixed bg-gray-700 rounded-lg shadow-xl border border-gray-600 p-5 w-80"
-          style={{zIndex: 2147483647, top: '50%', left: '50%', transform: 'translate(-50%, -50%)'}}
-        >
-          {convertConfirm === 'all' ? (
-            <>
-              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertAllTitle')}</h3>
-              <p className="text-gray-300 text-sm mb-4">
-                {t('ghostArrayConvertAllConfirm')
-                  .replace('{total}', String(ghostArrays.reduce((sum, a) => sum + a.ghostIds.length, 0)))
-                  .replace('{arrays}', String(ghostArrays.length))}
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setConvertConfirm(null)}
-                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
-                >
-                  {t('ghostArrayCancel')}
-                </button>
-                <button
-                  onClick={() => {
-                    let allNewIds: string[] = [];
-                    const oldToNewId = new Map<string, string>();
-                    // Find all ghosts by sourceId (ghostIds may be stale after undo)
-                    const allGhostsToConvert = ghostArrays.flatMap(a =>
-                      elements.filter(e => e.type === 'ghost' && e.sourceId === a.sourceId)
-                    );
-                    // Deduplicate in case multiple arrays share the same ghost
-                    const seen = new Set<string>();
-                    const uniqueGhosts = allGhostsToConvert.filter(e => {
-                      if (seen.has(e.id)) return false;
-                      seen.add(e.id);
-                      return true;
-                    });
-                    setElements(prev => {
-                      const withoutGhosts = prev.filter(el => el.type !== 'ghost');
-                      const realElements = uniqueGhosts.map(ghost => {
-                        const newEl = JSON.parse(JSON.stringify(ghost));
-                        oldToNewId.set(ghost.id, newEl.id);
-                        const source = elements.find(e => e.id === ghost.sourceId);
-                        newEl.type = source?.type || newEl.type;
-                        delete newEl.sourceId;
-                        delete newEl.isBoundary;
-                        delete newEl.isGhostMother;
-                        delete newEl.ghostArrayIds;
-                        allNewIds.push(newEl.id);
-                        return newEl;
-                      });
-                      return [...withoutGhosts, ...realElements];
-                    });
-
-                    // Update picotConnections: replace old ghost IDs with new real element IDs
-                    setPicotConnections(prev => prev.map(conn => ({
-                      ...conn,
-                      picots: conn.picots.map(p => ({
-                        ...p,
-                        elementId: oldToNewId.get(p.elementId) || p.elementId,
-                      })),
-                    })));
-
-                    const sourceIds = ghostArrays.map(a => a.sourceId).filter(Boolean);
-                    setSelectedIds([...sourceIds, ...allNewIds]);
-                    setGhostArrays([]);
-                    setConvertConfirm(null);
-                  }}
-                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
-                >
-                  {t('ghostArrayConvert')} {t('ghostArrayConvertAll').split(' ').slice(0,2).join(' ')}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertTitle')}</h3>
-              <p className="text-gray-300 text-sm mb-4">
-                {t('ghostArrayConvertConfirm')
-                  .replace('{count}', String(convertConfirm.instanceCount - 1))
-                  .replace('{name}', convertConfirm.name)}
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setConvertConfirm(null)}
-                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
-                >
-                  {t('ghostArrayCancel')}
-                </button>
-                <button
-                  onClick={() => convertGhostArray(convertConfirm)}
-                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
-                >
-                  {t('ghostArrayConvert')}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </>
-    )}
-
+    
 
     {/* View dropdown menu - rendered at top level to avoid clipping */}
     {showViewMenu && (
@@ -16475,7 +15406,7 @@ const TattingDesigner = () => {
                 {/* Select all */}
                 <button
                   onClick={() => {
-                    const ids = elements.filter(el => el.type !== 'ghost' && ((el.materialId || 'default') === mat.id || (el.isSplitRing && (el.materialIdB || el.materialId || 'default') === mat.id))).map(el => el.id);
+                    const ids = elements.filter(el => (el.materialId || 'default') === mat.id || (el.isSplitRing && (el.materialIdB || el.materialId || 'default') === mat.id)).map(el => el.id);
                     setSelectedIds(ids);
                     setShowMaterialsPanel(false);
                   }}
@@ -17395,12 +16326,11 @@ const TattingDesigner = () => {
 
             {/* Spacing */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">Spacing (100% = touching, 200% = 1 element gap)</label>
+              <label className="text-xs text-gray-400">Spacing (% of element size)</label>
               <div className="flex items-center gap-2">
-                <input type="number" min={0} max={500} step={10} value={linearArraySpacing} onChange={e => setLinearArraySpacing(parseFloat(e.target.value) || 0)} onBlur={e => setLinearArraySpacing(Math.max(0, Math.min(500, parseFloat(e.target.value) || 0)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                <input type="number" min={10} max={500} step={10} value={linearArraySpacing} onChange={e => setLinearArraySpacing(Math.max(10, Math.min(500, parseFloat(e.target.value) || 100)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">%</span>
-                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100% touch</button>
-                <button onClick={() => setLinearArraySpacing(200)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">200%</button>
+                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100%</button>
               </div>
             </div>
 

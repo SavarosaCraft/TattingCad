@@ -75,6 +75,11 @@ export function useUIState() {
     pivotId?: string;     // For polar: grid ID
     ghostIds: string[];
     boundaryIds: string[];  // Ghosts with active picot joins
+    inheritedJoins: Array<{ // Phase 1: inherited join templates (boundary → previous)
+      sourcePicotIndex: number;  // Which picot on this ghost (0-based index in picots array)
+      targetPicotIndex: number;  // Which picot on previous ghost to connect to
+      isCoreJoin?: boolean;      // Core join type (cj/cjp)
+    }>;
   }>>([]);
 
   // ── Polar grid ─────────────────────────────────────────────────────────

@@ -45,7 +45,24 @@ export const writeTextToFile = async (filePath: string, text: string): Promise<v
 };
 
 export const readProjectFile = async (filePath: string): Promise<any> => {
-  const text = await readTextFile(filePath);
+  // Strip file:// or file:/// prefix if present (can happen with older saved paths or URL-encoded paths)
+  let normalized = filePath;
+  if (normalized.startsWith('file:///')) {
+    normalized = normalized.slice(8);
+  } else if (normalized.startsWith('file://')) {
+    normalized = normalized.slice(7);
+  } else if (normalized.startsWith('file:/') && !normalized.startsWith('file://')) {
+    normalized = normalized.slice(6);
+  }
+  // Handle URL-encoded paths (e.g., %20 for spaces, %3A for colon on Windows)
+  if (normalized.includes('%')) {
+    try {
+      normalized = decodeURIComponent(normalized);
+    } catch (_) {
+      // If decoding fails, use original
+    }
+  }
+  const text = await readTextFile(normalized);
   return JSON.parse(text);
 };
 
