@@ -530,5 +530,9 @@
 "cjLabel": "Mag kötés",
 "cjTooltip": "Mag kötés (cj) — csomózás a magfonállal, nulla öltéshossz",
 "cjpLabel": "Mag kötéses pikó",
-"cjpTooltip": "Mag kötéses pikó (cjp) — magfonál kötés pikóval"
+"cjpTooltip": "Mag kötéses pikó (cjp) — magfonál kötés pikóval",
+"recentProjectsClearUnavailable": "Hiányzók törlése",
+"recentProjectsClearUnavailableHint": "Az összes olyan bejegyzés eltávolítása, amelynek fájlelérési útja nem található",
+"recentProjectsPathMissing": "A fájl elérési útja nem található — nyisd meg a Tallózás gombbal az újraregisztráláshoz",
+"recentProjectsPathMissingLabel": "elérési út hiányzik"
 }

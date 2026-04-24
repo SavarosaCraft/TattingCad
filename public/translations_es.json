@@ -530,5 +530,9 @@
 "cjLabel": "Unión de núcleo",
 "cjTooltip": "Unión de núcleo (cj) — unión con el hilo núcleo, longitud cero",
 "cjpLabel": "Picot de unión de núcleo",
-"cjpTooltip": "Picot de unión de núcleo (cjp) — unión de núcleo que también forma un picot"
+"cjpTooltip": "Picot de unión de núcleo (cjp) — unión de núcleo que también forma un picot",
+"recentProjectsClearUnavailable": "Limpiar no disponibles",
+"recentProjectsClearUnavailableHint": "Eliminar todas las entradas cuya ruta de archivo no se pudo resolver",
+"recentProjectsPathMissing": "Ruta de archivo no encontrada — ábrelo con Examinar para registrarlo de nuevo",
+"recentProjectsPathMissingLabel": "ruta no disponible"
 }

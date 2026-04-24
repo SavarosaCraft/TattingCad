@@ -19,3 +19,4 @@ ETC/
 # Editor folders
 .vscode/
 .idea/
+.aider*

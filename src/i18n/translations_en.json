@@ -473,5 +473,9 @@
   "recentProjectsLoadConfirmTitle": "Discard current project?",
   "recentProjectsLoadConfirmBody": "Loading a project will replace the current canvas. Any unsaved changes will be lost.",
   "recentProjectsLoadConfirmOk": "Load anyway",
-  "recentProjectsLoadConfirmCancel": "Cancel"
+  "recentProjectsLoadConfirmCancel": "Cancel",
+"recentProjectsClearUnavailable": "Clear unavailable",
+"recentProjectsClearUnavailableHint": "Remove all entries whose file path could not be resolved",
+"recentProjectsPathMissing": "File path not found — open via Browse to re-register this project",
+"recentProjectsPathMissingLabel": "path unavailable"
 }

@@ -530,5 +530,9 @@
 "cjLabel": "Core Join",
 "cjTooltip": "Core Join (cj) — join made with the core thread, zero stitch length",
 "cjpLabel": "Core Join Picot",
-"cjpTooltip": "Core Join Picot (cjp) — core thread join that also leaves a picot"
+"cjpTooltip": "Core Join Picot (cjp) — core thread join that also leaves a picot",
+"recentProjectsClearUnavailable": "Clear unavailable",
+"recentProjectsClearUnavailableHint": "Remove all entries whose file path could not be resolved",
+"recentProjectsPathMissing": "File path not found — open via Browse to re-register this project",
+"recentProjectsPathMissingLabel": "path unavailable"
 }

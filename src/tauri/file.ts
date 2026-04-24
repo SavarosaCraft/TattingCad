@@ -45,24 +45,7 @@ export const writeTextToFile = async (filePath: string, text: string): Promise<v
 };
 
 export const readProjectFile = async (filePath: string): Promise<any> => {
-  // Strip file:// or file:/// prefix if present (can happen with older saved paths or URL-encoded paths)
-  let normalized = filePath;
-  if (normalized.startsWith('file:///')) {
-    normalized = normalized.slice(8);
-  } else if (normalized.startsWith('file://')) {
-    normalized = normalized.slice(7);
-  } else if (normalized.startsWith('file:/') && !normalized.startsWith('file://')) {
-    normalized = normalized.slice(6);
-  }
-  // Handle URL-encoded paths (e.g., %20 for spaces, %3A for colon on Windows)
-  if (normalized.includes('%')) {
-    try {
-      normalized = decodeURIComponent(normalized);
-    } catch (_) {
-      // If decoding fails, use original
-    }
-  }
-  const text = await readTextFile(normalized);
+  const text = await readTextFile(filePath);
   return JSON.parse(text);
 };
 
@@ -76,11 +59,25 @@ export interface RecentEntry {
   savedAt: string;
 }
 
+// Normalise a raw localStorage entry so that any legacy field name used for
+// the file path ('path', 'filePath', 'file') is promoted to 'filename'.
+// Entries that have no recoverable path get filename:''.
+const normaliseEntry = (e: any): RecentEntry => ({
+  id:        e.id        ?? Date.now().toString(),
+  name:      e.name      ?? 'Untitled',
+  filename:  e.filename  ?? e.path ?? e.filePath ?? e.file ?? '',
+  thumbnail: e.thumbnail ?? '',
+  savedAt:   e.savedAt   ?? new Date().toISOString(),
+});
+
 export const addToRecents = (name: string, filename: string, thumbnail: string): void => {
   try {
     const raw = localStorage.getItem('tcad_recent_projects');
-    const list: RecentEntry[] = raw ? JSON.parse(raw) : [];
-    const filtered = list.filter(e => e.filename !== filename);
+    const list: any[] = raw ? JSON.parse(raw) : [];
+    // Dedupe: remove any entry whose resolved path (any legacy field) matches
+    const filtered = list.filter(e =>
+      (e.filename ?? e.path ?? e.filePath ?? e.file ?? '') !== filename
+    );
     const entry: RecentEntry = {
       id: Date.now().toString(),
       name,
@@ -88,14 +85,22 @@ export const addToRecents = (name: string, filename: string, thumbnail: string):
       thumbnail,
       savedAt: new Date().toISOString(),
     };
-    localStorage.setItem('tcad_recent_projects', JSON.stringify([entry, ...filtered].slice(0, 20)));
+    localStorage.setItem(
+      'tcad_recent_projects',
+      JSON.stringify([entry, ...filtered].slice(0, 20))
+    );
   } catch (_) {}
 };
 
 export const getRecents = (): RecentEntry[] => {
   try {
     const raw = localStorage.getItem('tcad_recent_projects');
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list: any[] = JSON.parse(raw);
+    const normalised = list.map(normaliseEntry);
+    // Persist the migration so the next read is already clean
+    localStorage.setItem('tcad_recent_projects', JSON.stringify(normalised));
+    return normalised;
   } catch { return []; }
 };
 
