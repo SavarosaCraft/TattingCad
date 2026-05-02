@@ -25,7 +25,6 @@ import {
   getPointAndAngleAtDistance,
   interpolateColor,
 } from './geometry/bezier';
-import { applyPathPreset, applyLinePreset } from './geometry/pathPresets';
 import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { useUIState } from './hooks/useUIState';
@@ -531,6 +530,9 @@ const TattingDesigner = () => {
   // Tips — navigable with prev/next
   // SPLASH_TIP_KEYS replaced by SPLASH_TIP_COUNT from ./hooks/useViewState
 
+
+  // Chain preset panel — symmetric toggle (local UI preference, not persisted)
+  const [chainPresetSymmetric, setChainPresetSymmetric] = React.useState(true);
 
   const lastUsedMaterialIdRef = useRef('default');
 
@@ -1558,7 +1560,64 @@ const TattingDesigner = () => {
     });
   };
 
-  // Render chain stitches using TWO parallel offset curves (same as teardrops but without center reference)
+  // Render split ring stitches using TWO parallel offset curves per path half.
+  // Each half (pathA / pathB) is treated independently like a mini teardrop ring.
+  // Accepts the global stitch index so it can determine which path half to use.
+  const renderWedgeSplitRingShapes = (stitch, el, scale, offsetAmount, stitchType, globalIndex) => {
+    const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
+    const splitPos = el.splitPosition || Math.floor(el.stitchCount / 2);
+    const inA = globalIndex < splitPos;
+    const path = inA ? el.paths[0] : el.paths[1];
+    if (!path) return shapes.map(() => '');
+    const localCount = inA ? splitPos : el.stitchCount - splitPos;
+    const localIndex = inA ? globalIndex : globalIndex - splitPos;
+
+    const samplesPerDS = 10;
+    const totalSamples = localCount * samplesPerDS;
+
+    const STITCH_X_EXTENTS = {
+      'ds':  { xMin: -0.2622, xMax:  0.0504 },
+      'ss':  { xMin: -0.1023, xMax:  0.0463 },
+      'lss': { xMin: -0.1023, xMax:  0.0463 },
+      'rss': { xMin: -0.1023, xMax:  0.0463 },
+      'rds': { xMin: -0.5946, xMax:  0.0798 },
+    };
+    const dsEquivalentWidth = { 'ds': 1.0, 'ss': 0.5, 'lss': 0.5, 'rss': 0.5, 'rds': 2.0 };
+    const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
+    const xSpan = ext.xMax - ext.xMin;
+    const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
+    const samplesForThisStitch = samplesPerDS * stitchWidth;
+
+    return shapes.map(([xl, xr, yo, yi]) => {
+      const outerOffset = offsetAmount - yo * scale;
+      const innerOffset = offsetAmount - yi * scale;
+
+      // Sample offset curves for this path half only
+      const outerCurve = sampleFullPathWithOffset([path], outerOffset, totalSamples);
+      const innerCurve = sampleFullPathWithOffset([path], innerOffset, totalSamples);
+
+      const tLeft  = (xl - ext.xMin) / xSpan;
+      const tRight = (xr - ext.xMin) / xSpan;
+      const stitchSliceStart = localIndex * samplesPerDS;
+      const rectStart = Math.round(stitchSliceStart + tLeft  * samplesForThisStitch);
+      const rectEnd   = Math.round(stitchSliceStart + tRight * samplesForThisStitch);
+
+      const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
+      const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
+      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
+
+      let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
+      for (let j = 1; j < outerSlice.length; j++) {
+        pathD += ` L ${outerSlice[j].x},${outerSlice[j].y}`;
+      }
+      pathD += ` L ${innerSlice[innerSlice.length - 1].x},${innerSlice[innerSlice.length - 1].y}`;
+      for (let j = innerSlice.length - 2; j >= 0; j--) {
+        pathD += ` L ${innerSlice[j].x},${innerSlice[j].y}`;
+      }
+      return pathD + ' Z';
+    });
+  };
+
   const renderWedgeChainShapes = (stitch, el, scale, offsetAmount, stitchType, stitchIndex) => {
     const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
     const stitchCount = el.stitchCount; // DS-equivalent count
@@ -1757,30 +1816,39 @@ const TattingDesigner = () => {
     };
   };
 
-  // Helper: apply element's current rotation to newly-generated path data
-  const applyRotationToPathData = (el, newPathData) => {
-    if (!el.rotation || el.rotation === 0) return { ...el, ...newPathData };
-    const rad = el.rotation * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    const cx = el.center.x, cy = el.center.y;
-    const rotatePt = (px, py) => {
-      const dx = px - cx, dy = py - cy;
-      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
-    };
-    newPathData.paths = newPathData.paths.map(path => {
+  // Mirror an array of bezier paths horizontally (around x=cx) or vertically (around y=cy).
+  // Swaps start↔end and control points to preserve traversal direction.
+  const mirrorPaths = (paths: any[], isHorizontal: boolean, cx: number, cy: number): any[] => {
+    const mPt = (px: number, py: number) => isHorizontal
+      ? { x: 2 * cx - px, y: py }
+      : { x: px, y: 2 * cy - py };
+    return paths.map(path => {
       if (path.type === 'cubic') {
-        const s = rotatePt(path.x, path.y);
-        const e = rotatePt(path.endX, path.endY);
-        const c1 = rotatePt(path.control1X, path.control1Y);
-        const c2 = rotatePt(path.control2X, path.control2Y);
-        return { ...path, x:s.x, y:s.y, endX:e.x, endY:e.y, control1X:c1.x, control1Y:c1.y, control2X:c2.x, control2Y:c2.y };
+        const s  = mPt(path.endX,     path.endY);
+        const e2 = mPt(path.x,        path.y);
+        const c1 = mPt(path.control2X, path.control2Y);
+        const c2 = mPt(path.control1X, path.control1Y);
+        return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y,
+          control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
       }
-      const s = rotatePt(path.x, path.y);
-      const e = rotatePt(path.endX, path.endY);
-      const c = rotatePt(path.controlX, path.controlY);
-      return { ...path, x:s.x, y:s.y, endX:e.x, endY:e.y, controlX:c.x, controlY:c.y };
-    });
-    return { ...el, ...newPathData };
+      const s    = mPt(path.endX,    path.endY);
+      const e2   = mPt(path.x,       path.y);
+      const ctrl = mPt(path.controlX, path.controlY);
+      return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
+    }).reverse();
+  };
+
+  // Helper: apply rotation + flip to newly-generated path data.
+  // For flipped elements: rotate first, then physically mirror to match the
+  // existing visual state. This is the inverse of what flipElements does
+  // (flip sets rotation to mirrorAngle(θ) AND physically mirrors coords).
+  const applyRotationToPathData = (el, newPathData) => {
+    let paths = newPathData.paths ?? [];
+    const cx = el.center.x, cy = el.center.y;
+    if (el.rotation) paths = rotatePaths(paths, cx, cy, el.rotation);
+    if (el.isFlippedH) paths = mirrorPaths(paths, true,  cx, cy);
+    if (el.isFlippedV) paths = mirrorPaths(paths, false, cx, cy);
+    return { ...el, ...newPathData, paths };
   };
 
   // ── Split ring geometry: 3 controls ──────────────────────────────────────────
@@ -1835,10 +1903,8 @@ const TattingDesigner = () => {
     const botY = cy + h/2;
     const bulgeA = splitRingSolveBulge(h, squeezeCA, arcA);
     const bulgeB = splitRingSolveBulge(h, squeezeCB, arcB);
-    // Path A: (cx,botY)→(cx,topY), bulges LEFT
     const c1yA = cy + (h/2)*squeezeCA;
     const c2yA = cy - (h/2)*squeezeCA;
-    // Path B: (cx,topY)→(cx,botY), bulges RIGHT — mirror
     const c1yB = cy - (h/2)*squeezeCB;
     const c2yB = cy + (h/2)*squeezeCB;
     return {
@@ -1850,6 +1916,129 @@ const TattingDesigner = () => {
       ],
       splitPosition: stitchCountA,
     };
+  };
+
+  // Convenience wrapper — reads squeeze/split fields from the element,
+  // all params optional to allow per-call overrides.
+  const createSplitRingPathFromEl = (el: any, opts: {
+    cx?: number; cy?: number;
+    stitchCountA?: number; stitchCountB?: number;
+    squeeze?: number; squeezeCA?: number; squeezeCB?: number;
+  } = {}) => {
+    const cx  = opts.cx  ?? el.center.x;
+    const cy  = opts.cy  ?? el.center.y;
+    const scA = opts.stitchCountA ?? el.splitPosition;
+    const scB = opts.stitchCountB ?? (el.stitchCount - el.splitPosition);
+    return createSplitRingPath(
+      cx, cy, (scA + scB) * dsWidth, scA, scB,
+      opts.squeeze    ?? el.squeeze    ?? 0.25,
+      opts.squeezeCA  ?? el.squeezeCA  ?? 0.75,
+      opts.squeezeCB  ?? el.squeezeCB  ?? 0.75,
+    );
+  };
+
+  // ── Path/Line preset helpers (previously in ./geometry/pathPresets) ─────────
+
+  // Apply a bow-angle preset to a chain path, keeping both endpoints fixed.
+  // presetDeg: angle of the tangent at start/end relative to the chord (45 / 60 / 90).
+  // targetLength: desired arc length (el.stitchCount * dsWidth) — used to scale
+  // the control-point magnitude via binary search so the path length matches.
+  const applyPathPreset = (path: any, presetDeg: number, targetLength: number, symmetric = true): any => {
+    const { x, y, endX, endY } = path;
+    const chordX = endX - x, chordY = endY - y;
+    const chordLen = Math.hypot(chordX, chordY);
+    if (chordLen < 0.001) return path;
+    const ux = chordX / chordLen, uy = chordY / chordLen;
+
+    // Detect which side of the chord the current bow is on.
+    // Cross product of chord with (control1 - start): positive = left, negative = right.
+    const c1dx = (path.control1X ?? path.x) - x;
+    const c1dy = (path.control1Y ?? path.y) - y;
+    const cross = chordX * c1dy - chordY * c1dx;
+    // If cross is effectively zero (straight path), default to left (+1)
+    const bowSign = cross >= 0 ? 1 : -1;
+
+    // Perpendicular in the detected bow direction
+    const px = -uy * bowSign, py = ux * bowSign;
+    const rad = presetDeg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const d1x = cos * ux + sin * px, d1y = cos * uy + sin * py; // start tangent
+
+    if (!symmetric) {
+      // Non-symmetric: only update start control point, keep end as-is
+      let lo = 0, hi = chordLen * 4, t = chordLen / 3;
+      for (let iter = 0; iter < 24; iter++) {
+        const c1x = x + t * d1x, c1y = y + t * d1y;
+        const tryPath = { type: 'cubic', x, y, endX, endY, control1X: c1x, control1Y: c1y, control2X: path.control2X, control2Y: path.control2Y };
+        const len = calculatePathLength(sampleBezierPath(tryPath, 30));
+        if (Math.abs(len - targetLength) < targetLength * 0.005) { t = (lo + hi) / 2; break; }
+        if (len < targetLength) lo = t; else hi = t;
+        t = (lo + hi) / 2;
+      }
+      return { ...path, control1X: x + t * d1x, control1Y: y + t * d1y };
+    }
+
+    // Symmetric: end tangent mirrors start tangent across the chord
+    const d2x = cos * ux - sin * px, d2y = cos * uy - sin * py;
+    let lo = 0, hi = chordLen * 4, t = chordLen / 3;
+    for (let iter = 0; iter < 24; iter++) {
+      const c1x = x + t * d1x, c1y = y + t * d1y;
+      const c2x = endX - t * d2x, c2y = endY - t * d2y;
+      const tryPath = { type: 'cubic', x, y, endX, endY, control1X: c1x, control1Y: c1y, control2X: c2x, control2Y: c2y };
+      const len = calculatePathLength(sampleBezierPath(tryPath, 30));
+      if (Math.abs(len - targetLength) < targetLength * 0.005) { t = (lo + hi) / 2; break; }
+      if (len < targetLength) lo = t; else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return {
+      ...path,
+      control1X: x + t * d1x, control1Y: y + t * d1y,
+      control2X: endX - t * d2x, control2Y: endY - t * d2y,
+    };
+  };
+
+  // Apply an angle preset to a line element.
+  // presetDeg = 0 → horizontal, 90 → vertical, etc. (standard math angle from +x axis).
+  // Keeps start (x, y) fixed; rotates the endpoint to the new angle at the same length.
+  // Control points are placed collinearly (straight line).
+  const applyLinePreset = (path: any, presetDeg: number): any => {
+    const { x, y, endX, endY } = path;
+    const len = Math.hypot(endX - x, endY - y);
+    if (len < 0.001) return path;
+    const rad = presetDeg * Math.PI / 180;
+    const newEndX = x + Math.cos(rad) * len;
+    const newEndY = y + Math.sin(rad) * len;
+    return {
+      ...path,
+      endX: newEndX, endY: newEndY,
+      control1X: x    + Math.cos(rad) * len * 0.33,
+      control1Y: y    + Math.sin(rad) * len * 0.33,
+      control2X: x    + Math.cos(rad) * len * 0.67,
+      control2Y: y    + Math.sin(rad) * len * 0.67,
+    };
+  };
+
+  // Rotate an array of bezier path segments around (cx, cy) by angleDeg.
+  // Handles both cubic (control1X/Y, control2X/Y) and quadratic (controlX/Y) segments.
+  // Returns a new array — does not mutate the input.
+  const rotatePaths = (paths: any[], cx: number, cy: number, angleDeg: number): any[] => {
+    if (!angleDeg || !paths?.length) return paths;
+    const rad = angleDeg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const rp = (px: number, py: number) => {
+      const dx = px - cx, dy = py - cy;
+      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
+    };
+    return paths.map(p => {
+      const s = rp(p.x, p.y), e2 = rp(p.endX, p.endY);
+      if (p.type === 'cubic') {
+        const c1 = rp(p.control1X, p.control1Y), c2 = rp(p.control2X, p.control2Y);
+        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y,
+          control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+      }
+      const c = rp(p.controlX, p.controlY);
+      return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+    });
   };
 
   // isNotationValid, expandTokens, isZeroWidth imported from ./domain/parser
@@ -1900,9 +2089,7 @@ const TattingDesigner = () => {
     const center = getViewportCenter();
     const stitchCountA = 6;
     const stitchCountB = 6;
-    const totalLength = (stitchCountA + stitchCountB) * dsWidth;
-    const squeeze = 0.25;
-    const pathData = createSplitRingPath(center.x, center.y, totalLength, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
+    const pathData = createSplitRingPath(center.x, center.y, (stitchCountA + stitchCountB) * dsWidth, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
     const newEl = {
       id: generateId(),
       type: 'ring',
@@ -2368,42 +2555,21 @@ const TattingDesigner = () => {
 
       // Split rings & teardrops: regenerate path at new center + apply rotation
       if (el.isSplitRing && el.splitPosition) {
-        const pathData = createSplitRingPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.splitPosition, el.stitchCount - el.splitPosition, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        const r = newRotation * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-        const rot = (px, py) => { const pdx = px - newCenterX, pdy = py - newCenterY; return { x: newCenterX + pdx*rc - pdy*rs, y: newCenterY + pdx*rs + pdy*rc }; };
-        const newPaths = pathData.paths.map(path => {
-          const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), c1 = rot(path.control1X, path.control1Y), c2 = rot(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        });
-        return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: ((newRotation % 360) + 360) % 360 };
+        const pathData = createSplitRingPathFromEl(el, { cx: newCenterX, cy: newCenterY });
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: ((newRotation % 360) + 360) % 360 };
       }
       if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || (el.squeeze !== undefined && el.squeeze > 0))) {
         const pathData = createTeardropPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.squeeze ?? 0);
-        const r = newRotation * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-        const rot = (px, py) => { const pdx = px - newCenterX, pdy = py - newCenterY; return { x: newCenterX + pdx*rc - pdy*rs, y: newCenterY + pdx*rs + pdy*rc }; };
-        const newPaths = pathData.paths.map(path => {
-          if (path.type === 'cubic') {
-            const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), c1 = rot(path.control1X, path.control1Y), c2 = rot(path.control2X, path.control2Y);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), ctrl = rot(path.controlX, path.controlY);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-          }
-        });
-        return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: ((newRotation % 360) + 360) % 360 };
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: ((newRotation % 360) + 360) % 360 };
       }
       // Chains & circle rings: rotate path points around global centroid
-      const rotatePt = (px, py) => { const pdx = px - centerX, pdy = py - centerY; return { x: centerX + pdx*cos - pdy*sin, y: centerY + pdx*sin + pdy*cos }; };
-      const newPaths = el.paths.map(path => {
-        if (path.type === 'cubic') {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      });
-      return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: ((newRotation % 360) + 360) % 360 };
+      return { ...el, center: { x: newCenterX, y: newCenterY },
+        paths: rotatePaths(el.paths, centerX, centerY, delta),
+        rotation: ((newRotation % 360) + 360) % 360 };
     }));
   };
 
@@ -2417,21 +2583,7 @@ const TattingDesigner = () => {
       if (el.id !== elId) return el;
       const polarPivot = getPolarPivot([el.id]);
       const pivot = polarPivot || getElementPivot(el);
-      const cx = pivot.x, cy = pivot.y;
-      const rotatePt = (px, py) => {
-        const dx = px - cx, dy = py - cy;
-        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-      };
-      const newPaths = el.paths.map(path => {
-        if (path.type === 'cubic') {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY);
-          const c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      });
+      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
       const newRotation = (el.rotation || 0) + delta;
       const newPivot = polarPivot
         ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
@@ -2450,21 +2602,7 @@ const TattingDesigner = () => {
       if (el.id !== elId) return el;
       const polarPivot = getPolarPivot([el.id]);
       const pivot = polarPivot || getElementPivot(el);
-      const cx = pivot.x, cy = pivot.y;
-      const rotatePt = (px, py) => {
-        const dx = px - cx, dy = py - cy;
-        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-      };
-      const newPaths = el.paths.map(path => {
-        if (path.type === 'cubic') {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY);
-          const c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      });
+      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
       const newRotation = (el.rotation || 0) + delta;
       const newPivot = polarPivot
         ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
@@ -2512,108 +2650,22 @@ const TattingDesigner = () => {
       const dy = el.center.y - groupCenterY;
       const newCenterX = groupCenterX + dx * cos - dy * sin;
       const newCenterY = groupCenterY + dx * sin + dy * cos;
-      
-      // Update rotation value for ALL elements
       const newRotation = ((el.rotation || 0) + delta) % 360;
-      
-      // For teardrop rings or squeezed circles, regenerate paths instead of rotating them
-      let newPaths;
+
+      // Teardrops and split rings: regenerate at new center then apply rotation
       if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || el.shapeStyle === 'split-ring' || (el.squeeze !== undefined && el.squeeze > 0))) {
-        // Regenerate path based on new rotation
-        const targetLength = el.stitchCount * dsWidth;
-        const squeeze = el.squeeze !== undefined ? el.squeeze : 0;
-        
-        let pathData;
-        if (el.isSplitRing && el.splitPosition) {
-          const stitchCountA = el.splitPosition;
-          const stitchCountB = el.stitchCount - stitchCountA;
-          pathData = createSplitRingPath(newCenterX, newCenterY, targetLength, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        } else {
-          pathData = createTeardropPath(newCenterX, newCenterY, targetLength, squeeze);
-        }
-        
-        newPaths = pathData.paths; // Extract paths array from returned object
-        
-        // Apply the element's rotation by rotating the regenerated paths
-        if (newRotation !== 0) {
-          const elemRad = newRotation * Math.PI / 180;
-          const elemCos = Math.cos(elemRad);
-          const elemSin = Math.sin(elemRad);
-          
-          newPaths = newPaths.map(path => {
-            const rotatePoint = (px, py) => {
-              const pdx = px - newCenterX;
-              const pdy = py - newCenterY;
-              return {
-                x: newCenterX + pdx * elemCos - pdy * elemSin,
-                y: newCenterY + pdx * elemSin + pdy * elemCos
-              };
-            };
-            
-            if (path.type === 'cubic') {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const c1 = rotatePoint(path.control1X, path.control1Y);
-              const c2 = rotatePoint(path.control2X, path.control2Y);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                control1X: c1.x, control1Y: c1.y,
-                control2X: c2.x, control2Y: c2.y
-              };
-            } else {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const ctrl = rotatePoint(path.controlX, path.controlY);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                controlX: ctrl.x, controlY: ctrl.y
-              };
-            }
-          });
-        }
-      } else {
-        // For chains and circles, rotate path points around group center
-        newPaths = el.paths.map(path => {
-          const rotatePoint = (px, py) => {
-            const pdx = px - groupCenterX;
-            const pdy = py - groupCenterY;
-            return {
-              x: groupCenterX + pdx * cos - pdy * sin,
-              y: groupCenterY + pdx * sin + pdy * cos
-            };
-          };
-          
-          if (path.type === 'cubic') {
-            const start = rotatePoint(path.x, path.y);
-            const end = rotatePoint(path.endX, path.endY);
-            const c1 = rotatePoint(path.control1X, path.control1Y);
-            const c2 = rotatePoint(path.control2X, path.control2Y);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              control1X: c1.x, control1Y: c1.y,
-              control2X: c2.x, control2Y: c2.y
-            };
-          } else {
-            const start = rotatePoint(path.x, path.y);
-            const end = rotatePoint(path.endX, path.endY);
-            const ctrl = rotatePoint(path.controlX, path.controlY);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              controlX: ctrl.x, controlY: ctrl.y
-            };
-          }
-        });
+        const pathData = el.isSplitRing && el.splitPosition
+          ? createSplitRingPathFromEl(el, { cx: newCenterX, cy: newCenterY })
+          : createTeardropPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.squeeze ?? 0);
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: newRotation };
       }
-      
-      return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: newRotation };
+
+      // Chains and circle rings: rotate path points around group center
+      return { ...el, center: { x: newCenterX, y: newCenterY },
+        paths: rotatePaths(el.paths, groupCenterX, groupCenterY, delta),
+        rotation: newRotation };
     }));
     
     // Clear input after applying
@@ -3030,43 +3082,18 @@ const TattingDesigner = () => {
   // Linear Array — duplicate N times along a direction with optional per-step rotation.
   // Helper: rotate an element's baked path points around a center by deltaDeg degrees.
   // For split rings and teardrops, regenerates paths from scratch then applies absolute rotation.
-  // Returns new paths array.
+  // Returns new paths array — delegates to rotatePaths for all cases.
   const rotatePathsAroundCenter = (paths, cx: number, cy: number, deltaDeg: number, el?: any, absoluteRot?: number) => {
     if (!paths || deltaDeg === 0) return paths;
-    // For split rings: regenerate at new center with absolute rotation
     if (el?.isSplitRing && el?.splitPosition !== undefined && absoluteRot !== undefined) {
-      const pathData = createSplitRingPath(cx, cy, el.stitchCount * dsWidth, el.splitPosition, el.stitchCount - el.splitPosition, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-      const r = absoluteRot * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-      const rot = (px, py) => { const dx = px - cx, dy = py - cy; return { x: cx + dx*rc - dy*rs, y: cy + dx*rs + dy*rc }; };
-      return pathData.paths.map(p => { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c1 = rot(p.control1X, p.control1Y), c2 = rot(p.control2X, p.control2Y); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; });
+      const mockEl = { ...el, center: { x: cx, y: cy }, rotation: absoluteRot };
+      return applyRotationToPathData(mockEl, createSplitRingPathFromEl(mockEl)).paths;
     }
-    // For teardrops: regenerate at new center with absolute rotation
     if (el?.type === 'ring' && (el?.shapeStyle === 'teardrop' || (el?.squeeze !== undefined && el?.squeeze > 0)) && absoluteRot !== undefined) {
-      const pathData = createTeardropPath(cx, cy, el.stitchCount * dsWidth, el.squeeze ?? 0);
-      const r = absoluteRot * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-      const rot = (px, py) => { const dx = px - cx, dy = py - cy; return { x: cx + dx*rc - dy*rs, y: cy + dx*rs + dy*rc }; };
-      return pathData.paths.map(p => {
-        if (p.type === 'cubic') { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c1 = rot(p.control1X, p.control1Y), c2 = rot(p.control2X, p.control2Y); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; }
-        else { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c = rot(p.controlX, p.controlY); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y }; }
-      });
+      const mockEl = { ...el, center: { x: cx, y: cy }, rotation: absoluteRot };
+      return applyRotationToPathData(mockEl, createTeardropPath(cx, cy, el.stitchCount * dsWidth, el.squeeze ?? 0)).paths;
     }
-    // Chains, circle rings, lines: rotate baked path points by delta around cx/cy
-    const rad = deltaDeg * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    const rotPt = (px, py) => {
-      const dx = px - cx, dy = py - cy;
-      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
-    };
-    return paths.map(p => {
-      if (p.type === 'cubic') {
-        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-        const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-      } else {
-        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY), c = rotPt(p.controlX, p.controlY);
-        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-      }
-    });
+    return rotatePaths(paths, cx, cy, deltaDeg);
   };
 
   // ── Pure helper: calculate bounding box from actual path curves ──
@@ -3627,15 +3654,18 @@ const TattingDesigner = () => {
 
     const thumb = generateThumbnail(projectData.elements || [], projectData.dsWidth || 10);
     addToRecents(projectData.name || 'Project', filePath, thumb);
-  }, []);
+  }, [t]);
 
   // Load directly from a known path — used by recent project cards (no OS dialog)
   const loadFromPath = useCallback(async (filePath: string) => {
+    if (!filePath) {
+      showLoadMsg('error', t('loadErrFileNotFound'));
+      return;
+    }
     try {
       const projectData = await readProjectFile(filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
-      // Likely moved or deleted — give a friendly message
       const isNotFound = error.message?.toLowerCase().includes('not found') ||
                          error.message?.toLowerCase().includes('no such file') ||
                          error.code === 'NOT_FOUND';
@@ -3645,7 +3675,7 @@ const TattingDesigner = () => {
         showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
       }
     }
-  }, [applyProjectData]);
+  }, [applyProjectData, t]);
 
   // Load project — native OS open dialog (Browse button only)
   const loadProject = useCallback(async () => {
@@ -3657,7 +3687,7 @@ const TattingDesigner = () => {
     } catch (error: any) {
       showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
     }
-  }, [applyProjectData]);
+  }, [applyProjectData, t]);
 
   // Load a theme JSON file and merge it over the default (unknown keys are ignored)
   const loadTheme = (e) => {
@@ -4770,16 +4800,43 @@ const TattingDesigner = () => {
       return true;
     });
 
+    // Collect which picot keys are being removed from connections
+    const removedKeys = new Set<string>();
+    picotConnectionsRef.current.forEach(conn => {
+      const removing = conn.picots.some(p => affectedGhostIds.has(p.elementId));
+      if (removing) {
+        conn.picots.forEach(p => removedKeys.add(`${p.elementId}::${p.picotId}`));
+      }
+    });
+
+    // Keys that still appear in a surviving connection — don't clear those
+    const stillConnectedKeys = new Set<string>(
+      newConns.flatMap(conn => conn.picots.map(p => `${p.elementId}::${p.picotId}`))
+    );
+
     if (newConns.length !== picotConnectionsRef.current.length) {
       setPicotConnections(newConns);
+      picotConnectionsRef.current = newConns;
+
+      // Clear isJoint:false on any picot that lost its last connection
+      const updatedEls = currentElements.map(el => {
+        if (!el.picots) return el;
+        const updated = el.picots.map(p => {
+          const key = `${el.id}::${p.id}`;
+          return (removedKeys.has(key) && !stillConnectedKeys.has(key) && p.isJoint)
+            ? { ...p, isJoint: false }
+            : p;
+        });
+        return updated === el.picots ? el : { ...el, picots: updated };
+      });
+      setElements(updatedEls);
+      elementsRef.current = updatedEls;
     }
 
     // Find affected ghost arrays and remove inherited joins
     setGhostArrays(prev => prev.map(a => {
       const hasAffectedBoundary = a.boundaryIds?.some(bid => affectedGhostIds.has(bid));
       if (!hasAffectedBoundary) return a;
-
-      // Remove all inherited joins for this array
       return { ...a, inheritedJoins: [] };
     }));
   };
@@ -4901,23 +4958,39 @@ const TattingDesigner = () => {
   // Simple arithmetic: FlipH  → new_x = 2*pivotX - old_x,  y unchanged
   //                    FlipV  → new_y = 2*pivotY - old_y,  x unchanged
   const flipElements = (ids, axisAngleDeg, pivotX, pivotY) => {
-    const isH = axisAngleDeg === 90; // true = horizontal mirror (left↔right), false = vertical mirror (top↔bottom)
+    const isH = axisAngleDeg === 90;
 
-    // Flip a single point
     const mirrorPt = (px, py) => isH
       ? { x: 2 * pivotX - px, y: py }
       : { x: px, y: 2 * pivotY - py };
 
-    // Flip the rotation angle:  FlipH → 180-θ   FlipV → -θ
+    // Flip the rotation angle: FlipH → 180-θ   FlipV → -θ
     const mirrorAngle = (deg) => isH
       ? ((180 - deg) % 360 + 360) % 360
       : ((-deg)      % 360 + 360) % 360;
 
+    // Physically mirror a path segment (swap start↔end to preserve traversal direction)
+    const mirrorPath = path => {
+      if (path.type === 'cubic') {
+        const s  = mirrorPt(path.endX,      path.endY);
+        const e2 = mirrorPt(path.x,          path.y);
+        const c1 = mirrorPt(path.control2X,  path.control2Y);
+        const c2 = mirrorPt(path.control1X,  path.control1Y);
+        return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+      }
+      const s    = mirrorPt(path.endX,     path.endY);
+      const e2   = mirrorPt(path.x,         path.y);
+      const ctrl = mirrorPt(path.controlX,  path.controlY);
+      return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
+    };
+
     setElements(prev => prev.map(el => {
       if (!ids.includes(el.id)) return el;
-      const currentAngle = el.rotation || 0;
       const newCenter = mirrorPt(el.center.x, el.center.y);
-      const newAngle = mirrorAngle(currentAngle);
+      const newAngle  = mirrorAngle(el.rotation || 0);
+      // Track flip state so notation apply can re-mirror after path regeneration
+      const newIsFlippedH = isH ? !(el.isFlippedH || false) : (el.isFlippedH || false);
+      const newIsFlippedV = !isH ? !(el.isFlippedV || false) : (el.isFlippedV || false);
 
       // ── Split rings ──────────────────────────────────────────────────────
       if (el.isSplitRing) {
@@ -4925,70 +4998,39 @@ const TattingDesigner = () => {
         const notationBText = el.notationB || '5ds';
         const reversedA = reverseNotation(`sr: ${notationAText}`).replace(/^sr:\s*/, '');
         const reversedB = reverseNotation(`sr: ${notationBText}`).replace(/^sr:\s*/, '');
-        const parsedA = parseNotation(`sr: ${reversedB}`); // swap A↔B
+        const parsedA = parseNotation(`sr: ${reversedB}`);
         const parsedB = parseNotation(`sr: ${reversedA}`);
         if (!parsedA || !parsedB) return el;
         const sca = parsedA.stitchCount, scb = parsedB.stitchCount;
-        const pathData = createSplitRingPath(newCenter.x, newCenter.y, (sca + scb) * dsWidth, sca, scb, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        const rad = newAngle * Math.PI / 180, rc = Math.cos(rad), rs = Math.sin(rad);
-        const rotatePt = (px, py) => {
-          const dx = px - newCenter.x, dy = py - newCenter.y;
-          return { x: newCenter.x + dx*rc - dy*rs, y: newCenter.y + dx*rs + dy*rc };
-        };
-        const newPaths = pathData.paths.map(p => {
-          const s = rotatePt(p.x, p.y), e2 = rotatePt(p.endX, p.endY);
-          const c1 = rotatePt(p.control1X, p.control1Y), c2 = rotatePt(p.control2X, p.control2Y);
-          return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        });
-        const allPicots = [...parsedA.picots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))];
-        return { ...el, center: newCenter, paths: newPaths, notation: `sr: ${reversedB}`, notationB: reversedA, stitchCount: sca + scb, picots: allPicots, rotation: newAngle, splitPosition: sca };
+        const pathData = createSplitRingPathFromEl(el, { cx: newCenter.x, cy: newCenter.y, stitchCountA: sca, stitchCountB: scb });
+        const newPaths = rotatePaths(pathData.paths, newCenter.x, newCenter.y, newAngle);
+        const reversedAPicots = parsedA.picots.map(p => ({ ...p, stitchesBefore: sca - p.stitchesBefore })).reverse();
+        const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))];
+        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
+          isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
+          notation: `sr: ${reversedB}`, notationB: reversedA,
+          stitchCount: sca + scb, picots: allPicots, splitPosition: sca };
       }
 
-      // ── Circle rings ─────────────────────────────────────────────────────
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        // Mirror the paths to keep hit-testing in sync with visual position
-        const newPaths = el.paths.map(path => {
-          if (path.type === 'cubic') {
-            const s  = mirrorPt(path.endX,      path.endY);
-            const e2 = mirrorPt(path.x,          path.y);
-            const c1 = mirrorPt(path.control2X,  path.control2Y);
-            const c2 = mirrorPt(path.control1X,  path.control1Y);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const s    = mirrorPt(path.endX,     path.endY);
-            const e2   = mirrorPt(path.x,         path.y);
-            const ctrl = mirrorPt(path.controlX,  path.controlY);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-          }
-        }).reverse();
-        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle };
+      // ── All closed rings (circle and teardrop) ───────────────────────────
+      // Physical mirror of path coords + updated rotation angle
+      if (el.isClosed) {
+        const newPaths = el.paths.map(mirrorPath).reverse();
+        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
+          isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV };
       }
 
-      // ── Path-based elements (chains, lines, teardrops) ───────────────────
-      // Mirror each path point, swap start↔end to preserve traversal direction.
-      const mirrorPath = path => {
-        if (path.type === 'cubic') {
-          const s  = mirrorPt(path.endX,      path.endY);
-          const e2 = mirrorPt(path.x,          path.y);
-          const c1 = mirrorPt(path.control2X,  path.control2Y);
-          const c2 = mirrorPt(path.control1X,  path.control1Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s    = mirrorPt(path.endX,     path.endY);
-          const e2   = mirrorPt(path.x,         path.y);
-          const ctrl = mirrorPt(path.controlX,  path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      };
+      // ── Chains and lines ──────────────────────────────────────────────────
       const newPaths = el.paths.map(mirrorPath).reverse();
-
       let reversedNotation = el.notation, picots = el.picots;
       if (el.type !== 'line' && el.notation) {
         reversedNotation = reverseNotation(el.notation);
         const parsed = parseNotation(reversedNotation);
         if (parsed) picots = mergeBEConfigs(parsed.picots, el.picots);
       }
-      return { ...el, center: newCenter, paths: newPaths, notation: reversedNotation, picots, rotation: newAngle };
+      return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
+        isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
+        notation: reversedNotation, picots };
     }));
   };
 
@@ -5531,55 +5573,17 @@ const TattingDesigner = () => {
       // Rotate all selected elements around the pivot point
       setElements(prev => prev.map(el => {
         if (!selectedIds.includes(el.id)) return el;
-        
-        // Calculate element center position relative to pivot
-        const relX = el.center.x - pivotX;
-        const relY = el.center.y - pivotY;
-        
+        const relX = el.center.x - pivotX, relY = el.center.y - pivotY;
         const newCenterX = pivotX + relX * cos - relY * sin;
         const newCenterY = pivotY + relX * sin + relY * cos;
-        
-        // Rotate all path points
-        const newPaths = el.paths.map(path => {
-          const rotatePoint = (px, py) => {
-            const rpx = px - pivotX;
-            const rpy = py - pivotY;
-            return {
-              x: pivotX + rpx * cos - rpy * sin,
-              y: pivotY + rpx * sin + rpy * cos
-            };
-          };
-          
-          const start = rotatePoint(path.x, path.y);
-          const end = rotatePoint(path.endX, path.endY);
-          
-          if (path.type === 'cubic') {
-            const c1 = rotatePoint(path.control1X, path.control1Y);
-            const c2 = rotatePoint(path.control2X, path.control2Y);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              control1X: c1.x, control1Y: c1.y,
-              control2X: c2.x, control2Y: c2.y
-            };
-          } else {
-            const ctrl = rotatePoint(path.controlX, path.controlY);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              controlX: ctrl.x, controlY: ctrl.y
-            };
-          }
-        });
-        
-        return {
-          ...el,
-          center: { x: newCenterX, y: newCenterY },
-          rotation: (el.rotation || 0) + delta,
-          paths: newPaths
-        };
+        const newRotation = (el.rotation || 0) + delta;
+        // Split rings and teardrops regenerate at new center; others rotate in place
+        if (el.isSplitRing && el.splitPosition != null) {
+          return { ...el, center: { x: newCenterX, y: newCenterY }, rotation: newRotation,
+            paths: rotatePaths(createSplitRingPathFromEl(el, { cx: newCenterX, cy: newCenterY }).paths, newCenterX, newCenterY, newRotation) };
+        }
+        return { ...el, center: { x: newCenterX, y: newCenterY }, rotation: newRotation,
+          paths: rotatePaths(el.paths, pivotX, pivotY, delta) };
       }));
       
       // Update pivot offset to keep pivot in same world position
@@ -6123,15 +6127,52 @@ const TattingDesigner = () => {
           
           if (path.type === 'cubic') {
             if (handleInfo.type === 'control1') {
-              // - User drags control1 to a new position
-              // - Start and End points stay FIXED
-              // - Adjust control2 length (same angle) to maintain path length
-              // - If control1 alone exceeds targetLength, clamp it first
-
               const P0 = { x: path.x, y: path.y };
               const P3 = { x: path.endX, y: path.endY };
               let P1_new = { x: newControlX, y: newControlY };
 
+              if (chainPresetSymmetric) {
+                // SYMMETRIC MODE: mirror control1 drag to control2
+                // Reflect P1_new across the chord's perpendicular bisector to get P2_new
+                // Then binary-search both magnitudes together to maintain length
+                const handle1_dx = P1_new.x - P0.x;
+                const handle1_dy = P1_new.y - P0.y;
+                const handle1_angle = Math.atan2(handle1_dy, handle1_dx);
+                const handle1_len = Math.hypot(handle1_dx, handle1_dy);
+                // Mirror angle across chord: chord angle is atan2(P3-P0)
+                const chordAngle = Math.atan2(P3.y - P0.y, P3.x - P0.x);
+                const mirroredAngle = 2 * chordAngle - handle1_angle + Math.PI;
+                // Both handles same length, binary-search that length for target arc
+                let minH = 0, maxH = Math.min(handle1_len, targetLength);
+                let bestH = handle1_len;
+                for (let iter = 0; iter < 20; iter++) {
+                  const tryH = (minH + maxH) / 2;
+                  const tryPath = {
+                    type: 'cubic',
+                    x: P0.x, y: P0.y, endX: P3.x, endY: P3.y,
+                    control1X: P0.x + Math.cos(handle1_angle) * tryH,
+                    control1Y: P0.y + Math.sin(handle1_angle) * tryH,
+                    control2X: P3.x + Math.cos(mirroredAngle) * tryH,
+                    control2Y: P3.y + Math.sin(mirroredAngle) * tryH,
+                  };
+                  const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
+                  if (Math.abs(tryLen - targetLength) < tolerance * 0.5) { bestH = tryH; break; }
+                  if (tryLen < targetLength) minH = tryH; else maxH = tryH;
+                  bestH = tryH;
+                }
+                return {
+                  ...el,
+                  paths: [{
+                    ...path,
+                    control1X: P0.x + Math.cos(handle1_angle) * bestH,
+                    control1Y: P0.y + Math.sin(handle1_angle) * bestH,
+                    control2X: P3.x + Math.cos(mirroredAngle) * bestH,
+                    control2Y: P3.y + Math.sin(mirroredAngle) * bestH,
+                  }]
+                };
+              }
+
+              // ASYMMETRIC MODE (original behaviour)
               // Calculate control1's handle vector (from start)
               const handle1_dx = P1_new.x - P0.x;
               const handle1_dy = P1_new.y - P0.y;
@@ -6213,15 +6254,48 @@ const TattingDesigner = () => {
               };
               
             } else if (handleInfo.type === 'control2') {
-              // - User drags control2 to a new position
-              // - Start and End points stay FIXED
-              // - Adjust control1 length (same angle) to maintain path length
-              // - If control2 alone exceeds targetLength, clamp it first
-
               const P0 = { x: path.x, y: path.y };
               const P3 = { x: path.endX, y: path.endY };
               let P2_new = { x: newControlX, y: newControlY };
 
+              if (chainPresetSymmetric) {
+                // SYMMETRIC MODE: mirror control2 drag to control1
+                const handle2_dx = P2_new.x - P3.x;
+                const handle2_dy = P2_new.y - P3.y;
+                const handle2_angle = Math.atan2(handle2_dy, handle2_dx);
+                const handle2_len = Math.hypot(handle2_dx, handle2_dy);
+                const chordAngle = Math.atan2(P3.y - P0.y, P3.x - P0.x);
+                const mirroredAngle = 2 * chordAngle - handle2_angle + Math.PI;
+                let minH = 0, maxH = Math.min(handle2_len, targetLength);
+                let bestH = handle2_len;
+                for (let iter = 0; iter < 20; iter++) {
+                  const tryH = (minH + maxH) / 2;
+                  const tryPath = {
+                    type: 'cubic',
+                    x: P0.x, y: P0.y, endX: P3.x, endY: P3.y,
+                    control1X: P0.x + Math.cos(mirroredAngle) * tryH,
+                    control1Y: P0.y + Math.sin(mirroredAngle) * tryH,
+                    control2X: P3.x + Math.cos(handle2_angle) * tryH,
+                    control2Y: P3.y + Math.sin(handle2_angle) * tryH,
+                  };
+                  const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
+                  if (Math.abs(tryLen - targetLength) < tolerance * 0.5) { bestH = tryH; break; }
+                  if (tryLen < targetLength) minH = tryH; else maxH = tryH;
+                  bestH = tryH;
+                }
+                return {
+                  ...el,
+                  paths: [{
+                    ...path,
+                    control1X: P0.x + Math.cos(mirroredAngle) * bestH,
+                    control1Y: P0.y + Math.sin(mirroredAngle) * bestH,
+                    control2X: P3.x + Math.cos(handle2_angle) * bestH,
+                    control2Y: P3.y + Math.sin(handle2_angle) * bestH,
+                  }]
+                };
+              }
+
+              // ASYMMETRIC MODE (original behaviour)
               // Calculate control2's handle vector (from end)
               const handle2_dx = P2_new.x - P3.x;
               const handle2_dy = P2_new.y - P3.y;
@@ -6501,7 +6575,10 @@ const TattingDesigner = () => {
           if (el.type === 'ghost' && !el.isBoundary) return;
           
           el.picots.forEach(picot => {
-            if (picot.isGuidePoint || picot.beadType) return; // guide points and beads not selectable here
+            if (picot.isGuidePoint) return;
+            // In picotJoin mode: joinable bead types are selectable (bjp, bcjp, be+beIsJoint)
+            // Non-joinable beads are skipped
+            if (picot.beadType && !picot.isJoint && !(picot.beadType === 'be' && picot.beIsJoint)) return;
             
             // Get picot TIP position
             const picotPos = getPicotPosition(el, picot);
@@ -6773,7 +6850,7 @@ const TattingDesigner = () => {
             const path = el.paths[0];
             const targetLength = el.stitchCount * dsWidth;
             if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
-              const newPath = applyPathPreset(path, presetDeg, targetLength);
+              const newPath = applyPathPreset(path, presetDeg, targetLength, true); // presets always symmetric
               if (newPath !== path) {
                 setElements(prev => prev.map(e =>
                   e.id === el.id ? { ...e, paths: [newPath] } : e
@@ -6976,258 +7053,213 @@ const TattingDesigner = () => {
   const updateNotation = (notation, notationB = null, elementId = null) => {
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
     if (!targetId) return;
+
+    // Parse and validate first — bail early if notation is invalid
     const parsed = parseNotation(notation);
     if (!parsed) return;
 
+    // ── Fix 6: Remap picotConnections before rebuilding the element ──────────
+    // Get the current element snapshot (before setElements runs)
+    const currentElement = elementsRef.current.find(e => e.id === targetId);
+    let remappedConns = picotConnectionsRef.current;
+
+    if (currentElement) {
+      // Which old picot IDs are currently in a connection for this element?
+      const connectedOldIds = new Set(
+        picotConnectionsRef.current.flatMap(conn =>
+          conn.picots
+            .filter(cp => cp.elementId === targetId)
+            .map(cp => cp.picotId)
+        )
+      );
+
+      // Map stitchesBefore → old picot for any picot that was connected or isJoint
+      const oldPicotBySb: Record<number, any> = {};
+      (currentElement.picots || []).forEach(p => {
+        if (p.isJoint || connectedOldIds.has(p.id)) {
+          oldPicotBySb[p.stitchesBefore] = p;
+        }
+      });
+
+      // Build oldId → newId remap from the parsed picots
+      const picotIdRemap = new Map<string, string>();
+      parsed.picots.forEach(p => {
+        const old = oldPicotBySb[p.stitchesBefore];
+        if (old) picotIdRemap.set(old.id, old.id); // we reuse old.id, so remap is identity
+      });
+
+      // Remap connections — for this element, update picotId entries;
+      // drop any connection where the target picot no longer exists
+      const oldSbPositions = new Set(parsed.picots.map(p => p.stitchesBefore));
+      const validOldIds = new Set(
+        (currentElement.picots || [])
+          .filter(p => oldSbPositions.has(p.stitchesBefore))
+          .map(p => p.id)
+      );
+
+      const newConns = picotConnectionsRef.current
+        .map(conn => ({
+          ...conn,
+          picots: conn.picots.map(cp =>
+            cp.elementId !== targetId ? cp :
+            { ...cp, picotId: picotIdRemap.get(cp.picotId) ?? cp.picotId }
+          ),
+        }))
+        .filter(conn =>
+          conn.picots.every(cp =>
+            cp.elementId !== targetId || validOldIds.has(cp.picotId)
+          )
+        );
+
+      if (newConns.length !== picotConnectionsRef.current.length || picotIdRemap.size > 0) {
+        setPicotConnections(newConns);
+        picotConnectionsRef.current = newConns;
+        remappedConns = newConns;
+      }
+    }
+
+    // Surviving connection keys after remap — used to clear stale isJoint flags
+    const survivingConnKeys = new Set(
+      remappedConns.flatMap(conn =>
+        conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
+      )
+    );
+    // ──────────────────────────────────────────────────────────────────────────
+
     setElements(prev => prev.map(el => {
       if (el.id !== targetId) return el;
-      
+
       // Handle split ring notation update
       if (el.isSplitRing) {
         const notationAText = notation.replace(/^sr:\s*/, '');
         const notationBText = notationB || el.notationB || '5ds';
-        
+
         const parsedA = parseNotation(`sr: ${notationAText}`);
         const parsedB = parseNotation(`sr: ${notationBText}`);
-        
+
         if (!parsedA || !parsedB) return el;
-        
+
         const stitchCountA = parsedA.stitchCount;
         const stitchCountB = parsedB.stitchCount;
         const totalStitches = stitchCountA + stitchCountB;
-        const targetLength = totalStitches * dsWidth;
-        const squeeze = el.squeeze || 0.1;
-        
-        const pathData = createSplitRingPath(el.center.x, el.center.y, targetLength, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        
-        // Apply rotation if needed
-        let finalPaths = pathData.paths;
-        if (el.rotation && el.rotation !== 0) {
-          const rad = el.rotation * Math.PI / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const cx = el.center.x;
-          const cy = el.center.y;
-          
-          const rotatePoint = (px, py) => {
-            const dx = px - cx;
-            const dy = py - cy;
-            return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-          };
-          
-          finalPaths = finalPaths.map(path => {
-            const start = rotatePoint(path.x, path.y);
-            const end = rotatePoint(path.endX, path.endY);
-            const c1 = rotatePoint(path.control1X, path.control1Y);
-            const c2 = rotatePoint(path.control2X, path.control2Y);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              control1X: c1.x, control1Y: c1.y,
-              control2X: c2.x, control2Y: c2.y
-            };
+
+        // Scale existing paths proportionally — preserves rotation/flip/shape
+        // same approach as closed rings and chains
+        const oldTotal = el.stitchCount;
+        const cx = el.center.x, cy = el.center.y;
+        let finalPaths = el.paths;
+        if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
+          const scaleFactor = totalStitches / oldTotal;
+          finalPaths = el.paths.map(path => {
+            const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+            const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
+              control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
           });
         }
-        
-        // Merge picots from both sections
-        const allPicots = [...parsedA.picots, ...parsedB.picots.map(p => ({
+
+        // Path A runs from paths[0].x/y (start) to paths[0].endX/Y.
+        // parsedA picots have stitchesBefore counting from 0 → stitchCountA.
+        // We reverse the A-side positions so stitch 0 of the notation is at the path start.
+        const reversedAPicots = parsedA.picots.map(p => ({
           ...p,
-          stitchesBefore: p.stitchesBefore + stitchCountA
-        }))];
-        
-        return {
-          ...el,
-          notation: `sr: ${notationAText}`,
-          notationB: notationBText,
-          stitchCount: totalStitches,
-          picots: allPicots,
-          paths: finalPaths,
-          splitPosition: stitchCountA
-        };
+          stitchesBefore: stitchCountA - p.stitchesBefore,
+        })).reverse();
+
+        const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
+          ...p, stitchesBefore: p.stitchesBefore + stitchCountA
+        }))].map(p => {
+          const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
+          return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
+        });
+
+        return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
+          stitchCount: totalStitches, picots: allPicots, paths: finalPaths, splitPosition: stitchCountA };
       }
-      
-      // If it's a closed path (ring), regenerate the path with new stitch count
+
+      // Closed ring: scale existing paths to new stitch count, preserving rotation/flip/shape
+      // Regenerating from the canonical template (createTeardropPath) would reset any
+      // physical rotation applied via ±90° buttons or manual path edits — so we scale instead.
       let newPathData = {};
       if (el.isClosed) {
-        const targetLength = parsed.stitchCount * dsWidth;
-        const squeeze = el.squeeze || 0; // Use existing squeeze value
-        const tempPathData = el.shapeStyle === 'circle' 
-          ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
-          : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-        
-        // If element has rotation, apply it to the new paths
-        if (el.rotation && el.rotation !== 0) {
-          const rad = el.rotation * Math.PI / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const cx = el.center.x;
-          const cy = el.center.y;
-          
-          const rotatePoint = (px, py) => {
-            const dx = px - cx;
-            const dy = py - cy;
-            return {
-              x: cx + dx * cos - dy * sin,
-              y: cy + dx * sin + dy * cos
-            };
-          };
-          
-          tempPathData.paths = tempPathData.paths.map(path => {
+        const oldLength = el.stitchCount * dsWidth;
+        const newLength = parsed.stitchCount * dsWidth;
+        if (Math.abs(oldLength - newLength) > 0.01) {
+          const cx = el.center.x, cy = el.center.y;
+          const scaleFactor = newLength / oldLength;
+          const scaledPaths = el.paths.map(path => {
+            const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
             if (path.type === 'cubic') {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const c1 = rotatePoint(path.control1X, path.control1Y);
-              const c2 = rotatePoint(path.control2X, path.control2Y);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                control1X: c1.x, control1Y: c1.y,
-                control2X: c2.x, control2Y: c2.y
-              };
-            } else {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const ctrl = rotatePoint(path.controlX, path.controlY);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                controlX: ctrl.x, controlY: ctrl.y
-              };
+              const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+              const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
             }
+            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
           });
+          newPathData = { paths: scaledPaths };
         }
-        
-        newPathData = tempPathData;
       } else {
-        // For open paths (chains): keep BOTH endpoints fixed, bend the curve to match new length.
-        // Uses the same binary-search-on-perpendicular-depth approach as length-preserving drag.
+        // Open chain: bend curve to new length keeping endpoints fixed
         if (el.paths && el.paths.length > 0) {
           const newLength = parsed.stitchCount * dsWidth;
-          const tolerance = newLength * 0.005; // 0.5% tolerance — tight but fast
-
+          const tolerance = newLength * 0.005;
           const adjustedPaths = el.paths.map(path => {
             if (path.type !== 'cubic') {
-              // Quadratic legacy path — fall back to old scale-from-start
-              const startX = path.x;
-              const startY = path.y;
-              const oldLength = el.stitchCount * dsWidth;
-              const scaleFactor = newLength / oldLength;
-              return {
-                ...path,
-                endX: startX + (path.endX - startX) * scaleFactor,
-                endY: startY + (path.endY - startY) * scaleFactor,
-                controlX: startX + (path.controlX - startX) * scaleFactor,
-                controlY: startY + (path.controlY - startY) * scaleFactor,
-              };
+              const startX = path.x, startY = path.y;
+              const scaleFactor = newLength / (el.stitchCount * dsWidth);
+              return { ...path,
+                endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
+                controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
             }
-
-            // Cubic bezier: pin start & end, solve for perpendicular bow depth
-            const sx = path.x,    sy = path.y;
-            const ex = path.endX, ey = path.endY;
-            const midX = (sx + ex) / 2;
-            const midY = (sy + ey) / 2;
-            const axisX = ex - sx;
-            const axisY = ey - sy;
-            const perpX = -axisY;
-            const perpY =  axisX;
-            const perpLen = Math.hypot(perpX, perpY);
-
-            // Determine which side of the axis the current control points sit on
-            const oldMidX = (path.control1X + path.control2X) / 2;
-            const oldMidY = (path.control1Y + path.control2Y) / 2;
-            const sideSign = perpLen > 0
-              ? (Math.sign(((oldMidX - midX) * perpX + (oldMidY - midY) * perpY)) || 1)
-              : 1;
-
-            // Straight-line distance between the two endpoints
-            const chordLen = Math.hypot(axisX, axisY);
-
-            // If new length ≤ chord we can't bow — move end endpoint closer along
-            // the same axis so the straight line equals the new length exactly
-            if (newLength <= chordLen || perpLen === 0) {
-              const dirX = chordLen > 0 ? axisX / chordLen : 1;
-              const dirY = chordLen > 0 ? axisY / chordLen : 0;
-              const newEx = sx + dirX * newLength;
-              const newEy = sy + dirY * newLength;
-              return {
-                ...path,
-                endX: newEx, endY: newEy,
-                control1X: sx + dirX * newLength * 0.33,
-                control1Y: sy + dirY * newLength * 0.33,
-                control2X: sx + dirX * newLength * 0.67,
-                control2Y: sy + dirY * newLength * 0.67,
-              };
+            const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
+            const midX=(sx+ex)/2,midY=(sy+ey)/2;
+            const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
+            const perpLen=Math.hypot(perpX,perpY);
+            const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
+            const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
+            const straightLen=Math.hypot(ex-sx,ey-sy);
+            let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
+            for (let iter=0;iter<20;iter++) {
+              const tryDepth=(minDepth+maxDepth)/2;
+              const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
+              const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
+              const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
+              const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
+              const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
+              const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
+              bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
+              if(Math.abs(tryLen-newLength)<tolerance)break;
+              if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
             }
-
-            // Binary search: find perpendicular depth that yields newLength
-            let minDepth = 0;
-            let maxDepth = newLength * 2; // generous upper bound
-            let bestC1X = path.control1X, bestC1Y = path.control1Y;
-            let bestC2X = path.control2X, bestC2Y = path.control2Y;
-
-            for (let iter = 0; iter < 20; iter++) {
-              const tryDepth = (minDepth + maxDepth) / 2;
-              const offX = (perpX / perpLen) * tryDepth * sideSign;
-              const offY = (perpY / perpLen) * tryDepth * sideSign;
-
-              const c1x = sx + axisX * 0.33 + offX;
-              const c1y = sy + axisY * 0.33 + offY;
-              const c2x = sx + axisX * 0.67 + offX;
-              const c2y = sy + axisY * 0.67 + offY;
-
-              const tryPath = { type: 'cubic', x: sx, y: sy, endX: ex, endY: ey,
-                                control1X: c1x, control1Y: c1y,
-                                control2X: c2x, control2Y: c2y };
-              const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
-
-              bestC1X = c1x; bestC1Y = c1y;
-              bestC2X = c2x; bestC2Y = c2y;
-
-              if (Math.abs(tryLen - newLength) < tolerance) break;
-              if (tryLen < newLength) minDepth = tryDepth;
-              else                   maxDepth = tryDepth;
-            }
-
-            return {
-              ...path,
-              // endpoints unchanged
-              x: sx, y: sy, endX: ex, endY: ey,
-              control1X: bestC1X, control1Y: bestC1Y,
-              control2X: bestC2X, control2Y: bestC2Y,
-            };
+            return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
           });
-
           newPathData = { paths: adjustedPaths };
         }
       }
-      
-      // Preserve IDs for joint picots so picotConnections references survive re-parse.
-      // Match old joint picots to new ones by stitchesBefore position.
-      const oldJointById = {};
-      (el.picots || []).forEach(p => {
-        if (p.isJoint) oldJointById[p.stitchesBefore] = p;
-      });
+
+      // Merge picots: reuse old IDs for picots at the same stitchesBefore position
+      // so picotConnections (already remapped above) still points to valid IDs.
+      const oldPicotBySb2: Record<number, any> = {};
+      (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
       const mergedPicots = parsed.picots.map(p => {
-        if (p.isJoint && oldJointById[p.stitchesBefore]) {
-          return { ...p, id: oldJointById[p.stitchesBefore].id };
+        const old = oldPicotBySb2[p.stitchesBefore];
+        if (old) {
+          const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
+          return { ...p, id: old.id, isJoint: isStillJoint };
         }
         return p;
       });
 
       return {
-        ...el,
-        notation,
-        stitchCount: parsed.stitchCount,
+        ...el, notation, stitchCount: parsed.stitchCount,
         picots: restoreBEConfigs(mergedPicots, el.beConfigs),
         beConfigs: extractBEConfigs(restoreBEConfigs(mergedPicots, el.beConfigs)),
         isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
         ...(Object.keys(newPathData).length > 0 ? newPathData : {})
       };
     }));
-
     // Update ghosts if this element is a ghost mother
     setTimeout(() => {
       updateGhostArraysForMother(targetId);
@@ -7334,56 +7366,12 @@ const TattingDesigner = () => {
       if (el.id === selectedIds[0] && el.isClosed) {
         const newStyle = el.shapeStyle === 'circle' ? 'teardrop' : 'circle';
         const targetLength = el.stitchCount * dsWidth;
-        const squeeze = el.squeeze || 0; // Use existing squeeze value
+        const squeeze = el.squeeze || 0;
         const tempPathData = newStyle === 'circle'
           ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
           : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-        
-        // Preserve rotation when toggling shape
-        if (el.rotation && el.rotation !== 0) {
-          const rad = el.rotation * Math.PI / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const cx = el.center.x;
-          const cy = el.center.y;
-          
-          const rotatePoint = (px, py) => {
-            const dx = px - cx;
-            const dy = py - cy;
-            return {
-              x: cx + dx * cos - dy * sin,
-              y: cy + dx * sin + dy * cos
-            };
-          };
-          
-          tempPathData.paths = tempPathData.paths.map(path => {
-            if (path.type === 'cubic') {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const c1 = rotatePoint(path.control1X, path.control1Y);
-              const c2 = rotatePoint(path.control2X, path.control2Y);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                control1X: c1.x, control1Y: c1.y,
-                control2X: c2.x, control2Y: c2.y
-              };
-            } else {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const ctrl = rotatePoint(path.controlX, path.controlY);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                controlX: ctrl.x, controlY: ctrl.y
-              };
-            }
-          });
-        }
 
-        return { ...el, shapeStyle: newStyle, ...tempPathData };
+        return { ...el, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
       }
       return el;
     }));
@@ -7450,7 +7438,7 @@ const TattingDesigner = () => {
     if (element.isClosed && element.shapeStyle === 'circle') {
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
-      const _sb1 = (picot.beadType === 'bc' || picot.beadType === 'bcp') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
+      const _sb1 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
       const baseAngle = (_sb1 / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
       const rotation = (element.rotation || 0) * Math.PI / 180; // Convert to radians
       const angle = baseAngle + rotation; // Apply rotation
@@ -7481,7 +7469,7 @@ const TattingDesigner = () => {
       totalLength += length;
     }
     
-    const _sb2 = (picot.beadType === 'bc' || picot.beadType === 'bcp') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
+    const _sb2 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
     const targetDist = (_sb2 / element.stitchCount) * totalLength;
     let accum = 0;
     let pathIndex = 0;
@@ -8168,11 +8156,27 @@ const TattingDesigner = () => {
     // ── BE ──
     if (p.beadType === 'be') {
       if (beadAndJointOnly && activeMode === 'picotJoin' && !p.beIsJoint) return null;
+      if (activeMode === 'picotJoin' && p.beIsJoint && showEditingArtifacts) {
+        return (
+          <g key={key}>
+            {renderBE(p, x, y, perpAngle, dotColor, len, isSelected)}
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} opacity={0.9} />
+          </g>
+        );
+      }
       return renderBE(p, x, y, perpAngle, dotColor, len, isSelected);
     }
 
     // ── bcjp ──
     if (p.beadType === 'bcjp') {
+      if (activeMode === 'picotJoin' && showEditingArtifacts) {
+        return (
+          <g key={key}>
+            {renderCoreBead(`${key}-core`, x, y, p.coreSize || 'Y', dotColor, perpAngle)}
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} />
+          </g>
+        );
+      }
       const jointDotR = isSelected ? 6 / zoom : 4 / zoom;
       return (
         <g key={key}>
@@ -8216,20 +8220,31 @@ const TattingDesigner = () => {
     if (p.isGuidePoint) return null;
 
     // ── bead types ──
+    // In realistic mode the overlay pass (beadAndJointOnly=true) renders beads on top of baked stitches.
+    // The normal pass (beadAndJointOnly=false) skips them to avoid double-rendering.
     if (p.beadType === 'bcp') {
-      if (beadAndJointOnly && activeMode !== 'picotJoin') return null;
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
       return renderBcpBead(key, x, y, perpAngle, p.coreSize, p.beadSeq, armColor, len);
     }
     if (p.beadType === 'bc') {
-      if (beadAndJointOnly && activeMode !== 'picotJoin') return null;
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
       return renderCoreBead(key, x, y, p.beadSize, armColor, perpAngle);
     }
     if (p.beadType === 'sb' && p.beadSeq) {
-      if (beadAndJointOnly && activeMode !== 'picotJoin') return null;
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
       return renderSuspendedBead(key, x, y, perpAngle, p.beadSeq, armColor);
     }
     if (p.beadSeq) {
-      if (beadAndJointOnly && activeMode !== 'picotJoin') return null;
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
+      // bjp: isJoint + beadSeq — show clustered beads + picotJoin dot
+      if (p.isJoint && activeMode === 'picotJoin' && showEditingArtifacts) {
+        return (
+          <g key={key}>
+            {renderClusteredBeads(`${key}-beads`, x, y, p.beadSeq)}
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} opacity={0.9} />
+          </g>
+        );
+      }
       return renderBeadedPicot(key, x, y, perpAngle, p.beadSeq, armColor, len);
     }
 
@@ -8244,6 +8259,9 @@ const TattingDesigner = () => {
 
     // ── realistic overlay pass: baked SVG handles regular picots ──
     if (beadAndJointOnly) return null;
+
+    // ── connected in normal schematic: connection line handles the visual ──
+    if (activeMode !== 'picotJoin' && isConnected) return null;
 
     // ── plain arm ──
     return (
@@ -8865,6 +8883,32 @@ const TattingDesigner = () => {
       if (y < minY) minY = y; if (y > maxY) maxY = y;
     };
 
+    // ── shared picot helpers ──────────────────────────────────────────────────
+    const shouldSkipPicot = (picot: any, elId: string): boolean => {
+      if (picot.isGuidePoint) return true;
+      if (picot.beadType) return true;
+      if (!picot.isJoint) return false;
+      if (picot.isCoreJoin && !picot.hasPicotArm) return true;
+      if (!picot.isCoreJoin) {
+        return picotConnections.some(conn =>
+          conn.picots.some(cp => cp.elementId === elId && cp.picotId === picot.id)
+        );
+      }
+      return false;
+    };
+
+    const emitPicot = (
+      bL: {x:number,y:number}, bR: {x:number,y:number},
+      tip: {x:number,y:number}, color: string, lw: number
+    ): string => {
+      const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
+      const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
+      const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
+      expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
+      return `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>` +
+             `<path d="${d}" stroke="${color}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
+    };
+
     // ── per-element SVG fragments ──
     const fragments: string[] = [];
 
@@ -8989,6 +9033,8 @@ const TattingDesigner = () => {
             let wedgePaths: string[];
             if (isCircle) {
               wedgePaths = renderWedgeRingShapes(stitch, el, scale, offsetAmount, type);
+            } else if (isSplitRing) {
+              wedgePaths = renderWedgeSplitRingShapes(stitch, el, scale, offsetAmount, type, i);
             } else if (el.isClosed) {
               wedgePaths = renderWedgeTeardropShapes(stitch, el, scale, offsetAmount, type, effectiveIndex, stitchTypes.length);
             } else {
@@ -9020,7 +9066,39 @@ const TattingDesigner = () => {
         const r = el.stitchCount * dsWidth / (2 * Math.PI);
         expand(el.center.x - r - dsWidth*2, el.center.y - r - dsWidth*2);
         expand(el.center.x + r + dsWidth*2, el.center.y + r + dsWidth*2);
-        // picots for circle: simple arc approach (no path sampling needed)
+
+        // ── picots first so they render underneath stitches ──
+        if (el.picots?.length) {
+          const N = el.stitchCount;
+          const rotation = (el.rotation || 0) * Math.PI / 180;
+          const picotSideDir = el.picotSideMultiplier || 1;
+          let out = '';
+          for (const picot of el.picots) {
+            if (shouldSkipPicot(picot, el.id)) continue;
+            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
+            const tMid   = picot.stitchesBefore / N;
+            const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
+            const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
+            const angleOf = (t: number) => t * Math.PI * 2 + rotation - Math.PI / 2;
+            const ptOn    = (t: number) => ({
+              x: el.center.x + Math.cos(angleOf(t)) * r,
+              y: el.center.y + Math.sin(angleOf(t)) * r,
+            });
+            const bL  = ptOn(tLeft);
+            const bR  = ptOn(tRight);
+            const mx  = ptOn(tMid);
+            const tip = {
+              x: mx.x + Math.cos(angleOf(tMid)) * picotSideDir * tipH,
+              y: mx.y + Math.sin(angleOf(tMid)) * picotSideDir * tipH,
+            };
+            const color = elColor.isGradient
+              ? getGradientColorAtPosition(elColor.id, tMid)
+              : elColor.color;
+            out += emitPicot(bL, bR, tip, color, el.lineWidth || 2);
+          }
+          frag += out;
+        }
+        // ── stitches after picots so they render on top ──
         frag += stitchesToSVG(stitches, true);
 
       } else if (el.isSplitRing) {
@@ -9030,9 +9108,8 @@ const TattingDesigner = () => {
           const pts = sampleBezierPath(path, 20);
           for (const pt of pts) expand(pt.x, pt.y);
         }
-        frag += stitchesToSVG(cached, false, true);
 
-        // ── picots for split ring ──
+        // ── picots for split ring — emitted BEFORE stitches so they sit underneath ──
         if (el.picots?.length && el.paths?.[0] && el.paths?.[1]) {
           const splitPos = el.splitPosition || Math.floor(el.stitchCount / 2);
           const countA = splitPos;
@@ -9100,6 +9177,8 @@ const TattingDesigner = () => {
           }
           frag += out;
         }
+        // ── stitches after picots so they render on top ──
+        frag += stitchesToSVG(cached, false, true);
 
       } else if (el.type === 'chain' || el.type === 'ring') {
         // ── path element (chain / teardrop ring) ──
@@ -9159,7 +9238,6 @@ const TattingDesigner = () => {
       setCurrentTool('pan');
       setBakedRealisticSVG(null);
       setRenderMode('realistic');
-      // Defer baking one tick so React can commit renderMode first
       setTimeout(() => bakeRealisticView(), 0);
     } else {
       setBakedRealisticSVG(null);
@@ -10902,58 +10980,17 @@ const TattingDesigner = () => {
                 {/* Label removed - icons are self-explanatory */}
                 <button
                   onClick={() => {
-                    const currentRotation = selectedElement.rotation || 0;
-                    const newRotation = currentRotation - 90;
-                    const delta = -90;
-                    
-                    const rad = delta * Math.PI / 180;
-                    const cos = Math.cos(rad);
-                    const sin = Math.sin(rad);
-                    
+                    const newRotation = (selectedElement.rotation || 0) - 90;
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
-                      
-                      const polarPivot = getPolarPivot([el.id]); const pivot = polarPivot || getElementPivot(el);
-                      const cx = pivot.x;
-                      const cy = pivot.y;
-                      const newPaths = el.paths.map(path => {
-                        const rotatePoint = (px, py) => {
-                          const dx = px - cx;
-                          const dy = py - cy;
-                          return {
-                            x: cx + dx * cos - dy * sin,
-                            y: cy + dx * sin + dy * cos
-                          };
-                        };
-                        
-                        if (path.type === 'cubic') {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const c1 = rotatePoint(path.control1X, path.control1Y);
-                          const c2 = rotatePoint(path.control2X, path.control2Y);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            control1X: c1.x, control1Y: c1.y,
-                            control2X: c2.x, control2Y: c2.y
-                          };
-                        } else {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const ctrl = rotatePoint(path.controlX, path.controlY);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            controlX: ctrl.x, controlY: ctrl.y
-                          };
-                        }
-                      });
-                      
-                      const newPivot = polarPivot ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos } : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: newRotation,
-                               center: { x: newPivot.x, y: newPivot.y } };
+                      const polarPivot = getPolarPivot([el.id]);
+                      const pivot = polarPivot || getElementPivot(el);
+                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, -90);
+                      const newPivot = polarPivot
+                        ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(-Math.PI/2) - (el.center.y - pivot.y) * Math.sin(-Math.PI/2),
+                            y: pivot.y + (el.center.x - pivot.x) * Math.sin(-Math.PI/2) + (el.center.y - pivot.y) * Math.cos(-Math.PI/2) }
+                        : getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -10972,35 +11009,16 @@ const TattingDesigner = () => {
                     if (result === null) return;
                     const delta = result - (selectedElement.rotation || 0);
                     if (Math.abs(delta) < 0.001) return;
-                    const rad = delta * Math.PI / 180;
-                    const cos = Math.cos(rad);
-                    const sin = Math.sin(rad);
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
-                      const polarPivot = getPolarPivot([el.id]); const pivot = polarPivot || getElementPivot(el);
-                      const cx = pivot.x;
-                      const cy = pivot.y;
-                      const newPaths = el.paths.map(path => {
-                        const rotatePoint = (px, py) => {
-                          const dx = px - cx;
-                          const dy = py - cy;
-                          return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-                        };
-                        if (path.type === 'cubic') {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const c1 = rotatePoint(path.control1X, path.control1Y);
-                          const c2 = rotatePoint(path.control2X, path.control2Y);
-                          return { ...path, x: start.x, y: start.y, endX: end.x, endY: end.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                        } else {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const ctrl = rotatePoint(path.controlX, path.controlY);
-                          return { ...path, x: start.x, y: start.y, endX: end.x, endY: end.y, controlX: ctrl.x, controlY: ctrl.y };
-                        }
-                      });
+                      const polarPivot = getPolarPivot([el.id]);
+                      const pivot = polarPivot || getElementPivot(el);
+                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
+                      const rad = delta * Math.PI / 180;
+                      const cos = Math.cos(rad), sin = Math.sin(rad);
                       const newPivot = polarPivot
-                        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+                        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
+                            y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
                         : getElementPivot({ ...el, paths: newPaths });
                       return { ...el, paths: newPaths, rotation: result, center: { x: newPivot.x, y: newPivot.y } };
                     }));
@@ -11075,58 +11093,17 @@ const TattingDesigner = () => {
                 >▼</button>
                 <button
                   onClick={() => {
-                    const currentRotation = selectedElement.rotation || 0;
-                    const newRotation = currentRotation + 90;
-                    const delta = 90;
-                    
-                    const rad = delta * Math.PI / 180;
-                    const cos = Math.cos(rad);
-                    const sin = Math.sin(rad);
-                    
+                    const newRotation = (selectedElement.rotation || 0) + 90;
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
-                      
-                      const polarPivot = getPolarPivot([el.id]); const pivot = polarPivot || getElementPivot(el);
-                      const cx = pivot.x;
-                      const cy = pivot.y;
-                      const newPaths = el.paths.map(path => {
-                        const rotatePoint = (px, py) => {
-                          const dx = px - cx;
-                          const dy = py - cy;
-                          return {
-                            x: cx + dx * cos - dy * sin,
-                            y: cy + dx * sin + dy * cos
-                          };
-                        };
-                        
-                        if (path.type === 'cubic') {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const c1 = rotatePoint(path.control1X, path.control1Y);
-                          const c2 = rotatePoint(path.control2X, path.control2Y);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            control1X: c1.x, control1Y: c1.y,
-                            control2X: c2.x, control2Y: c2.y
-                          };
-                        } else {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const ctrl = rotatePoint(path.controlX, path.controlY);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            controlX: ctrl.x, controlY: ctrl.y
-                          };
-                        }
-                      });
-                      
-                      const newPivot = polarPivot ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos } : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: newRotation,
-                               center: { x: newPivot.x, y: newPivot.y } };
+                      const polarPivot = getPolarPivot([el.id]);
+                      const pivot = polarPivot || getElementPivot(el);
+                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, 90);
+                      const newPivot = polarPivot
+                        ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(Math.PI/2) - (el.center.y - pivot.y) * Math.sin(Math.PI/2),
+                            y: pivot.y + (el.center.x - pivot.x) * Math.sin(Math.PI/2) + (el.center.y - pivot.y) * Math.cos(Math.PI/2) }
+                        : getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -11391,10 +11368,7 @@ const TattingDesigner = () => {
                           const squeeze = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, squeeze, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-                            return applyRotationToPathData({ ...el, squeeze }, newPathData);
+                            return applyRotationToPathData({ ...el, squeeze }, createSplitRingPathFromEl(el, { squeeze }));
                           }));
                         }}
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
@@ -11412,10 +11386,7 @@ const TattingDesigner = () => {
                           const squeezeCA = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, el.squeeze ?? 0.25, squeezeCA, el.squeezeCB ?? 0.75);
-                            return applyRotationToPathData({ ...el, squeezeCA }, newPathData);
+                            return applyRotationToPathData({ ...el, squeezeCA }, createSplitRingPathFromEl(el, { squeezeCA }));
                           }));
                         }}
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
@@ -11433,10 +11404,7 @@ const TattingDesigner = () => {
                           const squeezeCB = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, squeezeCB);
-                            return applyRotationToPathData({ ...el, squeezeCB }, newPathData);
+                            return applyRotationToPathData({ ...el, squeezeCB }, createSplitRingPathFromEl(el, { squeezeCB }));
                           }));
                         }}
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
@@ -11448,10 +11416,8 @@ const TattingDesigner = () => {
                         onClick={() => {
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
-                            return { ...el, squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0, ...newPathData };
+                            return { ...el, squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0,
+                              ...createSplitRingPathFromEl(el, { squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75 }) };
                           }));
                         }}
                         className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -11605,68 +11571,18 @@ const TattingDesigner = () => {
                       <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                         <button
                           onClick={() => {
-                            const delta = -90;
-                            const rad = delta * Math.PI / 180;
-                            const cos = Math.cos(rad);
-                            const sin = Math.sin(rad);
-                            
-                            // Calculate group center (or polar pivot if set)
                             const _ppN = getPolarPivot(selectedIds);
-                            const groupCenterX = _ppN ? _ppN.x : groupElements.reduce((sum, el) => sum + el.center.x, 0) / groupElements.length;
-                            const groupCenterY = _ppN ? _ppN.y : groupElements.reduce((sum, el) => sum + el.center.y, 0) / groupElements.length;
-                            
+                            const gcx = _ppN ? _ppN.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
+                            const gcy = _ppN ? _ppN.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
+                            const cos = Math.cos(-Math.PI/2), sin = Math.sin(-Math.PI/2);
                             setElements(prev => prev.map(el => {
                               if (!selectedIds.includes(el.id)) return el;
-                              
-                              // Rotate element center around group center
-                              const dx = el.center.x - groupCenterX;
-                              const dy = el.center.y - groupCenterY;
-                              const newCenterX = groupCenterX + dx * cos - dy * sin;
-                              const newCenterY = groupCenterY + dx * sin + dy * cos;
-                              
-                              // Rotate all path points around group center
-                              const newPaths = el.paths.map(path => {
-                                const rotatePoint = (px, py) => {
-                                  const pdx = px - groupCenterX;
-                                  const pdy = py - groupCenterY;
-                                  return {
-                                    x: groupCenterX + pdx * cos - pdy * sin,
-                                    y: groupCenterY + pdx * sin + pdy * cos
-                                  };
-                                };
-                                
-                                if (path.type === 'cubic') {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const c1 = rotatePoint(path.control1X, path.control1Y);
-                                  const c2 = rotatePoint(path.control2X, path.control2Y);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    control1X: c1.x, control1Y: c1.y,
-                                    control2X: c2.x, control2Y: c2.y
-                                  };
-                                } else {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const ctrl = rotatePoint(path.controlX, path.controlY);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    controlX: ctrl.x, controlY: ctrl.y
-                                  };
-                                }
-                              });
-                              
-                              // Update rotation value for ALL elements (so it shows correctly after ungrouping)
-                              const newRotation = ((el.rotation || 0) + delta) % 360;
-                              
-                              return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: newRotation };
+                              const dx = el.center.x - gcx, dy = el.center.y - gcy;
+                              return { ...el,
+                                center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
+                                paths: rotatePaths(el.paths, gcx, gcy, -90),
+                                rotation: ((el.rotation || 0) - 90) % 360 };
                             }));
-                            
-                            // Clear input after rotation
                             setGroupRotationInput('');
                           }}
                           className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -11699,68 +11615,18 @@ const TattingDesigner = () => {
                         />
                         <button
                           onClick={() => {
-                            const delta = 90;
-                            const rad = delta * Math.PI / 180;
-                            const cos = Math.cos(rad);
-                            const sin = Math.sin(rad);
-                            
-                            // Calculate group center (or polar pivot if set)
                             const _ppP = getPolarPivot(selectedIds);
-                            const groupCenterX = _ppP ? _ppP.x : groupElements.reduce((sum, el) => sum + el.center.x, 0) / groupElements.length;
-                            const groupCenterY = _ppP ? _ppP.y : groupElements.reduce((sum, el) => sum + el.center.y, 0) / groupElements.length;
-                            
+                            const gcx = _ppP ? _ppP.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
+                            const gcy = _ppP ? _ppP.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
+                            const cos = Math.cos(Math.PI/2), sin = Math.sin(Math.PI/2);
                             setElements(prev => prev.map(el => {
                               if (!selectedIds.includes(el.id)) return el;
-                              
-                              // Rotate element center around group center
-                              const dx = el.center.x - groupCenterX;
-                              const dy = el.center.y - groupCenterY;
-                              const newCenterX = groupCenterX + dx * cos - dy * sin;
-                              const newCenterY = groupCenterY + dx * sin + dy * cos;
-                              
-                              // Rotate all path points around group center
-                              const newPaths = el.paths.map(path => {
-                                const rotatePoint = (px, py) => {
-                                  const pdx = px - groupCenterX;
-                                  const pdy = py - groupCenterY;
-                                  return {
-                                    x: groupCenterX + pdx * cos - pdy * sin,
-                                    y: groupCenterY + pdx * sin + pdy * cos
-                                  };
-                                };
-                                
-                                if (path.type === 'cubic') {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const c1 = rotatePoint(path.control1X, path.control1Y);
-                                  const c2 = rotatePoint(path.control2X, path.control2Y);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    control1X: c1.x, control1Y: c1.y,
-                                    control2X: c2.x, control2Y: c2.y
-                                  };
-                                } else {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const ctrl = rotatePoint(path.controlX, path.controlY);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    controlX: ctrl.x, controlY: ctrl.y
-                                  };
-                                }
-                              });
-                              
-                              // Update rotation value for ALL elements (so it shows correctly after ungrouping)
-                              const newRotation = ((el.rotation || 0) + delta) % 360;
-                              
-                              return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: newRotation };
+                              const dx = el.center.x - gcx, dy = el.center.y - gcy;
+                              return { ...el,
+                                center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
+                                paths: rotatePaths(el.paths, gcx, gcy, 90),
+                                rotation: ((el.rotation || 0) + 90) % 360 };
                             }));
-                            
-                            // Clear input after rotation
                             setGroupRotationInput('');
                           }}
                           className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -11968,36 +11834,36 @@ const TattingDesigner = () => {
                               if (!selectedIds.includes(el.id)) return el;
                               if (getElType(el) === 'line') return el;
                               if (el.isSplitRing) {
-                                // For split rings, apply as notation A, keep notationB
                                 const newParsed = parseNotation(notation);
                                 if (!newParsed) return el;
-                                const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                                const stitchCountB = el.stitchCount - stitchCountA;
-                                const pathData = createSplitRingPath(el.center.x, el.center.y, newParsed.stitchCount * dsWidth, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: pathData.paths };
+                                const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
+                                const cx = el.center.x, cy = el.center.y;
+                                const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
+                                  const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+                                  const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
+                                  const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+                                  return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+                                });
+                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: scaledPaths };
                               }
                               const newParsed = parseNotation(notation);
                               if (!newParsed) return el;
-                              const targetLength = newParsed.stitchCount * dsWidth;
-                              let newPaths;
                               if (el.type === 'ring') {
-                                const pathData = el.shapeStyle === 'teardrop'
-                                  ? createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze ?? 0)
-                                  : createTeardropPath(el.center.x, el.center.y, targetLength, 0);
-                                newPaths = pathData.paths;
-                                // Re-apply rotation
-                                if (el.rotation) {
-                                  const r = el.rotation * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-                                  const rot = (px, py) => { const dx = px - el.center.x, dy = py - el.center.y; return { x: el.center.x + dx*rc - dy*rs, y: el.center.y + dx*rs + dy*rc }; };
-                                  newPaths = newPaths.map(path => {
-                                    if (path.type === 'cubic') { const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), c1 = rot(path.control1X, path.control1Y), c2 = rot(path.control2X, path.control2Y); return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; }
-                                    const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), ctrl = rot(path.controlX, path.controlY); return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-                                  });
-                                }
-                              } else {
-                                newPaths = el.paths; // Chains: keep existing path shape, just update notation
+                                const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
+                                const cx = el.center.x, cy = el.center.y;
+                                const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
+                                  const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+                                  if (path.type === 'cubic') {
+                                    const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
+                                    const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+                                    return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+                                  }
+                                  const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+                                  return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+                                });
+                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: scaledPaths };
                               }
-                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false, paths: newPaths ?? el.paths };
+                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false };
                             }));
                           }}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.target.value = prefillNotation ?? ''; e.target.blur(); } }}
@@ -12290,7 +12156,7 @@ const TattingDesigner = () => {
                       const el = chain;
                       const path = el.paths[0];
                       const targetLength = el.stitchCount * dsWidth;
-                      const newPath = applyPathPreset(path, preset.deg, targetLength);
+                      const newPath = applyPathPreset(path, preset.deg, targetLength, true); // presets always symmetric
                       if (newPath !== path) {
                         setElements(prev => prev.map(e =>
                           e.id === el.id ? { ...e, paths: [newPath] } : e
@@ -12308,6 +12174,18 @@ const TattingDesigner = () => {
                     {preset.label}
                   </button>
                 ))}
+                <div className="w-px h-4 bg-gray-600 mx-1" />
+                <button
+                  onClick={() => setChainPresetSymmetric(s => !s)}
+                  className={`px-2 py-1 rounded text-xs border transition-colors ${
+                    chainPresetSymmetric
+                      ? 'bg-blue-700 border-blue-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-gray-400 hover:border-blue-500'
+                  }`}
+                  title={chainPresetSymmetric ? 'Symmetric arms (click to make asymmetric)' : 'Asymmetric arms (click to make symmetric)'}
+                >
+                  ⇔
+                </button>
               </div>
             </div>
           );
@@ -13273,8 +13151,10 @@ const TattingDesigner = () => {
                         opacity={isSelected ? 0.7 : ghostOpacity}
                         strokeDasharray={isGhost ? '5,5' : undefined}
                       />
-                      {/* Ghosts don't show picots, EXCEPT boundary ghosts */}
-                      {(!isGhost || el.isBoundary) && renderPicots(el)}
+                      {/* Ghosts don't show picots, EXCEPT boundary ghosts.
+                          In realistic mode, picots are in bakedRealisticSVG. */}
+                      {renderMode !== 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el)}
+                      {renderMode === 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el, true)}
                       {!isGhost && isSelected && (
                         <circle
                           cx={el.center.x}
@@ -13444,6 +13324,11 @@ const TattingDesigner = () => {
                     ) : (
                     /* Chains and teardrops */
                     <>
+                    {/* Picots rendered first so they sit behind the path strokes.
+                        In realistic mode, picots are baked into bakedRealisticSVG — skip here. */}
+                    {renderMode !== 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el)}
+                    {/* In realistic mode, beaded picots and cjp arms render via overlay pass */}
+                    {renderMode === 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el, true)}
                     {/* NEW: Realistic rendering mode */}
                     {el.type === 'line' ? (
                       // Line rendering - simple bezier path without stitches
@@ -13558,32 +13443,47 @@ const TattingDesigner = () => {
                           );
                         })}
                         {/* Dashed connection line for split rings - along height line */}
-                        {el.isSplitRing && el.paths.length >= 2 && (
-                          <>
-                            <line
-                              x1={el.paths[0].endX}
-                              y1={el.paths[0].endY}
-                              x2={el.paths[0].x}
-                              y2={el.paths[0].y}
-                              stroke="#000000"
-                              strokeWidth={(el.lineWidth || 2) + 2}
-                              strokeDasharray="5,5"
-                              opacity={isSelected ? 0.7 : ghostOpacity}
-                            />
-                            <line
-                              x1={el.paths[0].endX}
-                              y1={el.paths[0].endY}
-                              x2={el.paths[0].x}
-                              y2={el.paths[0].y}
-                              stroke={elStrokeValB}
-                              strokeWidth={el.lineWidth || 2}
-                              strokeDasharray="5,5"
-                              opacity={isSelected ? 0.7 : ghostOpacity}
-                            />
-                          </>
-                        )}
-                        {/* Ghosts don't show picots, EXCEPT boundary ghosts */}
-                        {(!isGhost || el.isBoundary) && renderPicots(el)}
+                        {el.isSplitRing && el.paths.length >= 2 && (() => {
+                          // paths[0] goes from x/y (A-start) to endX/Y (A-end).
+                          // Each flip inverts the visual direction — odd number of flips = swap.
+                          const flipCount = (el.isFlippedH ? 1 : 0) + (el.isFlippedV ? 1 : 0);
+                          const flipped = flipCount % 2 === 1;
+                          const x1 = flipped ? el.paths[0].x    : el.paths[0].endX;
+                          const y1 = flipped ? el.paths[0].y    : el.paths[0].endY;
+                          const x2 = flipped ? el.paths[0].endX : el.paths[0].x;
+                          const y2 = flipped ? el.paths[0].endY : el.paths[0].y;
+                          // Arrowhead pointing AWAY from x2/y2 — shows direction of travel along path A
+                          const angle = Math.atan2(y2 - y1, x2 - x1);
+                          const arrSize = (el.lineWidth || 2) * 3;
+                          const ax1 = x2 + arrSize * Math.cos(angle - 0.4 + Math.PI);
+                          const ay1 = y2 + arrSize * Math.sin(angle - 0.4 + Math.PI);
+                          const ax2 = x2 + arrSize * Math.cos(angle + 0.4 + Math.PI);
+                          const ay2 = y2 + arrSize * Math.sin(angle + 0.4 + Math.PI);
+                          return (
+                            <>
+                              <line x1={x1} y1={y1} x2={x2} y2={y2}
+                                stroke="#000000" strokeWidth={(el.lineWidth || 2) + 2}
+                                strokeDasharray="5,5" opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                              <line x1={x1} y1={y1} x2={x2} y2={y2}
+                                stroke={elStrokeValB} strokeWidth={el.lineWidth || 2}
+                                strokeDasharray="5,5" opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                              {/* Arrowhead pointing to the start of notation A */}
+                              <polyline points={`${ax1},${ay1} ${x2},${y2} ${ax2},${ay2}`}
+                                fill="none" stroke="#000000" strokeWidth={(el.lineWidth || 2) + 2}
+                                strokeLinejoin="round" strokeLinecap="round"
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                              <polyline points={`${ax1},${ay1} ${x2},${y2} ${ax2},${ay2}`}
+                                fill="none" stroke={elStrokeValB} strokeWidth={el.lineWidth || 2}
+                                strokeLinejoin="round" strokeLinecap="round"
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                            </>
+                          );
+                        })()}
+                        {/* Ghosts don't show picots — already rendered before paths above */}
                         {!isGhost && isSelected && (
                           <g>
                             {el.paths.map((path, i) => {
@@ -15120,43 +15020,68 @@ const TattingDesigner = () => {
                   </div>
                 ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-                    {recents.map(entry => (
-                      <div key={entry.id} className="bg-gray-700 rounded-lg overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors group cursor-pointer"
-                        onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); })}>
+                    {recents.map(entry => {
+                      const pathMissing = !entry.filename;
+                      return (
+                        <div key={entry.id}
+                          className={`bg-gray-700 rounded-lg overflow-hidden border transition-colors group ${pathMissing ? 'border-gray-700 opacity-50 cursor-not-allowed' : 'border-gray-600 hover:border-purple-500 cursor-pointer'}`}
+                          title={pathMissing ? t('recentProjectsPathMissing') : entry.filename}
+                          onClick={() => { if (!pathMissing) doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}>
 
-                        {/* Thumbnail */}
-                        <div className="w-full bg-gray-900 flex items-center justify-center" style={{ aspectRatio: '3/2' }}>
-                          {entry.thumbnail
-                            ? <img src={`data:image/svg+xml;base64,${btoa(entry.thumbnail)}`} alt={entry.name} className="w-full h-full object-contain" draggable={false} />
-                            : <div className="text-gray-600 text-xs text-center px-2">{entry.name}</div>
-                          }
-                        </div>
+                          {/* Thumbnail */}
+                          <div className="w-full bg-gray-900 flex items-center justify-center" style={{ aspectRatio: '3/2' }}>
+                            {entry.thumbnail
+                              ? <img src={`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(entry.thumbnail)))}`} alt={entry.name} className="w-full h-full object-contain" draggable={false} />
+                              : <div className="text-gray-600 text-xs text-center px-2">{entry.name}</div>
+                            }
+                          </div>
 
-                        {/* Info + actions */}
-                        <div className="px-3 py-2">
-                          <div className="text-white text-sm font-medium truncate" title={entry.name}>{entry.name}</div>
-                          <div className="text-gray-400 text-xs mt-0.5">{t('recentProjectsSaved').replace('{date}', new Date(entry.savedAt).toLocaleDateString())}</div>
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              className="flex-1 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs font-semibold"
-                              onClick={(ev) => { ev.stopPropagation(); doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}
-                            >{t('recentProjectsLoadBtn')}</button>
-                            <button
-                              className="py-1 px-2 rounded bg-gray-600 hover:bg-red-700 text-gray-300 hover:text-white text-xs"
-                              title={t('recentProjectsDeleteBtn')}
-                              onClick={(ev) => { ev.stopPropagation(); removeEntry(entry.id); }}
-                            >✕</button>
+                          {/* Info + actions */}
+                          <div className="px-3 py-2">
+                            <div className="text-white text-sm font-medium truncate" title={entry.name}>{entry.name}</div>
+                            <div className="text-gray-400 text-xs mt-0.5">{t('recentProjectsSaved').replace('{date}', new Date(entry.savedAt).toLocaleDateString())}</div>
+                            {pathMissing && (
+                              <div className="text-yellow-600 text-xs mt-1">⚠ {t('recentProjectsPathMissingLabel')}</div>
+                            )}
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                disabled={pathMissing}
+                                className={`flex-1 py-1 rounded text-xs font-semibold ${pathMissing ? 'bg-gray-600 text-gray-500 cursor-not-allowed' : 'bg-purple-700 hover:bg-purple-600 text-white'}`}
+                                onClick={(ev) => { ev.stopPropagation(); if (!pathMissing) doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}
+                              >{t('recentProjectsLoadBtn')}</button>
+                              <button
+                                className="py-1 px-2 rounded bg-gray-600 hover:bg-red-700 text-gray-300 hover:text-white text-xs"
+                                title={t('recentProjectsDeleteBtn')}
+                                onClick={(ev) => { ev.stopPropagation(); removeEntry(entry.id); }}
+                              >✕</button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Footer — Browse button */}
+              {/* Footer — Browse + Clear unavailable */}
               <div className="flex justify-between items-center px-5 py-4 border-t border-gray-600 flex-shrink-0">
-                <div className="text-gray-500 text-xs">{recents.length > 0 ? `${recents.length} / 20` : ''}</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-gray-500 text-xs">{recents.length > 0 ? `${recents.length} / 20` : ''}</div>
+                  {recents.some(e => !e.filename) && (
+                    <button
+                      onClick={() => {
+                        const cleaned = recents.filter(e => !!e.filename);
+                        localStorage.setItem('tcad_recent_projects', JSON.stringify(cleaned));
+                        setShowRecentProjectsDialog(false);
+                        setTimeout(() => setShowRecentProjectsDialog(true), 0);
+                      }}
+                      className="text-xs text-yellow-600 hover:text-yellow-400 underline underline-offset-2"
+                      title={t('recentProjectsClearUnavailableHint')}
+                    >
+                      {t('recentProjectsClearUnavailable')}
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); })}
                   className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg border border-gray-500"
