@@ -18,10 +18,8 @@ export function useUIState() {
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [showUpdatePopup, setShowUpdatePopup] = useState<boolean>(false);
   const [showUpdateReminder, setShowUpdateReminder] = useState<boolean>(false);
-  const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showRecentProjectsDialog, setShowRecentProjectsDialog] = useState(false);
   const [showRecentLoadConfirm, setShowRecentLoadConfirm] = useState(false);
-  const [showLoadConfirmDialog, setShowLoadConfirmDialog] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [showBeadLibrary, setShowBeadLibrary] = useState(false);
   const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
@@ -31,7 +29,7 @@ export function useUIState() {
   const [showJoinTip, setShowJoinTip] = useState(
     () => localStorage.getItem('tcad_seen_join_tip') !== '1'
   );
-  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; confirmLabel?: string; onConfirm: () => void } | null>(null);
   const [alertDialog, setAlertDialog] = useState<{ message: string } | null>(null);
 
   // ── Array dialogs ──────────────────────────────────────────────────────
@@ -108,10 +106,8 @@ export function useUIState() {
     showSplash, setShowSplash,
     showUpdatePopup, setShowUpdatePopup,
     showUpdateReminder, setShowUpdateReminder,
-    showNewCanvasDialog, setShowNewCanvasDialog,
     showRecentProjectsDialog, setShowRecentProjectsDialog,
     showRecentLoadConfirm, setShowRecentLoadConfirm,
-    showLoadConfirmDialog, setShowLoadConfirmDialog,
     showRemoveConfirm, setShowRemoveConfirm,
     showBeadLibrary, setShowBeadLibrary,
     showMaterialsPanel, setShowMaterialsPanel,

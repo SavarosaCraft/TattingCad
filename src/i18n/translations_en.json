@@ -448,5 +448,6 @@
   "recentProjectsLoadConfirmTitle": "Discard current project?",
   "recentProjectsLoadConfirmBody": "Loading a project will replace the current canvas. Any unsaved changes will be lost.",
   "recentProjectsLoadConfirmOk": "Load anyway",
-  "recentProjectsLoadConfirmCancel": "Cancel"
+  "recentProjectsLoadConfirmCancel": "Cancel","btnSendToBack": "Send to Back (Home)",
+"btnBringToFront": "Bring to Front (End)"
 }

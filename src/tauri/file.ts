@@ -1,9 +1,19 @@
 // file.ts — Tauri file system and dialog operations
 // All Tauri-specific code lives here. The rest of the app imports from this
 // module and stays unaware of Tauri's existence.
+//
+// THUMBNAIL SYSTEM
+// Thumbnails are stored as PNG files next to the project file:
+//   MyPattern.json  →  MyPattern_thumb.png
+// The recent entry stores thumbPath. The dialog uses convertFileSrc(thumbPath).
+// This avoids btoa issues, localStorage bloat, and lets file browsers show previews.
+// Config required in tauri.conf.json:
+//   "security": { "assetProtocol": { "enable": true, "scope": ["$DOCUMENT/**", "$HOME/**", ...] } }
+// When ready to extract: everything from "── Thumbnail" onward is self-contained.
 
 import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
+import { writeFile, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 // ── Dialogs ────────────────────────────────────────────────────────────────
 
@@ -54,21 +64,58 @@ export const readProjectFile = async (filePath: string): Promise<any> => {
 export interface RecentEntry {
   id: string;
   name: string;
-  filename: string;
-  thumbnail: string;
+  filename: string;    // absolute path to the .json file
+  thumbPath: string;   // absolute path to the _thumb.png file ('' if none)
   savedAt: string;
 }
 
-export const addToRecents = (name: string, filename: string, thumbnail: string): void => {
+// Normalize path separators — cleans double-escaped backslashes that can appear
+// when old entries were written by JSON.stringify and re-read inconsistently.
+const normalizePath = (p: string): string => p ? p.replace(/\\\\/g, '\\') : '';
+
+// Derive the thumbnail path from the project path.
+// MyPattern.json → MyPattern_thumb.png (same directory)
+export const thumbPathFor = (projectPath: string): string => {
+  if (!projectPath) return '';
+  return normalizePath(projectPath).replace(/\.json$/i, '_thumb.png');
+};
+
+// Convert a thumbnail file path to an asset:// URL for use in <img src>.
+// convertFileSrc requires forward slashes on Windows.
+export const thumbSrcFor = (thumbPath: string): string => {
+  if (!thumbPath) return '';
   try {
+    return convertFileSrc(normalizePath(thumbPath).replace(/\\/g, '/'));
+  } catch { return ''; }
+};
+
+// Normalise a raw localStorage entry — migrates legacy fields and cleans paths.
+const normaliseEntry = (e: any): RecentEntry => {
+  const filename = normalizePath(e.filename ?? e.path ?? e.filePath ?? e.file ?? '');
+  const name = filename
+    ? (filename.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? e.name ?? 'Untitled')
+    : (e.name ?? 'Untitled');
+  return {
+    id:        e.id        ?? Date.now().toString(),
+    name,
+    filename,
+    thumbPath: normalizePath(e.thumbPath ?? thumbPathFor(filename)),
+    savedAt:   e.savedAt   ?? new Date().toISOString(),
+  };
+};
+
+export const addToRecents = (name: string, filename: string, thumbPath: string): void => {
+  try {
+    const cleanFilename  = normalizePath(filename);
+    const cleanThumbPath = normalizePath(thumbPath);
     const raw = localStorage.getItem('tcad_recent_projects');
-    const list: RecentEntry[] = raw ? JSON.parse(raw) : [];
-    const filtered = list.filter(e => e.filename !== filename);
+    const list: any[] = raw ? JSON.parse(raw) : [];
+    const filtered = list.filter(e =>
+      normalizePath(e.filename ?? e.path ?? e.filePath ?? e.file ?? '') !== cleanFilename
+    );
     const entry: RecentEntry = {
-      id: Date.now().toString(),
-      name,
-      filename,
-      thumbnail,
+      id: Date.now().toString(), name,
+      filename: cleanFilename, thumbPath: cleanThumbPath,
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem('tcad_recent_projects', JSON.stringify([entry, ...filtered].slice(0, 20)));
@@ -78,54 +125,115 @@ export const addToRecents = (name: string, filename: string, thumbnail: string):
 export const getRecents = (): RecentEntry[] => {
   try {
     const raw = localStorage.getItem('tcad_recent_projects');
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const normalised = (JSON.parse(raw) as any[]).map(normaliseEntry);
+    localStorage.setItem('tcad_recent_projects', JSON.stringify(normalised));
+    return normalised;
   } catch { return []; }
 };
 
-// ── Thumbnail generator ────────────────────────────────────────────────────
-// Pure function — dsWidth passed explicitly, no state dependency
+// ── Thumbnail — PNG file ───────────────────────────────────────────────────
+// Renders pattern elements to an offscreen canvas and writes a PNG file next
+// to the project. Returns the absolute thumb path on success, '' on failure.
 
-export const generateThumbnail = (els: any[], dsWidth: number): string => {
-  if (!els || els.length === 0) return '';
+const THUMB_W = 300;
+const THUMB_H = 200;
+const THUMB_PAD = 16;
+
+export const generateThumbnailPng = async (
+  els: any[],
+  dsWidth: number,
+  projectPath: string
+): Promise<string> => {
+  console.log('[thumbnail] called, els:', els?.length, 'path:', projectPath);
+  if (!els?.length || !projectPath) {
+    console.warn('[thumbnail] skipped — no elements or no path');
+    return '';
+  }
+
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const expand = (x: number, y: number) => {
     if (x < minX) minX = x; if (x > maxX) maxX = x;
     if (y < minY) minY = y; if (y > maxY) maxY = y;
   };
-  els.forEach(el => {
+
+  for (const el of els) {
+    if (el.type === 'ghost' && !el.isBoundary) continue;
     if (el.isClosed && el.shapeStyle === 'circle') {
       const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
       expand(el.center.x - r, el.center.y - r);
       expand(el.center.x + r, el.center.y + r);
-    } else if (el.paths?.length > 0) {
-      el.paths.forEach(p => {
+    } else if (el.paths?.length) {
+      for (const p of el.paths) {
         expand(p.x, p.y); expand(p.endX, p.endY);
         if (p.type === 'cubic') { expand(p.control1X, p.control1Y); expand(p.control2X, p.control2Y); }
-        else { expand(p.controlX, p.controlY); }
-      });
+        else { expand(p.controlX ?? p.x, p.controlY ?? p.y); }
+      }
     }
-  });
+  }
+
   if (!isFinite(minX)) return '';
-  const pad = 16, W = 300, H = 200;
-  const srcW = maxX - minX + pad * 2, srcH = maxY - minY + pad * 2;
-  const scale = Math.min(W / srcW, H / srcH);
-  const offX = (W - srcW * scale) / 2 - (minX - pad) * scale;
-  const offY = (H - srcH * scale) / 2 - (minY - pad) * scale;
-  const tx = (x: number) => (x * scale + offX).toFixed(1);
-  const ty = (y: number) => (y * scale + offY).toFixed(1);
-  const paths = els.map(el => {
+
+  const srcW  = maxX - minX + THUMB_PAD * 2;
+  const srcH  = maxY - minY + THUMB_PAD * 2;
+  const scale = Math.min(THUMB_W / srcW, THUMB_H / srcH);
+  const offX  = (THUMB_W - srcW * scale) / 2 - (minX - THUMB_PAD) * scale;
+  const offY  = (THUMB_H - srcH * scale) / 2 - (minY - THUMB_PAD) * scale;
+  const tx = (x: number) => x * scale + offX;
+  const ty = (y: number) => y * scale + offY;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = THUMB_W; canvas.height = THUMB_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.warn('[thumbnail] canvas 2d context unavailable');
+    return '';
+  }
+  console.log('[thumbnail] rendering for:', projectPath);
+  ctx.fillStyle = '#1f2937';
+  ctx.fillRect(0, 0, THUMB_W, THUMB_H);
+  ctx.lineWidth = 1.5;
+
+  for (const el of els) {
+    if (el.type === 'ghost' && !el.isBoundary) continue;
+    ctx.strokeStyle = el.type === 'ring' ? '#a78bfa' : '#34d399';
+
     if (el.isClosed && el.shapeStyle === 'circle') {
-      const r = ((el.stitchCount * dsWidth) / (2 * Math.PI) * scale).toFixed(1);
-      return `<circle cx="${tx(el.center.x)}" cy="${ty(el.center.y)}" r="${r}" fill="none" stroke="#a78bfa" stroke-width="1.5"/>`;
+      const r = (el.stitchCount * dsWidth) / (2 * Math.PI) * scale;
+      ctx.beginPath();
+      ctx.arc(tx(el.center.x), ty(el.center.y), r, 0, Math.PI * 2);
+      ctx.stroke();
+      continue;
     }
-    if (!el.paths?.length) return '';
-    const d = el.paths.map(p =>
-      p.type === 'cubic'
-        ? `M${tx(p.x)},${ty(p.y)} C${tx(p.control1X)},${ty(p.control1Y)} ${tx(p.control2X)},${ty(p.control2Y)} ${tx(p.endX)},${ty(p.endY)}`
-        : `M${tx(p.x)},${ty(p.y)} Q${tx(p.controlX)},${ty(p.controlY)} ${tx(p.endX)},${ty(p.endY)}`
-    ).join(' ');
-    const stroke = el.type === 'ring' ? '#a78bfa' : '#34d399';
-    return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.5"/>`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#1f2937"/>${paths}</svg>`;
+    if (!el.paths?.length) continue;
+    for (const p of el.paths) {
+      ctx.beginPath();
+      ctx.moveTo(tx(p.x), ty(p.y));
+      if (p.type === 'cubic') {
+        ctx.bezierCurveTo(tx(p.control1X), ty(p.control1Y), tx(p.control2X), ty(p.control2Y), tx(p.endX), ty(p.endY));
+      } else {
+        ctx.quadraticCurveTo(tx(p.controlX ?? p.x), ty(p.controlY ?? p.y), tx(p.endX), ty(p.endY));
+      }
+      ctx.stroke();
+    }
+  }
+
+  return new Promise<string>(resolve => {
+    canvas.toBlob(async blob => {
+      if (!blob) {
+        console.warn('[thumbnail] canvas.toBlob returned null - canvas may be tainted or empty');
+        resolve(''); return;
+      }
+      console.log('[thumbnail] blob size:', blob.size, 'writing to:', thumbPathFor(projectPath));
+      try {
+        const thumbPath = thumbPathFor(projectPath);
+        await writeFile(thumbPath, new Uint8Array(await blob.arrayBuffer()));
+        console.log('[thumbnail] written OK:', thumbPath);
+        resolve(thumbPath);
+      } catch (err) {
+        console.warn('[thumbnail] failed to write:', err);
+        resolve('');
+      }
+    }, 'image/png');
+  });
 };

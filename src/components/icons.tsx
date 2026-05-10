@@ -453,4 +453,22 @@ export const IconRuler = ({ size = 20, className = '' }) => (
   </svg>
 );
 
+export const IconSendToBack = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="5" width="11" height="11" rx="1.5" fill="currentColor" opacity="0.35"/>
+    <rect x="5" y="1" width="11" height="11" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6"/>
+    <line x1="2.5" y1="17.5" x2="8.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+    <line x1="5.5" y1="14.5" x2="5.5" y2="20.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+  </svg>
+);
+
+export const IconBringToFront = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="5" width="11" height="11" rx="1.5" fill="currentColor" opacity="0.35"/>
+    <rect x="5" y="1" width="11" height="11" rx="1.5" fill="currentColor" stroke="currentColor" strokeWidth="1.6"/>
+    <line x1="2.5" y1="17.5" x2="8.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+    <line x1="5.5" y1="14.5" x2="5.5" y2="20.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+  </svg>
+);
+
 // ── End Icons ──────────────────────────────────────────────────────────

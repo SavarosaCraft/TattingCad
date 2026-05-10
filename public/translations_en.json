@@ -505,5 +505,7 @@
 "cjLabel": "Core Join",
 "cjTooltip": "Core Join (cj) — join made with the core thread, zero stitch length",
 "cjpLabel": "Core Join Picot",
-"cjpTooltip": "Core Join Picot (cjp) — core thread join that also leaves a picot"
+"cjpTooltip": "Core Join Picot (cjp) — core thread join that also leaves a picot",
+"btnSendToBack": "Send to Back (Home)",
+"btnBringToFront": "Bring to Front (End)"
 }

@@ -15,7 +15,9 @@ import {
   readProjectFile,
   addToRecents,
   getRecents,
-  generateThumbnail,
+  generateThumbnailPng,
+  thumbSrcFor,
+  thumbPathFor,
 } from './tauri/file';
 import { generateId } from './utils/id';
 import {
@@ -57,6 +59,7 @@ import {
   IconNotationS, IconNotationM, IconNotationH,
   IconNotes, IconPolarGrid, IconCut,
   IconNotationOn, IconNotationOff, IconRuler,
+  IconBringToFront, IconSendToBack,
 } from './components/icons';
 import {
   parseNotation as parseNotationPure,
@@ -217,6 +220,9 @@ const RDS_STITCH_PATH = "M -0.5434,0.05 c -0.0276,0 -0.0499,0.0223 -0.0499,0.049
 // Joint Picot (JP) - broken arc shape
 const JP_PICOT_PATH = "m -0.0262,0 c -0.0519,0.0308 -0.0954,0.0729 -0.12747,0.11974 -0.0664,0.0969 -0.10206,0.21191 -0.12713,0.32246 -0.0477,0.15131 -0.0424,0.27131 -0.0424,0.27131 l 0.25011,0.002 c 0,0 0.0117,-0.0829 0.0362,-0.21859 0.0211,-0.0931 0.0535,-0.18089 0.0899,-0.23409 0,0 -0.0588,-0.27494 -0.0792,-0.26283 z m 0.29421,0.26289 c 0.0365,0.0532 0.0714,0.14041 0.0899,0.23409 0.0208,0.10524 0.0532,0.21859 0.0532,0.21859 l 0.2496,-0.002 c 0,0 -0.0307,-0.11839 -0.0589,-0.27131 -0.0251,-0.11055 -0.0603,-0.22559 -0.12661,-0.32246 -0.0273,-0.0399 -0.0633,-0.0765 -0.10586,-0.1055 -0.0286,-0.0195 -0.10133,0.24859 -0.10133,0.24859 z";
 
+// Picot arm lengths in canvas units — shared by renderPicots, renderOnePicot, getPicotPosition
+const PICOT_SIZE: Record<string, number> = { small: 13, medium: 20, large: 26 };
+
 // ============================================================================
 // WEDGE SHAPES - Bounding rectangles for each stitch type in normalized coords
 // Derived by tracing the SVG sub-paths of DS/SS/RDS stitch symbols.
@@ -312,6 +318,79 @@ const ThreadPropertiesNumInput = ({ label, value, onChange = null, unit = 'mm', 
   );
 };
 
+// Canonical project serializer — single source of truth for both manual save and autosave.
+// Accepts all project data explicitly so it stays pure and testable.
+// isAutoSave=true → writes 'autoSaved' timestamp key; false → writes 'created'.
+function serializeProject(data: {
+  name: string;
+  elements: any[]; picotConnections: any[]; camera: any; zoom: number; dsWidth: number;
+  bgColor: string; gridEnabled: boolean; customColors: any[]; referenceImage: any;
+  refImageProps: any; renderMode: string; patternNotes: string; materials: any[];
+  orderGroups: any[]; beadLibrary: any[]; polarGrids: any[]; selectedPolarGridId: string | null;
+  threadPresets: any[]; activePresetId: string;
+}, isAutoSave = false) {
+  return {
+    version: 90,
+    name: data.name,
+    ...(isAutoSave
+      ? { autoSaved: new Date().toISOString() }
+      : { created: new Date().toISOString() }),
+    elements:            data.elements,
+    picotConnections:    data.picotConnections,
+    camera:              data.camera,
+    zoom:                data.zoom,
+    dsWidth:             data.dsWidth,
+    bgColor:             data.bgColor,
+    gridEnabled:         data.gridEnabled,
+    customColors:        data.customColors,
+    referenceImage:      data.referenceImage,
+    refImageProps:       data.refImageProps,
+    renderMode:          data.renderMode,
+    patternNotes:        data.patternNotes,
+    materials:           data.materials,
+    orderGroups:         data.orderGroups,
+    beadLibrary:         data.beadLibrary,
+    polarGrids:          data.polarGrids,
+    selectedPolarGridId: data.selectedPolarGridId,
+    activeThreadPreset:
+      data.threadPresets.find(p => p.id === data.activePresetId)
+      ?? data.threadPresets[0]
+      ?? null,
+  };
+}
+
+// Shared shell for the three array dialogs (polar / linear / spiral).
+// Handles backdrop, peek-opacity fade, centering, and click-outside-to-close.
+// Only the inner content differs between dialogs.
+const ArrayDialogShell = ({
+  show, peek, onClose, children,
+}: {
+  show: boolean; peek: boolean; onClose: () => void; children: React.ReactNode;
+}) => {
+  if (!show) return null;
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-black bg-opacity-60"
+        style={{ zIndex: 2147483640, opacity: peek ? 0 : 1, transition: 'opacity 0.15s' }}
+        onClick={onClose}
+      />
+      <div
+        className="fixed inset-0 flex items-center justify-center pointer-events-none"
+        style={{ zIndex: 2147483641, opacity: peek ? 0 : 1, transition: 'opacity 0.15s' }}
+      >
+        <div
+          className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5"
+          style={{ width: 'min(340px, 92vw)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {children}
+        </div>
+      </div>
+    </>
+  );
+};
+
 const TattingDesigner = () => {
   // ── UI state (dialogs, menus, toggles) ──────────────────────────────────
   const {
@@ -326,10 +405,8 @@ const TattingDesigner = () => {
     showSplash, setShowSplash,
     showUpdatePopup, setShowUpdatePopup,
     showUpdateReminder, setShowUpdateReminder,
-    showNewCanvasDialog, setShowNewCanvasDialog,
     showRecentProjectsDialog, setShowRecentProjectsDialog,
     showRecentLoadConfirm, setShowRecentLoadConfirm,
-    showLoadConfirmDialog, setShowLoadConfirmDialog,
     showRemoveConfirm, setShowRemoveConfirm,
     showBeadLibrary, setShowBeadLibrary,
     showMaterialsPanel, setShowMaterialsPanel,
@@ -344,12 +421,14 @@ const TattingDesigner = () => {
     polarArrayCount, setPolarArrayCount,
     polarArrayAngle, setPolarArrayAngle,
     polarArrayPivotId, setPolarArrayPivotId,
+    polarArrayCreateGhosts, setPolarArrayCreateGhosts,
     showLinearArrayDialog, setShowLinearArrayDialog,
     linearArrayPeek, setLinearArrayPeek,
     linearArrayCount, setLinearArrayCount,
     linearArrayAngle, setLinearArrayAngle,
     linearArraySpacing, setLinearArraySpacing,
     linearArrayRotStep, setLinearArrayRotStep,
+    linearArrayCreateGhosts, setLinearArrayCreateGhosts,
     showSpiralArrayDialog, setShowSpiralArrayDialog,
     spiralArrayPeek, setSpiralArrayPeek,
     spiralArrayCount, setSpiralArrayCount,
@@ -358,6 +437,9 @@ const TattingDesigner = () => {
     spiralArrayGrowth, setSpiralArrayGrowth,
     spiralArrayRotate, setSpiralArrayRotate,
     spiralArrayAngleStep, setSpiralArrayAngleStep,
+    showArrayManager, setShowArrayManager,
+    convertConfirm, setConvertConfirm,
+    ghostArrays, setGhostArrays,
     polarGridPeek, setPolarGridPeek,
     colorPickerTab, setColorPickerTab,
     pickerTabsAllowed, setPickerTabsAllowed,
@@ -523,6 +605,9 @@ const TattingDesigner = () => {
   // SPLASH_TIP_KEYS replaced by SPLASH_TIP_COUNT from ./hooks/useViewState
 
 
+  // Chain preset panel — symmetric toggle (local UI preference, not persisted)
+  const [chainPresetSymmetric, setChainPresetSymmetric] = React.useState(true);
+
   const lastUsedMaterialIdRef = useRef('default');
 
 
@@ -550,6 +635,9 @@ const TattingDesigner = () => {
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
   const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
+  const nudgeAccumulatedDeltaRef = useRef(0); // Track total rotation during hold for single history push
+  const nudgeActiveRef = useRef(false); // Whether a nudge hold is in progress
+  const createdNewLineRef = useRef(false); // Track if a new line was created (for auto-switch back to select)
   const groupDropdownButtonRef = useRef<HTMLButtonElement>(null); // For fixed-position group dropdown on mobile
   const propBarGroupButtonRef = useRef<HTMLButtonElement>(null); // For property bar group dropdown
   const dragOriginRef = useRef(null); // World position at drag start, for ortho axis lock
@@ -614,17 +702,22 @@ const TattingDesigner = () => {
   const themeInputRef = useRef(null);    // for loading theme JSON files
   const elementsRef = useRef([]);        // NEW: for copy/paste
   const selectedIdsRef = useRef([]);     // NEW: for copy/paste
+  const clipboardRef = useRef([]);       // for copy/paste - ensures sync in Tauri WebView
 
   // Keep refs updated
   useEffect(() => {
     elementsRef.current = elements;
   }, [elements]);
 
+  useEffect(() => {
+    clipboardRef.current = clipboard;
+  }, [clipboard]);
+
   // Commit any pending notation change when the selection changes (e.g. clicking canvas deselects)
   useEffect(() => {
     const pending = pendingNotationRef.current;
     if (!pending) return;
-    if (selectedIds.includes(pending.elementId)) { return; }
+    if (selectedIdSet.has(pending.elementId)) { return; }
     pendingNotationRef.current = null;
     if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
     const parsed = parseNotation(pending.notation, true);
@@ -643,6 +736,7 @@ const TattingDesigner = () => {
       needsHistoryPushRef.current = true; // Push after interaction ends instead
       return;
     }
+    if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
     pushHistoryState(elements, picotConnections, orderGroupsRef.current);
   }, [elements, picotConnections]); // Depend on both elements and connections
 
@@ -652,25 +746,21 @@ const TattingDesigner = () => {
   const cameraRef = useRef(camera);
   const zoomRef = useRef(zoom);
   const dsWidthRef = useRef(dsWidth);
-  const bgColorRef = useRef(bgColor);
-  const gridEnabledRef = useRef(gridEnabled);
-  const customColorsRef = useRef(customColors);
-  const referenceImageRef = useRef(referenceImage);
-  const refImagePropsRef = useRef(refImageProps);
   const projectNameRef = useRef(projectName);
   const picotConnectionsRef = useRef(picotConnections);
   const renderModeRef = useRef(renderMode);
-  const patternNotesRef = useRef(patternNotes);
   const materialsRef = useRef(materials);
-  const beadLibraryRef = useRef(beadLibrary);
-  const threadPresetsRef = useRef(threadPresets);
-  const activePresetIdRef = useRef(activePresetId);
   const activeModeRef = useRef(activeMode);
   const selectedBEsRef = useRef(selectedBEs);
   const selectedPicotsRef = useRef([]);
   const beClipboardRef = useRef(beClipboard);
   const orderGroupsRef = useRef(orderGroups);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const pivotOffsetRef = useRef({ x: 0, y: 0 });  // always-current mirror of pivotOffset state
+  const pivotDragStartRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 }); // world pos + offset at drag start
+  const rotationDragStartRef = useRef({ x: 0, y: 0, pivotX: 0, pivotY: 0 }); // world pos + effective pivot at rotation drag start
+  const movingPivotRef = useRef(false);   // ref mirror of movingPivot — readable in touch handlers
+  const rotationHandleRef = useRef<string | null>(null); // ref mirror of rotationHandle
   // PERFORMANCE: Persistent notation-parse cache. Keyed by notation string.
   // Survives stitchCache rebuilds (e.g. dsWidth change) — only re-parses when notation text changes.
   const stitchTypesCacheRef = useRef(new Map());
@@ -685,24 +775,18 @@ const TattingDesigner = () => {
     cameraRef.current = camera;
     zoomRef.current = zoom;
     dsWidthRef.current = dsWidth;
-    bgColorRef.current = bgColor;
-    gridEnabledRef.current = gridEnabled;
-    customColorsRef.current = customColors;
-    referenceImageRef.current = referenceImage;
-    refImagePropsRef.current = refImageProps;
-    projectNameRef.current = projectName;
     picotConnectionsRef.current = picotConnections;
+    projectNameRef.current = projectName;
     renderModeRef.current = renderMode;
-    patternNotesRef.current = patternNotes;
     materialsRef.current = materials;
-    beadLibraryRef.current = beadLibrary;
-    threadPresetsRef.current = threadPresets;
-    activePresetIdRef.current = activePresetId;
     activeModeRef.current = activeMode;
     selectedBEsRef.current = selectedBEs;
     beClipboardRef.current = beClipboard;
     orderGroupsRef.current = orderGroups;
     selectedPicotsRef.current = selectedPicots;
+    pivotOffsetRef.current = pivotOffset;
+    movingPivotRef.current = movingPivot;
+    rotationHandleRef.current = rotationHandle;
   });
 
   // Persist polar grids globally to localStorage whenever they change
@@ -713,31 +797,13 @@ const TattingDesigner = () => {
   useEffect(() => {
     const autoSave = () => {
       if (elementsRef.current.length === 0) return; // Don't save empty projects
-      
-      const projectData = {
-        version: 90,
-        name: projectNameRef.current,
-        autoSaved: new Date().toISOString(),
-        elements: elementsRef.current,
-        picotConnections: picotConnectionsRef.current,
-        camera: cameraRef.current,
-        zoom: zoomRef.current,
-        dsWidth: dsWidthRef.current,
-        bgColor: bgColorRef.current,
-        gridEnabled: gridEnabledRef.current,
-        customColors: customColorsRef.current,
-        referenceImage: referenceImageRef.current,
-        refImageProps: refImagePropsRef.current,
-        renderMode: renderModeRef.current,
-        patternNotes: patternNotesRef.current,
-        materials: materialsRef.current,
-        orderGroups: orderGroupsRef.current,
-        beadLibrary: beadLibraryRef.current,
-        activeThreadPreset: threadPresetsRef.current.find(p => p.id === activePresetIdRef.current) || threadPresetsRef.current[0] || null
-      };
-      
       try {
-        localStorage.setItem('tatting-designer-autosave', JSON.stringify(projectData));
+        // buildProjectDataRef always points to the latest closure — no stale state.
+        // Pass isAutoSave=true so serializeProject writes the 'autoSaved' timestamp key.
+        const data = buildProjectDataRef.current(projectNameRef.current);
+        const payload = { ...data, autoSaved: new Date().toISOString() };
+        delete (payload as any).created;
+        localStorage.setItem('tatting-designer-autosave', JSON.stringify(payload));
       } catch (error) {
         console.error('Auto-save failed:', error);
       }
@@ -1532,7 +1598,64 @@ const TattingDesigner = () => {
     });
   };
 
-  // Render chain stitches using TWO parallel offset curves (same as teardrops but without center reference)
+  // Render split ring stitches using TWO parallel offset curves per path half.
+  // Each half (pathA / pathB) is treated independently like a mini teardrop ring.
+  // Accepts the global stitch index so it can determine which path half to use.
+  const renderWedgeSplitRingShapes = (stitch, el, scale, offsetAmount, stitchType, globalIndex) => {
+    const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
+    const splitPos = el.splitPosition || Math.floor(el.stitchCount / 2);
+    const inA = globalIndex < splitPos;
+    const path = inA ? el.paths[0] : el.paths[1];
+    if (!path) return shapes.map(() => '');
+    const localCount = inA ? splitPos : el.stitchCount - splitPos;
+    const localIndex = inA ? globalIndex : globalIndex - splitPos;
+
+    const samplesPerDS = 10;
+    const totalSamples = localCount * samplesPerDS;
+
+    const STITCH_X_EXTENTS = {
+      'ds':  { xMin: -0.2622, xMax:  0.0504 },
+      'ss':  { xMin: -0.1023, xMax:  0.0463 },
+      'lss': { xMin: -0.1023, xMax:  0.0463 },
+      'rss': { xMin: -0.1023, xMax:  0.0463 },
+      'rds': { xMin: -0.5946, xMax:  0.0798 },
+    };
+    const dsEquivalentWidth = { 'ds': 1.0, 'ss': 0.5, 'lss': 0.5, 'rss': 0.5, 'rds': 2.0 };
+    const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
+    const xSpan = ext.xMax - ext.xMin;
+    const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
+    const samplesForThisStitch = samplesPerDS * stitchWidth;
+
+    return shapes.map(([xl, xr, yo, yi]) => {
+      const outerOffset = offsetAmount - yo * scale;
+      const innerOffset = offsetAmount - yi * scale;
+
+      // Sample offset curves for this path half only
+      const outerCurve = sampleFullPathWithOffset([path], outerOffset, totalSamples);
+      const innerCurve = sampleFullPathWithOffset([path], innerOffset, totalSamples);
+
+      const tLeft  = (xl - ext.xMin) / xSpan;
+      const tRight = (xr - ext.xMin) / xSpan;
+      const stitchSliceStart = localIndex * samplesPerDS;
+      const rectStart = Math.round(stitchSliceStart + tLeft  * samplesForThisStitch);
+      const rectEnd   = Math.round(stitchSliceStart + tRight * samplesForThisStitch);
+
+      const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
+      const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
+      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
+
+      let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
+      for (let j = 1; j < outerSlice.length; j++) {
+        pathD += ` L ${outerSlice[j].x},${outerSlice[j].y}`;
+      }
+      pathD += ` L ${innerSlice[innerSlice.length - 1].x},${innerSlice[innerSlice.length - 1].y}`;
+      for (let j = innerSlice.length - 2; j >= 0; j--) {
+        pathD += ` L ${innerSlice[j].x},${innerSlice[j].y}`;
+      }
+      return pathD + ' Z';
+    });
+  };
+
   const renderWedgeChainShapes = (stitch, el, scale, offsetAmount, stitchType, stitchIndex) => {
     const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
     const stitchCount = el.stitchCount; // DS-equivalent count
@@ -1731,30 +1854,39 @@ const TattingDesigner = () => {
     };
   };
 
-  // Helper: apply element's current rotation to newly-generated path data
-  const applyRotationToPathData = (el, newPathData) => {
-    if (!el.rotation || el.rotation === 0) return { ...el, ...newPathData };
-    const rad = el.rotation * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    const cx = el.center.x, cy = el.center.y;
-    const rotatePt = (px, py) => {
-      const dx = px - cx, dy = py - cy;
-      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
-    };
-    newPathData.paths = newPathData.paths.map(path => {
+  // Mirror an array of bezier paths horizontally (around x=cx) or vertically (around y=cy).
+  // Swaps start↔end and control points to preserve traversal direction.
+  const mirrorPaths = (paths: any[], isHorizontal: boolean, cx: number, cy: number): any[] => {
+    const mPt = (px: number, py: number) => isHorizontal
+      ? { x: 2 * cx - px, y: py }
+      : { x: px, y: 2 * cy - py };
+    return paths.map(path => {
       if (path.type === 'cubic') {
-        const s = rotatePt(path.x, path.y);
-        const e = rotatePt(path.endX, path.endY);
-        const c1 = rotatePt(path.control1X, path.control1Y);
-        const c2 = rotatePt(path.control2X, path.control2Y);
-        return { ...path, x:s.x, y:s.y, endX:e.x, endY:e.y, control1X:c1.x, control1Y:c1.y, control2X:c2.x, control2Y:c2.y };
+        const s  = mPt(path.endX,     path.endY);
+        const e2 = mPt(path.x,        path.y);
+        const c1 = mPt(path.control2X, path.control2Y);
+        const c2 = mPt(path.control1X, path.control1Y);
+        return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y,
+          control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
       }
-      const s = rotatePt(path.x, path.y);
-      const e = rotatePt(path.endX, path.endY);
-      const c = rotatePt(path.controlX, path.controlY);
-      return { ...path, x:s.x, y:s.y, endX:e.x, endY:e.y, controlX:c.x, controlY:c.y };
-    });
-    return { ...el, ...newPathData };
+      const s    = mPt(path.endX,    path.endY);
+      const e2   = mPt(path.x,       path.y);
+      const ctrl = mPt(path.controlX, path.controlY);
+      return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
+    }).reverse();
+  };
+
+  // Helper: apply rotation + flip to newly-generated path data.
+  // For flipped elements: rotate first, then physically mirror to match the
+  // existing visual state. This is the inverse of what flipElements does
+  // (flip sets rotation to mirrorAngle(θ) AND physically mirrors coords).
+  const applyRotationToPathData = (el, newPathData) => {
+    let paths = newPathData.paths ?? [];
+    const cx = el.center.x, cy = el.center.y;
+    if (el.rotation) paths = rotatePaths(paths, cx, cy, el.rotation);
+    if (el.isFlippedH) paths = mirrorPaths(paths, true,  cx, cy);
+    if (el.isFlippedV) paths = mirrorPaths(paths, false, cx, cy);
+    return { ...el, ...newPathData, paths };
   };
 
   // ── Split ring geometry: 3 controls ──────────────────────────────────────────
@@ -1809,10 +1941,8 @@ const TattingDesigner = () => {
     const botY = cy + h/2;
     const bulgeA = splitRingSolveBulge(h, squeezeCA, arcA);
     const bulgeB = splitRingSolveBulge(h, squeezeCB, arcB);
-    // Path A: (cx,botY)→(cx,topY), bulges LEFT
     const c1yA = cy + (h/2)*squeezeCA;
     const c2yA = cy - (h/2)*squeezeCA;
-    // Path B: (cx,topY)→(cx,botY), bulges RIGHT — mirror
     const c1yB = cy - (h/2)*squeezeCB;
     const c2yB = cy + (h/2)*squeezeCB;
     return {
@@ -1824,6 +1954,129 @@ const TattingDesigner = () => {
       ],
       splitPosition: stitchCountA,
     };
+  };
+
+  // Convenience wrapper — reads squeeze/split fields from the element,
+  // all params optional to allow per-call overrides.
+  const createSplitRingPathFromEl = (el: any, opts: {
+    cx?: number; cy?: number;
+    stitchCountA?: number; stitchCountB?: number;
+    squeeze?: number; squeezeCA?: number; squeezeCB?: number;
+  } = {}) => {
+    const cx  = opts.cx  ?? el.center.x;
+    const cy  = opts.cy  ?? el.center.y;
+    const scA = opts.stitchCountA ?? el.splitPosition;
+    const scB = opts.stitchCountB ?? (el.stitchCount - el.splitPosition);
+    return createSplitRingPath(
+      cx, cy, (scA + scB) * dsWidth, scA, scB,
+      opts.squeeze    ?? el.squeeze    ?? 0.25,
+      opts.squeezeCA  ?? el.squeezeCA  ?? 0.75,
+      opts.squeezeCB  ?? el.squeezeCB  ?? 0.75,
+    );
+  };
+
+  // ── Path/Line preset helpers (previously in ./geometry/pathPresets) ─────────
+
+  // Apply a bow-angle preset to a chain path, keeping both endpoints fixed.
+  // presetDeg: angle of the tangent at start/end relative to the chord (45 / 60 / 90).
+  // targetLength: desired arc length (el.stitchCount * dsWidth) — used to scale
+  // the control-point magnitude via binary search so the path length matches.
+  const applyPathPreset = (path: any, presetDeg: number, targetLength: number, symmetric = true): any => {
+    const { x, y, endX, endY } = path;
+    const chordX = endX - x, chordY = endY - y;
+    const chordLen = Math.hypot(chordX, chordY);
+    if (chordLen < 0.001) return path;
+    const ux = chordX / chordLen, uy = chordY / chordLen;
+
+    // Detect which side of the chord the current bow is on.
+    // Cross product of chord with (control1 - start): positive = left, negative = right.
+    const c1dx = (path.control1X ?? path.x) - x;
+    const c1dy = (path.control1Y ?? path.y) - y;
+    const cross = chordX * c1dy - chordY * c1dx;
+    // If cross is effectively zero (straight path), default to left (+1)
+    const bowSign = cross >= 0 ? 1 : -1;
+
+    // Perpendicular in the detected bow direction
+    const px = -uy * bowSign, py = ux * bowSign;
+    const rad = presetDeg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const d1x = cos * ux + sin * px, d1y = cos * uy + sin * py; // start tangent
+
+    if (!symmetric) {
+      // Non-symmetric: only update start control point, keep end as-is
+      let lo = 0, hi = chordLen * 4, t = chordLen / 3;
+      for (let iter = 0; iter < 24; iter++) {
+        const c1x = x + t * d1x, c1y = y + t * d1y;
+        const tryPath = { type: 'cubic', x, y, endX, endY, control1X: c1x, control1Y: c1y, control2X: path.control2X, control2Y: path.control2Y };
+        const len = calculatePathLength(sampleBezierPath(tryPath, 30));
+        if (Math.abs(len - targetLength) < targetLength * 0.005) { t = (lo + hi) / 2; break; }
+        if (len < targetLength) lo = t; else hi = t;
+        t = (lo + hi) / 2;
+      }
+      return { ...path, control1X: x + t * d1x, control1Y: y + t * d1y };
+    }
+
+    // Symmetric: end tangent mirrors start tangent across the chord
+    const d2x = cos * ux - sin * px, d2y = cos * uy - sin * py;
+    let lo = 0, hi = chordLen * 4, t = chordLen / 3;
+    for (let iter = 0; iter < 24; iter++) {
+      const c1x = x + t * d1x, c1y = y + t * d1y;
+      const c2x = endX - t * d2x, c2y = endY - t * d2y;
+      const tryPath = { type: 'cubic', x, y, endX, endY, control1X: c1x, control1Y: c1y, control2X: c2x, control2Y: c2y };
+      const len = calculatePathLength(sampleBezierPath(tryPath, 30));
+      if (Math.abs(len - targetLength) < targetLength * 0.005) { t = (lo + hi) / 2; break; }
+      if (len < targetLength) lo = t; else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return {
+      ...path,
+      control1X: x + t * d1x, control1Y: y + t * d1y,
+      control2X: endX - t * d2x, control2Y: endY - t * d2y,
+    };
+  };
+
+  // Apply an angle preset to a line element.
+  // presetDeg = 0 → horizontal, 90 → vertical, etc. (standard math angle from +x axis).
+  // Keeps start (x, y) fixed; rotates the endpoint to the new angle at the same length.
+  // Control points are placed collinearly (straight line).
+  const applyLinePreset = (path: any, presetDeg: number): any => {
+    const { x, y, endX, endY } = path;
+    const len = Math.hypot(endX - x, endY - y);
+    if (len < 0.001) return path;
+    const rad = presetDeg * Math.PI / 180;
+    const newEndX = x + Math.cos(rad) * len;
+    const newEndY = y + Math.sin(rad) * len;
+    return {
+      ...path,
+      endX: newEndX, endY: newEndY,
+      control1X: x    + Math.cos(rad) * len * 0.33,
+      control1Y: y    + Math.sin(rad) * len * 0.33,
+      control2X: x    + Math.cos(rad) * len * 0.67,
+      control2Y: y    + Math.sin(rad) * len * 0.67,
+    };
+  };
+
+  // Rotate an array of bezier path segments around (cx, cy) by angleDeg.
+  // Handles both cubic (control1X/Y, control2X/Y) and quadratic (controlX/Y) segments.
+  // Returns a new array — does not mutate the input.
+  const rotatePaths = (paths: any[], cx: number, cy: number, angleDeg: number): any[] => {
+    if (!angleDeg || !paths?.length) return paths;
+    const rad = angleDeg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const rp = (px: number, py: number) => {
+      const dx = px - cx, dy = py - cy;
+      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
+    };
+    return paths.map(p => {
+      const s = rp(p.x, p.y), e2 = rp(p.endX, p.endY);
+      if (p.type === 'cubic') {
+        const c1 = rp(p.control1X, p.control1Y), c2 = rp(p.control2X, p.control2Y);
+        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y,
+          control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+      }
+      const c = rp(p.controlX, p.controlY);
+      return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+    });
   };
 
   // isNotationValid, expandTokens, isZeroWidth imported from ./domain/parser
@@ -1859,6 +2112,8 @@ const TattingDesigner = () => {
       labelOffset: 8,
       squeeze: squeeze,
       picotSideMultiplier: 1,
+      isGhost: false,
+      ghostSourceId: null,
       ...pathData
     };
     const newElements = [...elementsRef.current, newEl];
@@ -1872,9 +2127,7 @@ const TattingDesigner = () => {
     const center = getViewportCenter();
     const stitchCountA = 6;
     const stitchCountB = 6;
-    const totalLength = (stitchCountA + stitchCountB) * dsWidth;
-    const squeeze = 0.25;
-    const pathData = createSplitRingPath(center.x, center.y, totalLength, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
+    const pathData = createSplitRingPath(center.x, center.y, (stitchCountA + stitchCountB) * dsWidth, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
     const newEl = {
       id: generateId(),
       type: 'ring',
@@ -1896,6 +2149,8 @@ const TattingDesigner = () => {
       picotSideMultiplier: 1,
       isSplitRing: true,
       materialId: lastUsedMaterialIdRef.current,
+      isGhost: false,
+      ghostSourceId: null,
       ...pathData
     };
     const newElements = [...elementsRef.current, newEl];
@@ -1942,7 +2197,9 @@ const TattingDesigner = () => {
       picots: [{ id: generateId(), stitchesBefore: 6, length: 'medium', isJoint: false, isGuide: false, isGuidePoint: false, beadType: null }],
       notation: 'c: 6ds-p-6ds',
       labelOffset: 8,
-      picotSideMultiplier: 1
+      picotSideMultiplier: 1,
+      isGhost: false,
+      ghostSourceId: null
     };
     const newElements = [...elementsRef.current, newEl];
     skipAutoHistoryRef.current = true;
@@ -2039,7 +2296,48 @@ const TattingDesigner = () => {
   const deleteSelected = useCallback(() => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length === 0) return;
-    setElements(prev => prev.filter(e => !currentSelectedIds.includes(e.id)));
+
+    // Check if any selected elements are ghosts or mothers
+    const currentElements = elementsRef.current;
+    const selectedElements = currentElements.filter(e => currentSelectedIds.includes(e.id));
+    const deletedGhostIds = selectedElements.filter(e => e.type === 'ghost').map(e => e.id);
+    const deletedMotherIds = selectedElements.filter(e => e.isGhostMother).map(e => e.id);
+
+    // When mothers are deleted, also delete their associated ghosts
+    let idsToDelete = new Set(currentSelectedIds);
+    if (deletedMotherIds.length > 0) {
+      const ghostsToDelete = currentElements.filter(e => 
+        e.type === 'ghost' && e.sourceId && deletedMotherIds.includes(e.sourceId)
+      ).map(e => e.id);
+      ghostsToDelete.forEach(id => idsToDelete.add(id));
+    }
+
+    setElements(prev => prev.filter(e => !idsToDelete.has(e.id)));
+
+    // Clean up ghost arrays if mothers are deleted
+    if (deletedMotherIds.length > 0) {
+      setGhostArrays(prev => prev.filter(array =>
+        !deletedMotherIds.includes(array.sourceId)
+      ));
+    }
+
+    // Clean up ghost arrays if ghosts are deleted (including auto-deleted ones)
+    const allDeletedGhostIds = [...deletedGhostIds];
+    if (deletedMotherIds.length > 0) {
+      const autoDeletedGhosts = currentElements.filter(e => 
+        e.type === 'ghost' && e.sourceId && deletedMotherIds.includes(e.sourceId)
+      ).map(e => e.id);
+      allDeletedGhostIds.push(...autoDeletedGhosts);
+    }
+    
+    if (allDeletedGhostIds.length > 0) {
+      setGhostArrays(prev => prev.map(array => ({
+        ...array,
+        ghostIds: array.ghostIds.filter(id => !allDeletedGhostIds.includes(id)),
+        boundaryIds: array.boundaryIds.filter(id => !allDeletedGhostIds.includes(id)),
+      })).filter(array => array.ghostIds.length > 0)); // Remove arrays with no ghosts left
+    }
+
     setSelectedIds([]);
     // Remove any picot connections that reference a picot on a deleted element
     setPicotConnections(prev => prev.filter(conn =>
@@ -2087,12 +2385,37 @@ const TattingDesigner = () => {
     }
   };
 
+  // Combined bounding box + centroid for an array of elements.
+  // Avoids the repeated Math.min/max spread pattern across alignment functions.
+  const getSelectionBoundingBox = (els: any[]) => {
+    const bounds = els.map(el => getElementBounds(el));
+    const minX = Math.min(...bounds.map(b => b.left));
+    const maxX = Math.max(...bounds.map(b => b.right));
+    const minY = Math.min(...bounds.map(b => b.top));
+    const maxY = Math.max(...bounds.map(b => b.bottom));
+    return { minX, maxX, minY, maxY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2 };
+  };
+
   // Move element by offset
   const moveElement = (el, dx, dy) => {
     if (el.isClosed && el.shapeStyle === 'circle') {
       return {
         ...el,
-        center: { x: el.center.x + dx, y: el.center.y + dy }
+        center: { x: el.center.x + dx, y: el.center.y + dy },
+        // Also update paths so hit-testing (minPathDistance) stays in sync with visual position
+        paths: el.paths.map(path => ({
+          ...path,
+          x: path.x + dx,
+          y: path.y + dy,
+          endX: path.endX + dx,
+          endY: path.endY + dy,
+          control1X: path.control1X ? path.control1X + dx : undefined,
+          control1Y: path.control1Y ? path.control1Y + dy : undefined,
+          control2X: path.control2X ? path.control2X + dx : undefined,
+          control2Y: path.control2Y ? path.control2Y + dy : undefined,
+          controlX: path.controlX ? path.controlX + dx : undefined,
+          controlY: path.controlY ? path.controlY + dy : undefined
+        }))
       };
     } else {
       // Move paths
@@ -2118,7 +2441,7 @@ const TattingDesigner = () => {
 
   // Alignment functions
   const getAlignmentUnits = () => {
-    const selectedElements = elements.filter(e => selectedIds.includes(e.id));
+    const selectedElements = elements.filter(e => selectedIdSet.has(e.id));
     const unitMap = new Map();
     selectedElements.forEach(el => {
       if (el.groupId) {
@@ -2190,26 +2513,33 @@ const TattingDesigner = () => {
     setElements(prev => prev.map(el => { const unit = units.find(u => u.ids.includes(el.id)); if (!unit) return el; return moveElement(el, 0, target - unit.bounds.centerY); }));
   };
 
+  // Shared helper: resolve which polar grid to operate on.
+  // Priority: explicit gridId → grid linked to any selected element → first visible → first.
+  const resolveTargetGrid = (gridId = null) => {
+    if (gridId) return polarGrids.find(g => g.id === gridId);
+    for (const id of selectedIds) {
+      const linkedId = elementById.get(id)?.polarRotationGridId;
+      if (linkedId) return polarGrids.find(g => g.id === linkedId);
+    }
+    return polarGrids.find(g => g.visible) || polarGrids[0];
+  };
+
   const alignToGridHorizontal = (gridId = null) => {
     if (selectedIds.length === 0 || polarGrids.length === 0) return;
-    const findGrid = () => { if (gridId) return polarGrids.find(g => g.id === gridId); const linkedId = (() => { for (const id of selectedIds) { const el = elements.find(e => e.id === id); if (el?.polarRotationGridId) return el.polarRotationGridId; } return null; })(); if (linkedId) return polarGrids.find(g => g.id === linkedId); return polarGrids.find(g => g.visible) || polarGrids[0]; };
-    const grid = findGrid(); if (!grid) return;
-    const allBounds = elements.filter(e => selectedIds.includes(e.id)).map(el => getElementBounds(el));
-    const selCenterX = (Math.min(...allBounds.map(b => b.left)) + Math.max(...allBounds.map(b => b.right))) / 2;
+    const grid = resolveTargetGrid(gridId); if (!grid) return;
+    const { centerX: selCenterX } = getSelectionBoundingBox(elements.filter(e => selectedIdSet.has(e.id)));
     const dx = grid.center.x - selCenterX;
     if (Math.abs(dx) < 0.01) return;
-    setElements(prev => prev.map(el => selectedIds.includes(el.id) ? moveElement(el, dx, 0) : el));
+    setElements(prev => prev.map(el => selectedIdSet.has(el.id) ? moveElement(el, dx, 0) : el));
   };
 
   const alignToGridVertical = (gridId = null) => {
     if (selectedIds.length === 0 || polarGrids.length === 0) return;
-    const findGrid = () => { if (gridId) return polarGrids.find(g => g.id === gridId); const linkedId = (() => { for (const id of selectedIds) { const el = elements.find(e => e.id === id); if (el?.polarRotationGridId) return el.polarRotationGridId; } return null; })(); if (linkedId) return polarGrids.find(g => g.id === linkedId); return polarGrids.find(g => g.visible) || polarGrids[0]; };
-    const grid = findGrid(); if (!grid) return;
-    const allBounds = elements.filter(e => selectedIds.includes(e.id)).map(el => getElementBounds(el));
-    const selCenterY = (Math.min(...allBounds.map(b => b.top)) + Math.max(...allBounds.map(b => b.bottom))) / 2;
+    const grid = resolveTargetGrid(gridId); if (!grid) return;
+    const { centerY: selCenterY } = getSelectionBoundingBox(elements.filter(e => selectedIdSet.has(e.id)));
     const dy = grid.center.y - selCenterY;
     if (Math.abs(dy) < 0.01) return;
-    setElements(prev => prev.map(el => selectedIds.includes(el.id) ? moveElement(el, 0, dy) : el));
+    setElements(prev => prev.map(el => selectedIdSet.has(el.id) ? moveElement(el, 0, dy) : el));
   };
 
   // Center all selected elements to a polar grid's center point.
@@ -2218,46 +2548,17 @@ const TattingDesigner = () => {
   // All relative positions are preserved — the group moves as one rigid body.
   const centerToPolarGrid = (gridId = null) => {
     if (selectedIds.length === 0 || polarGrids.length === 0) return;
+    const grid = resolveTargetGrid(gridId); if (!grid) return;
 
-    // Choose the target grid:
-    //  1. Explicit gridId passed (for per-grid buttons if ever needed)
-    //  2. The grid that the selected elements are already linked to (polarRotationGridId)
-    //  3. First visible grid
-    //  4. First grid (fallback)
-    const findGrid = () => {
-      if (gridId) return polarGrids.find(g => g.id === gridId);
-      const linkedId = (() => {
-        for (const id of selectedIds) {
-          const el = elements.find(e => e.id === id);
-          if (el?.polarRotationGridId) return el.polarRotationGridId;
-        }
-        return null;
-      })();
-      if (linkedId) return polarGrids.find(g => g.id === linkedId);
-      return polarGrids.find(g => g.visible) || polarGrids[0];
-    };
-
-    const grid = findGrid();
-    if (!grid) return;
-
-    const selectedEls = elements.filter(e => selectedIds.includes(e.id));
-
-    // Compute the combined bounding box centroid of the whole selection
-    const allBounds = selectedEls.map(el => getElementBounds(el));
-    const minX = Math.min(...allBounds.map(b => b.left));
-    const maxX = Math.max(...allBounds.map(b => b.right));
-    const minY = Math.min(...allBounds.map(b => b.top));
-    const maxY = Math.max(...allBounds.map(b => b.bottom));
-    const selCenterX = (minX + maxX) / 2;
-    const selCenterY = (minY + maxY) / 2;
+    const selectedEls = elements.filter(e => selectedIdSet.has(e.id));
+    const { centerX: selCenterX, centerY: selCenterY } = getSelectionBoundingBox(selectedEls);
 
     const dx = grid.center.x - selCenterX;
     const dy = grid.center.y - selCenterY;
-
     if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return; // already centered
 
     setElements(prev => prev.map(el =>
-      selectedIds.includes(el.id) ? moveElement(el, dx, dy) : el
+      selectedIdSet.has(el.id) ? moveElement(el, dx, dy) : el
     ));
   };
 
@@ -2265,7 +2566,7 @@ const TattingDesigner = () => {
   const applyMultiSelectRotationDelta = (delta) => {
     if (selectedIds.length < 2) return;
     if (delta === 0) return;
-    const selEls = elements.filter(e => selectedIds.includes(e.id));
+    const selEls = elements.filter(e => selectedIdSet.has(e.id));
     const polarPivot = getPolarPivot(selectedIds);
     const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
     const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
@@ -2273,7 +2574,7 @@ const TattingDesigner = () => {
     const cos = Math.cos(rad), sin = Math.sin(rad);
 
     setElements(prev => prev.map(el => {
-      if (!selectedIds.includes(el.id)) return el;
+      if (!selectedIdSet.has(el.id)) return el;
       const dx = el.center.x - centerX, dy = el.center.y - centerY;
       const newCenterX = centerX + dx * cos - dy * sin;
       const newCenterY = centerY + dx * sin + dy * cos;
@@ -2281,42 +2582,21 @@ const TattingDesigner = () => {
 
       // Split rings & teardrops: regenerate path at new center + apply rotation
       if (el.isSplitRing && el.splitPosition) {
-        const pathData = createSplitRingPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.splitPosition, el.stitchCount - el.splitPosition, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        const r = newRotation * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-        const rot = (px, py) => { const pdx = px - newCenterX, pdy = py - newCenterY; return { x: newCenterX + pdx*rc - pdy*rs, y: newCenterY + pdx*rs + pdy*rc }; };
-        const newPaths = pathData.paths.map(path => {
-          const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), c1 = rot(path.control1X, path.control1Y), c2 = rot(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        });
-        return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: ((newRotation % 360) + 360) % 360 };
+        const pathData = createSplitRingPathFromEl(el, { cx: newCenterX, cy: newCenterY });
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: ((newRotation % 360) + 360) % 360 };
       }
       if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || (el.squeeze !== undefined && el.squeeze > 0))) {
         const pathData = createTeardropPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.squeeze ?? 0);
-        const r = newRotation * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-        const rot = (px, py) => { const pdx = px - newCenterX, pdy = py - newCenterY; return { x: newCenterX + pdx*rc - pdy*rs, y: newCenterY + pdx*rs + pdy*rc }; };
-        const newPaths = pathData.paths.map(path => {
-          if (path.type === 'cubic') {
-            const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), c1 = rot(path.control1X, path.control1Y), c2 = rot(path.control2X, path.control2Y);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), ctrl = rot(path.controlX, path.controlY);
-            return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-          }
-        });
-        return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: ((newRotation % 360) + 360) % 360 };
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: ((newRotation % 360) + 360) % 360 };
       }
       // Chains & circle rings: rotate path points around global centroid
-      const rotatePt = (px, py) => { const pdx = px - centerX, pdy = py - centerY; return { x: centerX + pdx*cos - pdy*sin, y: centerY + pdx*sin + pdy*cos }; };
-      const newPaths = el.paths.map(path => {
-        if (path.type === 'cubic') {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      });
-      return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: ((newRotation % 360) + 360) % 360 };
+      return { ...el, center: { x: newCenterX, y: newCenterY },
+        paths: rotatePaths(el.paths, centerX, centerY, delta),
+        rotation: ((newRotation % 360) + 360) % 360 };
     }));
   };
 
@@ -2330,21 +2610,7 @@ const TattingDesigner = () => {
       if (el.id !== elId) return el;
       const polarPivot = getPolarPivot([el.id]);
       const pivot = polarPivot || getElementPivot(el);
-      const cx = pivot.x, cy = pivot.y;
-      const rotatePt = (px, py) => {
-        const dx = px - cx, dy = py - cy;
-        return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-      };
-      const newPaths = el.paths.map(path => {
-        if (path.type === 'cubic') {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY);
-          const c1 = rotatePt(path.control1X, path.control1Y), c2 = rotatePt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s = rotatePt(path.x, path.y), e2 = rotatePt(path.endX, path.endY), ctrl = rotatePt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      });
+      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
       const newRotation = (el.rotation || 0) + delta;
       const newPivot = polarPivot
         ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
@@ -2354,9 +2620,31 @@ const TattingDesigner = () => {
     needsHistoryPushRef.current = true;
   }, []);
 
+  // Same rotation logic but WITHOUT setting the history flag — for nudge hold-to-repeat
+  const applySingleRotationDeltaNoHistory = useCallback((elId: string, delta: number) => {
+    if (delta === 0) return;
+    const rad = delta * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    setElements(prev => prev.map(el => {
+      if (el.id !== elId) return el;
+      const polarPivot = getPolarPivot([el.id]);
+      const pivot = polarPivot || getElementPivot(el);
+      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
+      const newRotation = (el.rotation || 0) + delta;
+      const newPivot = polarPivot
+        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+        : getElementPivot({ ...el, paths: newPaths });
+      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
+    }));
+  }, []);
+
   // PERFORMANCE: O(1) element lookup by id — replaces elements.find(e => e.id === x) everywhere
   // Defined early because it is used in event handlers and callbacks throughout the component.
   const elementById = useMemo(() => new Map(elements.map(e => [e.id, e])), [elements]);
+
+  // PERFORMANCE: O(1) selected-id membership — replaces selectedIdSet.has(id) (O(n)) everywhere.
+  // selectedIds.includes inside filter/map is O(n²) when many elements are on canvas.
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   // PERFORMANCE: O(1) material lookup by id — getElementColor calls materials.find() on every
   // element every render. This map makes it O(1) and speeds up stitchCache builds too.
@@ -2386,115 +2674,29 @@ const TattingDesigner = () => {
     const groupCenterY = polarPivot ? polarPivot.y : groupElements.reduce((sum, el) => sum + el.center.y, 0) / groupElements.length;
 
     setElements(prev => prev.map(el => {
-      if (!selectedIds.includes(el.id)) return el;
+      if (!selectedIdSet.has(el.id)) return el;
 
       // Rotate element center around group center
       const dx = el.center.x - groupCenterX;
       const dy = el.center.y - groupCenterY;
       const newCenterX = groupCenterX + dx * cos - dy * sin;
       const newCenterY = groupCenterY + dx * sin + dy * cos;
-      
-      // Update rotation value for ALL elements
       const newRotation = ((el.rotation || 0) + delta) % 360;
-      
-      // For teardrop rings or squeezed circles, regenerate paths instead of rotating them
-      let newPaths;
+
+      // Teardrops and split rings: regenerate at new center then apply rotation
       if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || el.shapeStyle === 'split-ring' || (el.squeeze !== undefined && el.squeeze > 0))) {
-        // Regenerate path based on new rotation
-        const targetLength = el.stitchCount * dsWidth;
-        const squeeze = el.squeeze !== undefined ? el.squeeze : 0;
-        
-        let pathData;
-        if (el.isSplitRing && el.splitPosition) {
-          const stitchCountA = el.splitPosition;
-          const stitchCountB = el.stitchCount - stitchCountA;
-          pathData = createSplitRingPath(newCenterX, newCenterY, targetLength, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        } else {
-          pathData = createTeardropPath(newCenterX, newCenterY, targetLength, squeeze);
-        }
-        
-        newPaths = pathData.paths; // Extract paths array from returned object
-        
-        // Apply the element's rotation by rotating the regenerated paths
-        if (newRotation !== 0) {
-          const elemRad = newRotation * Math.PI / 180;
-          const elemCos = Math.cos(elemRad);
-          const elemSin = Math.sin(elemRad);
-          
-          newPaths = newPaths.map(path => {
-            const rotatePoint = (px, py) => {
-              const pdx = px - newCenterX;
-              const pdy = py - newCenterY;
-              return {
-                x: newCenterX + pdx * elemCos - pdy * elemSin,
-                y: newCenterY + pdx * elemSin + pdy * elemCos
-              };
-            };
-            
-            if (path.type === 'cubic') {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const c1 = rotatePoint(path.control1X, path.control1Y);
-              const c2 = rotatePoint(path.control2X, path.control2Y);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                control1X: c1.x, control1Y: c1.y,
-                control2X: c2.x, control2Y: c2.y
-              };
-            } else {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const ctrl = rotatePoint(path.controlX, path.controlY);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                controlX: ctrl.x, controlY: ctrl.y
-              };
-            }
-          });
-        }
-      } else {
-        // For chains and circles, rotate path points around group center
-        newPaths = el.paths.map(path => {
-          const rotatePoint = (px, py) => {
-            const pdx = px - groupCenterX;
-            const pdy = py - groupCenterY;
-            return {
-              x: groupCenterX + pdx * cos - pdy * sin,
-              y: groupCenterY + pdx * sin + pdy * cos
-            };
-          };
-          
-          if (path.type === 'cubic') {
-            const start = rotatePoint(path.x, path.y);
-            const end = rotatePoint(path.endX, path.endY);
-            const c1 = rotatePoint(path.control1X, path.control1Y);
-            const c2 = rotatePoint(path.control2X, path.control2Y);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              control1X: c1.x, control1Y: c1.y,
-              control2X: c2.x, control2Y: c2.y
-            };
-          } else {
-            const start = rotatePoint(path.x, path.y);
-            const end = rotatePoint(path.endX, path.endY);
-            const ctrl = rotatePoint(path.controlX, path.controlY);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              controlX: ctrl.x, controlY: ctrl.y
-            };
-          }
-        });
+        const pathData = el.isSplitRing && el.splitPosition
+          ? createSplitRingPathFromEl(el, { cx: newCenterX, cy: newCenterY })
+          : createTeardropPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.squeeze ?? 0);
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: newRotation };
       }
-      
-      return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: newRotation };
+
+      // Chains and circle rings: rotate path points around group center
+      return { ...el, center: { x: newCenterX, y: newCenterY },
+        paths: rotatePaths(el.paths, groupCenterX, groupCenterY, delta),
+        rotation: newRotation };
     }));
     
     // Clear input after applying
@@ -2562,7 +2764,7 @@ const TattingDesigner = () => {
   // Copy selected elements to clipboard
   const copySelected = () => {
     if (selectedIds.length > 0) {
-      const selectedElements = elements.filter(el => selectedIds.includes(el.id));
+      const selectedElements = elements.filter(el => selectedIdSet.has(el.id));
       const cloned = JSON.parse(JSON.stringify(selectedElements)); // Deep clone
       setClipboard(cloned);
     }
@@ -2571,16 +2773,16 @@ const TattingDesigner = () => {
   // Cut selected elements (normal mode): copy to clipboard then delete.
   const cutSelected = () => {
     if (selectedIds.length === 0) return;
-    const selectedElements = elements.filter(el => selectedIds.includes(el.id));
+    const selectedElements = elements.filter(el => selectedIdSet.has(el.id));
     setClipboard(JSON.parse(JSON.stringify(selectedElements)));
-    setElements(prev => prev.filter(e => !selectedIds.includes(e.id)));
+    setElements(prev => prev.filter(e => !selectedIdSet.has(e.id)));
     setSelectedIds([]);
   };
 
   // Paste elements from clipboard with offset — canonical paste implementation.
   // Ctrl+V keyboard shortcut calls this directly so behaviour is always identical.
   const pasteFromClipboard = useCallback(() => {
-    const currentClipboard = clipboard;
+    const currentClipboard = clipboardRef.current;
     if (currentClipboard.length === 0) return;
 
     const offset = 30;
@@ -2644,7 +2846,7 @@ const TattingDesigner = () => {
     setElements(prev => [...prev, ...newElements]);
     setPicotConnections(prev => [...prev, ...newConnections]);
     setSelectedIds(newElements.map(el => el.id));
-  }, [clipboard]); // clipboard from state; picotConnections read via ref (always current)
+  }, []); // clipboard read via ref (always current); picotConnections read via ref
 
   // Duplicate in place (no offset) - for creating flower patterns
   const duplicateInPlace = () => {
@@ -2680,10 +2882,161 @@ const TattingDesigner = () => {
     setSelectedIds(newElements.map(el => el.id));
   };
 
+  const bringToFront = useCallback(() => {
+    const ids = new Set(selectedIdsRef.current);
+    if (ids.size === 0) return;
+    setElements(prev => {
+      const rest = prev.filter(e => !ids.has(e.id));
+      const sel  = prev.filter(e =>  ids.has(e.id)); // preserve relative order
+      return [...rest, ...sel];
+    });
+  }, []);
+
+  const sendToBack = useCallback(() => {
+    const ids = new Set(selectedIdsRef.current);
+    if (ids.size === 0) return;
+    setElements(prev => {
+      const rest = prev.filter(e => !ids.has(e.id));
+      const sel  = prev.filter(e =>  ids.has(e.id));
+      return [...sel, ...rest];
+    });
+  }, []);
+
+  // Convert a ghost array to real elements (called after confirmation)
+  const convertGhostArray = (array: any) => {
+    // Find ghosts by sourceId (ghostIds may be stale after undo)
+    const currentGhosts = elements.filter(e => e.type === 'ghost' && e.sourceId === array.sourceId);
+    const sourceEl = elementById.get(array.sourceId);
+    const newIds: string[] = [];
+    const oldToNewId = new Map<string, string>();
+
+    setElements(prev => {
+      const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId));
+      const realElements = currentGhosts.map(ghost => {
+        const newEl = JSON.parse(JSON.stringify(ghost));
+        oldToNewId.set(ghost.id, newEl.id);
+        newEl.type = sourceEl?.type || newEl.type;
+        delete newEl.sourceId;
+        delete newEl.isBoundary;
+        delete newEl.isGhostMother;
+        delete newEl.ghostArrayIds;
+        newIds.push(newEl.id);
+        return newEl;
+      });
+      return [...withoutGhosts, ...realElements];
+    });
+
+    // Update picotConnections: replace old ghost IDs with new real element IDs
+    setPicotConnections(prev => prev.map(conn => ({
+      ...conn,
+      picots: conn.picots.map(p => ({
+        ...p,
+        elementId: oldToNewId.get(p.elementId) || p.elementId,
+      })),
+    })));
+
+    setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+    setSelectedIds(sourceEl ? [sourceEl.id, ...newIds] : [...newIds]);
+    setConvertConfirm(null);
+  };
+
+  // ── Pure helper: create one polar array instance ──
+  // Designed to be extracted to src/geometry/ later.
+  // Returns a new element (ghost or real) placed at position i in the array.
+  const createPolarInstance = (
+    sourceEl: any,
+    index: number,
+    pivotX: number,
+    pivotY: number,
+    count: number,
+    fillAngle: number,
+    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string>; polarGridId?: string }
+  ) => {
+    const stepDeg = fillAngle / count;
+    const angleDeg = stepDeg * index;
+    const rad = angleDeg * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const asGhost = options?.asGhost ?? false;
+
+    // Rotate center around pivot
+    const newCx = pivotX + (sourceEl.center.x - pivotX) * cos - (sourceEl.center.y - pivotY) * sin;
+    const newCy = pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos;
+
+    if (asGhost) {
+      // Build ghost element with transformed paths and copied picots
+      return {
+        id: generateId(),
+        type: 'ghost' as const,
+        sourceId: options?.sourceId || sourceEl.id,
+        isBoundary: options?.isBoundary ?? false,
+        center: { x: newCx, y: newCy },
+        paths: sourceEl.paths ? sourceEl.paths.map((p: any) => {
+          const rotPt = (px: number, py: number) => {
+            const rx = px - pivotX, ry = py - pivotY;
+            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+          };
+          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+          if (p.type === 'cubic') {
+            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+          } else {
+            const c = rotPt(p.controlX, p.controlY);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+          }
+        }) : [],
+        picots: sourceEl.picots ? JSON.parse(JSON.stringify(sourceEl.picots)) : [],
+        rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
+        // Properties needed for rendering and picot position calculation
+        isClosed: sourceEl.isClosed,
+        shapeStyle: sourceEl.shapeStyle,
+        stitchCount: sourceEl.stitchCount,
+        picotSideMultiplier: sourceEl.picotSideMultiplier,
+        color: sourceEl.color,
+        materialId: sourceEl.materialId,
+        materialIdB: sourceEl.materialIdB,
+        isSplitRing: sourceEl.isSplitRing,
+        splitPosition: sourceEl.splitPosition,
+        lineWidth: sourceEl.lineWidth,
+      };
+    } else {
+      // Build real copy element
+      const newEl = JSON.parse(JSON.stringify(sourceEl));
+      newEl.id = generateId();
+      delete newEl.orderNumber;
+      if (sourceEl.groupId && options?.groupIdMap) {
+        newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
+      }
+      if (options?.polarGridId) newEl.polarRotationGridId = options.polarGridId;
+
+      newEl.center = { x: newCx, y: newCy };
+      newEl.rotation = ((sourceEl.rotation || 0) + angleDeg) % 360;
+
+      if (newEl.paths) {
+        newEl.paths = newEl.paths.map((p: any) => {
+          const rotPt = (px: number, py: number) => {
+            const rx = px - pivotX, ry = py - pivotY;
+            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+          };
+          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+          if (p.type === 'cubic') {
+            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+          } else {
+            const c = rotPt(p.controlX, p.controlY);
+            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+          }
+        });
+      }
+
+      return newEl;
+    }
+  };
+
   // Polar Array — duplicate selected elements N times evenly around a pivot point.
   // count = total copies INCLUDING the original. fillAngle = arc to fill (360 = full circle).
-  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null) => {
-    const currentSelectedIds = selectedIdsRef.current;
+  const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false, sourceIds?: string[]) => {
+    const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
 
@@ -2700,65 +3053,47 @@ const TattingDesigner = () => {
       pivotY = selectedEls.reduce((s, e) => s + e.center.y, 0) / selectedEls.length;
     }
 
-    const stepDeg = fillAngle / count;
     const newElements = [];
+    const newGhostIds: string[] = [];
+    const boundaryGhostIds: string[] = [];
+
+    // Mark source elements as mothers
+    if (createGhosts) {
+      setElements(prev => prev.map(el =>
+        currentSelectedIds.includes(el.id)
+          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), `polar_${Date.now()}`] }
+          : el
+      ));
+    }
+
+    // Build groupId mapping once for all instances
+    const groupIdMap = new Map<string, string>();
+    selectedEls.forEach(el => {
+      if (el.groupId && !groupIdMap.has(el.groupId)) {
+        groupIdMap.set(el.groupId, generateId());
+      }
+    });
+
+    const polarGridId = (pivotId && pivotId !== 'selection') ? pivotId : undefined;
 
     // Start from copy #1 (original stays as-is), generate copies 1..count-1
     for (let i = 1; i < count; i++) {
-      const angleDeg = stepDeg * i;
-      const rad = angleDeg * Math.PI / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-
-      // Build groupId mapping so each copy's group integrity is preserved
-      const groupIdMap = new Map<string, string>();
-      selectedEls.forEach(el => {
-        if (el.groupId && !groupIdMap.has(el.groupId)) {
-          groupIdMap.set(el.groupId, generateId());
-        }
-      });
+      const isBoundary = (i === 1 || i === count - 1);
 
       selectedEls.forEach(el => {
-        const newEl = JSON.parse(JSON.stringify(el));
-        newEl.id = generateId();
-        delete newEl.orderNumber;
-
-        // Remap group id
-        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-
-        // Link to the chosen polar grid
-        if (pivotId && pivotId !== 'selection') newEl.polarRotationGridId = pivotId;
-
-        // Rotate center around pivot
-        const dx = el.center.x - pivotX;
-        const dy = el.center.y - pivotY;
-        newEl.center = {
-          x: pivotX + dx * cos - dy * sin,
-          y: pivotY + dx * sin + dy * cos,
-        };
-
-        // Rotate element's own rotation angle
-        newEl.rotation = ((el.rotation || 0) + angleDeg) % 360;
-
-        // Rotate path control points if present
-        if (newEl.paths) {
-          newEl.paths = newEl.paths.map(p => {
-            const rotPt = (px, py) => {
-              const rx = px - pivotX, ry = py - pivotY;
-              return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-            };
-            const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-            if (p.type === 'cubic') {
-              const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-            } else {
-              const c = rotPt(p.controlX, p.controlY);
-              return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-            }
-          });
-        }
+        const newEl = createPolarInstance(el, i, pivotX, pivotY, count, fillAngle, {
+          asGhost: createGhosts,
+          sourceId: createGhosts ? el.id : undefined,
+          isBoundary: createGhosts ? isBoundary : undefined,
+          groupIdMap,
+          polarGridId,
+        });
 
         newElements.push(newEl);
+        if (createGhosts) {
+          newGhostIds.push(newEl.id);
+          if (isBoundary) boundaryGhostIds.push(newEl.id);
+        }
       });
     }
 
@@ -2772,96 +3107,243 @@ const TattingDesigner = () => {
       setElements(prev => [...prev, ...newElements]);
     }
 
-    // Select all — originals + new copies
-    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+    // After ghost creation, only select the mother element(s) — ghosts are non-interactive
+    setSelectedIds([...currentSelectedIds]);
+
+    // Save ghost array metadata for Update functionality
+    if (createGhosts && newGhostIds.length > 0) {
+      const arrayId = `polar_${Date.now()}`;
+      setGhostArrays(prev => [...prev, {
+        id: arrayId,
+        name: `Polar Array ${prev.length + 1}`,
+        type: 'polar',
+        sourceId: currentSelectedIds[0],
+        instanceCount: count,
+        angle: fillAngle,
+        spacing: 0,
+        rotStep: 0,
+        pivotId: pivotId || undefined,
+        ghostIds: newGhostIds,
+        boundaryIds: boundaryGhostIds,
+        inheritedJoins: [],
+      }]);
+    }
   };
 
   // Linear Array — duplicate N times along a direction with optional per-step rotation.
   // Helper: rotate an element's baked path points around a center by deltaDeg degrees.
   // For split rings and teardrops, regenerates paths from scratch then applies absolute rotation.
-  // Returns new paths array.
+  // Returns new paths array — delegates to rotatePaths for all cases.
   const rotatePathsAroundCenter = (paths, cx: number, cy: number, deltaDeg: number, el?: any, absoluteRot?: number) => {
     if (!paths || deltaDeg === 0) return paths;
-    // For split rings: regenerate at new center with absolute rotation
     if (el?.isSplitRing && el?.splitPosition !== undefined && absoluteRot !== undefined) {
-      const pathData = createSplitRingPath(cx, cy, el.stitchCount * dsWidth, el.splitPosition, el.stitchCount - el.splitPosition, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-      const r = absoluteRot * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-      const rot = (px, py) => { const dx = px - cx, dy = py - cy; return { x: cx + dx*rc - dy*rs, y: cy + dx*rs + dy*rc }; };
-      return pathData.paths.map(p => { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c1 = rot(p.control1X, p.control1Y), c2 = rot(p.control2X, p.control2Y); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; });
+      const mockEl = { ...el, center: { x: cx, y: cy }, rotation: absoluteRot };
+      return applyRotationToPathData(mockEl, createSplitRingPathFromEl(mockEl)).paths;
     }
-    // For teardrops: regenerate at new center with absolute rotation
     if (el?.type === 'ring' && (el?.shapeStyle === 'teardrop' || (el?.squeeze !== undefined && el?.squeeze > 0)) && absoluteRot !== undefined) {
-      const pathData = createTeardropPath(cx, cy, el.stitchCount * dsWidth, el.squeeze ?? 0);
-      const r = absoluteRot * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-      const rot = (px, py) => { const dx = px - cx, dy = py - cy; return { x: cx + dx*rc - dy*rs, y: cy + dx*rs + dy*rc }; };
-      return pathData.paths.map(p => {
-        if (p.type === 'cubic') { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c1 = rot(p.control1X, p.control1Y), c2 = rot(p.control2X, p.control2Y); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; }
-        else { const s = rot(p.x, p.y), e2 = rot(p.endX, p.endY), c = rot(p.controlX, p.controlY); return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y }; }
-      });
+      const mockEl = { ...el, center: { x: cx, y: cy }, rotation: absoluteRot };
+      return applyRotationToPathData(mockEl, createTeardropPath(cx, cy, el.stitchCount * dsWidth, el.squeeze ?? 0)).paths;
     }
-    // Chains, circle rings, lines: rotate baked path points by delta around cx/cy
-    const rad = deltaDeg * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    const rotPt = (px, py) => {
-      const dx = px - cx, dy = py - cy;
-      return { x: cx + dx*cos - dy*sin, y: cy + dx*sin + dy*cos };
-    };
-    return paths.map(p => {
-      if (p.type === 'cubic') {
-        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-        const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-      } else {
-        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY), c = rotPt(p.controlX, p.controlY);
-        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-      }
-    });
+    return rotatePaths(paths, cx, cy, deltaDeg);
   };
 
-  const executeLinearArray = (count: number, angleDeg: number, spacing: number, rotStep: number) => {
-    const currentSelectedIds = selectedIdsRef.current;
+  // ── Pure helper: calculate bounding box from actual path curves ──
+  // Samples bezier curves (not control-point hull) and excludes picots.
+  // For elements without paths, falls back to center position.
+  // If angleDeg is provided, elementSize is projected along that direction.
+  // Designed to be extracted to src/geometry/ later.
+  const calculatePathBbox = (els: any[], angleDeg?: number) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasPaths = false;
+
+    els.forEach(el => {
+      if (el.paths && el.paths.length > 0) {
+        el.paths.forEach(p => {
+          const samples = sampleBezierPath(p, 20);
+          samples.forEach(pt => {
+            minX = Math.min(minX, pt.x);
+            minY = Math.min(minY, pt.y);
+            maxX = Math.max(maxX, pt.x);
+            maxY = Math.max(maxY, pt.y);
+          });
+        });
+        hasPaths = true;
+      } else {
+        // Fallback: element with no paths — use center
+        minX = Math.min(minX, el.center.x);
+        minY = Math.min(minY, el.center.y);
+        maxX = Math.max(maxX, el.center.x);
+        maxY = Math.max(maxY, el.center.y);
+      }
+    });
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    let elementSize: number;
+    if (angleDeg !== undefined) {
+      // Project bounding box extent onto the array direction vector
+      const rad = angleDeg * Math.PI / 180;
+      elementSize = Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad));
+    } else {
+      // Use the larger dimension (fallback)
+      elementSize = hasPaths ? Math.max(width, height, 1) : 1;
+    }
+    return { minX, minY, maxX, maxY, elementSize };
+  };
+
+  // ── Pure helper: calculate bounding box for a set of elements ──
+  // Uses control-point hull (fast but overestimates). Kept for backward compatibility.
+  const calculateBbox = (els: any[]) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    els.forEach(el => {
+      if (el.paths && el.paths.length > 0) {
+        el.paths.forEach(p => {
+          minX = Math.min(minX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
+          maxX = Math.max(maxX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
+          minY = Math.min(minY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
+          maxY = Math.max(maxY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
+        });
+      } else {
+        minX = Math.min(minX, el.center.x);
+        maxX = Math.max(maxX, el.center.x);
+        minY = Math.min(minY, el.center.y);
+        maxY = Math.max(maxY, el.center.y);
+      }
+    });
+    return { minX, minY, maxX, maxY, elementSize: Math.max(maxX - minX, maxY - minY, 1) };
+  };
+
+  // ── Pure helper: create one linear array instance ──
+  // Designed to be extracted to src/geometry/ later.
+  // Returns a new element (ghost or real) placed at position i in the array.
+  const createLinearInstance = (
+    sourceEl: any,
+    index: number,
+    dx: number,
+    dy: number,
+    rotStep: number,
+    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string> }
+  ) => {
+    const offsetX = dx * index;
+    const offsetY = dy * index;
+    const extraRot = rotStep * index;
+    const asGhost = options?.asGhost ?? false;
+
+    const newEl = JSON.parse(JSON.stringify(sourceEl));
+    newEl.id = generateId();
+    delete newEl.orderNumber;
+    if (sourceEl.groupId && options?.groupIdMap) {
+      newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
+    }
+
+    const newCx = sourceEl.center.x + offsetX;
+    const newCy = sourceEl.center.y + offsetY;
+    newEl.center = { x: newCx, y: newCy };
+
+    // Translate paths to new position
+    if (newEl.paths) {
+      newEl.paths = newEl.paths.map((p: any) => {
+        if (p.type === 'cubic') {
+          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
+        } else {
+          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
+        }
+      });
+    }
+
+    // Rotate paths around the new center
+    if (extraRot !== 0) {
+      const newAbsRot = ((sourceEl.rotation || 0) + extraRot + 360) % 360;
+      newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, sourceEl, newAbsRot);
+      newEl.rotation = newAbsRot;
+    }
+
+    // Convert to ghost if requested
+    if (asGhost) {
+      newEl.type = 'ghost';
+      newEl.sourceId = options?.sourceId || sourceEl.id;
+      newEl.isBoundary = options?.isBoundary ?? false;
+      delete newEl.isGhostMother;
+      delete newEl.ghostArrayIds;
+    }
+
+    return newEl;
+  };
+
+  const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false, sourceIds?: string[]) => {
+    const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
     const currentElements = elementsRef.current;
     if (currentSelectedIds.length === 0 || count < 2) return;
     const selectedEls = currentElements.filter(e => currentSelectedIds.includes(e.id));
+
+    // Calculate bounding box and element size projected along array direction
+    const { elementSize } = calculatePathBbox(selectedEls, angleDeg);
+
+    // Center-to-center distance: 100% = just touching, 200% = 1 element gap
+    const spacing = elementSize * spacingPercent / 100;
+
     const rad = angleDeg * Math.PI / 180;
     const dx = Math.cos(rad) * spacing;
     const dy = Math.sin(rad) * spacing;
     const newElements = [];
+    const newGhostIds: string[] = [];
+    const boundaryGhostIds: string[] = [];
+
+    // Mark source elements as mothers
+    if (createGhosts) {
+      const arrayId = `linear_${Date.now()}`;
+      setElements(prev => prev.map(el =>
+        currentSelectedIds.includes(el.id)
+          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), arrayId] }
+          : el
+      ));
+    }
+
+    // Build groupId map once for all instances
+    const groupIdMap = new Map<string, string>();
+    selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+
     for (let i = 1; i < count; i++) {
-      const offsetX = dx * i;
-      const offsetY = dy * i;
-      const extraRot = rotStep * i;
-      const groupIdMap = new Map<string, string>();
-      selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+      const isBoundary = (i === count - 1); // Last element is boundary for linear
+
       selectedEls.forEach(el => {
-        const newEl = JSON.parse(JSON.stringify(el));
-        newEl.id = generateId();
-        delete newEl.orderNumber;
-        if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
-        const newCx = el.center.x + offsetX;
-        const newCy = el.center.y + offsetY;
-        newEl.center = { x: newCx, y: newCy };
-        // Translate paths to new position first
-        if (newEl.paths) {
-          newEl.paths = newEl.paths.map(p => {
-            if (p.type === 'cubic') {
-              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-            } else {
-              return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-            }
-          });
-        }
-        // Then rotate paths around the new center and update rotation field
-        if (extraRot !== 0) {
-          const newAbsRot = ((el.rotation || 0) + extraRot + 360) % 360;
-          newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, el, newAbsRot);
-          newEl.rotation = newAbsRot;
-        }
+        const newEl = createLinearInstance(el, i, dx, dy, rotStep, {
+          asGhost: createGhosts,
+          sourceId: createGhosts ? el.id : undefined,
+          isBoundary: createGhosts ? isBoundary : undefined,
+          groupIdMap,
+        });
+
         newElements.push(newEl);
+        if (createGhosts) {
+          newGhostIds.push(newEl.id);
+          if (isBoundary) boundaryGhostIds.push(newEl.id);
+        }
       });
     }
     setElements(prev => [...prev, ...newElements]);
-    setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
+    // After ghost creation, only select the mother element(s) — ghosts are non-interactive
+    setSelectedIds([...currentSelectedIds]);
+
+    // Save ghost array metadata for Update functionality
+    if (createGhosts && newGhostIds.length > 0) {
+      const arrayId = `linear_${Date.now()}`;
+      setGhostArrays(prev => [...prev, {
+        id: arrayId,
+        name: `Linear Array ${prev.length + 1}`,
+        type: 'linear',
+        sourceId: currentSelectedIds[0],
+        instanceCount: count,
+        angle: angleDeg,
+        spacing: spacingPercent,
+        elementSize: elementSize,
+        rotStep: rotStep,
+        ghostIds: newGhostIds,
+        boundaryIds: boundaryGhostIds,
+        inheritedJoins: [],
+      }]);
+    }
   };
 
   // Spiral Array — place copies along an Archimedean or geometric spiral around a pivot.
@@ -2959,12 +3441,16 @@ const TattingDesigner = () => {
     return ORDER_GROUP_COLORS[idx >= 0 ? (idx + 1) % ORDER_GROUP_COLORS.length : 1];
   };
 
+  // Predicate: does element e belong to the currently active order scope?
+  // Ungrouped scope (activeOrderGroupId === null) → elements with no orderGroup.
+  // Group scope → elements whose orderGroup matches the active group id.
+  const inActiveGroup = (e: any) =>
+    activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId;
+
   const getNextAvailableNumber = (): number => {
     const used = new Set(
       elements
-        .filter(e => activeOrderGroupId === null
-          ? (!e.orderGroup)           // ungrouped scope
-          : e.orderGroup === activeOrderGroupId) // group scope
+        .filter(inActiveGroup)
         .map(e => e.orderNumber)
         .filter(n => n !== null && n !== undefined && String(n).trim() !== '')
         .map(n => parseInt(String(n), 10))
@@ -2979,7 +3465,7 @@ const TattingDesigner = () => {
     const existingEl = elements.find(
       e => e.id !== targetElId &&
         parseInt(String(e.orderNumber), 10) === num &&
-        (activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId)
+        inActiveGroup(e)
     );
     if (existingEl) {
       setTattingOrderConflict({ newNum: num, existingElId: existingEl.id, targetElId });
@@ -3000,7 +3486,7 @@ const TattingDesigner = () => {
     const { newNum, existingElId, targetElId } = tattingOrderConflict;
     let newEls = elements;
     if (action === 'swap') {
-      const targetEl = elements.find(e => e.id === targetElId);
+      const targetEl = elementById.get(targetElId);
       const oldNum = targetEl?.orderNumber ?? null;
       newEls = elements.map(e => {
         if (e.id === targetElId) return { ...e, orderNumber: newNum };
@@ -3011,9 +3497,8 @@ const TattingDesigner = () => {
     } else if (action === 'shift') {
       newEls = elements.map(e => {
         if (e.id === targetElId) return { ...e, orderNumber: newNum, orderGroup: activeOrderGroupId ?? undefined };
-        const sameGroup = activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId;
         const n = parseInt(String(e.orderNumber), 10);
-        if (sameGroup && !isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
+        if (inActiveGroup(e) && !isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
         return e;
       });
       setElements(newEls);
@@ -3032,15 +3517,34 @@ const TattingDesigner = () => {
     pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
   };
 
+  // Shared commit logic for the order-number input (used in two prop-bar render sites).
+  // Parses the draft, assigns or clears the order number, then resets the draft state.
+  // Pass inputEl to also blur the field (needed on Enter; omit on blur to avoid recursion).
+  const commitOrderDraft = (elementId: string, draft: string | null, inputEl?: HTMLInputElement) => {
+    if (draft === null) return;
+    const n = parseInt(draft, 10);
+    if (!isNaN(n) && n > 0) {
+      assignOrderNumber(elementId, n);
+    } else if (draft.trim() === '') {
+      setElements(prev => prev.map(el => el.id === elementId ? { ...el, orderNumber: null } : el));
+      pushOrderHistory();
+    }
+    setPropBarOrderDraft(null);
+    inputEl?.blur();
+  };
+
   // New canvas - confirm if there are elements
   const newCanvas = () => {
-    // Show warning if canvas has content or has been modified (history > initial state)
     if (elements.length === 0 && historyIndex === 0) return;
-    setShowNewCanvasDialog(true);
+    setConfirmDialog({
+      title: t('newCanvasTitle'),
+      message: t('newCanvasBody'),
+      confirmLabel: t('newCanvasConfirm'),
+      onConfirm: confirmNewCanvas,
+    });
   };
 
   const confirmNewCanvas = () => {
-    setShowNewCanvasDialog(false);
     setElements([]);
     setSelectedIds([]);
     setClipboard([]);
@@ -3060,41 +3564,33 @@ const TattingDesigner = () => {
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
 
-  // Generate a compact SVG thumbnail from elements (paths only, no labels/picots).
-  // generateThumbnail and addToRecents imported from ./tauri/file
-  // Thin wrapper to bind dsWidth from component state
-  const thumbnail = (els) => generateThumbnail(els, dsWidth);
-
   // Build the project data object (shared by save and autosave)
-  const buildProjectData = useCallback((finalName: string) => ({
-    version: 90,
-    name: finalName,
-    created: new Date().toISOString(),
-    elements,
-    picotConnections,
-    camera,
-    zoom,
-    dsWidth,
-    beadLibrary,
-    polarGrids,
-    selectedPolarGridId,
-    bgColor,
-    gridEnabled,
-    customColors,
-    referenceImage,
-    refImageProps,
-    renderMode,
-    patternNotes,
-    materials,
-    orderGroups,
-    activeThreadPreset: threadPresets.find(p => p.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET,
-  }), [elements, picotConnections, camera, zoom, dsWidth, beadLibrary, polarGrids, selectedPolarGridId, bgColor, gridEnabled, customColors, referenceImage, refImageProps, renderMode, patternNotes, materials, orderGroups, threadPresets, activePresetId]);
+  const buildProjectData = useCallback((finalName: string) =>
+    serializeProject({
+      name: finalName,
+      elements, picotConnections, camera, zoom, dsWidth,
+      bgColor, gridEnabled, customColors, referenceImage, refImageProps,
+      renderMode, patternNotes, materials, orderGroups, beadLibrary,
+      polarGrids, selectedPolarGridId, threadPresets, activePresetId,
+    }),
+    [elements, picotConnections, camera, zoom, dsWidth, bgColor, gridEnabled,
+     customColors, referenceImage, refImageProps, renderMode, patternNotes,
+     materials, orderGroups, beadLibrary, polarGrids, selectedPolarGridId,
+     threadPresets, activePresetId]
+  );
+
+  // Ref updated every render so autosave always calls the latest closure
+  // without needing refs for every individual state value.
+  const buildProjectDataRef = useRef(buildProjectData);
+  useEffect(() => { buildProjectDataRef.current = buildProjectData; });
 
   // Write to a known path — no dialog, used for Ctrl+S when file already exists
   const saveToPath = useCallback(async (filePath: string, finalName: string) => {
     await writeProjectFile(filePath, buildProjectData(finalName));
-    const thumb = thumbnail(elements);
-    addToRecents(finalName, filePath, thumb);
+    // Name shown in recents always derived from the actual filename — never from projectName state
+    const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? finalName;
+    const thumbPath = await generateThumbnailPng(elements, dsWidth, filePath);
+    addToRecents(displayName, filePath, thumbPath);
     setLastSavedHistoryIndex(historyIndexRef.current);
   }, [buildProjectData, elements, dsWidth]);
 
@@ -3127,7 +3623,7 @@ const TattingDesigner = () => {
   }, [performSave]);
 
   // Shared project data applier — used by both loadProject and recent-project quick-load
-  const applyProjectData = useCallback((projectData: any, filePath: string) => {
+  const applyProjectData = useCallback(async (projectData: any, filePath: string) => {
     // Validate it's a tatting project
     if (!projectData.elements || !Array.isArray(projectData.elements)) {
       showLoadMsg('error', t('loadErrMissingElements'));
@@ -3154,11 +3650,32 @@ const TattingDesigner = () => {
     }
 
     // Migrate legacy labelsInside → labelOffset
-    setElements((projectData.elements || []).map((el: any) =>
-      'labelsInside' in el && !('labelOffset' in el)
+    // Also clear isJoint:true on any picot with no corresponding entry in picotConnections
+    // (old files may have manually-declared JPs that were never connected)
+    const loadedConns: any[] = projectData.picotConnections || [];
+    const connectedPicotKeys = new Set(
+      loadedConns.flatMap((conn: any) =>
+        (conn.picots || []).map((cp: any) => `${cp.elementId}::${cp.picotId}`)
+      )
+    );
+    setElements((projectData.elements || []).map((el: any) => {
+      // Legacy labelsInside migration
+      let migrated = 'labelsInside' in el && !('labelOffset' in el)
         ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
-        : el
-    ));
+        : el;
+      // Clear stale isJoint flags
+      if (migrated.picots?.some((p: any) => p.isJoint && !connectedPicotKeys.has(`${migrated.id}::${p.id}`))) {
+        migrated = {
+          ...migrated,
+          picots: migrated.picots.map((p: any) =>
+            p.isJoint && !connectedPicotKeys.has(`${migrated.id}::${p.id}`)
+              ? { ...p, isJoint: false }
+              : p
+          ),
+        };
+      }
+      return migrated;
+    }));
     setPicotConnections(projectData.picotConnections || []);
     setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
     setZoom(projectData.zoom || 1);
@@ -3200,17 +3717,21 @@ const TattingDesigner = () => {
     const count = (projectData.elements || []).length;
     setTimeout(() => showLoadMsg('success', t('loadSuccess').replace('{n}', String(count))), 50);
 
-    const thumb = generateThumbnail(projectData.elements || [], projectData.dsWidth || 10);
-    addToRecents(projectData.name || 'Project', filePath, thumb);
-  }, []);
+    const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? projectData.name ?? 'Project';
+    const thumbPath = await generateThumbnailPng(projectData.elements || [], projectData.dsWidth || 10, filePath);
+    addToRecents(displayName, filePath, thumbPath);
+  }, [t]);
 
   // Load directly from a known path — used by recent project cards (no OS dialog)
   const loadFromPath = useCallback(async (filePath: string) => {
+    if (!filePath) {
+      showLoadMsg('error', t('loadErrFileNotFound'));
+      return;
+    }
     try {
       const projectData = await readProjectFile(filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
-      // Likely moved or deleted — give a friendly message
       const isNotFound = error.message?.toLowerCase().includes('not found') ||
                          error.message?.toLowerCase().includes('no such file') ||
                          error.code === 'NOT_FOUND';
@@ -3220,7 +3741,7 @@ const TattingDesigner = () => {
         showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
       }
     }
-  }, [applyProjectData]);
+  }, [applyProjectData, t]);
 
   // Load project — native OS open dialog (Browse button only)
   const loadProject = useCallback(async () => {
@@ -3232,7 +3753,7 @@ const TattingDesigner = () => {
     } catch (error: any) {
       showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
     }
-  }, [applyProjectData]);
+  }, [applyProjectData, t]);
 
   // Load a theme JSON file and merge it over the default (unknown keys are ignored)
   const loadTheme = (e) => {
@@ -4042,45 +4563,349 @@ const TattingDesigner = () => {
 
   // Export as PNG
 
-  // Join selected joint picots with a connection
+  // Join selected picots with a connection.
+  // Uses refs internally so it can be safely called from keyboard handlers.
   const joinSelectedPicots = useCallback(() => {
-    if (selectedPicots.length < 2) {
-      return;
-    }
+    const sel = selectedPicotsRef.current;
+    if (sel.length < 2) return;
 
     // First selected picot's element donates the material to the connection
-    const firstEl = elementById.get(selectedPicots[0].elementId);
+    const firstEl = elementById.get(sel[0].elementId);
     const connMaterialId = firstEl?.materialId || 'default';
 
-    // Create a new connection
     const connection = {
       id: generateId(),
-      picots: [...selectedPicots], // Array of {elementId, picotId}
+      picots: [...sel],
       materialId: connMaterialId,
     };
-    
+
     const newConns = [...picotConnectionsRef.current, connection];
     setPicotConnections(newConns);
-    setSelectedPicots([]); // Clear selection after joining
-    pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
-  }, [selectedPicots, elementById]);
+    picotConnectionsRef.current = newConns;
 
-  // Break connections for selected joint picots
-  const breakSelectedPicots = useCallback(() => {
-    if (selectedPicots.length === 0) {
-      return;
-    }
-    
-    // Remove any connections that include any of the selected picots
-    const newConns = picotConnectionsRef.current.filter(conn => {
-      return !conn.picots.some(p => 
-        selectedPicots.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId)
+    // Auto-promote all selected picots to isJoint: true
+    const jointSet = new Set(sel.map(sp => `${sp.elementId}::${sp.picotId}`));
+    let newEls = elementsRef.current.map(el => {
+      if (!el.picots) return el;
+      const updated = el.picots.map(p =>
+        jointSet.has(`${el.id}::${p.id}`) && !p.isJoint ? { ...p, isJoint: true } : p
       );
+      return updated === el.picots ? el : { ...el, picots: updated };
     });
+
+    // Mirror isJoint:true to sibling boundary ghosts by picot index.
+    // For each directly-promoted picot, find its index in its element's picots array,
+    // then set isJoint:true on the same index in every boundary ghost of the same array.
+    const mirrorSet: Array<{ arrayId: string; picotIndex: number }> = [];
+    for (const sp of sel) {
+      const el = newEls.find(e => e.id === sp.elementId);
+      if (!el) continue;
+      const picotIdx = el.picots?.findIndex(p => p.id === sp.picotId) ?? -1;
+      if (picotIdx < 0) continue;
+      // Check if this element is the source or a boundary ghost of any array
+      const arr = ghostArrays.find(a =>
+        a.sourceId === el.id || a.boundaryIds?.includes(el.id)
+      );
+      if (!arr) continue;
+      mirrorSet.push({ arrayId: arr.id, picotIndex: picotIdx });
+    }
+    if (mirrorSet.length > 0) {
+      newEls = newEls.map(el => {
+        if (el.type !== 'ghost' || !el.isBoundary || !el.picots) return el;
+        const arr = ghostArrays.find(a => a.boundaryIds?.includes(el.id));
+        if (!arr) return el;
+        const indicesToMirror = mirrorSet
+          .filter(m => m.arrayId === arr.id)
+          .map(m => m.picotIndex);
+        if (indicesToMirror.length === 0) return el;
+        const updated = el.picots.map((p, idx) =>
+          indicesToMirror.includes(idx) && !p.isJoint ? { ...p, isJoint: true } : p
+        );
+        return updated === el.picots ? el : { ...el, picots: updated };
+      });
+    }
+    setElements(newEls);
+    elementsRef.current = newEls;
+
+    // Phase 2: Detect boundary ghost joins and store inherited join template
+    checkAndStoreInheritedJoin(sel, newEls);
+
+    setSelectedPicots([]);
+    pushHistoryState(newEls, newConns, orderGroupsRef.current);
+  }, [elementById]);
+
+  // Phase 2: Check if selected picots are from boundary ghosts (or source ring) of the same array
+  // If so, extract relative picot indices and create inherited join connections for ALL ghosts
+  const checkAndStoreInheritedJoin = (selPicots, currentElements) => {
+    if (selPicots.length < 2) return;
+
+    const el1 = currentElements.find(e => e.id === selPicots[0].elementId);
+    const el2 = currentElements.find(e => e.id === selPicots[1].elementId);
+
+    // Determine which is ghost and which is source/boundary
+    const ghostEl = el1?.type === 'ghost' ? el1 : el2?.type === 'ghost' ? el2 : null;
+    const otherEl = ghostEl === el1 ? el2 : el1;
+
+    if (!ghostEl || !otherEl) return;
+    if (!ghostEl.isBoundary) return;
+
+    // Find the ghost array that contains this boundary ghost
+    const matchingArray = ghostArrays.find(a =>
+      a.boundaryIds?.includes(ghostEl.id)
+    );
+    if (!matchingArray) return;
+
+    // The "other" element must be either the source element or another boundary ghost
+    const isSourceElement = otherEl.id === matchingArray.sourceId;
+    const isOtherBoundary = otherEl.type === 'ghost' && otherEl.isBoundary && matchingArray.boundaryIds?.includes(otherEl.id);
+    if (!isSourceElement && !isOtherBoundary) return;
+
+    // Find picot indices in each element's picots array
+    const ghostPicotIdx = ghostEl.picots?.findIndex(p => p.id === selPicots[ghostEl === el1 ? 0 : 1].picotId) ?? -1;
+    const otherPicotIdx = otherEl.picots?.findIndex(p => p.id === selPicots[otherEl === el1 ? 0 : 1].picotId) ?? -1;
+    if (ghostPicotIdx < 0 || otherPicotIdx < 0) return;
+
+    // Determine picot propagation pattern based on what was joined
+    let sourcePicotIndex, targetPicotIndex;
+
+    if (isSourceElement) {
+      // Source ring → boundary ghost: ghost[i]'s picot[ghostPicotIdx] connects to ghost[i-1]'s picot[otherPicotIdx]
+      sourcePicotIndex = ghostPicotIdx;
+      targetPicotIndex = otherPicotIdx;
+    } else {
+      // Boundary ghost → boundary ghost: use rotation to determine order
+      const isGhostEarlier = ghostEl.rotation < otherEl.rotation;
+      sourcePicotIndex = isGhostEarlier ? ghostPicotIdx : otherPicotIdx;
+      targetPicotIndex = isGhostEarlier ? otherPicotIdx : ghostPicotIdx;
+    }
+
+    // Check if this inherited join already exists
+    const alreadyExists = matchingArray.inheritedJoins?.some(
+      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex
+    );
+    if (alreadyExists) return;
+
+    // Get all ghosts in this array, sorted by rotation
+    const allGhosts = currentElements.filter(e => matchingArray.ghostIds?.includes(e.id));
+    const sortedGhosts = [...allGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0));
+    if (sortedGhosts.length < 2) return;
+
+    // Create picot connections for ALL inherited joins
+    const newInheritedConns = [];
+
+    if (isSourceElement) {
+      // Source → boundary: User joined mother.picot[otherPicotIdx] ← ghost[0].picot[ghostPicotIdx]
+      // Inherited pattern: ghost[i].picot[otherPicotIdx] → ghost[i+1].picot[ghostPicotIdx]
+      // Close loop: ghost[last].picot[otherPicotIdx] → mother.picot[ghostPicotIdx]
+      const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
+      if (!sourceEl) return;
+
+      const sendPicotIdx = otherPicotIdx;   // picot that sends (on current element)
+      const recvPicotIdx = ghostPicotIdx;   // picot that receives (on next element)
+
+      // Propagate forward: ghost[i] → ghost[i+1] for i = 0 to last-1
+      for (let i = 0; i < sortedGhosts.length - 1; i++) {
+        const ghost = sortedGhosts[i];
+        const nextGhost = sortedGhosts[i + 1];
+
+        const srcPicot = ghost.picots?.[sendPicotIdx];
+        const tgtPicot = nextGhost.picots?.[recvPicotIdx];
+        if (!srcPicot || !tgtPicot) continue;
+
+        const exists = picotConnectionsRef.current.some(conn =>
+          conn.picots.some(p => p.elementId === ghost.id && p.picotId === srcPicot.id) &&
+          conn.picots.some(p => p.elementId === nextGhost.id && p.picotId === tgtPicot.id)
+        );
+        if (exists) continue;
+
+        newInheritedConns.push({
+          id: generateId(),
+          picots: [
+            { elementId: ghost.id, picotId: srcPicot.id },
+            { elementId: nextGhost.id, picotId: tgtPicot.id },
+          ],
+          materialId: ghostEl.materialId || 'default',
+          isInheritedJoin: matchingArray.id,
+        });
+      }
+
+      // Close loop: last ghost → mother
+      const lastGhost = sortedGhosts[sortedGhosts.length - 1];
+      const srcPicotLast = lastGhost.picots?.[sendPicotIdx];
+      const tgtPicotLast = sourceEl.picots?.[recvPicotIdx];
+      if (srcPicotLast && tgtPicotLast) {
+        const exists = picotConnectionsRef.current.some(conn =>
+          conn.picots.some(p => p.elementId === lastGhost.id && p.picotId === srcPicotLast.id) &&
+          conn.picots.some(p => p.elementId === sourceEl.id && p.picotId === tgtPicotLast.id)
+        );
+        if (!exists) {
+          newInheritedConns.push({
+            id: generateId(),
+            picots: [
+              { elementId: lastGhost.id, picotId: srcPicotLast.id },
+              { elementId: sourceEl.id, picotId: tgtPicotLast.id },
+            ],
+            materialId: ghostEl.materialId || 'default',
+            isInheritedJoin: matchingArray.id,
+          });
+        }
+      }
+    } else {
+      // Boundary → boundary: wrap-around chain
+      for (let i = 0; i < sortedGhosts.length; i++) {
+        const ghost = sortedGhosts[i];
+        const prevIndex = (i - 1 + sortedGhosts.length) % sortedGhosts.length;
+        const prevGhost = sortedGhosts[prevIndex];
+
+        const srcPicot = ghost.picots?.[sourcePicotIndex];
+        const tgtPicot = prevGhost.picots?.[targetPicotIndex];
+        if (!srcPicot || !tgtPicot) continue;
+
+        const exists = picotConnectionsRef.current.some(conn =>
+          conn.picots.some(p => p.elementId === ghost.id && p.picotId === srcPicot.id) &&
+          conn.picots.some(p => p.elementId === prevGhost.id && p.picotId === tgtPicot.id)
+        );
+        if (exists) continue;
+
+        newInheritedConns.push({
+          id: generateId(),
+          picots: [
+            { elementId: ghost.id, picotId: srcPicot.id },
+            { elementId: prevGhost.id, picotId: tgtPicot.id },
+          ],
+          materialId: ghostEl.materialId || 'default',
+          isInheritedJoin: matchingArray.id,
+        });
+      }
+    }
+
+    // Update both picotConnections and inheritedJoins
+    const allNewConns = [...picotConnectionsRef.current, ...newInheritedConns];
+    setPicotConnections(allNewConns);
+    picotConnectionsRef.current = allNewConns;
+
+    // Promote isJoint:true on every ghost picot that just got an inherited connection
+    if (newInheritedConns.length > 0) {
+      const inheritedKeys = new Set(
+        newInheritedConns.flatMap(conn =>
+          conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
+        )
+      );
+      const updatedEls = currentElements.map(el => {
+        if (!el.picots) return el;
+        const updated = el.picots.map(p =>
+          inheritedKeys.has(`${el.id}::${p.id}`) && !p.isJoint
+            ? { ...p, isJoint: true }
+            : p
+        );
+        return updated === el.picots ? el : { ...el, picots: updated };
+      });
+      setElements(updatedEls);
+      elementsRef.current = updatedEls;
+    }
+
+    setGhostArrays(prev => prev.map(a =>
+      a.id === matchingArray.id
+        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex }] }
+        : a
+    ));
+  };
+
+  // Break connections for selected picots.
+  // Uses refs internally so it can be safely called from keyboard handlers.
+  const breakSelectedPicots = useCallback(() => {
+    const sel = selectedPicotsRef.current;
+    if (sel.length === 0) return;
+
+    // Phase 2: Remove inherited join templates if breaking boundary ghost picots
+    removeInheritedJoins(sel, elementsRef.current);
+
+    const newConns = picotConnectionsRef.current.filter(conn =>
+      !conn.picots.some(p => sel.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId))
+    );
     setPicotConnections(newConns);
-    setSelectedPicots([]); // Clear selection after breaking
-    pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
-  }, [selectedPicots]); // Dependency: selectedPicots for filtering
+
+    // Auto-demote picots with no remaining connections to isJoint: false
+    const brokenSet = new Set(sel.map(sp => `${sp.elementId}::${sp.picotId}`));
+    const stillConnected = new Set(newConns.flatMap(conn =>
+      conn.picots.map(p => `${p.elementId}::${p.picotId}`)
+    ));
+    const newEls = elementsRef.current.map(el => {
+      if (!el.picots) return el;
+      const updated = el.picots.map(p => {
+        const key = `${el.id}::${p.id}`;
+        return (brokenSet.has(key) && !stillConnected.has(key) && p.isJoint)
+          ? { ...p, isJoint: false }
+          : p;
+      });
+      return updated === el.picots ? el : { ...el, picots: updated };
+    });
+    setElements(newEls);
+
+    setSelectedPicots([]);
+    pushHistoryState(newEls, newConns, orderGroupsRef.current);
+  }, []);
+
+  // Phase 2: Remove inherited join connections and templates when breaking boundary ghost picots
+  const removeInheritedJoins = (selPicots, currentElements) => {
+    // Find which boundary ghosts have picots being broken
+    const affectedGhostIds = new Set<string>();
+    selPicots.forEach(sp => {
+      const el = currentElements.find(e => e.id === sp.elementId);
+      if (el?.type === 'ghost' && el.isBoundary) {
+        affectedGhostIds.add(el.id);
+      }
+    });
+    if (affectedGhostIds.size === 0) return;
+
+    // Remove inherited join connections from picotConnections
+    const newConns = picotConnectionsRef.current.filter(conn => {
+      for (const p of conn.picots) {
+        if (affectedGhostIds.has(p.elementId)) return false;
+      }
+      return true;
+    });
+
+    // Collect which picot keys are being removed from connections
+    const removedKeys = new Set<string>();
+    picotConnectionsRef.current.forEach(conn => {
+      const removing = conn.picots.some(p => affectedGhostIds.has(p.elementId));
+      if (removing) {
+        conn.picots.forEach(p => removedKeys.add(`${p.elementId}::${p.picotId}`));
+      }
+    });
+
+    // Keys that still appear in a surviving connection — don't clear those
+    const stillConnectedKeys = new Set<string>(
+      newConns.flatMap(conn => conn.picots.map(p => `${p.elementId}::${p.picotId}`))
+    );
+
+    if (newConns.length !== picotConnectionsRef.current.length) {
+      setPicotConnections(newConns);
+      picotConnectionsRef.current = newConns;
+
+      // Clear isJoint:false on any picot that lost its last connection
+      const updatedEls = currentElements.map(el => {
+        if (!el.picots) return el;
+        const updated = el.picots.map(p => {
+          const key = `${el.id}::${p.id}`;
+          return (removedKeys.has(key) && !stillConnectedKeys.has(key) && p.isJoint)
+            ? { ...p, isJoint: false }
+            : p;
+        });
+        return updated === el.picots ? el : { ...el, picots: updated };
+      });
+      setElements(updatedEls);
+      elementsRef.current = updatedEls;
+    }
+
+    // Find affected ghost arrays and remove inherited joins
+    setGhostArrays(prev => prev.map(a => {
+      const hasAffectedBoundary = a.boundaryIds?.some(bid => affectedGhostIds.has(bid));
+      if (!hasAffectedBoundary) return a;
+      return { ...a, inheritedJoins: [] };
+    }));
+  };
 
 
   const allColors = [...COLORS, ...customColors];
@@ -4096,6 +4921,9 @@ const TattingDesigner = () => {
   // Returns minimum distance from (worldX, worldY) to any sampled point on the element's paths.
   // Used for both hit-testing and tie-breaking between overlapping elements.
   const minPathDistance = (element, worldX, worldY) => {
+    // Ghost elements don't have paths and are not directly interactable
+    if (element.type === 'ghost' || !element.paths) return Infinity;
+    
     let minDist = Infinity;
     for (let path of element.paths) {
       const points = sampleBezierPath(path, 20);
@@ -4114,6 +4942,8 @@ const TattingDesigner = () => {
   // Find closest element by minimum path distance (works correctly for split rings and lines)
   const findClosestElement = (worldX, worldY, filterFn = null) => {
     const candidates = elements.filter(el => {
+      // Ghost elements are not directly interactable
+      if (el.type === 'ghost') return false;
       if (filterFn && !filterFn(el)) return false;
       return isPointInElement(el, worldX, worldY);
     });
@@ -4194,23 +5024,39 @@ const TattingDesigner = () => {
   // Simple arithmetic: FlipH  → new_x = 2*pivotX - old_x,  y unchanged
   //                    FlipV  → new_y = 2*pivotY - old_y,  x unchanged
   const flipElements = (ids, axisAngleDeg, pivotX, pivotY) => {
-    const isH = axisAngleDeg === 90; // true = horizontal mirror (left↔right), false = vertical mirror (top↔bottom)
+    const isH = axisAngleDeg === 90;
 
-    // Flip a single point
     const mirrorPt = (px, py) => isH
       ? { x: 2 * pivotX - px, y: py }
       : { x: px, y: 2 * pivotY - py };
 
-    // Flip the rotation angle:  FlipH → 180-θ   FlipV → -θ
+    // Flip the rotation angle: FlipH → 180-θ   FlipV → -θ
     const mirrorAngle = (deg) => isH
       ? ((180 - deg) % 360 + 360) % 360
       : ((-deg)      % 360 + 360) % 360;
 
+    // Physically mirror a path segment (swap start↔end to preserve traversal direction)
+    const mirrorPath = path => {
+      if (path.type === 'cubic') {
+        const s  = mirrorPt(path.endX,      path.endY);
+        const e2 = mirrorPt(path.x,          path.y);
+        const c1 = mirrorPt(path.control2X,  path.control2Y);
+        const c2 = mirrorPt(path.control1X,  path.control1Y);
+        return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+      }
+      const s    = mirrorPt(path.endX,     path.endY);
+      const e2   = mirrorPt(path.x,         path.y);
+      const ctrl = mirrorPt(path.controlX,  path.controlY);
+      return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
+    };
+
     setElements(prev => prev.map(el => {
       if (!ids.includes(el.id)) return el;
-      const currentAngle = el.rotation || 0;
       const newCenter = mirrorPt(el.center.x, el.center.y);
-      const newAngle = mirrorAngle(currentAngle);
+      const newAngle  = mirrorAngle(el.rotation || 0);
+      // Track flip state so notation apply can re-mirror after path regeneration
+      const newIsFlippedH = isH ? !(el.isFlippedH || false) : (el.isFlippedH || false);
+      const newIsFlippedV = !isH ? !(el.isFlippedV || false) : (el.isFlippedV || false);
 
       // ── Split rings ──────────────────────────────────────────────────────
       if (el.isSplitRing) {
@@ -4218,55 +5064,39 @@ const TattingDesigner = () => {
         const notationBText = el.notationB || '5ds';
         const reversedA = reverseNotation(`sr: ${notationAText}`).replace(/^sr:\s*/, '');
         const reversedB = reverseNotation(`sr: ${notationBText}`).replace(/^sr:\s*/, '');
-        const parsedA = parseNotation(`sr: ${reversedB}`); // swap A↔B
+        const parsedA = parseNotation(`sr: ${reversedB}`);
         const parsedB = parseNotation(`sr: ${reversedA}`);
         if (!parsedA || !parsedB) return el;
         const sca = parsedA.stitchCount, scb = parsedB.stitchCount;
-        const pathData = createSplitRingPath(newCenter.x, newCenter.y, (sca + scb) * dsWidth, sca, scb, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        const rad = newAngle * Math.PI / 180, rc = Math.cos(rad), rs = Math.sin(rad);
-        const rotatePt = (px, py) => {
-          const dx = px - newCenter.x, dy = py - newCenter.y;
-          return { x: newCenter.x + dx*rc - dy*rs, y: newCenter.y + dx*rs + dy*rc };
-        };
-        const newPaths = pathData.paths.map(p => {
-          const s = rotatePt(p.x, p.y), e2 = rotatePt(p.endX, p.endY);
-          const c1 = rotatePt(p.control1X, p.control1Y), c2 = rotatePt(p.control2X, p.control2Y);
-          return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        });
-        const allPicots = [...parsedA.picots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))];
-        return { ...el, center: newCenter, paths: newPaths, notation: `sr: ${reversedB}`, notationB: reversedA, stitchCount: sca + scb, picots: allPicots, rotation: newAngle, splitPosition: sca };
+        const pathData = createSplitRingPathFromEl(el, { cx: newCenter.x, cy: newCenter.y, stitchCountA: sca, stitchCountB: scb });
+        const newPaths = rotatePaths(pathData.paths, newCenter.x, newCenter.y, newAngle);
+        const reversedAPicots = parsedA.picots.map(p => ({ ...p, stitchesBefore: sca - p.stitchesBefore })).reverse();
+        const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))];
+        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
+          isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
+          notation: `sr: ${reversedB}`, notationB: reversedA,
+          stitchCount: sca + scb, picots: allPicots, splitPosition: sca };
       }
 
-      // ── Circle rings (path-less) ─────────────────────────────────────────
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        return { ...el, center: newCenter, rotation: newAngle };
+      // ── All closed rings (circle and teardrop) ───────────────────────────
+      // Physical mirror of path coords + updated rotation angle
+      if (el.isClosed) {
+        const newPaths = el.paths.map(mirrorPath).reverse();
+        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
+          isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV };
       }
 
-      // ── Path-based elements (chains, lines, teardrops) ───────────────────
-      // Mirror each path point, swap start↔end to preserve traversal direction.
-      const mirrorPath = path => {
-        if (path.type === 'cubic') {
-          const s  = mirrorPt(path.endX,      path.endY);
-          const e2 = mirrorPt(path.x,          path.y);
-          const c1 = mirrorPt(path.control2X,  path.control2Y);
-          const c2 = mirrorPt(path.control1X,  path.control1Y);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const s    = mirrorPt(path.endX,     path.endY);
-          const e2   = mirrorPt(path.x,         path.y);
-          const ctrl = mirrorPt(path.controlX,  path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-        }
-      };
+      // ── Chains and lines ──────────────────────────────────────────────────
       const newPaths = el.paths.map(mirrorPath).reverse();
-
       let reversedNotation = el.notation, picots = el.picots;
       if (el.type !== 'line' && el.notation) {
         reversedNotation = reverseNotation(el.notation);
         const parsed = parseNotation(reversedNotation);
         if (parsed) picots = mergeBEConfigs(parsed.picots, el.picots);
       }
-      return { ...el, center: newCenter, paths: newPaths, notation: reversedNotation, picots, rotation: newAngle };
+      return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
+        isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
+        notation: reversedNotation, picots };
     }));
   };
 
@@ -4476,7 +5306,14 @@ const TattingDesigner = () => {
         if (Math.hypot(pivotX - world.x, pivotY - world.y) < 12 / zoom) {
           setMovingPivot(true);
           setDragStart({ x: world.x, y: world.y });
-          isInteractingRef.current = true; // Mark as interacting
+          // Capture the pivot offset at drag start — move handler reads this, never stale state
+          pivotDragStartRef.current = {
+            x: world.x,
+            y: world.y,
+            offsetX: pivotOffsetRef.current.x,
+            offsetY: pivotOffsetRef.current.y,
+          };
+          isInteractingRef.current = true;
           return;
         }
         
@@ -4495,7 +5332,8 @@ const TattingDesigner = () => {
             if (Math.hypot(corner.x - world.x, corner.y - world.y) < 10) {
               setRotationHandle(corner.name);
               setDragStart({ x: world.x, y: world.y, centerX: effectivePivotX, centerY: effectivePivotY });
-              isInteractingRef.current = true; // Mark as interacting
+              rotationDragStartRef.current = { x: world.x, y: world.y, pivotX: effectivePivotX, pivotY: effectivePivotY };
+              isInteractingRef.current = true;
               return;
             }
           }
@@ -4610,6 +5448,7 @@ const TattingDesigner = () => {
         };
         setElements(prev => [...prev, newLine]);
         setSelectedIds([newLine.id]);
+        createdNewLineRef.current = true;
         // Start dragging the endpoint
         draggedHandleRef.current = { type: 'end', elementId: newLine.id };
         lastMousePosRef.current = { x: world.x, y: world.y };
@@ -4659,8 +5498,8 @@ const TattingDesigner = () => {
           // This handles duplicate-in-place: new elements sit exactly on top of
           // originals, so findClosestElement returns an original that isn't in the
           // new selection — but the click position still hits selected elements.
-          const clickHitsSelection = selectedIds.includes(clicked.id) ||
-            elements.some(el => selectedIds.includes(el.id) && isPointInElement(el, world.x, world.y));
+          const clickHitsSelection = selectedIdSet.has(clicked.id) ||
+            elements.some(el => selectedIdSet.has(el.id) && isPointInElement(el, world.x, world.y));
           if (!clickHitsSelection) {
             setSelectedIds(groupMembers);
           }
@@ -4727,13 +5566,15 @@ const TattingDesigner = () => {
 
     // Pivot point movement
     if (movingPivot && dragStart) {
-      const dx = world.x - dragStart.x;
-      const dy = world.y - dragStart.y;
+      // dx/dy are total displacement from the drag start world position — no stale state
+      const dx = world.x - pivotDragStartRef.current.x;
+      const dy = world.y - pivotDragStartRef.current.y;
 
-      // Candidate pivot world position (unsnapped)
       const bbox = getBoundingBox(selectedIds);
-      const rawPivotX = pivotOffset.x + dx + (bbox ? bbox.centerX : 0);
-      const rawPivotY = pivotOffset.y + dy + (bbox ? bbox.centerY : 0);
+
+      // New world position of the pivot
+      const rawPivotX = pivotDragStartRef.current.offsetX + dx + (bbox ? bbox.centerX : 0);
+      const rawPivotY = pivotDragStartRef.current.offsetY + dy + (bbox ? bbox.centerY : 0);
 
       let snapX = rawPivotX;
       let snapY = rawPivotY;
@@ -4767,7 +5608,7 @@ const TattingDesigner = () => {
         x: snapX - (bbox ? bbox.centerX : 0),
         y: snapY - (bbox ? bbox.centerY : 0),
       });
-      setDragStart({ x: world.x, y: world.y });
+      // Do NOT update dragStart — keep pivotDragStartRef as the fixed baseline for this drag
       return;
     }
 
@@ -4776,26 +5617,13 @@ const TattingDesigner = () => {
       const bbox = getBoundingBox(selectedIds);
       if (!bbox) return;
 
-      // Re-resolve polar pivot live — more robust than relying on mousedown capture
-      const _polarGrid = (() => {
-        if (!selectedIds.length) return null;
-        const firstEl = elements.find(e => String(e.id) === String(selectedIds[0]));
-        const gid = firstEl?.polarRotationGridId || null;
-        if (!gid) return null;
-        // All selected elements must share the same grid ID
-        if (!selectedIds.every(id => {
-          const el = elements.find(e => String(e.id) === String(id));
-          return el?.polarRotationGridId === gid;
-        })) return null;
-        return polarGrids.find(g => g.id === gid) || null;
-      })();
-
-      const normalPivotX = dragStart.centerX;
-      const normalPivotY = dragStart.centerY;
-      const pivotX = _polarGrid ? _polarGrid.center.x : normalPivotX;
-      const pivotY = _polarGrid ? _polarGrid.center.y : normalPivotY;
+      // Effective pivot captured at drag start — stable, no re-derivation needed
+      const pivotX = rotationDragStartRef.current.pivotX;
+      const pivotY = rotationDragStartRef.current.pivotY;
+      const dragOriginX = rotationDragStartRef.current.x;
+      const dragOriginY = rotationDragStartRef.current.y;
       
-      const angle1 = Math.atan2(dragStart.y - pivotY, dragStart.x - pivotX);
+      const angle1 = Math.atan2(dragOriginY - pivotY, dragOriginX - pivotX);
       const angle2 = Math.atan2(world.y - pivotY, world.x - pivotX);
       const delta = (angle2 - angle1) * 180 / Math.PI;
       const rad = delta * Math.PI / 180;
@@ -4810,56 +5638,18 @@ const TattingDesigner = () => {
       
       // Rotate all selected elements around the pivot point
       setElements(prev => prev.map(el => {
-        if (!selectedIds.includes(el.id)) return el;
-        
-        // Calculate element center position relative to pivot
-        const relX = el.center.x - pivotX;
-        const relY = el.center.y - pivotY;
-        
+        if (!selectedIdSet.has(el.id)) return el;
+        const relX = el.center.x - pivotX, relY = el.center.y - pivotY;
         const newCenterX = pivotX + relX * cos - relY * sin;
         const newCenterY = pivotY + relX * sin + relY * cos;
-        
-        // Rotate all path points
-        const newPaths = el.paths.map(path => {
-          const rotatePoint = (px, py) => {
-            const rpx = px - pivotX;
-            const rpy = py - pivotY;
-            return {
-              x: pivotX + rpx * cos - rpy * sin,
-              y: pivotY + rpx * sin + rpy * cos
-            };
-          };
-          
-          const start = rotatePoint(path.x, path.y);
-          const end = rotatePoint(path.endX, path.endY);
-          
-          if (path.type === 'cubic') {
-            const c1 = rotatePoint(path.control1X, path.control1Y);
-            const c2 = rotatePoint(path.control2X, path.control2Y);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              control1X: c1.x, control1Y: c1.y,
-              control2X: c2.x, control2Y: c2.y
-            };
-          } else {
-            const ctrl = rotatePoint(path.controlX, path.controlY);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              controlX: ctrl.x, controlY: ctrl.y
-            };
-          }
-        });
-        
-        return {
-          ...el,
-          center: { x: newCenterX, y: newCenterY },
-          rotation: (el.rotation || 0) + delta,
-          paths: newPaths
-        };
+        const newRotation = (el.rotation || 0) + delta;
+        // Split rings and teardrops regenerate at new center; others rotate in place
+        if (el.isSplitRing && el.splitPosition != null) {
+          return { ...el, center: { x: newCenterX, y: newCenterY }, rotation: newRotation,
+            paths: rotatePaths(createSplitRingPathFromEl(el, { cx: newCenterX, cy: newCenterY }).paths, newCenterX, newCenterY, newRotation) };
+        }
+        return { ...el, center: { x: newCenterX, y: newCenterY }, rotation: newRotation,
+          paths: rotatePaths(el.paths, pivotX, pivotY, delta) };
       }));
       
       // Update pivot offset to keep pivot in same world position
@@ -4869,6 +5659,8 @@ const TattingDesigner = () => {
         y: pivotY - newBboxCenterY
       });
       
+      // Update the drag origin for next frame's angle calculation
+      rotationDragStartRef.current = { x: world.x, y: world.y, pivotX, pivotY };
       setDragStart({ x: world.x, y: world.y, centerX: pivotX, centerY: pivotY });
       return;
     }
@@ -5401,15 +6193,52 @@ const TattingDesigner = () => {
           
           if (path.type === 'cubic') {
             if (handleInfo.type === 'control1') {
-              // - User drags control1 to a new position
-              // - Start and End points stay FIXED
-              // - Adjust control2 length (same angle) to maintain path length
-              // - If control1 alone exceeds targetLength, clamp it first
-
               const P0 = { x: path.x, y: path.y };
               const P3 = { x: path.endX, y: path.endY };
               let P1_new = { x: newControlX, y: newControlY };
 
+              if (chainPresetSymmetric) {
+                // SYMMETRIC MODE: mirror control1 drag to control2
+                // Reflect P1_new across the chord's perpendicular bisector to get P2_new
+                // Then binary-search both magnitudes together to maintain length
+                const handle1_dx = P1_new.x - P0.x;
+                const handle1_dy = P1_new.y - P0.y;
+                const handle1_angle = Math.atan2(handle1_dy, handle1_dx);
+                const handle1_len = Math.hypot(handle1_dx, handle1_dy);
+                // Mirror angle across chord: chord angle is atan2(P3-P0)
+                const chordAngle = Math.atan2(P3.y - P0.y, P3.x - P0.x);
+                const mirroredAngle = 2 * chordAngle - handle1_angle + Math.PI;
+                // Both handles same length, binary-search that length for target arc
+                let minH = 0, maxH = Math.min(handle1_len, targetLength);
+                let bestH = handle1_len;
+                for (let iter = 0; iter < 20; iter++) {
+                  const tryH = (minH + maxH) / 2;
+                  const tryPath = {
+                    type: 'cubic',
+                    x: P0.x, y: P0.y, endX: P3.x, endY: P3.y,
+                    control1X: P0.x + Math.cos(handle1_angle) * tryH,
+                    control1Y: P0.y + Math.sin(handle1_angle) * tryH,
+                    control2X: P3.x + Math.cos(mirroredAngle) * tryH,
+                    control2Y: P3.y + Math.sin(mirroredAngle) * tryH,
+                  };
+                  const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
+                  if (Math.abs(tryLen - targetLength) < tolerance * 0.5) { bestH = tryH; break; }
+                  if (tryLen < targetLength) minH = tryH; else maxH = tryH;
+                  bestH = tryH;
+                }
+                return {
+                  ...el,
+                  paths: [{
+                    ...path,
+                    control1X: P0.x + Math.cos(handle1_angle) * bestH,
+                    control1Y: P0.y + Math.sin(handle1_angle) * bestH,
+                    control2X: P3.x + Math.cos(mirroredAngle) * bestH,
+                    control2Y: P3.y + Math.sin(mirroredAngle) * bestH,
+                  }]
+                };
+              }
+
+              // ASYMMETRIC MODE (original behaviour)
               // Calculate control1's handle vector (from start)
               const handle1_dx = P1_new.x - P0.x;
               const handle1_dy = P1_new.y - P0.y;
@@ -5491,15 +6320,48 @@ const TattingDesigner = () => {
               };
               
             } else if (handleInfo.type === 'control2') {
-              // - User drags control2 to a new position
-              // - Start and End points stay FIXED
-              // - Adjust control1 length (same angle) to maintain path length
-              // - If control2 alone exceeds targetLength, clamp it first
-
               const P0 = { x: path.x, y: path.y };
               const P3 = { x: path.endX, y: path.endY };
               let P2_new = { x: newControlX, y: newControlY };
 
+              if (chainPresetSymmetric) {
+                // SYMMETRIC MODE: mirror control2 drag to control1
+                const handle2_dx = P2_new.x - P3.x;
+                const handle2_dy = P2_new.y - P3.y;
+                const handle2_angle = Math.atan2(handle2_dy, handle2_dx);
+                const handle2_len = Math.hypot(handle2_dx, handle2_dy);
+                const chordAngle = Math.atan2(P3.y - P0.y, P3.x - P0.x);
+                const mirroredAngle = 2 * chordAngle - handle2_angle + Math.PI;
+                let minH = 0, maxH = Math.min(handle2_len, targetLength);
+                let bestH = handle2_len;
+                for (let iter = 0; iter < 20; iter++) {
+                  const tryH = (minH + maxH) / 2;
+                  const tryPath = {
+                    type: 'cubic',
+                    x: P0.x, y: P0.y, endX: P3.x, endY: P3.y,
+                    control1X: P0.x + Math.cos(mirroredAngle) * tryH,
+                    control1Y: P0.y + Math.sin(mirroredAngle) * tryH,
+                    control2X: P3.x + Math.cos(handle2_angle) * tryH,
+                    control2Y: P3.y + Math.sin(handle2_angle) * tryH,
+                  };
+                  const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
+                  if (Math.abs(tryLen - targetLength) < tolerance * 0.5) { bestH = tryH; break; }
+                  if (tryLen < targetLength) minH = tryH; else maxH = tryH;
+                  bestH = tryH;
+                }
+                return {
+                  ...el,
+                  paths: [{
+                    ...path,
+                    control1X: P0.x + Math.cos(mirroredAngle) * bestH,
+                    control1Y: P0.y + Math.sin(mirroredAngle) * bestH,
+                    control2X: P3.x + Math.cos(handle2_angle) * bestH,
+                    control2Y: P3.y + Math.sin(handle2_angle) * bestH,
+                  }]
+                };
+              }
+
+              // ASYMMETRIC MODE (original behaviour)
               // Calculate control2's handle vector (from end)
               const handle2_dx = P2_new.x - P3.x;
               const handle2_dy = P2_new.y - P3.y;
@@ -5774,9 +6636,15 @@ const TattingDesigner = () => {
         
         elements.forEach(el => {
           if (!el.picots) return;
+          // Interior ghosts are never selectable in picotJoin mode —
+          // only boundary ghosts (and real elements) participate in joins.
+          if (el.type === 'ghost' && !el.isBoundary) return;
           
           el.picots.forEach(picot => {
-            if (!picot.isJoint) return; // Only joint picots
+            if (picot.isGuidePoint) return;
+            // In picotJoin mode: joinable bead types are selectable (bjp, bcjp, be+beIsJoint)
+            // Non-joinable beads are skipped
+            if (picot.beadType && !picot.isJoint && !(picot.beadType === 'be' && picot.beIsJoint)) return;
             
             // Get picot TIP position
             const picotPos = getPicotPosition(el, picot);
@@ -5826,8 +6694,9 @@ const TattingDesigner = () => {
           setSelectedPicots(selectedJointPicots);
         }
       } else {
-        // Regular element selection
+        // Regular element selection - ghosts are not selectable
         const boxHit = elements.filter(el =>
+          el.type !== 'ghost' &&
           el.center.x >= minX && el.center.x <= maxX && el.center.y >= minY && el.center.y <= maxY
         );
         // Groups: only select a group if ALL its members are inside the box
@@ -5848,7 +6717,7 @@ const TattingDesigner = () => {
           // Single-select only — take the first hit if any, clear if none
           const single = boxSelected.length > 0 ? [boxSelected[0]] : [];
           setSelectedIds(single);
-          const el = elements.find(e => e.id === single[0]);
+          const el = elementById.get(single[0]);
           setTattingOrderInput(el?.orderNumber != null ? String(el.orderNumber) : '');
         } else {
           setSelectedIds(prev => [...new Set([...prev, ...boxSelected])]);
@@ -5924,10 +6793,20 @@ const TattingDesigner = () => {
     lastMousePosRef.current = null;
     dragTouchIdRef.current = null;
     setDraggedElement(null);
-    draggedHandleRef.current = null; // NEW: clear path edit handle
-    pathDragStartRef.current = null; // Clear interpolation start data
-    setRotationHandle(null);         // NEW: clear rotation handle
-    setMovingPivot(false);           // NEW: clear pivot movement
+    draggedHandleRef.current = null;
+    pathDragStartRef.current = null;
+    const wasRotating = rotationHandle !== null;
+    setRotationHandle(null);
+    setMovingPivot(false);
+
+    // Update ghosts for mothers that were rotated (not dragged - ghosts stay in place)
+    if (isInteractingRef.current && wasRotating && selectedIdsRef.current.length > 0) {
+      setTimeout(() => {
+        selectedIdsRef.current.forEach(id => {
+          updateGhostArraysForMother(id);
+        });
+      }, 100);
+    }
 
     // Minimum line length guard — remove lines that were placed as accidental dots.
     // A line whose start and end are within 12 world-units of each other is a misclick.
@@ -5937,6 +6816,12 @@ const TattingDesigner = () => {
       const len = Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y);
       return len >= 12;
     }));
+
+    // Auto-switch back to select after creating a new line
+    if (createdNewLineRef.current) {
+      setCurrentTool('select');
+      createdNewLineRef.current = false;
+    }
   };
 
   useEffect(() => {
@@ -5992,22 +6877,22 @@ const TattingDesigner = () => {
         return;
       }
 
-      // Select All: Ctrl+A
+      // Select All: Ctrl+A - ghosts are not selectable
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
-        setSelectedIds(elementsRef.current.map(el => el.id));
+        setSelectedIds(elementsRef.current.filter(el => el.type !== 'ghost').map(el => el.id));
         return;
       }
 
       // Zoom in/out: + / - (no modifier needed)
       if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(0.1);
+        zoomToCenter(0.2);
         return;
       }
       if (e.key === '-' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(-0.1);
+        zoomToCenter(-0.2);
         return;
       }
       
@@ -6018,40 +6903,87 @@ const TattingDesigner = () => {
         return;
       }
       
+      // Path preset angles: Shift+1=90°, Shift+2=60°, Shift+3=45°
+      // Only when path tool is active and a chain is selected
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && currentTool === 'path') {
+        const presetMap: Record<string, number> = { '1': 90, '2': 60, '3': 45, '!': 90, '@': 60, '#': 45 };
+        const presetDeg = presetMap[e.key];
+        if (presetDeg !== undefined) {
+          e.preventDefault();
+          const sel = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
+          if (sel.length === 1 && sel[0].type === 'chain' && sel[0].paths && sel[0].paths.length > 0) {
+            const el = sel[0];
+            const path = el.paths[0];
+            const targetLength = el.stitchCount * dsWidth;
+            if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
+              const newPath = applyPathPreset(path, presetDeg, targetLength, true); // presets always symmetric
+              if (newPath !== path) {
+                setElements(prev => prev.map(e =>
+                  e.id === el.id ? { ...e, paths: [newPath] } : e
+                ));
+                pushHistoryState(
+                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                  picotConnectionsRef.current,
+                  orderGroupsRef.current
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Line preset angles: Shift+1=90°, Shift+2=60°, Shift+3=45°, Shift+0=straight
+      // Only when line tool is active and a line is selected
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && currentTool === 'line') {
+        const presetMap: Record<string, number> = { '1': 90, '2': 60, '3': 45, '0': 0, '!': 90, '@': 60, '#': 45, ')': 0 };
+        const presetDeg = presetMap[e.key];
+        if (presetDeg !== undefined) {
+          e.preventDefault();
+          const sel = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
+          if (sel.length === 1 && sel[0].type === 'line' && sel[0].paths && sel[0].paths.length > 0) {
+            const el = sel[0];
+            const path = el.paths[0];
+            if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
+              const newPath = applyLinePreset(path, presetDeg);
+              if (newPath !== path) {
+                setElements(prev => prev.map(e =>
+                  e.id === el.id ? { ...e, paths: [newPath] } : e
+                ));
+                pushHistoryState(
+                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                  picotConnectionsRef.current,
+                  orderGroupsRef.current
+                );
+              }
+            }
+          }
+        }
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
-          const newConns = picotConnectionsRef.current.filter(conn =>
-            !conn.picots.some(p => selectedPicotsRef.current.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId))
-          );
-          setPicotConnections(newConns);
-          setSelectedPicots([]);
-          pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
+          breakSelectedPicots();
         } else {
           deleteSelected();
         }
       } else if ((e.key === 'j' || e.key === 'J') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length >= 2) {
           e.preventDefault();
-          const connection = { id: generateId(), picots: [...selectedPicotsRef.current] };
-          const newConns = [...picotConnectionsRef.current, connection];
-          setPicotConnections(newConns);
-          setSelectedPicots([]);
-          pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
+          joinSelectedPicots();
         }
       } else if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
           e.preventDefault();
-          const newConns = picotConnectionsRef.current.filter(conn =>
-            !conn.picots.some(p => selectedPicotsRef.current.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId))
-          );
-          setPicotConnections(newConns);
-          setSelectedPicots([]);
-          pushHistoryState(elementsRef.current, newConns, orderGroupsRef.current);
+          breakSelectedPicots();
         }
       } else if (e.key === 'Tab') {
         e.preventDefault();
         setCurrentTool(prev => prev === 'pan' ? 'select' : 'pan');
+      } else if (e.key === 'Home' && !e.shiftKey) {
+        if (selectedIdsRef.current.length > 0) { e.preventDefault(); sendToBack(); }
+      } else if (e.key === 'End' && !e.shiftKey) {
+        if (selectedIdsRef.current.length > 0) { e.preventDefault(); bringToFront(); }
       } else if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         duplicateInPlace();
@@ -6186,262 +7118,315 @@ const TattingDesigner = () => {
     };
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [clipboard, pasteFromClipboard, saveProject]);
+  }, [saveProject]);
 
   const updateNotation = (notation, notationB = null, elementId = null) => {
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
     if (!targetId) return;
+
+    // Parse and validate first — bail early if notation is invalid
     const parsed = parseNotation(notation);
     if (!parsed) return;
 
+    // ── Fix 6: Remap picotConnections before rebuilding the element ──────────
+    // Get the current element snapshot (before setElements runs)
+    const currentElement = elementsRef.current.find(e => e.id === targetId);
+    let remappedConns = picotConnectionsRef.current;
+
+    if (currentElement) {
+      // Which old picot IDs are currently in a connection for this element?
+      const connectedOldIds = new Set(
+        picotConnectionsRef.current.flatMap(conn =>
+          conn.picots
+            .filter(cp => cp.elementId === targetId)
+            .map(cp => cp.picotId)
+        )
+      );
+
+      // Map stitchesBefore → old picot for any picot that was connected or isJoint
+      const oldPicotBySb: Record<number, any> = {};
+      (currentElement.picots || []).forEach(p => {
+        if (p.isJoint || connectedOldIds.has(p.id)) {
+          oldPicotBySb[p.stitchesBefore] = p;
+        }
+      });
+
+      // Build oldId → newId remap from the parsed picots
+      const picotIdRemap = new Map<string, string>();
+      parsed.picots.forEach(p => {
+        const old = oldPicotBySb[p.stitchesBefore];
+        if (old) picotIdRemap.set(old.id, old.id); // we reuse old.id, so remap is identity
+      });
+
+      // Remap connections — for this element, update picotId entries;
+      // drop any connection where the target picot no longer exists
+      const oldSbPositions = new Set(parsed.picots.map(p => p.stitchesBefore));
+      const validOldIds = new Set(
+        (currentElement.picots || [])
+          .filter(p => oldSbPositions.has(p.stitchesBefore))
+          .map(p => p.id)
+      );
+
+      const newConns = picotConnectionsRef.current
+        .map(conn => ({
+          ...conn,
+          picots: conn.picots.map(cp =>
+            cp.elementId !== targetId ? cp :
+            { ...cp, picotId: picotIdRemap.get(cp.picotId) ?? cp.picotId }
+          ),
+        }))
+        .filter(conn =>
+          conn.picots.every(cp =>
+            cp.elementId !== targetId || validOldIds.has(cp.picotId)
+          )
+        );
+
+      if (newConns.length !== picotConnectionsRef.current.length || picotIdRemap.size > 0) {
+        setPicotConnections(newConns);
+        picotConnectionsRef.current = newConns;
+        remappedConns = newConns;
+      }
+    }
+
+    // Surviving connection keys after remap — used to clear stale isJoint flags
+    const survivingConnKeys = new Set(
+      remappedConns.flatMap(conn =>
+        conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
+      )
+    );
+    // ──────────────────────────────────────────────────────────────────────────
+
     setElements(prev => prev.map(el => {
       if (el.id !== targetId) return el;
-      
+
       // Handle split ring notation update
       if (el.isSplitRing) {
         const notationAText = notation.replace(/^sr:\s*/, '');
         const notationBText = notationB || el.notationB || '5ds';
-        
+
         const parsedA = parseNotation(`sr: ${notationAText}`);
         const parsedB = parseNotation(`sr: ${notationBText}`);
-        
+
         if (!parsedA || !parsedB) return el;
-        
+
         const stitchCountA = parsedA.stitchCount;
         const stitchCountB = parsedB.stitchCount;
         const totalStitches = stitchCountA + stitchCountB;
-        const targetLength = totalStitches * dsWidth;
-        const squeeze = el.squeeze || 0.1;
-        
-        const pathData = createSplitRingPath(el.center.x, el.center.y, targetLength, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-        
-        // Apply rotation if needed
-        let finalPaths = pathData.paths;
-        if (el.rotation && el.rotation !== 0) {
-          const rad = el.rotation * Math.PI / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const cx = el.center.x;
-          const cy = el.center.y;
-          
-          const rotatePoint = (px, py) => {
-            const dx = px - cx;
-            const dy = py - cy;
-            return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-          };
-          
-          finalPaths = finalPaths.map(path => {
-            const start = rotatePoint(path.x, path.y);
-            const end = rotatePoint(path.endX, path.endY);
-            const c1 = rotatePoint(path.control1X, path.control1Y);
-            const c2 = rotatePoint(path.control2X, path.control2Y);
-            return {
-              ...path,
-              x: start.x, y: start.y,
-              endX: end.x, endY: end.y,
-              control1X: c1.x, control1Y: c1.y,
-              control2X: c2.x, control2Y: c2.y
-            };
+
+        // Scale existing paths proportionally — preserves rotation/flip/shape
+        // same approach as closed rings and chains
+        const oldTotal = el.stitchCount;
+        const cx = el.center.x, cy = el.center.y;
+        let finalPaths = el.paths;
+        if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
+          const scaleFactor = totalStitches / oldTotal;
+          finalPaths = el.paths.map(path => {
+            const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+            const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
+              control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
           });
         }
-        
-        // Merge picots from both sections
-        const allPicots = [...parsedA.picots, ...parsedB.picots.map(p => ({
+
+        // Path A runs from paths[0].x/y (start) to paths[0].endX/Y.
+        // parsedA picots have stitchesBefore counting from 0 → stitchCountA.
+        // We reverse the A-side positions so stitch 0 of the notation is at the path start.
+        const reversedAPicots = parsedA.picots.map(p => ({
           ...p,
-          stitchesBefore: p.stitchesBefore + stitchCountA
-        }))];
-        
-        return {
-          ...el,
-          notation: `sr: ${notationAText}`,
-          notationB: notationBText,
-          stitchCount: totalStitches,
-          picots: allPicots,
-          paths: finalPaths,
-          splitPosition: stitchCountA
-        };
+          stitchesBefore: stitchCountA - p.stitchesBefore,
+        })).reverse();
+
+        const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
+          ...p, stitchesBefore: p.stitchesBefore + stitchCountA
+        }))].map(p => {
+          const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
+          return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
+        });
+
+        return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
+          stitchCount: totalStitches, picots: allPicots, paths: finalPaths, splitPosition: stitchCountA };
       }
-      
-      // If it's a closed path (ring), regenerate the path with new stitch count
+
+      // Closed ring: scale existing paths to new stitch count, preserving rotation/flip/shape
+      // Regenerating from the canonical template (createTeardropPath) would reset any
+      // physical rotation applied via ±90° buttons or manual path edits — so we scale instead.
       let newPathData = {};
       if (el.isClosed) {
-        const targetLength = parsed.stitchCount * dsWidth;
-        const squeeze = el.squeeze || 0; // Use existing squeeze value
-        const tempPathData = el.shapeStyle === 'circle' 
-          ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
-          : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-        
-        // If element has rotation, apply it to the new paths
-        if (el.rotation && el.rotation !== 0) {
-          const rad = el.rotation * Math.PI / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const cx = el.center.x;
-          const cy = el.center.y;
-          
-          const rotatePoint = (px, py) => {
-            const dx = px - cx;
-            const dy = py - cy;
-            return {
-              x: cx + dx * cos - dy * sin,
-              y: cy + dx * sin + dy * cos
-            };
-          };
-          
-          tempPathData.paths = tempPathData.paths.map(path => {
+        const oldLength = el.stitchCount * dsWidth;
+        const newLength = parsed.stitchCount * dsWidth;
+        if (Math.abs(oldLength - newLength) > 0.01) {
+          const cx = el.center.x, cy = el.center.y;
+          const scaleFactor = newLength / oldLength;
+          const scaledPaths = el.paths.map(path => {
+            const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
             if (path.type === 'cubic') {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const c1 = rotatePoint(path.control1X, path.control1Y);
-              const c2 = rotatePoint(path.control2X, path.control2Y);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                control1X: c1.x, control1Y: c1.y,
-                control2X: c2.x, control2Y: c2.y
-              };
-            } else {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const ctrl = rotatePoint(path.controlX, path.controlY);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                controlX: ctrl.x, controlY: ctrl.y
-              };
+              const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+              const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
             }
+            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
           });
+          newPathData = { paths: scaledPaths };
         }
-        
-        newPathData = tempPathData;
       } else {
-        // For open paths (chains): keep BOTH endpoints fixed, bend the curve to match new length.
-        // Uses the same binary-search-on-perpendicular-depth approach as length-preserving drag.
+        // Open chain: bend curve to new length keeping endpoints fixed
         if (el.paths && el.paths.length > 0) {
           const newLength = parsed.stitchCount * dsWidth;
-          const tolerance = newLength * 0.005; // 0.5% tolerance — tight but fast
-
+          const tolerance = newLength * 0.005;
           const adjustedPaths = el.paths.map(path => {
             if (path.type !== 'cubic') {
-              // Quadratic legacy path — fall back to old scale-from-start
-              const startX = path.x;
-              const startY = path.y;
-              const oldLength = el.stitchCount * dsWidth;
-              const scaleFactor = newLength / oldLength;
-              return {
-                ...path,
-                endX: startX + (path.endX - startX) * scaleFactor,
-                endY: startY + (path.endY - startY) * scaleFactor,
-                controlX: startX + (path.controlX - startX) * scaleFactor,
-                controlY: startY + (path.controlY - startY) * scaleFactor,
-              };
+              const startX = path.x, startY = path.y;
+              const scaleFactor = newLength / (el.stitchCount * dsWidth);
+              return { ...path,
+                endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
+                controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
             }
-
-            // Cubic bezier: pin start & end, solve for perpendicular bow depth
-            const sx = path.x,    sy = path.y;
-            const ex = path.endX, ey = path.endY;
-            const midX = (sx + ex) / 2;
-            const midY = (sy + ey) / 2;
-            const axisX = ex - sx;
-            const axisY = ey - sy;
-            const perpX = -axisY;
-            const perpY =  axisX;
-            const perpLen = Math.hypot(perpX, perpY);
-
-            // Determine which side of the axis the current control points sit on
-            const oldMidX = (path.control1X + path.control2X) / 2;
-            const oldMidY = (path.control1Y + path.control2Y) / 2;
-            const sideSign = perpLen > 0
-              ? (Math.sign(((oldMidX - midX) * perpX + (oldMidY - midY) * perpY)) || 1)
-              : 1;
-
-            // Straight-line distance between the two endpoints
-            const chordLen = Math.hypot(axisX, axisY);
-
-            // If new length ≤ chord we can't bow — move end endpoint closer along
-            // the same axis so the straight line equals the new length exactly
-            if (newLength <= chordLen || perpLen === 0) {
-              const dirX = chordLen > 0 ? axisX / chordLen : 1;
-              const dirY = chordLen > 0 ? axisY / chordLen : 0;
-              const newEx = sx + dirX * newLength;
-              const newEy = sy + dirY * newLength;
-              return {
-                ...path,
-                endX: newEx, endY: newEy,
-                control1X: sx + dirX * newLength * 0.33,
-                control1Y: sy + dirY * newLength * 0.33,
-                control2X: sx + dirX * newLength * 0.67,
-                control2Y: sy + dirY * newLength * 0.67,
-              };
+            const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
+            const midX=(sx+ex)/2,midY=(sy+ey)/2;
+            const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
+            const perpLen=Math.hypot(perpX,perpY);
+            const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
+            const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
+            const straightLen=Math.hypot(ex-sx,ey-sy);
+            let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
+            for (let iter=0;iter<20;iter++) {
+              const tryDepth=(minDepth+maxDepth)/2;
+              const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
+              const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
+              const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
+              const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
+              const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
+              const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
+              bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
+              if(Math.abs(tryLen-newLength)<tolerance)break;
+              if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
             }
-
-            // Binary search: find perpendicular depth that yields newLength
-            let minDepth = 0;
-            let maxDepth = newLength * 2; // generous upper bound
-            let bestC1X = path.control1X, bestC1Y = path.control1Y;
-            let bestC2X = path.control2X, bestC2Y = path.control2Y;
-
-            for (let iter = 0; iter < 20; iter++) {
-              const tryDepth = (minDepth + maxDepth) / 2;
-              const offX = (perpX / perpLen) * tryDepth * sideSign;
-              const offY = (perpY / perpLen) * tryDepth * sideSign;
-
-              const c1x = sx + axisX * 0.33 + offX;
-              const c1y = sy + axisY * 0.33 + offY;
-              const c2x = sx + axisX * 0.67 + offX;
-              const c2y = sy + axisY * 0.67 + offY;
-
-              const tryPath = { type: 'cubic', x: sx, y: sy, endX: ex, endY: ey,
-                                control1X: c1x, control1Y: c1y,
-                                control2X: c2x, control2Y: c2y };
-              const tryLen = calculatePathLength(sampleBezierPath(tryPath, 20));
-
-              bestC1X = c1x; bestC1Y = c1y;
-              bestC2X = c2x; bestC2Y = c2y;
-
-              if (Math.abs(tryLen - newLength) < tolerance) break;
-              if (tryLen < newLength) minDepth = tryDepth;
-              else                   maxDepth = tryDepth;
-            }
-
-            return {
-              ...path,
-              // endpoints unchanged
-              x: sx, y: sy, endX: ex, endY: ey,
-              control1X: bestC1X, control1Y: bestC1Y,
-              control2X: bestC2X, control2Y: bestC2Y,
-            };
+            return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
           });
-
           newPathData = { paths: adjustedPaths };
         }
       }
-      
-      // Preserve IDs for joint picots so picotConnections references survive re-parse.
-      // Match old joint picots to new ones by stitchesBefore position.
-      const oldJointById = {};
-      (el.picots || []).forEach(p => {
-        if (p.isJoint) oldJointById[p.stitchesBefore] = p;
-      });
+
+      // Merge picots: reuse old IDs for picots at the same stitchesBefore position
+      // so picotConnections (already remapped above) still points to valid IDs.
+      const oldPicotBySb2: Record<number, any> = {};
+      (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
       const mergedPicots = parsed.picots.map(p => {
-        if (p.isJoint && oldJointById[p.stitchesBefore]) {
-          return { ...p, id: oldJointById[p.stitchesBefore].id };
+        const old = oldPicotBySb2[p.stitchesBefore];
+        if (old) {
+          const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
+          return { ...p, id: old.id, isJoint: isStillJoint };
         }
         return p;
       });
 
-      return { 
-        ...el, 
-        notation, 
-        stitchCount: parsed.stitchCount, 
+      return {
+        ...el, notation, stitchCount: parsed.stitchCount,
         picots: restoreBEConfigs(mergedPicots, el.beConfigs),
         beConfigs: extractBEConfigs(restoreBEConfigs(mergedPicots, el.beConfigs)),
         isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
         ...(Object.keys(newPathData).length > 0 ? newPathData : {})
       };
     }));
+    // Update ghosts if this element is a ghost mother
+    setTimeout(() => {
+      updateGhostArraysForMother(targetId);
+    }, 100);
+  };
+
+  // Update ghosts when mother element changes (notation, rotation, shape, etc.)
+  const updateGhostArraysForMother = (motherId: string) => {
+    const motherEl = elementById.get(motherId);
+    if (!motherEl || !motherEl.isGhostMother) return;
+
+    // Find all ghost arrays where this element is the source
+    const relevantArrays = ghostArrays.filter(array => array.sourceId === motherId);
+
+    relevantArrays.forEach(array => {
+      // Delete old ghosts and recreate in same state update to avoid race conditions
+      setElements(prev => {
+        // Filter out old ghosts (find by sourceId, not stale ghostIds)
+        const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === motherId));
+
+        // Find the source element in the current state (might have been updated)
+        const sourceEl = withoutGhosts.find(e => e.id === motherId);
+        if (!sourceEl) return prev;
+
+        // Recreate ghosts with stored parameters using current mother state
+        const newGhosts = [];
+        const newGhostIds = [];
+        const boundaryGhostIds = [];
+
+        if (array.type === 'polar') {
+          // Recreate polar array ghosts using shared helper
+          const count = array.instanceCount;
+          const fillAngle = array.angle;
+          const pivotId = array.pivotId || 'selection';
+          const stepDeg = fillAngle / count;
+
+          let pivotX: number, pivotY: number;
+          if (pivotId && pivotId !== 'selection') {
+            const grid = polarGrids.find(g => g.id === pivotId);
+            pivotX = grid ? grid.center.x : sourceEl.center.x;
+            pivotY = grid ? grid.center.y : sourceEl.center.y;
+          } else {
+            pivotX = sourceEl.center.x;
+            pivotY = sourceEl.center.y;
+          }
+
+          for (let i = 1; i < count; i++) {
+            const isBoundary = (i === 1 || i === count - 1);
+
+            const ghostEl = createPolarInstance(sourceEl, i, pivotX, pivotY, count, fillAngle, {
+              asGhost: true,
+              sourceId: motherId,
+              isBoundary,
+            });
+            newGhosts.push(ghostEl);
+            newGhostIds.push(ghostEl.id);
+            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
+          }
+        } else if (array.type === 'linear') {
+          // Recreate linear array ghosts using shared helper
+          const count = array.instanceCount;
+          const angleDeg = array.angle;
+          const spacingPercent = array.spacing;
+          const rotStep = array.rotStep;
+          const storedElementSize = array.elementSize;
+
+          const rad = angleDeg * Math.PI / 180;
+          // Center-to-center: 100% = just touching, 200% = 1 element gap
+          const spacing = storedElementSize ? storedElementSize * spacingPercent / 100 : storedElementSize;
+          const dx = Math.cos(rad) * spacing;
+          const dy = Math.sin(rad) * spacing;
+
+          for (let i = 1; i < count; i++) {
+            const isBoundary = (i === count - 1);
+
+            const ghostEl = createLinearInstance(sourceEl, i, dx, dy, rotStep, {
+              asGhost: true,
+              sourceId: motherId,
+              isBoundary,
+            });
+
+            newGhosts.push(ghostEl);
+            newGhostIds.push(ghostEl.id);
+            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
+          }
+        }
+
+        // Update ghostArrays state
+        setGhostArrays(prev => prev.map(a =>
+          a.id === array.id
+            ? { ...a, ghostIds: newGhostIds, boundaryIds: boundaryGhostIds, inheritedJoins: a.inheritedJoins || [] }
+            : a
+        ));
+
+        return [...withoutGhosts, ...newGhosts];
+      });
+    });
   };
 
   const toggleShape = () => {
@@ -6451,59 +7436,20 @@ const TattingDesigner = () => {
       if (el.id === selectedIds[0] && el.isClosed) {
         const newStyle = el.shapeStyle === 'circle' ? 'teardrop' : 'circle';
         const targetLength = el.stitchCount * dsWidth;
-        const squeeze = el.squeeze || 0; // Use existing squeeze value
+        const squeeze = el.squeeze || 0;
         const tempPathData = newStyle === 'circle'
           ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
           : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-        
-        // Preserve rotation when toggling shape
-        if (el.rotation && el.rotation !== 0) {
-          const rad = el.rotation * Math.PI / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const cx = el.center.x;
-          const cy = el.center.y;
-          
-          const rotatePoint = (px, py) => {
-            const dx = px - cx;
-            const dy = py - cy;
-            return {
-              x: cx + dx * cos - dy * sin,
-              y: cy + dx * sin + dy * cos
-            };
-          };
-          
-          tempPathData.paths = tempPathData.paths.map(path => {
-            if (path.type === 'cubic') {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const c1 = rotatePoint(path.control1X, path.control1Y);
-              const c2 = rotatePoint(path.control2X, path.control2Y);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                control1X: c1.x, control1Y: c1.y,
-                control2X: c2.x, control2Y: c2.y
-              };
-            } else {
-              const start = rotatePoint(path.x, path.y);
-              const end = rotatePoint(path.endX, path.endY);
-              const ctrl = rotatePoint(path.controlX, path.controlY);
-              return {
-                ...path,
-                x: start.x, y: start.y,
-                endX: end.x, endY: end.y,
-                controlX: ctrl.x, controlY: ctrl.y
-              };
-            }
-          });
-        }
-        
-        return { ...el, shapeStyle: newStyle, ...tempPathData };
+
+        return { ...el, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
       }
       return el;
     }));
+
+    // Update ghosts if this element is a ghost mother
+    setTimeout(() => {
+      updateGhostArraysForMother(selectedIds[0]);
+    }, 100);
   };
 
   const setLabelOffset = useCallback((value: number) => {
@@ -6555,28 +7501,20 @@ const TattingDesigner = () => {
   const getPicotPosition = (element, picot, baseOnly = false) => {
     if (!element.picots || !picot) return null;
     
-    const picotSize = { small: 13, medium: 20, large: 26 };
-    const len = picotSize[picot.length] || 20;
+    const len = PICOT_SIZE[picot.length] || 20;
     const sideMultiplier = element.picotSideMultiplier || 1; // Default to 1 if not set
     
     // Special handling for circles
     if (element.isClosed && element.shapeStyle === 'circle') {
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
-      const _sb1 = (picot.beadType === 'bc' || picot.beadType === 'bcp') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
+      const _sb1 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
       const baseAngle = (_sb1 / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
       const rotation = (element.rotation || 0) * Math.PI / 180; // Convert to radians
       const angle = baseAngle + rotation; // Apply rotation
       
-      // jp and jpg: return BASE position (on ring edge)
-      if (picot.isJoint || baseOnly) {
-        return {
-          x: element.center.x + Math.cos(angle) * radius,
-          y: element.center.y + Math.sin(angle) * radius
-        };
-      }
-      // Guide Point (gp): return BASE position (on ring edge)
-      if (picot.isGuidePoint) {
+      // In picotJoin mode all picots are dots on the path — return BASE for consistent hit-testing
+      if (picot.isJoint || picot.isGuidePoint || baseOnly || activeMode === 'picotJoin') {
         return {
           x: element.center.x + Math.cos(angle) * radius,
           y: element.center.y + Math.sin(angle) * radius
@@ -6601,7 +7539,7 @@ const TattingDesigner = () => {
       totalLength += length;
     }
     
-    const _sb2 = (picot.beadType === 'bc' || picot.beadType === 'bcp') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
+    const _sb2 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
     const targetDist = (_sb2 / element.stitchCount) * totalLength;
     let accum = 0;
     let pathIndex = 0;
@@ -6642,8 +7580,8 @@ const TattingDesigner = () => {
       dy = 2*(1-t)*(path.controlY - path.y) + 2*t*(path.endY - path.controlY);
     }
     
-    // jp, jpg, gp, or baseOnly: return BASE position (on path)
-    if (picot.isJoint || picot.isGuidePoint || baseOnly) {
+    // In picotJoin mode all picots are dots on the path — return BASE for consistent hit-testing
+    if (picot.isJoint || picot.isGuidePoint || baseOnly || activeMode === 'picotJoin') {
       return { x, y };
     }
     
@@ -6871,7 +7809,7 @@ const TattingDesigner = () => {
   const copyBEToClipboard = useCallback(() => {
     const lastBE = selectedBEs[selectedBEs.length - 1];
     if (!lastBE) return;
-    const el = elements.find(e => e.id === lastBE.elementId);
+    const el = elementById.get(lastBE.elementId);
     const picot = el?.picots?.find(p => p.id === lastBE.picotId);
     if (!picot) return;
     setBeClipboard({
@@ -6885,7 +7823,7 @@ const TattingDesigner = () => {
   const cutBEToClipboard = useCallback(() => {
     const lastBE = selectedBEs[selectedBEs.length - 1];
     if (!lastBE) return;
-    const el = elements.find(e => e.id === lastBE.elementId);
+    const el = elementById.get(lastBE.elementId);
     const picot = el?.picots?.find(p => p.id === lastBE.picotId);
     if (!picot) return;
     setBeClipboard({
@@ -7264,123 +8202,167 @@ const TattingDesigner = () => {
     );
   };
 
+  // ── renderOnePicot ──────────────────────────────────────────────────────────
+  // Single source of truth for all picot rendering decisions.
+  // Callers (circle, split-ring, path) resolve geometry then delegate here.
+  // x/y = base position on path; endX/endY = tip of arm; perpAngle = outward normal.
+  const renderOnePicot = (
+    p: any, key: string,
+    x: number, y: number, endX: number, endY: number, perpAngle: number,
+    element: any, beadAndJointOnly: boolean
+  ) => {
+    const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
+    const isConnected = picotConnections.some(conn =>
+      conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id)
+    );
+    const dotColor = p.isCoreJoin
+      ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
+      : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected);
+    const armColor = p.isGuidePoint ? theme.gpDiamond : getSolidColor(element);
+    const sw = isSelected ? '4' : '2';
+    const dotR = isSelected ? 6 / zoom : 4.5 / zoom;
+    const len = PICOT_SIZE[p.length] || 20;
+
+    // ── BE ──
+    if (p.beadType === 'be') {
+      if (beadAndJointOnly && activeMode === 'picotJoin' && !p.beIsJoint) return null;
+      if (activeMode === 'picotJoin' && p.beIsJoint && showEditingArtifacts) {
+        return (
+          <g key={key}>
+            {renderBE(p, x, y, perpAngle, dotColor, len, isSelected)}
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} opacity={0.9} />
+          </g>
+        );
+      }
+      return renderBE(p, x, y, perpAngle, dotColor, len, isSelected);
+    }
+
+    // ── bcjp ──
+    if (p.beadType === 'bcjp') {
+      if (activeMode === 'picotJoin' && showEditingArtifacts) {
+        return (
+          <g key={key}>
+            {renderCoreBead(`${key}-core`, x, y, p.coreSize || 'Y', dotColor, perpAngle)}
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} />
+          </g>
+        );
+      }
+      const jointDotR = isSelected ? 6 / zoom : 4 / zoom;
+      return (
+        <g key={key}>
+          {renderCoreBead(`${key}-core`, x, y, p.coreSize || 'Y', dotColor, perpAngle)}
+          {renderMode !== 'realistic' && (
+            <circle cx={x} cy={y} r={jointDotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} opacity={0.7} />
+          )}
+        </g>
+      );
+    }
+
+    // ── cj / cjp / jp / jpg ──
+    if (p.isJoint) {
+      // cjp realistic: arm in thread colour — baked SVG handles rest
+      if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
+        return <g key={key}><line x1={x} y1={y} x2={endX} y2={endY} stroke={armColor} strokeWidth={sw} /></g>;
+      }
+      if (renderMode === 'realistic') return null;
+      if (!showEditingArtifacts) return null;
+      // cj: core join without arm — nothing visible in schematic
+      if (p.isCoreJoin && !p.hasPicotArm) return null;
+      // cjp: arm (+ dot in picotJoin mode)
+      if (p.isCoreJoin && p.hasPicotArm) {
+        if (activeMode === 'picotJoin') {
+          return (
+            <g key={key} data-ui="1">
+              <line x1={x} y1={y} x2={endX} y2={endY} stroke={dotColor} strokeWidth={sw} />
+              <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} />
+            </g>
+          );
+        }
+        return <g key={key} data-ui="1"><line x1={x} y1={y} x2={endX} y2={endY} stroke={armColor} strokeWidth={sw} /></g>;
+      }
+      // jp/jpg: in normal schematic, hide arm when connected — connection line handles it
+      // in picotJoin mode always fall through so the dot renders below
+      if (activeMode !== 'picotJoin' && isConnected) return null;
+      // jp/jpg: fall through to dot (picotJoin) or arm (normal) below
+    }
+
+    // ── guide point ── no visual, pure snap target
+    if (p.isGuidePoint) return null;
+
+    // ── bead types ──
+    // In realistic mode the overlay pass (beadAndJointOnly=true) renders beads on top of baked stitches.
+    // The normal pass (beadAndJointOnly=false) skips them to avoid double-rendering.
+    if (p.beadType === 'bcp') {
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
+      return renderBcpBead(key, x, y, perpAngle, p.coreSize, p.beadSeq, armColor, len);
+    }
+    if (p.beadType === 'bc') {
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
+      return renderCoreBead(key, x, y, p.beadSize, armColor, perpAngle);
+    }
+    if (p.beadType === 'sb' && p.beadSeq) {
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
+      return renderSuspendedBead(key, x, y, perpAngle, p.beadSeq, armColor);
+    }
+    if (p.beadSeq) {
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
+      // bjp: isJoint + beadSeq — show clustered beads + picotJoin dot
+      if (p.isJoint && activeMode === 'picotJoin' && showEditingArtifacts) {
+        return (
+          <g key={key}>
+            {renderClusteredBeads(`${key}-beads`, x, y, p.beadSeq)}
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} opacity={0.9} />
+          </g>
+        );
+      }
+      return renderBeadedPicot(key, x, y, perpAngle, p.beadSeq, armColor, len);
+    }
+
+    // ── picotJoin mode: dot for all remaining picots (plain + jp fallthrough) ──
+    if (activeMode === 'picotJoin' && showEditingArtifacts) {
+      return (
+        <g key={key} data-ui="1">
+          <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} />
+        </g>
+      );
+    }
+
+    // ── realistic overlay pass: baked SVG handles regular picots ──
+    if (beadAndJointOnly) return null;
+
+    // ── connected in normal schematic: connection line handles the visual ──
+    if (activeMode !== 'picotJoin' && isConnected) return null;
+
+    // ── plain arm ──
+    return (
+      <g key={key} className={p.isGuide ? 'guide-picot' : undefined}>
+        <line x1={x} y1={y} x2={endX} y2={endY} stroke={armColor} strokeWidth={sw} />
+      </g>
+    );
+  };
+
   const renderPicots = (element, beadAndJointOnly = false) => {
     if (!element.picots || element.picots.length === 0) return null;
-    const picotSize = { small: 13, medium: 20, large: 26 };
-    const sideMultiplier = element.picotSideMultiplier || 1; // Default to 1 if not set
+    const sideMultiplier = element.picotSideMultiplier || 1;
+    // Bead-type picots are offset by 0.5 DS so they sit between stitches
+    const beadSb = (p) => (p.beadType === 'bc' || p.beadType === 'bcp' || p.beadType === 'be')
+      ? p.stitchesBefore + 0.5 : p.stitchesBefore;
 
     // Special handling for circles (rendered as SVG circle, not paths)
     if (element.isClosed && element.shapeStyle === 'circle') {
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
-      const rotation = (element.rotation || 0) * Math.PI / 180; // Convert to radians
-      
+      const rotation = (element.rotation || 0) * Math.PI / 180;
+
       return element.picots.map(p => {
-        const _sb3 = (p.beadType === 'bc' || p.beadType === 'bcp' || p.beadType === 'be') ? p.stitchesBefore + 0.5 : p.stitchesBefore;
-        const baseAngle = (_sb3 / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
-        const angle = baseAngle + rotation; // Apply rotation
+        const angle = (beadSb(p) / element.stitchCount) * Math.PI * 2 - Math.PI / 2 + rotation;
         const startX = element.center.x + Math.cos(angle) * radius;
         const startY = element.center.y + Math.sin(angle) * radius;
-        const len = picotSize[p.length] || 20;
-        // Adjust based on side multiplier
-        const adjustedRadius = radius + (len * sideMultiplier);
-        const endX = element.center.x + Math.cos(angle) * adjustedRadius;
-        const endY = element.center.y + Math.sin(angle) * adjustedRadius;
-        
-        const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
-        const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
-        // jpg and jp both use joint dot colors; gp invisible; regular picots use element color
-        const color = p.isJoint
-          ? (p.isCoreJoin
-            ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
-            : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected))
-          : p.isGuidePoint
-          ? theme.gpDiamond
-          : getSolidColor(element);
-        const strokeWidth = isSelected ? "4" : "2";
-        
-        // BE: render based on beStructure config (beading mode)
-        if (p.beadType === 'be') {
-          if (beadAndJointOnly && activeMode === 'picotJoin' && !p.beIsJoint) return null;
-          const bePerpAngle = Math.atan2(endY - startY, endX - startX);
-          return renderBE(p, startX, startY, bePerpAngle, color, len, isSelected);
-        }
-
-        // bcjp: core bead on path + joint dot indicator (selectable in join mode)
-        if (p.beadType === 'bcjp') {
-          const bcjpPerpAngle = Math.atan2(endY - startY, endX - startX);
-          const jointDotR = isSelected ? 6/zoom : 4/zoom;
-          return (
-            <g key={p.id}>
-              {renderCoreBead(`${p.id}-core`, startX, startY, p.coreSize || 'Y', color, bcjpPerpAngle)}
-              {renderMode !== 'realistic' && (
-                <circle cx={startX} cy={startY} r={jointDotR} fill={color} stroke="#000" strokeWidth={2/zoom} opacity={0.7} />
-              )}
-            </g>
-          );
-        }
-
-        // jp / jpg / cj / cjp
-        if (p.isJoint) {
-          // cjp in realistic: render as picot arm (core join with visible picot)
-          if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
-            return (
-              <g key={p.id}>
-                <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-              </g>
-            );
-          }
-          if (renderMode === 'realistic') return null;
-          if (!showEditingArtifacts) return null;
-          // cjp: core join WITH picot arm — render arm + dot
-          if (p.isCoreJoin && p.hasPicotArm) {
-            return (
-              <g key={p.id} data-ui="1">
-                <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={isSelected ? "4" : "2"} />
-                <circle cx={startX} cy={startY} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
-              </g>
-            );
-          }
-          // cj / jp / jpg: dot only
-          return (
-            <g key={p.id} data-ui="1">
-              <circle cx={startX} cy={startY} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
-            </g>
-          );
-        }
-
-        // Core+Picot bead (bcp:) — inline core with picot branch
-        if (p.beadType === 'bcp') {
-          if (beadAndJointOnly) return null;
-          const perpAngle = Math.atan2(endY - startY, endX - startX);
-          return renderBcpBead(p.id, startX, startY, perpAngle, p.coreSize, p.beadSeq, color, len);
-        }
-        // Core bead (bc:) — inline on path
-        if (p.beadType === 'bc') {
-          if (beadAndJointOnly) return null;
-          const bcPerpAngle = Math.atan2(endY - startY, endX - startX);
-          return renderCoreBead(p.id, startX, startY, p.beadSize, color, bcPerpAngle);
-        }
-        // Suspended bead (sb:SEQ) — straight spike outward
-        if (p.beadType === 'sb' && p.beadSeq) {
-          if (beadAndJointOnly) return null;
-          const perpAngle = Math.atan2(endY - startY, endX - startX);
-          return renderSuspendedBead(p.id, startX, startY, perpAngle, p.beadSeq, color);
-        }
-        // Beaded picot (bp:SEQ)
-        if (p.beadSeq) {
-          if (beadAndJointOnly) return null;
-          const perpAngle = Math.atan2(endY - startY, endX - startX);
-          return renderBeadedPicot(p.id, startX, startY, perpAngle, p.beadSeq, color, len);
-        }
-
-        if (beadAndJointOnly) return null; // realistic: bezier handles regular picots
-        return (
-          <g key={p.id} className={p.isGuide ? 'guide-picot' : undefined}>
-            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-            
-          </g>
-        );
+        const len = PICOT_SIZE[p.length] || 20;
+        const endX = element.center.x + Math.cos(angle) * (radius + len * sideMultiplier);
+        const endY = element.center.y + Math.sin(angle) * (radius + len * sideMultiplier);
+        const perpAngle = Math.atan2(endY - startY, endX - startX);
+        return renderOnePicot(p, p.id, startX, startY, endX, endY, perpAngle, element, beadAndJointOnly);
       });
     }
 
@@ -7397,30 +8379,24 @@ const TattingDesigner = () => {
       const samplesB = sampleBezierPath(pathB, 60);
       const lenA = calculatePathLength(samplesA);
       const lenB = calculatePathLength(samplesB);
+      const so = sideMultiplier === -1 ? Math.PI : 0;
 
       return element.picots.map(p => {
-        // Determine which section this picot belongs to
-        const _sb4 = (p.beadType === 'bc' || p.beadType === 'bcp' || p.beadType === 'be') ? p.stitchesBefore + 0.5 : p.stitchesBefore;
+        const sb = beadSb(p);
         const inA = p.stitchesBefore <= splitPos;
-        const localFrac = inA
-          ? _sb4 / countA
-          : (_sb4 - splitPos) / countB;
+        const localFrac = inA ? sb / countA : (sb - splitPos) / countB;
         const samples = inA ? samplesA : samplesB;
-        const pathLen = inA ? lenA : lenB;
         const path = inA ? pathA : pathB;
+        const pathLen = inA ? lenA : lenB;
 
         const targetDist = localFrac * pathLen;
         let accum = 0, localT = 0;
         for (let i = 1; i < samples.length; i++) {
           const seg = Math.hypot(samples[i].x - samples[i-1].x, samples[i].y - samples[i-1].y);
-          if (accum + seg >= targetDist) {
-            localT = (i - 1 + (targetDist - accum) / seg) / (samples.length - 1);
-            break;
-          }
+          if (accum + seg >= targetDist) { localT = (i - 1 + (targetDist - accum) / seg) / (samples.length - 1); break; }
           accum += seg;
         }
         const t = localT;
-
         let x, y, dx, dy;
         if (path.type === 'cubic') {
           x = (1-t)*(1-t)*(1-t)*path.x + 3*(1-t)*(1-t)*t*path.control1X + 3*(1-t)*t*t*path.control2X + t*t*t*path.endX;
@@ -7428,246 +8404,58 @@ const TattingDesigner = () => {
           dx = 3*(1-t)*(1-t)*(path.control1X-path.x) + 6*(1-t)*t*(path.control2X-path.control1X) + 3*t*t*(path.endX-path.control2X);
           dy = 3*(1-t)*(1-t)*(path.control1Y-path.y) + 6*(1-t)*t*(path.control2Y-path.control1Y) + 3*t*t*(path.endY-path.control2Y);
         }
-
-        const sideMultiplier = element.picotSideMultiplier || 1;
-        const sideOffset = sideMultiplier === -1 ? Math.PI : 0;
-        const perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + sideOffset;
-        const len = picotSize[p.length] || 20;
+        const perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + so;
+        const len = PICOT_SIZE[p.length] || 20;
         const endX = x + Math.cos(perpAngle) * len;
         const endY = y + Math.sin(perpAngle) * len;
-
-        const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
-        const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
-        const color = p.isJoint
-          ? (p.isCoreJoin
-            ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
-            : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected))
-          : p.isGuidePoint
-          ? theme.gpDiamond
-          : getSolidColor(element);
-        const strokeWidth = isSelected ? "4" : "2";
-
-        // BE: render based on beStructure config
-        if (p.beadType === 'be') {
-          if (beadAndJointOnly && activeMode === 'picotJoin' && !p.beIsJoint) return null;
-          return renderBE(p, x, y, perpAngle, color, len, isSelected);
-        }
-
-        // bcjp: core bead on path + joint dot indicator
-        if (p.beadType === 'bcjp') {
-          const bcjpPerpAngle = perpAngle;
-          const jointDotR = isSelected ? 6/zoom : 4/zoom;
-          return (
-            <g key={p.id}>
-              {renderCoreBead(`${p.id}-core`, x, y, p.coreSize || 'Y', color, bcjpPerpAngle)}
-              {renderMode !== 'realistic' && (
-                <circle cx={x} cy={y} r={jointDotR} fill={color} stroke="#000" strokeWidth={2/zoom} opacity={0.7} />
-              )}
-            </g>
-          );
-        }
-
-        // jp / jpg / cj / cjp: dot on path — schematic only, hidden when editing artifacts off
-        if (p.isJoint) {
-          // cjp in realistic: render as picot arm
-          if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
-            return (
-              <g key={p.id}>
-                <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={strokeWidth} />
-              </g>
-            );
-          }
-          if (renderMode === 'realistic') return null;
-          if (!showEditingArtifacts) return null;
-          if (p.isCoreJoin && p.hasPicotArm) {
-            return (
-              <g key={p.id} data-ui="1">
-                <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={isSelected ? "4" : "2"} />
-                <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
-              </g>
-            );
-          }
-          return <g key={p.id} data-ui="1"><circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} /></g>;
-        }
-        // Guide Point (gp): no visual — pure snap point on path
-        if (p.isGuidePoint) {
-          return null;
-        }
-        if (p.beadType === 'bcp') {
-          if (beadAndJointOnly) return null;
-          return renderBcpBead(p.id, x, y, perpAngle, p.coreSize, p.beadSeq, color, len);
-        }
-        if (p.beadType === 'bc') {
-          if (beadAndJointOnly) return null;
-          return renderCoreBead(p.id, x, y, p.beadSize, color, perpAngle);
-        }
-        if (p.beadType === 'sb' && p.beadSeq) {
-          if (beadAndJointOnly) return null;
-          return renderSuspendedBead(p.id, x, y, perpAngle, p.beadSeq, color);
-        }
-        if (p.beadSeq) {
-          if (beadAndJointOnly) return null;
-          return renderBeadedPicot(p.id, x, y, perpAngle, p.beadSeq, color, len);
-        }
-        if (beadAndJointOnly) return null;
-        return (
-          <g key={p.id} className={p.isGuide ? 'guide-picot' : undefined}>
-            <line x1={x} y1={y} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-            
-          </g>
-        );
+        return renderOnePicot(p, p.id, x, y, endX, endY, perpAngle, element, beadAndJointOnly);
       });
     }
 
     // Path-based rendering for teardrops and chains
-    // Calculate total path length
     let totalLength = 0;
     const pathLengths = [];
     for (let path of element.paths) {
-      const points = sampleBezierPath(path, 20);
-      const len = calculatePathLength(points);
-      pathLengths.push(len);
-      totalLength += len;
+      pathLengths.push(calculatePathLength(sampleBezierPath(path, 20)));
+      totalLength += pathLengths[pathLengths.length - 1];
     }
+    const so = sideMultiplier === -1 ? Math.PI : 0;
 
     return element.picots.map(p => {
-      // Find position along combined path  
-      const _sb5 = (p.beadType === 'bc' || p.beadType === 'bcp' || p.beadType === 'be') ? p.stitchesBefore + 0.5 : p.stitchesBefore;
-      const targetDist = (_sb5 / element.stitchCount) * totalLength;
-      let accum = 0;
-      let pathIndex = 0;
-      let localT = 0;
-
+      const targetDist = (beadSb(p) / element.stitchCount) * totalLength;
+      let accum = 0, pathIndex = 0, localT = 0;
       for (let i = 0; i < pathLengths.length; i++) {
-        if (accum + pathLengths[i] >= targetDist) {
-          pathIndex = i;
-          localT = (targetDist - accum) / pathLengths[i];
-          break;
-        }
+        if (accum + pathLengths[i] >= targetDist) { pathIndex = i; localT = (targetDist - accum) / pathLengths[i]; break; }
         accum += pathLengths[i];
       }
-
       const path = element.paths[pathIndex];
       const t = localT;
-      
       let x, y, dx, dy;
       if (path.type === 'cubic') {
-        // Cubic Bezier position and derivative
-        x = (1-t)*(1-t)*(1-t)*path.x + 
-            3*(1-t)*(1-t)*t*path.control1X + 
-            3*(1-t)*t*t*path.control2X + 
-            t*t*t*path.endX;
-        y = (1-t)*(1-t)*(1-t)*path.y + 
-            3*(1-t)*(1-t)*t*path.control1Y + 
-            3*(1-t)*t*t*path.control2Y + 
-            t*t*t*path.endY;
-        dx = 3*(1-t)*(1-t)*(path.control1X - path.x) + 
-             6*(1-t)*t*(path.control2X - path.control1X) + 
-             3*t*t*(path.endX - path.control2X);
-        dy = 3*(1-t)*(1-t)*(path.control1Y - path.y) + 
-             6*(1-t)*t*(path.control2Y - path.control1Y) + 
-             3*t*t*(path.endY - path.control2Y);
+        x = (1-t)*(1-t)*(1-t)*path.x + 3*(1-t)*(1-t)*t*path.control1X + 3*(1-t)*t*t*path.control2X + t*t*t*path.endX;
+        y = (1-t)*(1-t)*(1-t)*path.y + 3*(1-t)*(1-t)*t*path.control1Y + 3*(1-t)*t*t*path.control2Y + t*t*t*path.endY;
+        dx = 3*(1-t)*(1-t)*(path.control1X-path.x) + 6*(1-t)*t*(path.control2X-path.control1X) + 3*t*t*(path.endX-path.control2X);
+        dy = 3*(1-t)*(1-t)*(path.control1Y-path.y) + 6*(1-t)*t*(path.control2Y-path.control1Y) + 3*t*t*(path.endY-path.control2Y);
       } else if (path.type === 'quadratic') {
-        // Quadratic Bezier position and derivative
         x = (1-t)*(1-t)*path.x + 2*(1-t)*t*path.controlX + t*t*path.endX;
         y = (1-t)*(1-t)*path.y + 2*(1-t)*t*path.controlY + t*t*path.endY;
-        dx = 2*(1-t)*(path.controlX - path.x) + 2*t*(path.endX - path.controlX);
-        dy = 2*(1-t)*(path.controlY - path.y) + 2*t*(path.endY - path.controlY);
+        dx = 2*(1-t)*(path.controlX-path.x) + 2*t*(path.endX-path.controlX);
+        dy = 2*(1-t)*(path.controlY-path.y) + 2*t*(path.endY-path.controlY);
       }
-
-      // Calculate perpendicular angle from path tangent
-      // (paths are already rotated, so this automatically accounts for element rotation)
-      const sideOffset = sideMultiplier === -1 ? Math.PI : 0;
-      let perpAngle;
+      let perpAngle: number;
       const _isHalfway = element.isClosed && Math.abs(p.stitchesBefore - element.stitchCount / 2) < 1.5;
-      if (_isHalfway && element.paths && element.paths[0]) {
-        // Stable axis: vector from join point (path start) → current position
+      if (_isHalfway && element.paths?.[0]) {
         const joinX = element.paths[0].x, joinY = element.paths[0].y;
         const axDx = x - joinX, axDy = y - joinY;
         const axLen = Math.sqrt(axDx*axDx + axDy*axDy) || 1;
-        perpAngle = Math.atan2(axDy / axLen, axDx / axLen) + sideOffset;
+        perpAngle = Math.atan2(axDy / axLen, axDx / axLen) + so;
       } else {
-        perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + sideOffset;
+        perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + so;
       }
-      
-      const len = picotSize[p.length] || 20;
+      const len = PICOT_SIZE[p.length] || 20;
       const endX = x + Math.cos(perpAngle) * len;
       const endY = y + Math.sin(perpAngle) * len;
-      
-      const isSelected = selectedPicots.some(sp => sp.elementId === element.id && sp.picotId === p.id);
-      const isConnected = p.isJoint && picotConnections.some(conn => conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id));
-      const color = p.isJoint
-        ? (p.isCoreJoin
-          ? (isSelected ? theme.cjSelected : isConnected ? theme.cjConnected : theme.cjUnconnected)
-          : (isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected))
-        : p.isGuidePoint
-        ? theme.gpDiamond
-        : getSolidColor(element);
-      const strokeWidth = isSelected ? "4" : "2";
-
-      // BE: render based on beStructure config — always show diamond
-      if (p.beadType === 'be') {
-        if (beadAndJointOnly && activeMode === 'picotJoin' && !p.beIsJoint) return null;
-        return renderBE(p, x, y, perpAngle, color, len, isSelected);
-      }
-      
-      // jp / jpg / cj / cjp: dot on path — schematic only, hidden when editing artifacts off
-      if (p.isJoint) {
-        // cjp in realistic: render as picot arm
-        if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
-          return (
-            <g key={p.id}>
-              <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={strokeWidth} />
-            </g>
-          );
-        }
-        if (renderMode === 'realistic') return null;
-        if (!showEditingArtifacts) return null;
-        if (p.isCoreJoin && p.hasPicotArm) {
-          return (
-            <g key={p.id} data-ui="1">
-              <line x1={x} y1={y} x2={x + Math.cos(perpAngle) * len} y2={y + Math.sin(perpAngle) * len} stroke={color} strokeWidth={isSelected ? "4" : "2"} />
-              <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
-            </g>
-          );
-        }
-        return (
-          <g key={p.id} data-ui="1">
-            <circle cx={x} cy={y} r={isSelected ? 6/zoom : 4.5/zoom} fill={color} stroke="#000" strokeWidth={2/zoom} />
-          </g>
-        );
-      }
-
-      // Guide Point (gp): no visual — pure snap point on path
-      if (p.isGuidePoint) {
-        return null;
-      }
-
-      // Beaded picot (bp:SEQ)
-      if (p.beadType === 'bcp') {
-        if (beadAndJointOnly) return null;
-        return renderBcpBead(p.id, x, y, perpAngle, p.coreSize, p.beadSeq, color, len);
-      }
-      if (p.beadType === 'bc') {
-        if (beadAndJointOnly) return null;
-        return renderCoreBead(p.id, x, y, p.beadSize, color, perpAngle);
-      }
-      if (p.beadType === 'sb' && p.beadSeq) {
-        if (beadAndJointOnly) return null;
-        return renderSuspendedBead(p.id, x, y, perpAngle, p.beadSeq, color);
-      }
-      if (p.beadSeq) {
-        if (beadAndJointOnly) return null;
-        return renderBeadedPicot(p.id, x, y, perpAngle, p.beadSeq, color, len);
-      }
-
-      if (beadAndJointOnly) return null;
-      return (
-        <g key={p.id} className={p.isGuide ? 'guide-picot' : undefined}>
-          <line x1={x} y1={y} x2={endX} y2={endY} stroke={color} strokeWidth={strokeWidth} />
-          
-        </g>
-      );
+      return renderOnePicot(p, p.id, x, y, endX, endY, perpAngle, element, beadAndJointOnly);
     });
   };
 
@@ -7689,8 +8477,9 @@ const TattingDesigner = () => {
         const radius = targetCircumference / (2 * Math.PI);
         const textRadius = radius + (element.labelOffset ?? 8);
         const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
+        const rotationRad = (element.rotation || 0) * Math.PI / 180;
         return runs.map((run, j) => {
-          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
+          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2 + rotationRad;
           return (
             <text
               key={`label-${element.id}-np-${j}`}
@@ -7811,11 +8600,12 @@ const TattingDesigner = () => {
       const radius = targetCircumference / (2 * Math.PI);
       const labelsInside = element.labelsInside;
       const textRadius = radius + (element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 25 : radius * -0.35));
+      const rotationRad = (element.rotation || 0) * Math.PI / 180;
       
       return segments.flatMap((seg, i) => {
         const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
         return runs.map((run, j) => {
-          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
+          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2 + rotationRad;
           return (
             <text
               key={`label-${element.id}-${i}-${j}`}
@@ -7995,7 +8785,7 @@ const TattingDesigner = () => {
   // Returns true if an element's bounding box overlaps the current camera viewport.
   // Always returns true for selected elements (avoid disappearing while dragging off-edge).
   const isInViewport = (el) => {
-    if (selectedIds.includes(el.id)) return true; // never cull selected
+    if (selectedIdSet.has(el.id)) return true; // never cull selected
     const bounds = elementBoundsCache.get(el.id);
     if (!bounds) return true; // no bounds = render to be safe
     const { width: cw, height: ch } = canvasSizeRef.current;
@@ -8035,29 +8825,39 @@ const TattingDesigner = () => {
     }
   }, [selectedIds]);
 
-  // ESC key closes modal windows
+  // ESC key closes modal windows — ordered by priority (outermost layer first).
+  // Uses a ref so the listener is registered once and always sees current state,
+  // eliminating the dep-array entirely and the stale-closure bugs it caused.
+  const escapeActionRef = useRef<() => void>(() => {});
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key !== 'Escape') return;
-      if (showSplash) { setShowSplash(false); return; }
-      if (renderMode === 'realistic') { handleSetRenderMode('schematic'); return; }
-      if (showColorPicker) { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); return; }
-      if (showMaterialsPanel) { setShowMaterialsPanel(false); return; }
-      if (showAbout) { setShowAbout(false); return; }
-      if (showHelpMenu) { setShowHelpMenu(false); return; }
-      if (showHelp) { setShowHelp(false); return; }
-      if (showBeadLibrary) { setShowBeadLibrary(false); return; }
-      if (showPolarGridPanel) { setShowPolarGridPanel(false); return; }
-      if (showThreadProperties) { setShowThreadProperties(false); return; }
-      if (activeMode === 'picotJoin') { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); return; }
-      if (activeMode === 'beading') { setActiveMode(null); setSelectedBEs([]); return; }
-      if (activeMode === 'tattingOrder') { setActiveMode(null); setSelectedIds([]); return; }
-      if (currentTool === 'zoomRect') { setCurrentTool('select'); setZoomRectBox(null); return; }
-      if (currentTool === 'ruler' && rulerPoints.length > 0) { setRulerPoints([]); setRulerMousePos(null); return; }
+    escapeActionRef.current = () => {
+      const closers: Array<[boolean, () => void]> = [
+        [showSplash,                      () => setShowSplash(false)],
+        [renderMode === 'realistic',       () => handleSetRenderMode('schematic')],
+        [showColorPicker,                  () => { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); }],
+        [showMaterialsPanel,               () => setShowMaterialsPanel(false)],
+        [showAbout,                        () => setShowAbout(false)],
+        [showHelpMenu,                     () => setShowHelpMenu(false)],
+        [showHelp,                         () => setShowHelp(false)],
+        [showUiGuide,                      () => setShowUiGuide(false)],
+        [showBeadLibrary,                  () => setShowBeadLibrary(false)],
+        [showPolarGridPanel,               () => setShowPolarGridPanel(false)],
+        [showThreadProperties,             () => setShowThreadProperties(false)],
+        [activeMode === 'picotJoin',       () => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); }],
+        [activeMode === 'beading',         () => { setActiveMode(null); setSelectedBEs([]); }],
+        [activeMode === 'tattingOrder',    () => { setActiveMode(null); setSelectedIds([]); }],
+        [currentTool === 'zoomRect',       () => { setCurrentTool('select'); setZoomRectBox(null); }],
+        [currentTool === 'ruler' && rulerPoints.length > 0, () => { setRulerPoints([]); setRulerMousePos(null); }],
+      ];
+      const hit = closers.find(([active]) => active);
+      hit?.[1]();
     };
+  });
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') escapeActionRef.current(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showSplash, showColorPicker, showMaterialsPanel, showHelp, showBeadLibrary, showPolarGridPanel, showThreadProperties, currentTool, activeMode, renderMode, rulerPoints]);
+  }, []);
 
   // Resolve the correct help URL whenever the help modal opens or language changes.
   // Fetches the localised file and checks the body — Vite/SPA dev servers return
@@ -8163,6 +8963,32 @@ const TattingDesigner = () => {
     const expand = (x: number, y: number) => {
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
+    };
+
+    // ── shared picot helpers ──────────────────────────────────────────────────
+    const shouldSkipPicot = (picot: any, elId: string): boolean => {
+      if (picot.isGuidePoint) return true;
+      if (picot.beadType) return true;
+      if (!picot.isJoint) return false;
+      if (picot.isCoreJoin && !picot.hasPicotArm) return true;
+      if (!picot.isCoreJoin) {
+        return picotConnections.some(conn =>
+          conn.picots.some(cp => cp.elementId === elId && cp.picotId === picot.id)
+        );
+      }
+      return false;
+    };
+
+    const emitPicot = (
+      bL: {x:number,y:number}, bR: {x:number,y:number},
+      tip: {x:number,y:number}, color: string, lw: number
+    ): string => {
+      const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
+      const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
+      const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
+      expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
+      return `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>` +
+             `<path d="${d}" stroke="${color}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
     };
 
     // ── per-element SVG fragments ──
@@ -8289,6 +9115,8 @@ const TattingDesigner = () => {
             let wedgePaths: string[];
             if (isCircle) {
               wedgePaths = renderWedgeRingShapes(stitch, el, scale, offsetAmount, type);
+            } else if (isSplitRing) {
+              wedgePaths = renderWedgeSplitRingShapes(stitch, el, scale, offsetAmount, type, i);
             } else if (el.isClosed) {
               wedgePaths = renderWedgeTeardropShapes(stitch, el, scale, offsetAmount, type, effectiveIndex, stitchTypes.length);
             } else {
@@ -8320,25 +9148,118 @@ const TattingDesigner = () => {
         const r = el.stitchCount * dsWidth / (2 * Math.PI);
         expand(el.center.x - r - dsWidth*2, el.center.y - r - dsWidth*2);
         expand(el.center.x + r + dsWidth*2, el.center.y + r + dsWidth*2);
-        // picots for circle: simple arc approach (no path sampling needed)
+
+        // ── picots first so they render underneath stitches ──
+        if (el.picots?.length) {
+          const N = el.stitchCount;
+          const rotation = (el.rotation || 0) * Math.PI / 180;
+          const picotSideDir = el.picotSideMultiplier || 1;
+          let out = '';
+          for (const picot of el.picots) {
+            if (shouldSkipPicot(picot, el.id)) continue;
+            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
+            const tMid   = picot.stitchesBefore / N;
+            const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
+            const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
+            const angleOf = (t: number) => t * Math.PI * 2 + rotation - Math.PI / 2;
+            const ptOn    = (t: number) => ({
+              x: el.center.x + Math.cos(angleOf(t)) * r,
+              y: el.center.y + Math.sin(angleOf(t)) * r,
+            });
+            const bL  = ptOn(tLeft);
+            const bR  = ptOn(tRight);
+            const mx  = ptOn(tMid);
+            const tip = {
+              x: mx.x + Math.cos(angleOf(tMid)) * picotSideDir * tipH,
+              y: mx.y + Math.sin(angleOf(tMid)) * picotSideDir * tipH,
+            };
+            const color = elColor.isGradient
+              ? getGradientColorAtPosition(elColor.id, tMid)
+              : elColor.color;
+            out += emitPicot(bL, bR, tip, color, el.lineWidth || 2);
+          }
+          frag += out;
+        }
+        // ── stitches after picots so they render on top ──
         frag += stitchesToSVG(stitches, true);
 
       } else if (el.isSplitRing) {
         // ── split ring ──
         const cached = calculateSplitRingStitches(el);
-        const stitchesA = cached.filter((_: any, i: number) => i < cached.length / 2);
-        const stitchesB = cached.filter((_: any, i: number) => i >= cached.length / 2);
-        const allSamplesA = [sampleBezierPath(el.paths[0], 50)];
-        const pathLengthsA = allSamplesA.map((s: any[]) => calculatePathLength(s));
-        const totalLengthA = pathLengthsA.reduce((a: number, b: number) => a + b, 0);
-        const allSamplesB = [sampleBezierPath(el.paths[1], 50)];
-        const pathLengthsB = allSamplesB.map((s: any[]) => calculatePathLength(s));
-        const totalLengthB = pathLengthsB.reduce((a: number, b: number) => a + b, 0);
-        // Use path bounding for expand
         for (const path of el.paths || []) {
           const pts = sampleBezierPath(path, 20);
           for (const pt of pts) expand(pt.x, pt.y);
         }
+
+        // ── picots for split ring — emitted BEFORE stitches so they sit underneath ──
+        if (el.picots?.length && el.paths?.[0] && el.paths?.[1]) {
+          const splitPos = el.splitPosition || Math.floor(el.stitchCount / 2);
+          const countA = splitPos;
+          const countB = el.stitchCount - splitPos;
+          const picotSideDir = el.picotSideMultiplier || 1;
+          const samplesA = sampleBezierPath(el.paths[0], 60);
+          const samplesB = sampleBezierPath(el.paths[1], 60);
+          const lenA = calculatePathLength(samplesA);
+          const lenB = calculatePathLength(samplesB);
+          const lw = el.lineWidth || 2;
+
+          // Walk a pre-computed sample array to find position at fractional distance
+          // Defined once outside the picot loop — not recreated per picot
+          const ptAtFrac = (samples: any[], pathLen: number, frac: number) => {
+            const target = frac * pathLen;
+            let accum = 0;
+            for (let i = 1; i < samples.length; i++) {
+              const seg = Math.hypot(
+                samples[i].x - samples[i-1].x,
+                samples[i].y - samples[i-1].y
+              );
+              if (accum + seg >= target) {
+                const lt = (target - accum) / seg;
+                return {
+                  x: samples[i-1].x + lt * (samples[i].x - samples[i-1].x),
+                  y: samples[i-1].y + lt * (samples[i].y - samples[i-1].y),
+                  angle: Math.atan2(
+                    samples[i].y - samples[i-1].y,
+                    samples[i].x - samples[i-1].x
+                  ),
+                };
+              }
+              accum += seg;
+            }
+            const last = samples[samples.length - 1];
+            const prev = samples[samples.length - 2] ?? last;
+            return { x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) };
+          };
+
+          let out = '';
+          for (const picot of el.picots) {
+            if (shouldSkipPicot(picot, el.id)) continue;
+            const inA = picot.stitchesBefore <= splitPos;
+            const localCount = inA ? countA : countB;
+            if (localCount <= 0) continue; // degenerate split — skip
+            const localSb = inA ? picot.stitchesBefore : picot.stitchesBefore - splitPos;
+            const samples = inA ? samplesA : samplesB;
+            const pathLen = inA ? lenA : lenB;
+            const tMid   = localSb / localCount;
+            const tLeft  = Math.max(0, (localSb - PICOT_BASE_OFF) / localCount);
+            const tRight = Math.min(1, (localSb + PICOT_BASE_OFF) / localCount);
+            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
+            const ptMid   = ptAtFrac(samples, pathLen, tMid);
+            const ptLeft  = ptAtFrac(samples, pathLen, tLeft);
+            const ptRight = ptAtFrac(samples, pathLen, tRight);
+            const nx =  Math.sin(ptMid.angle) * picotSideDir;
+            const ny = -Math.cos(ptMid.angle) * picotSideDir;
+            const bL  = { x: ptLeft.x,  y: ptLeft.y  };
+            const bR  = { x: ptRight.x, y: ptRight.y };
+            const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
+            const color = elColor.isGradient
+              ? getGradientColorAtPosition(elColor.id, tMid)
+              : elColor.color;
+            out += emitPicot(bL, bR, tip, color, lw);
+          }
+          frag += out;
+        }
+        // ── stitches after picots so they render on top ──
         frag += stitchesToSVG(cached, false, true);
 
       } else if (el.type === 'chain' || el.type === 'ring') {
@@ -8399,7 +9320,6 @@ const TattingDesigner = () => {
       setCurrentTool('pan');
       setBakedRealisticSVG(null);
       setRenderMode('realistic');
-      // Defer baking one tick so React can commit renderMode first
       setTimeout(() => bakeRealisticView(), 0);
     } else {
       setBakedRealisticSVG(null);
@@ -9079,6 +9999,28 @@ const TattingDesigner = () => {
           >
             <IconPaste size={20} />
           </button>
+
+          <div className="w-px h-6 bg-gray-600 mx-0.5" />
+
+          <button
+            onClick={sendToBack}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            style={{ width: '44px', height: '44px' }}
+            title={t('btnSendToBack')}
+            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
+          >
+            <IconSendToBack size={20} />
+          </button>
+
+          <button
+            onClick={bringToFront}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            style={{ width: '44px', height: '44px' }}
+            title={t('btnBringToFront')}
+            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
+          >
+            <IconBringToFront size={20} />
+          </button>
           </div>{/* end centered flex */}
           
           <button 
@@ -9204,7 +10146,7 @@ const TattingDesigner = () => {
             const lastBERef = selectedBEs[selectedBEs.length - 1] || null;
             const bePicot = (() => {
               if (!lastBERef) return null;
-              const el = elements.find(e => e.id === lastBERef.elementId);
+              const el = elementById.get(lastBERef.elementId);
               return el?.picots?.find(p => p.id === lastBERef.picotId) || null;
             })();
 
@@ -9371,7 +10313,7 @@ const TattingDesigner = () => {
             );
           })() : activeMode === 'tattingOrder' ? (() => {
             // ── Tatting Order mode property bar ──────────────────────────
-            const selectedEl = selectedIds.length === 1 ? elements.find(e => e.id === selectedIds[0]) : null;
+            const selectedEl = selectedElement;
             const numbered = elements.filter(e => e.orderNumber != null && String(e.orderNumber).trim() !== '').length;
             const total = elements.length;
 
@@ -9389,14 +10331,9 @@ const TattingDesigner = () => {
             // Per-group numbered count for the progress chip
             const numberedInScope = elements.filter(e => {
               const hasNum = e.orderNumber != null && String(e.orderNumber).trim() !== '';
-              if (!hasNum) return false;
-              return activeOrderGroupId === null
-                ? !e.orderGroup
-                : e.orderGroup === activeOrderGroupId;
+              return hasNum && inActiveGroup(e);
             }).length;
-            const totalInScope = elements.filter(e =>
-              activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId
-            ).length;
+            const totalInScope = elements.filter(inActiveGroup).length;
 
             return (
               <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
@@ -9755,24 +10692,11 @@ const TattingDesigner = () => {
                       value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
                       onChange={e => setPropBarOrderDraft(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          const n = parseInt(propBarOrderDraft ?? '', 10);
-                          if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
-                          else if (propBarOrderDraft?.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
-                          setPropBarOrderDraft(null);
-                          (e.target as HTMLInputElement).blur();
-                        }
+                        if (e.key === 'Enter') commitOrderDraft(selectedElement.id, propBarOrderDraft, e.target as HTMLInputElement);
                         if (e.key === 'Escape') { setPropBarOrderDraft(null); (e.target as HTMLInputElement).blur(); }
                       }}
                       onFocus={() => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
-                      onBlur={() => {
-                        if (propBarOrderDraft !== null) {
-                          const n = parseInt(propBarOrderDraft, 10);
-                          if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
-                          else if (propBarOrderDraft.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
-                          setPropBarOrderDraft(null);
-                        }
-                      }}
+                      onBlur={() => commitOrderDraft(selectedElement.id, propBarOrderDraft)}
                       className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
                       placeholder="#"
                     />
@@ -10142,58 +11066,17 @@ const TattingDesigner = () => {
                 {/* Label removed - icons are self-explanatory */}
                 <button
                   onClick={() => {
-                    const currentRotation = selectedElement.rotation || 0;
-                    const newRotation = currentRotation - 90;
-                    const delta = -90;
-                    
-                    const rad = delta * Math.PI / 180;
-                    const cos = Math.cos(rad);
-                    const sin = Math.sin(rad);
-                    
+                    const newRotation = (selectedElement.rotation || 0) - 90;
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
-                      
-                      const polarPivot = getPolarPivot([el.id]); const pivot = polarPivot || getElementPivot(el);
-                      const cx = pivot.x;
-                      const cy = pivot.y;
-                      const newPaths = el.paths.map(path => {
-                        const rotatePoint = (px, py) => {
-                          const dx = px - cx;
-                          const dy = py - cy;
-                          return {
-                            x: cx + dx * cos - dy * sin,
-                            y: cy + dx * sin + dy * cos
-                          };
-                        };
-                        
-                        if (path.type === 'cubic') {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const c1 = rotatePoint(path.control1X, path.control1Y);
-                          const c2 = rotatePoint(path.control2X, path.control2Y);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            control1X: c1.x, control1Y: c1.y,
-                            control2X: c2.x, control2Y: c2.y
-                          };
-                        } else {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const ctrl = rotatePoint(path.controlX, path.controlY);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            controlX: ctrl.x, controlY: ctrl.y
-                          };
-                        }
-                      });
-                      
-                      const newPivot = polarPivot ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos } : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: newRotation,
-                               center: { x: newPivot.x, y: newPivot.y } };
+                      const polarPivot = getPolarPivot([el.id]);
+                      const pivot = polarPivot || getElementPivot(el);
+                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, -90);
+                      const newPivot = polarPivot
+                        ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(-Math.PI/2) - (el.center.y - pivot.y) * Math.sin(-Math.PI/2),
+                            y: pivot.y + (el.center.x - pivot.x) * Math.sin(-Math.PI/2) + (el.center.y - pivot.y) * Math.cos(-Math.PI/2) }
+                        : getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -10212,35 +11095,16 @@ const TattingDesigner = () => {
                     if (result === null) return;
                     const delta = result - (selectedElement.rotation || 0);
                     if (Math.abs(delta) < 0.001) return;
-                    const rad = delta * Math.PI / 180;
-                    const cos = Math.cos(rad);
-                    const sin = Math.sin(rad);
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
-                      const polarPivot = getPolarPivot([el.id]); const pivot = polarPivot || getElementPivot(el);
-                      const cx = pivot.x;
-                      const cy = pivot.y;
-                      const newPaths = el.paths.map(path => {
-                        const rotatePoint = (px, py) => {
-                          const dx = px - cx;
-                          const dy = py - cy;
-                          return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-                        };
-                        if (path.type === 'cubic') {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const c1 = rotatePoint(path.control1X, path.control1Y);
-                          const c2 = rotatePoint(path.control2X, path.control2Y);
-                          return { ...path, x: start.x, y: start.y, endX: end.x, endY: end.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                        } else {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const ctrl = rotatePoint(path.controlX, path.controlY);
-                          return { ...path, x: start.x, y: start.y, endX: end.x, endY: end.y, controlX: ctrl.x, controlY: ctrl.y };
-                        }
-                      });
+                      const polarPivot = getPolarPivot([el.id]);
+                      const pivot = polarPivot || getElementPivot(el);
+                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
+                      const rad = delta * Math.PI / 180;
+                      const cos = Math.cos(rad), sin = Math.sin(rad);
                       const newPivot = polarPivot
-                        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+                        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
+                            y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
                         : getElementPivot({ ...el, paths: newPaths });
                       return { ...el, paths: newPaths, rotation: result, center: { x: newPivot.x, y: newPivot.y } };
                     }));
@@ -10251,83 +11115,81 @@ const TattingDesigner = () => {
                   style={{width:'6.5ch', minWidth:'6.5ch'}}
                   placeholder="0°"
                 />
-                {/* ±1° nudge arrows — side by side, press-and-hold to repeat */}
+                {/* ±1° nudge arrows — side by side, press-and-hold to repeat.
+                    All intermediate rotations skip history; one push on mouseUp captures the full delta. */}
                 <button
                   onMouseDown={() => {
+                    nudgeActiveRef.current = true;
+                    nudgeAccumulatedDeltaRef.current = 1;
                     applySingleRotationDelta(selectedElement.id, 1);
-                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, 1), 80);
+                    nudgeIntervalRef.current = setInterval(() => {
+                      nudgeAccumulatedDeltaRef.current += 1;
+                      applySingleRotationDeltaNoHistory(selectedElement.id, 1);
+                    }, 80);
                   }}
-                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
-                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseUp={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
+                  onMouseLeave={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
                   className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
                   style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
                   title={t('rotateNudgePlus')}
                 >▲</button>
                 <button
                   onMouseDown={() => {
+                    nudgeActiveRef.current = true;
+                    nudgeAccumulatedDeltaRef.current = -1;
                     applySingleRotationDelta(selectedElement.id, -1);
-                    nudgeIntervalRef.current = setInterval(() => applySingleRotationDelta(selectedElement.id, -1), 80);
+                    nudgeIntervalRef.current = setInterval(() => {
+                      nudgeAccumulatedDeltaRef.current -= 1;
+                      applySingleRotationDeltaNoHistory(selectedElement.id, -1);
+                    }, 80);
                   }}
-                  onMouseUp={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
-                  onMouseLeave={() => { if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; } }}
+                  onMouseUp={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
+                  onMouseLeave={() => {
+                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                    }
+                    nudgeActiveRef.current = false;
+                    nudgeAccumulatedDeltaRef.current = 0;
+                  }}
                   className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
                   style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
                   title={t('rotateNudgeMinus')}
                 >▼</button>
                 <button
                   onClick={() => {
-                    const currentRotation = selectedElement.rotation || 0;
-                    const newRotation = currentRotation + 90;
-                    const delta = 90;
-                    
-                    const rad = delta * Math.PI / 180;
-                    const cos = Math.cos(rad);
-                    const sin = Math.sin(rad);
-                    
+                    const newRotation = (selectedElement.rotation || 0) + 90;
                     setElements(prev => prev.map(el => {
                       if (el.id !== selectedElement.id) return el;
-                      
-                      const polarPivot = getPolarPivot([el.id]); const pivot = polarPivot || getElementPivot(el);
-                      const cx = pivot.x;
-                      const cy = pivot.y;
-                      const newPaths = el.paths.map(path => {
-                        const rotatePoint = (px, py) => {
-                          const dx = px - cx;
-                          const dy = py - cy;
-                          return {
-                            x: cx + dx * cos - dy * sin,
-                            y: cy + dx * sin + dy * cos
-                          };
-                        };
-                        
-                        if (path.type === 'cubic') {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const c1 = rotatePoint(path.control1X, path.control1Y);
-                          const c2 = rotatePoint(path.control2X, path.control2Y);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            control1X: c1.x, control1Y: c1.y,
-                            control2X: c2.x, control2Y: c2.y
-                          };
-                        } else {
-                          const start = rotatePoint(path.x, path.y);
-                          const end = rotatePoint(path.endX, path.endY);
-                          const ctrl = rotatePoint(path.controlX, path.controlY);
-                          return {
-                            ...path,
-                            x: start.x, y: start.y,
-                            endX: end.x, endY: end.y,
-                            controlX: ctrl.x, controlY: ctrl.y
-                          };
-                        }
-                      });
-                      
-                      const newPivot = polarPivot ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos } : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: newRotation,
-                               center: { x: newPivot.x, y: newPivot.y } };
+                      const polarPivot = getPolarPivot([el.id]);
+                      const pivot = polarPivot || getElementPivot(el);
+                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, 90);
+                      const newPivot = polarPivot
+                        ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(Math.PI/2) - (el.center.y - pivot.y) * Math.sin(Math.PI/2),
+                            y: pivot.y + (el.center.x - pivot.x) * Math.sin(Math.PI/2) + (el.center.y - pivot.y) * Math.cos(Math.PI/2) }
+                        : getElementPivot({ ...el, paths: newPaths });
+                      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
                     }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -10374,7 +11236,7 @@ const TattingDesigner = () => {
                     min="-25"
                     max="45"
                     step="1"
-                    value={elements.find(e => selectedIds.includes(e.id))?.labelOffset ?? 8}
+                    value={elements.find(e => selectedIdSet.has(e.id))?.labelOffset ?? 8}
                     onChange={e => setLabelOffset(Number(e.target.value))}
                     className="w-20 accent-blue-500"
                     title={t('propNotationPos')}
@@ -10384,19 +11246,19 @@ const TattingDesigner = () => {
                 {/* Hide notation label toggle */}
                 <button
                   onClick={() => {
-                    const allHidden = elements.filter(e => selectedIds.includes(e.id)).every(e => e.hideLabel);
+                    const allHidden = elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel);
                     setElements(prev => prev.map(el =>
-                      selectedIds.includes(el.id) ? { ...el, hideLabel: !allHidden } : el
+                      selectedIdSet.has(el.id) ? { ...el, hideLabel: !allHidden } : el
                     ));
                   }}
                   className={`px-2 py-1 rounded text-xs ${
-                    elements.filter(e => selectedIds.includes(e.id)).every(e => e.hideLabel)
+                    elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel)
                       ? 'bg-orange-600 hover:bg-orange-700 text-white'
                       : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
                   }`}
                   title={t('propHideLabel')}
                 >
-                  {elements.filter(e => selectedIds.includes(e.id)).every(e => e.hideLabel)
+                  {elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel)
                     ? <IconNotationOff size={16} />
                     : <IconNotationOn size={16} />}
                 </button>
@@ -10410,7 +11272,7 @@ const TattingDesigner = () => {
                       onChange={e => {
                         const val = e.target.value || null;
                         setElements(prev => prev.map(el =>
-                          selectedIds.includes(el.id) ? { ...el, polarRotationGridId: val } : el
+                          selectedIdSet.has(el.id) ? { ...el, polarRotationGridId: val } : el
                         ));
                         // Reset pivot offset when switching to polar pivot
                         if (val) setPivotOffset({ x: 0, y: 0 });
@@ -10439,24 +11301,11 @@ const TattingDesigner = () => {
                   value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
                   onChange={e => setPropBarOrderDraft(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      const n = parseInt(propBarOrderDraft ?? '', 10);
-                      if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
-                      else if (propBarOrderDraft?.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
-                      setPropBarOrderDraft(null);
-                      (e.target as HTMLInputElement).blur();
-                    }
+                    if (e.key === 'Enter') commitOrderDraft(selectedElement.id, propBarOrderDraft, e.target as HTMLInputElement);
                     if (e.key === 'Escape') { setPropBarOrderDraft(null); (e.target as HTMLInputElement).blur(); }
                   }}
                   onFocus={e => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
-                  onBlur={() => {
-                    if (propBarOrderDraft !== null) {
-                      const n = parseInt(propBarOrderDraft, 10);
-                      if (!isNaN(n) && n > 0) assignOrderNumber(selectedElement.id, n);
-                      else if (propBarOrderDraft.trim() === '') { setElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, orderNumber: null } : el)); pushOrderHistory(); }
-                      setPropBarOrderDraft(null);
-                    }
-                  }}
+                  onBlur={() => commitOrderDraft(selectedElement.id, propBarOrderDraft)}
                   className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
                   placeholder="#"
                 />
@@ -10592,10 +11441,7 @@ const TattingDesigner = () => {
                           const squeeze = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, squeeze, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-                            return applyRotationToPathData({ ...el, squeeze }, newPathData);
+                            return applyRotationToPathData({ ...el, squeeze }, createSplitRingPathFromEl(el, { squeeze }));
                           }));
                         }}
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
@@ -10613,10 +11459,7 @@ const TattingDesigner = () => {
                           const squeezeCA = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, el.squeeze ?? 0.25, squeezeCA, el.squeezeCB ?? 0.75);
-                            return applyRotationToPathData({ ...el, squeezeCA }, newPathData);
+                            return applyRotationToPathData({ ...el, squeezeCA }, createSplitRingPathFromEl(el, { squeezeCA }));
                           }));
                         }}
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
@@ -10634,10 +11477,7 @@ const TattingDesigner = () => {
                           const squeezeCB = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, squeezeCB);
-                            return applyRotationToPathData({ ...el, squeezeCB }, newPathData);
+                            return applyRotationToPathData({ ...el, squeezeCB }, createSplitRingPathFromEl(el, { squeezeCB }));
                           }));
                         }}
                         onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
@@ -10649,10 +11489,8 @@ const TattingDesigner = () => {
                         onClick={() => {
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                            const stitchCountB = el.stitchCount - stitchCountA;
-                            const newPathData = createSplitRingPath(el.center.x, el.center.y, el.stitchCount * dsWidth, stitchCountA, stitchCountB, 0.25, 0.75, 0.75);
-                            return { ...el, squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0, ...newPathData };
+                            return { ...el, squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0,
+                              ...createSplitRingPathFromEl(el, { squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75 }) };
                           }));
                         }}
                         className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -10718,7 +11556,7 @@ const TattingDesigner = () => {
                     const matId = e.target.value;
                     if (matId === '__edit__') { setShowMaterialsPanel(true); return; }
                     setElements(prev => prev.map(el =>
-                      selectedIds.includes(el.id) ? { ...el, materialId: matId } : el
+                      selectedIdSet.has(el.id) ? { ...el, materialId: matId } : el
                     ));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
@@ -10744,6 +11582,7 @@ const TattingDesigner = () => {
                   );
                 })()}
               </div>
+
                {/* Material B selector — split rings only, right after Material A */}
                {selectedElement.isSplitRing && (
                  <>
@@ -10756,7 +11595,7 @@ const TattingDesigner = () => {
                          const matId = e.target.value;
                          if (matId === '__edit__') { setShowMaterialsPanel(true); return; }
                          setElements(prev => prev.map(el =>
-                           selectedIds.includes(el.id) ? { ...el, materialIdB: matId } : el
+                           selectedIdSet.has(el.id) ? { ...el, materialIdB: matId } : el
                          ));
                        }}
                        className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
@@ -10805,68 +11644,18 @@ const TattingDesigner = () => {
                       <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                         <button
                           onClick={() => {
-                            const delta = -90;
-                            const rad = delta * Math.PI / 180;
-                            const cos = Math.cos(rad);
-                            const sin = Math.sin(rad);
-                            
-                            // Calculate group center (or polar pivot if set)
                             const _ppN = getPolarPivot(selectedIds);
-                            const groupCenterX = _ppN ? _ppN.x : groupElements.reduce((sum, el) => sum + el.center.x, 0) / groupElements.length;
-                            const groupCenterY = _ppN ? _ppN.y : groupElements.reduce((sum, el) => sum + el.center.y, 0) / groupElements.length;
-                            
+                            const gcx = _ppN ? _ppN.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
+                            const gcy = _ppN ? _ppN.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
+                            const cos = Math.cos(-Math.PI/2), sin = Math.sin(-Math.PI/2);
                             setElements(prev => prev.map(el => {
-                              if (!selectedIds.includes(el.id)) return el;
-                              
-                              // Rotate element center around group center
-                              const dx = el.center.x - groupCenterX;
-                              const dy = el.center.y - groupCenterY;
-                              const newCenterX = groupCenterX + dx * cos - dy * sin;
-                              const newCenterY = groupCenterY + dx * sin + dy * cos;
-                              
-                              // Rotate all path points around group center
-                              const newPaths = el.paths.map(path => {
-                                const rotatePoint = (px, py) => {
-                                  const pdx = px - groupCenterX;
-                                  const pdy = py - groupCenterY;
-                                  return {
-                                    x: groupCenterX + pdx * cos - pdy * sin,
-                                    y: groupCenterY + pdx * sin + pdy * cos
-                                  };
-                                };
-                                
-                                if (path.type === 'cubic') {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const c1 = rotatePoint(path.control1X, path.control1Y);
-                                  const c2 = rotatePoint(path.control2X, path.control2Y);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    control1X: c1.x, control1Y: c1.y,
-                                    control2X: c2.x, control2Y: c2.y
-                                  };
-                                } else {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const ctrl = rotatePoint(path.controlX, path.controlY);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    controlX: ctrl.x, controlY: ctrl.y
-                                  };
-                                }
-                              });
-                              
-                              // Update rotation value for ALL elements (so it shows correctly after ungrouping)
-                              const newRotation = ((el.rotation || 0) + delta) % 360;
-                              
-                              return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: newRotation };
+                              if (!selectedIdSet.has(el.id)) return el;
+                              const dx = el.center.x - gcx, dy = el.center.y - gcy;
+                              return { ...el,
+                                center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
+                                paths: rotatePaths(el.paths, gcx, gcy, -90),
+                                rotation: ((el.rotation || 0) - 90) % 360 };
                             }));
-                            
-                            // Clear input after rotation
                             setGroupRotationInput('');
                           }}
                           className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -10899,68 +11688,18 @@ const TattingDesigner = () => {
                         />
                         <button
                           onClick={() => {
-                            const delta = 90;
-                            const rad = delta * Math.PI / 180;
-                            const cos = Math.cos(rad);
-                            const sin = Math.sin(rad);
-                            
-                            // Calculate group center (or polar pivot if set)
                             const _ppP = getPolarPivot(selectedIds);
-                            const groupCenterX = _ppP ? _ppP.x : groupElements.reduce((sum, el) => sum + el.center.x, 0) / groupElements.length;
-                            const groupCenterY = _ppP ? _ppP.y : groupElements.reduce((sum, el) => sum + el.center.y, 0) / groupElements.length;
-                            
+                            const gcx = _ppP ? _ppP.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
+                            const gcy = _ppP ? _ppP.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
+                            const cos = Math.cos(Math.PI/2), sin = Math.sin(Math.PI/2);
                             setElements(prev => prev.map(el => {
-                              if (!selectedIds.includes(el.id)) return el;
-                              
-                              // Rotate element center around group center
-                              const dx = el.center.x - groupCenterX;
-                              const dy = el.center.y - groupCenterY;
-                              const newCenterX = groupCenterX + dx * cos - dy * sin;
-                              const newCenterY = groupCenterY + dx * sin + dy * cos;
-                              
-                              // Rotate all path points around group center
-                              const newPaths = el.paths.map(path => {
-                                const rotatePoint = (px, py) => {
-                                  const pdx = px - groupCenterX;
-                                  const pdy = py - groupCenterY;
-                                  return {
-                                    x: groupCenterX + pdx * cos - pdy * sin,
-                                    y: groupCenterY + pdx * sin + pdy * cos
-                                  };
-                                };
-                                
-                                if (path.type === 'cubic') {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const c1 = rotatePoint(path.control1X, path.control1Y);
-                                  const c2 = rotatePoint(path.control2X, path.control2Y);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    control1X: c1.x, control1Y: c1.y,
-                                    control2X: c2.x, control2Y: c2.y
-                                  };
-                                } else {
-                                  const start = rotatePoint(path.x, path.y);
-                                  const end = rotatePoint(path.endX, path.endY);
-                                  const ctrl = rotatePoint(path.controlX, path.controlY);
-                                  return {
-                                    ...path,
-                                    x: start.x, y: start.y,
-                                    endX: end.x, endY: end.y,
-                                    controlX: ctrl.x, controlY: ctrl.y
-                                  };
-                                }
-                              });
-                              
-                              // Update rotation value for ALL elements (so it shows correctly after ungrouping)
-                              const newRotation = ((el.rotation || 0) + delta) % 360;
-                              
-                              return { ...el, center: { x: newCenterX, y: newCenterY }, paths: newPaths, rotation: newRotation };
+                              if (!selectedIdSet.has(el.id)) return el;
+                              const dx = el.center.x - gcx, dy = el.center.y - gcy;
+                              return { ...el,
+                                center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
+                                paths: rotatePaths(el.paths, gcx, gcy, 90),
+                                rotation: ((el.rotation || 0) + 90) % 360 };
                             }));
-                            
-                            // Clear input after rotation
                             setGroupRotationInput('');
                           }}
                           className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
@@ -11014,7 +11753,7 @@ const TattingDesigner = () => {
                           onClick={() => {
                             const allHidden = groupElements.every(e => e.hideLabel);
                             setElements(prev => prev.map(el =>
-                              selectedIds.includes(el.id) ? { ...el, hideLabel: !allHidden } : el
+                              selectedIdSet.has(el.id) ? { ...el, hideLabel: !allHidden } : el
                             ));
                           }}
                           className={`px-2 py-1 rounded text-xs ${
@@ -11034,7 +11773,7 @@ const TattingDesigner = () => {
                               onChange={e => {
                                 const val = e.target.value || null;
                                 setElements(prev => prev.map(el =>
-                                  selectedIds.includes(el.id) ? { ...el, polarRotationGridId: val } : el
+                                  selectedIdSet.has(el.id) ? { ...el, polarRotationGridId: val } : el
                                 ));
                               }}
                               className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
@@ -11055,7 +11794,7 @@ const TattingDesigner = () => {
               }
               // ── Free multi-select bar (no groupId) ──────────────────────────
               if (selectedIds.length > 1) {
-                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                const selEls = elements.filter(e => selectedIdSet.has(e.id));
 
                 // Classify each element: 'r', 'c', 'sr', 'line', or null
                 const getElType = (el) => {
@@ -11125,7 +11864,7 @@ const TattingDesigner = () => {
                             <button
                               onClick={() => {
                                 setElements(prev => prev.map(el =>
-                                  selectedIds.includes(el.id) && el.type === 'line'
+                                  selectedIdSet.has(el.id) && el.type === 'line'
                                     ? {...el, lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadId: undefined, lineBeadCount: undefined}
                                     : el
                                 ));
@@ -11165,39 +11904,39 @@ const TattingDesigner = () => {
                             const parsed = parseNotation(notation);
                             if (!parsed || parsed.stitchCount === 0) { e.target.value = prefillNotation ?? ''; return; }
                             setElements(prev => prev.map(el => {
-                              if (!selectedIds.includes(el.id)) return el;
+                              if (!selectedIdSet.has(el.id)) return el;
                               if (getElType(el) === 'line') return el;
                               if (el.isSplitRing) {
-                                // For split rings, apply as notation A, keep notationB
                                 const newParsed = parseNotation(notation);
                                 if (!newParsed) return el;
-                                const stitchCountA = el.splitPosition || Math.floor(el.stitchCount / 2);
-                                const stitchCountB = el.stitchCount - stitchCountA;
-                                const pathData = createSplitRingPath(el.center.x, el.center.y, newParsed.stitchCount * dsWidth, stitchCountA, stitchCountB, el.squeeze ?? 0.25, el.squeezeCA ?? 0.75, el.squeezeCB ?? 0.75);
-                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: pathData.paths };
+                                const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
+                                const cx = el.center.x, cy = el.center.y;
+                                const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
+                                  const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+                                  const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
+                                  const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+                                  return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+                                });
+                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: scaledPaths };
                               }
                               const newParsed = parseNotation(notation);
                               if (!newParsed) return el;
-                              const targetLength = newParsed.stitchCount * dsWidth;
-                              let newPaths;
                               if (el.type === 'ring') {
-                                const pathData = el.shapeStyle === 'teardrop'
-                                  ? createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze ?? 0)
-                                  : createTeardropPath(el.center.x, el.center.y, targetLength, 0);
-                                newPaths = pathData.paths;
-                                // Re-apply rotation
-                                if (el.rotation) {
-                                  const r = el.rotation * Math.PI / 180, rc = Math.cos(r), rs = Math.sin(r);
-                                  const rot = (px, py) => { const dx = px - el.center.x, dy = py - el.center.y; return { x: el.center.x + dx*rc - dy*rs, y: el.center.y + dx*rs + dy*rc }; };
-                                  newPaths = newPaths.map(path => {
-                                    if (path.type === 'cubic') { const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), c1 = rot(path.control1X, path.control1Y), c2 = rot(path.control2X, path.control2Y); return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y }; }
-                                    const s = rot(path.x, path.y), e2 = rot(path.endX, path.endY), ctrl = rot(path.controlX, path.controlY); return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
-                                  });
-                                }
-                              } else {
-                                newPaths = el.paths; // Chains: keep existing path shape, just update notation
+                                const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
+                                const cx = el.center.x, cy = el.center.y;
+                                const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
+                                  const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+                                  if (path.type === 'cubic') {
+                                    const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
+                                    const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+                                    return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+                                  }
+                                  const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+                                  return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+                                });
+                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), paths: scaledPaths };
                               }
-                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false, paths: newPaths ?? el.paths };
+                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, el.beConfigs), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false };
                             }));
                           }}
                           onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.target.value = prefillNotation ?? ''; e.target.blur(); } }}
@@ -11269,7 +12008,7 @@ const TattingDesigner = () => {
                         onClick={() => {
                           const allHidden = selEls.every(e => e.hideLabel);
                           setElements(prev => prev.map(el =>
-                            selectedIds.includes(el.id) ? { ...el, hideLabel: !allHidden } : el
+                            selectedIdSet.has(el.id) ? { ...el, hideLabel: !allHidden } : el
                           ));
                         }}
                         className={`px-2 py-1 rounded text-xs ${
@@ -11289,7 +12028,7 @@ const TattingDesigner = () => {
                             onChange={e => {
                               const val = e.target.value || null;
                               setElements(prev => prev.map(el =>
-                                selectedIds.includes(el.id) ? { ...el, polarRotationGridId: val } : el
+                                selectedIdSet.has(el.id) ? { ...el, polarRotationGridId: val } : el
                               ));
                             }}
                             className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
@@ -11313,7 +12052,7 @@ const TattingDesigner = () => {
                           const matId = e.target.value;
                           if (matId === '__edit__') { setShowMaterialsPanel(true); return; }
                           setElements(prev => prev.map(el => {
-                            if (!selectedIds.includes(el.id)) return el;
+                            if (!selectedIdSet.has(el.id)) return el;
                             // Split rings: set both A and B
                             if (el.isSplitRing) return { ...el, materialId: matId, materialIdB: matId };
                             return { ...el, materialId: matId };
@@ -11472,6 +12211,100 @@ const TattingDesigner = () => {
 
       <div className="flex-1 relative">
 
+        {/* ── Path Preset Panel — floating overlay, path tool + chain selected ── */}
+        {currentTool === 'path' && selectedIds.length === 1 && (() => {
+          const chain = elementById.get(selectedIds[0]);
+          if (chain?.type !== 'chain' || !chain?.paths?.length || chain.paths[0].type !== 'cubic') return null;
+          return (
+            <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
+              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
+                {[
+                  { label: '90°', key: '1', deg: 90 },
+                  { label: '60°', key: '2', deg: 60 },
+                  { label: '45°', key: '3', deg: 45 },
+                ].map(preset => (
+                  <button
+                    key={preset.key}
+                    onClick={() => {
+                      const el = chain;
+                      const path = el.paths[0];
+                      const targetLength = el.stitchCount * dsWidth;
+                      const newPath = applyPathPreset(path, preset.deg, targetLength, true); // presets always symmetric
+                      if (newPath !== path) {
+                        setElements(prev => prev.map(e =>
+                          e.id === el.id ? { ...e, paths: [newPath] } : e
+                        ));
+                        pushHistoryState(
+                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                          picotConnectionsRef.current,
+                          orderGroupsRef.current
+                        );
+                      }
+                    }}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
+                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <div className="w-px h-4 bg-gray-600 mx-1" />
+                <button
+                  onClick={() => setChainPresetSymmetric(s => !s)}
+                  className={`px-2 py-1 rounded text-xs border transition-colors ${
+                    chainPresetSymmetric
+                      ? 'bg-blue-700 border-blue-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-gray-400 hover:border-blue-500'
+                  }`}
+                  title={chainPresetSymmetric ? 'Symmetric arms (click to make asymmetric)' : 'Asymmetric arms (click to make symmetric)'}
+                >
+                  ⇔
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Line Preset Panel — floating overlay, line tool + line selected ── */}
+        {currentTool === 'line' && selectedIds.length === 1 && (() => {
+          const line = elementById.get(selectedIds[0]);
+          if (line?.type !== 'line' || !line?.paths?.length || line.paths[0].type !== 'cubic') return null;
+          return (
+            <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
+              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
+                {[
+                  { label: '90°', key: '1', deg: 90 },
+                  { label: '60°', key: '2', deg: 60 },
+                  { label: '45°', key: '3', deg: 45 },
+                  { label: '0°', key: '0', deg: 0 },
+                ].map(preset => (
+                  <button
+                    key={preset.key}
+                    onClick={() => {
+                      const el = line;
+                      const path = el.paths[0];
+                      const newPath = applyLinePreset(path, preset.deg);
+                      if (newPath !== path) {
+                        setElements(prev => prev.map(e =>
+                          e.id === el.id ? { ...e, paths: [newPath] } : e
+                        ));
+                        pushHistoryState(
+                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
+                          picotConnectionsRef.current,
+                          orderGroupsRef.current
+                        );
+                      }
+                    }}
+                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
+                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Notes Drawer ─────────────────────────────────────── */}
         {notesOpen && (
           <div
@@ -11628,11 +12461,6 @@ const TattingDesigner = () => {
             <IconRuler size={20} />
           </button>
 
-          {/* Zoom to Rectangle tool */}
-          <button onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')} className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolZoomRect')}>
-            <IconZoomRect size={20} />
-          </button>
-
           {/* Picot Join button */}
           <button 
             onClick={() => {
@@ -11704,15 +12532,15 @@ const TattingDesigner = () => {
             <IconUngroup size={20} />
           </button>
           <button 
-            onClick={() => zoomToCenter(-0.1)} 
+            onClick={() => zoomToCenter(-0.2)} 
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title={t('toolZoomOut')}
           >
             <IconZoomOut size={20} />
           </button>
-          <button 
-            onClick={() => zoomToCenter(0.1)} 
+          <button
+            onClick={() => zoomToCenter(0.1)}
             className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title={t('toolZoomIn')}
@@ -11721,14 +12549,22 @@ const TattingDesigner = () => {
           </button>
           <button
             onClick={fitAllElements}
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto"
+            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
             style={{ touchAction: 'manipulation' }}
             title="Fit All (F)"
           >
             <IconFitView size={20} />
           </button>
-          <button 
-            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')} 
+          <button
+            onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')}
+            className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`}
+            style={{ touchAction: 'manipulation' }}
+            title={t('toolZoomRect')}
+          >
+            <IconZoomRect size={20} />
+          </button>
+          <button
+            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')}
             className={`p-2 rounded col-span-2 pointer-events-auto ${currentTool === 'image' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`}
             style={{ touchAction: 'manipulation' }}
             title={t('toolRefImage')}
@@ -11940,9 +12776,9 @@ const TattingDesigner = () => {
           }}
           onTouchMove={(e) => {
             const touches = e.touches;
-            // While dragging: track ONLY the finger that started the drag (by identifier).
-            // This prevents teleporting when a second finger joins or the dragging finger lifts.
-            if (dragOffsetRef.current.active) {
+            // For any active drag (element translate, pivot move, or rotation handle),
+            // track ONLY the finger that started it — prevents teleporting if a second finger joins.
+            if (dragOffsetRef.current.active || movingPivotRef.current || rotationHandleRef.current) {
               const tracked = dragTouchIdRef.current !== null
                 ? Array.from(touches).find(t => t.identifier === dragTouchIdRef.current)
                 : null;
@@ -11997,12 +12833,11 @@ const TattingDesigner = () => {
             }
           }}
           onTouchEnd={(e) => {
-            if (dragOffsetRef.current.active) {
-              // Drag in progress: commit only when the tracked drag finger lifts.
+            if (dragOffsetRef.current.active || movingPivotRef.current || rotationHandleRef.current) {
+              // Commit only when the tracked drag finger lifts.
               const trackedStillDown = dragTouchIdRef.current !== null
                 && Array.from(e.touches).some(t => t.identifier === dragTouchIdRef.current);
               if (!trackedStillDown) {
-                // Dragging finger lifted — commit and clear
                 dragTouchIdRef.current = null;
                 handleMouseUp(null);
               }
@@ -12245,7 +13080,7 @@ const TattingDesigner = () => {
                   const el = elementById.get(p.elementId);
                   if (!el) return null;
                   const picot = el.picots?.find(pic => pic.id === p.picotId);
-                  if (!picot || !picot.isJoint) return null;
+                  if (!picot) return null;
                   return getPicotPosition(el, picot, true); // baseOnly: connection starts at path, not arm tip
                 }).filter(Boolean);
                 
@@ -12340,7 +13175,7 @@ const TattingDesigner = () => {
                 // PERFORMANCE: Skip elements entirely outside the visible viewport
                 if (!isInViewport(el)) return null;
 
-                const isSelected = selectedIds.includes(el.id);
+                const isSelected = selectedIdSet.has(el.id);
                 const isUnnumbered = !el.orderNumber || el.orderNumber.toString().trim() === '';
                 const shouldHighlight = (showUnnumbered || activeMode === 'tattingOrder') && isUnnumbered;
                 const activeDraft = draftNotation?.elementId === el.id ? draftNotation.value : null;
@@ -12351,26 +13186,34 @@ const TattingDesigner = () => {
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)' : shouldHighlight ? 'url(#pink-glow)' : undefined;
                 // In tattingOrder mode, hide notation labels so only order numbers are visible
                 const hideNotationInMode = activeMode === 'tattingOrder';
+                // Ghost elements are non-interactive visual copies
+                const isGhost = el.type === 'ghost';
+                // Single source of truth: ghost opacity and pointer events
+                const ghostOpacity = isGhost ? (el.isBoundary ? 0.65 : 0.4) : 1;
+                const ghostPointerEvents = isGhost && !el.isBoundary ? 'none' as const : undefined;
                 // PERFORMANCE: During translate-drag, apply offset via SVG transform instead of
                 // mutating element state. Keeps stitchCache valid throughout the drag.
                 const dragTransform = (isSelected && dragOffsetRef.current.active)
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})`
                   : undefined;
                 // PERFORMANCE: getElementColor once per element, reused for stroke + picots
-                const elColor = getElementColor(el);
+                // For ghosts, get color from source element
+                const sourceElement = isGhost ? elementById.get(el.sourceId) : null;
+                const renderEl = sourceElement || el;
+                const elColor = getElementColor(renderEl);
                 const elStrokeVal = elColor.isGradient ? `url(#gradient-${elColor.id})` : elColor.color;
                 // Split ring section B color (only relevant for split rings)
-                const elColorB = el.isSplitRing ? getElementColor({...el, materialId: el.materialIdB || el.materialId}) : elColor;
+                const elColorB = renderEl.isSplitRing ? getElementColor({...renderEl, materialId: renderEl.materialIdB || renderEl.materialId}) : elColor;
                 const elStrokeValB = elColorB.isGradient ? `url(#gradient-${elColorB.id})` : elColorB.color;
-                
+
                 // Render circles as SVG circle element for smooth rendering
                 if (el.isClosed && el.shapeStyle === 'circle') {
                   const targetCircumference = el.stitchCount * dsWidth;
                   const radius = targetCircumference / (2 * Math.PI);
-                  
+
                   // Original schematic rendering for circles
                   return (
-                    <g key={el.id} filter={elementFilter} transform={dragTransform}>
+                    <g key={el.id} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
                       <circle
                         cx={el.center.x}
                         cy={el.center.y}
@@ -12378,14 +13221,18 @@ const TattingDesigner = () => {
                         fill="none"
                         stroke={elStrokeVal}
                         strokeWidth="3.75"
-                        opacity={isSelected ? 0.7 : 1}
+                        opacity={isSelected ? 0.7 : ghostOpacity}
+                        strokeDasharray={isGhost ? '5,5' : undefined}
                       />
-                      {renderPicots(el)}
-                      {isSelected && (
+                      {/* Ghosts don't show picots, EXCEPT boundary ghosts.
+                          In realistic mode, picots are in bakedRealisticSVG. */}
+                      {renderMode !== 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el)}
+                      {renderMode === 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el, true)}
+                      {!isGhost && isSelected && (
                         <circle
                           cx={el.center.x}
                           cy={el.center.y}
-                          r={radius + 5}
+                          r={radius}
                           fill="none"
                           stroke="#3B82F6"
                           strokeWidth="2"
@@ -12406,7 +13253,7 @@ const TattingDesigner = () => {
                           G
                         </text>
                       )}
-                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                      <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                         const [_fill, _stroke] = getGroupBadgeColor(el);
                         return (
@@ -12433,7 +13280,7 @@ const TattingDesigner = () => {
                 
                 // Render everything else (teardrops, chains, and lines) using paths
                 return (
-                  <g key={el.id} filter={elementFilter} transform={dragTransform}>
+                  <g key={el.id} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
                     {/* Line rendering - simple bezier with black outline */}
                     {el.type === 'line' ? (
                       <>
@@ -12452,7 +13299,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={isSelected ? 0.7 : 1}
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                               {/* Colored line on top */}
                               <path
@@ -12460,7 +13308,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={isSelected ? 0.7 : 1}
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                             </g>
                           );
@@ -12548,6 +13397,11 @@ const TattingDesigner = () => {
                     ) : (
                     /* Chains and teardrops */
                     <>
+                    {/* Picots rendered first so they sit behind the path strokes.
+                        In realistic mode, picots are baked into bakedRealisticSVG — skip here. */}
+                    {renderMode !== 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el)}
+                    {/* In realistic mode, beaded picots and cjp arms render via overlay pass */}
+                    {renderMode === 'realistic' && (!isGhost || el.isBoundary) && renderPicots(el, true)}
                     {/* NEW: Realistic rendering mode */}
                     {el.type === 'line' ? (
                       // Line rendering - simple bezier path without stitches
@@ -12567,7 +13421,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke="#000000"
                                 strokeWidth={(el.lineWidth || 2) + 2}
-                                opacity={isSelected ? 0.7 : 1}
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                               {/* Colored line on top */}
                               <path
@@ -12575,7 +13430,8 @@ const TattingDesigner = () => {
                                 fill="none"
                                 stroke={elStrokeVal}
                                 strokeWidth={el.lineWidth || 2}
-                                opacity={isSelected ? 0.7 : 1}
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                                strokeDasharray={isGhost ? '5,5' : undefined}
                               />
                             </g>
                           );
@@ -12654,37 +13510,54 @@ const TattingDesigner = () => {
                               fill="none"
                               stroke={(i === 1 && el.isSplitRing && el.materialIdB) ? elStrokeValB : elStrokeVal}
                               strokeWidth="3.75"
-                              opacity={isSelected ? 0.7 : 1}
+                              opacity={isSelected ? 0.7 : ghostOpacity}
+                              strokeDasharray={isGhost ? '5,5' : undefined}
                             />
                           );
                         })}
                         {/* Dashed connection line for split rings - along height line */}
-                        {el.isSplitRing && el.paths.length >= 2 && (
-                          <>
-                            <line
-                              x1={el.paths[0].endX}
-                              y1={el.paths[0].endY}
-                              x2={el.paths[0].x}
-                              y2={el.paths[0].y}
-                              stroke="#000000"
-                              strokeWidth={(el.lineWidth || 2) + 2}
-                              strokeDasharray="5,5"
-                              opacity={isSelected ? 0.7 : 1}
-                            />
-                            <line
-                              x1={el.paths[0].endX}
-                              y1={el.paths[0].endY}
-                              x2={el.paths[0].x}
-                              y2={el.paths[0].y}
-                              stroke={elStrokeValB}
-                              strokeWidth={el.lineWidth || 2}
-                              strokeDasharray="5,5"
-                              opacity={isSelected ? 0.7 : 1}
-                            />
-                          </>
-                        )}
-                        {renderPicots(el)}
-                        {isSelected && (
+                        {el.isSplitRing && el.paths.length >= 2 && (() => {
+                          // paths[0] goes from x/y (A-start) to endX/Y (A-end).
+                          // Each flip inverts the visual direction — odd number of flips = swap.
+                          const flipCount = (el.isFlippedH ? 1 : 0) + (el.isFlippedV ? 1 : 0);
+                          const flipped = flipCount % 2 === 1;
+                          const x1 = flipped ? el.paths[0].x    : el.paths[0].endX;
+                          const y1 = flipped ? el.paths[0].y    : el.paths[0].endY;
+                          const x2 = flipped ? el.paths[0].endX : el.paths[0].x;
+                          const y2 = flipped ? el.paths[0].endY : el.paths[0].y;
+                          // Arrowhead pointing AWAY from x2/y2 — shows direction of travel along path A
+                          const angle = Math.atan2(y2 - y1, x2 - x1);
+                          const arrSize = (el.lineWidth || 2) * 3;
+                          const ax1 = x2 + arrSize * Math.cos(angle - 0.4 + Math.PI);
+                          const ay1 = y2 + arrSize * Math.sin(angle - 0.4 + Math.PI);
+                          const ax2 = x2 + arrSize * Math.cos(angle + 0.4 + Math.PI);
+                          const ay2 = y2 + arrSize * Math.sin(angle + 0.4 + Math.PI);
+                          return (
+                            <>
+                              <line x1={x1} y1={y1} x2={x2} y2={y2}
+                                stroke="#000000" strokeWidth={(el.lineWidth || 2) + 2}
+                                strokeDasharray="5,5" opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                              <line x1={x1} y1={y1} x2={x2} y2={y2}
+                                stroke={elStrokeValB} strokeWidth={el.lineWidth || 2}
+                                strokeDasharray="5,5" opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                              {/* Arrowhead pointing to the start of notation A */}
+                              <polyline points={`${ax1},${ay1} ${x2},${y2} ${ax2},${ay2}`}
+                                fill="none" stroke="#000000" strokeWidth={(el.lineWidth || 2) + 2}
+                                strokeLinejoin="round" strokeLinecap="round"
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                              <polyline points={`${ax1},${ay1} ${x2},${y2} ${ax2},${ay2}`}
+                                fill="none" stroke={elStrokeValB} strokeWidth={el.lineWidth || 2}
+                                strokeLinejoin="round" strokeLinecap="round"
+                                opacity={isSelected ? 0.7 : ghostOpacity}
+                              />
+                            </>
+                          );
+                        })()}
+                        {/* Ghosts don't show picots — already rendered before paths above */}
+                        {!isGhost && isSelected && (
                           <g>
                             {el.paths.map((path, i) => {
                               // Use path directly (curveType system removed)
@@ -12709,7 +13582,7 @@ const TattingDesigner = () => {
                             })}
                           </g>
                         )}
-                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode) ? null : renderStitchLabels(el)}</g>
+                        <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
 {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                           let ox = el.center.x, oy = el.center.y;
                           if (el.type === 'chain' && el.paths && el.paths.length > 0) {
@@ -12765,7 +13638,7 @@ const TattingDesigner = () => {
                   of the copies-to-be at their computed positions.
                   pointer-events:none so they don't interfere with canvas.     */}
               {showPolarArrayDialog && (() => {
-                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                const selEls = elements.filter(e => selectedIdSet.has(e.id));
                 if (selEls.length === 0 || polarArrayCount < 2) return null;
 
                 // Pivot
@@ -12779,51 +13652,30 @@ const TattingDesigner = () => {
                   pivY = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
                 }
 
-                const stepDeg = polarArrayAngle / polarArrayCount;
+                // Use createPolarInstance for each preview ghost — ensures positioning matches creation
                 const ghosts = [];
-
                 for (let i = 1; i < polarArrayCount; i++) {
-                  const rad = (stepDeg * i) * Math.PI / 180;
-                  const cos = Math.cos(rad);
-                  const sin = Math.sin(rad);
-
                   selEls.forEach(el => {
-                    const dx = el.center.x - pivX;
-                    const dy = el.center.y - pivY;
-                    const cx = pivX + dx * cos - dy * sin;
-                    const cy = pivY + dx * sin + dy * cos;
+                    const previewEl = createPolarInstance(el, i, pivX, pivY, polarArrayCount, polarArrayAngle, {});
 
                     if (el.isClosed && el.shapeStyle === 'circle') {
                       const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
                       ghosts.push(
                         <circle key={`ghost-${i}-${el.id}`}
-                          cx={cx} cy={cy} r={r}
+                          cx={previewEl.center.x} cy={previewEl.center.y} r={r}
                           fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
                         />
                       );
-                    } else if (el.paths && el.paths.length > 0) {
-                      // Rotate path points and draw a dashed stroke
-                      const rotPt = (px, py) => {
-                        const rx = px - pivX, ry = py - pivY;
-                        return { x: pivX + rx * cos - ry * sin, y: pivY + rx * sin + ry * cos };
-                      };
-                      const pathStrs = el.paths.map(p => {
-                        const s = rotPt(p.x, p.y);
-                        const e2 = rotPt(p.endX, p.endY);
-                        if (p.type === 'cubic') {
-                          const c1 = rotPt(p.control1X, p.control1Y);
-                          const c2 = rotPt(p.control2X, p.control2Y);
-                          return `M${s.x},${s.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${e2.x},${e2.y}`;
-                        } else {
-                          const c = rotPt(p.controlX, p.controlY);
-                          return `M${s.x},${s.y} Q${c.x},${c.y} ${e2.x},${e2.y}`;
-                        }
-                      });
+                    } else if (previewEl.paths && previewEl.paths.length > 0) {
+                      const pathStrs = previewEl.paths.map((p: any) => {
+                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                      }).join(' ');
                       ghosts.push(
                         <path key={`ghost-${i}-${el.id}`}
-                          d={pathStrs.join(' ')}
+                          d={pathStrs}
                           fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
@@ -12838,31 +13690,28 @@ const TattingDesigner = () => {
 
               {/* ── Linear Array ghost preview ───────────────────────────── */}
               {showLinearArrayDialog && (() => {
-                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                const selEls = elements.filter(e => selectedIdSet.has(e.id));
                 if (selEls.length === 0 || linearArrayCount < 2) return null;
+
+                // Project bbox onto array direction for accurate spacing
+                const { elementSize } = calculatePathBbox(selEls, linearArrayAngle);
+                // Center-to-center: 100% = just touching, 200% = 1 element gap
+                const spacing = elementSize * linearArraySpacing / 100;
                 const rad = linearArrayAngle * Math.PI / 180;
-                const dx = Math.cos(rad) * linearArraySpacing;
-                const dy = Math.sin(rad) * linearArraySpacing;
+                const dx = Math.cos(rad) * spacing;
+                const dy = Math.sin(rad) * spacing;
+
+                // Use createLinearInstance for each preview ghost — ensures positioning matches creation
                 const ghosts = [];
                 for (let i = 1; i < linearArrayCount; i++) {
-                  const ox = dx * i, oy = dy * i;
-                  const extraRot = linearArrayRotStep * i;
                   selEls.forEach(el => {
-                    const newCx = el.center.x + ox;
-                    const newCy = el.center.y + oy;
-                    // Use SVG transform: rotate around original center, then translate to new pos
-                    const transform = extraRot !== 0
-                      ? `translate(${ox},${oy}) rotate(${extraRot},${el.center.x},${el.center.y})`
-                      : `translate(${ox},${oy})`;
-                    if (el.isClosed && el.shapeStyle === 'circle') {
-                      const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
-                      ghosts.push(<circle key={`lgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
-                    } else if (el.paths?.length > 0) {
-                      const d = el.paths.map(p => {
-                        if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
-                        return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
-                      }).join(' ');
-                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                    const previewEl = createLinearInstance(el, i, dx, dy, linearArrayRotStep, {});
+                    const d = previewEl.paths?.map((p: any) => {
+                      if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
+                      return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
+                    }).join(' ');
+                    if (d) {
+                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
                     }
                   });
                 }
@@ -12871,7 +13720,7 @@ const TattingDesigner = () => {
 
               {/* ── Spiral Array ghost preview ───────────────────────────── */}
               {showSpiralArrayDialog && (() => {
-                const selEls = elements.filter(e => selectedIds.includes(e.id));
+                const selEls = elements.filter(e => selectedIdSet.has(e.id));
                 if (selEls.length === 0 || spiralArrayCount < 2) return null;
                 let pivX = 0, pivY = 0;
                 const linkedGid = (() => { const gid = selEls[0]?.polarRotationGridId; return gid && selEls.every(e => e.polarRotationGridId === gid) ? gid : null; })();
@@ -12923,7 +13772,7 @@ const TattingDesigner = () => {
 
               {/* Joint picots rendered OUTSIDE the dim group so they stay full brightness in picotJoin mode */}
               {activeMode === 'picotJoin' && elements.map(el => {
-                const jpDragTransform = (selectedIds.includes(el.id) && dragOffsetRef.current.active)
+                const jpDragTransform = (selectedIdSet.has(el.id) && dragOffsetRef.current.active)
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})` : undefined;
                 return <g key={`jp-overlay-${el.id}`} transform={jpDragTransform}>{renderPicots(el, true)}</g>;
               })}
@@ -12933,7 +13782,7 @@ const TattingDesigner = () => {
               )}
               {/* Beading mode: BE picots rendered at full brightness */}
               {activeMode === 'beading' && elements.map(el => {
-                const beDragTransform = (selectedIds.includes(el.id) && dragOffsetRef.current.active)
+                const beDragTransform = (selectedIdSet.has(el.id) && dragOffsetRef.current.active)
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})` : undefined;
                 return <g key={`be-overlay-${el.id}`} transform={beDragTransform}>{renderPicots(el, true)}</g>;
               })}
@@ -13030,7 +13879,7 @@ const TattingDesigner = () => {
               {snapEnabled && showEditingArtifacts && renderMode !== 'realistic' && (() => {
                 // Show snap points for all non-selected elements
                 return elements
-                  .filter(el => !selectedIds.includes(el.id))
+                  .filter(el => !selectedIdSet.has(el.id))
                   .map(el => {
                     const points = getSnapPoints(el).filter(p => p.type !== 'picot-guide');
                     return points.map((point, i) => (
@@ -13256,27 +14105,27 @@ const TattingDesigner = () => {
                         <circle 
                           cx={pivotX} 
                           cy={pivotY} 
-                          r="6" 
+                          r={6 / zoom}
                           fill="#FF8C00" 
                           stroke="#FFF"
-                          strokeWidth="2"
+                          strokeWidth={2 / zoom}
                           className="cursor-move"
                         />
                         <line 
-                          x1={pivotX - 10} 
+                          x1={pivotX - 10 / zoom} 
                           y1={pivotY} 
-                          x2={pivotX + 10} 
+                          x2={pivotX + 10 / zoom} 
                           y2={pivotY} 
                           stroke="#FFF"
-                          strokeWidth="2"
+                          strokeWidth={2 / zoom}
                         />
                         <line 
                           x1={pivotX} 
-                          y1={pivotY - 10} 
+                          y1={pivotY - 10 / zoom} 
                           x2={pivotX} 
-                          y2={pivotY + 10} 
+                          y2={pivotY + 10 / zoom} 
                           stroke="#FFF"
-                          strokeWidth="2"
+                          strokeWidth={2 / zoom}
                         />
                       </>
                     )}
@@ -14142,7 +14991,7 @@ const TattingDesigner = () => {
 
       {/* ── Tatting Order conflict popup ─────────────────────────────── */}
       {tattingOrderConflict && (() => {
-        const targetEl = elements.find(e => e.id === tattingOrderConflict.targetElId);
+        const targetEl = elementById.get(tattingOrderConflict.targetElId);
         const canSwap = targetEl?.orderNumber != null && String(targetEl.orderNumber).trim() !== '';
         return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
@@ -14175,30 +15024,6 @@ const TattingDesigner = () => {
         </div>
         );
       })()}
-
-      {showNewCanvasDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
-          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-gray-600 shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">{t('newCanvasTitle')}</h2>
-            <p className="text-gray-300 text-sm mb-5">{t('newCanvasBody')}</p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowNewCanvasDialog(false)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-                autoFocus
-              >
-                {t('newCanvasCancel')}
-              </button>
-              <button
-                onClick={confirmNewCanvas}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
-              >
-                {t('newCanvasConfirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Recent Projects Dialog ────────────────────────────────────────── */}
       {showRecentProjectsDialog && (() => {
@@ -14244,43 +15069,87 @@ const TattingDesigner = () => {
                   </div>
                 ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-                    {recents.map(entry => (
-                      <div key={entry.id} className="bg-gray-700 rounded-lg overflow-hidden border border-gray-600 hover:border-purple-500 transition-colors group cursor-pointer"
-                        onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); })}>
+                    {recents.map(entry => {
+                      const pathMissing = !entry.filename;
+                      return (
+                        <div key={entry.id}
+                          className={`bg-gray-700 rounded-lg overflow-hidden border transition-colors group ${pathMissing ? 'border-gray-700 opacity-50 cursor-not-allowed' : 'border-gray-600 hover:border-purple-500 cursor-pointer'}`}
+                          title={pathMissing ? t('recentProjectsPathMissing') : entry.filename}
+                          onClick={() => { if (!pathMissing) doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}>
 
-                        {/* Thumbnail */}
-                        <div className="w-full bg-gray-900 flex items-center justify-center" style={{ aspectRatio: '3/2' }}>
-                          {entry.thumbnail
-                            ? <img src={`data:image/svg+xml;base64,${btoa(entry.thumbnail)}`} alt={entry.name} className="w-full h-full object-contain" draggable={false} />
-                            : <div className="text-gray-600 text-xs text-center px-2">{entry.name}</div>
-                          }
-                        </div>
+                          {/* Thumbnail */}
+                          <div className="w-full bg-gray-900 flex items-center justify-center relative" style={{ aspectRatio: '3/2' }}>
+                            {entry.thumbPath
+                              ? <img
+                                  src={thumbSrcFor(entry.thumbPath)}
+                                  alt={entry.name}
+                                  className="w-full h-full object-contain"
+                                  draggable={false}
+                                  onError={(e) => {
+                                    const img = e.target as HTMLImageElement;
+                                    img.style.display = 'none';
+                                    // Show fallback sibling
+                                    const fallback = img.nextElementSibling as HTMLElement;
+                                    if (fallback) fallback.style.display = 'flex';
+                                  }}
+                                />
+                              : null
+                            }
+                            <div
+                              className="absolute inset-0 flex-col items-center justify-center text-center px-2 gap-1"
+                              style={{ display: entry.thumbPath ? 'none' : 'flex' }}
+                            >
+                              <div className="text-gray-500 text-xs">{entry.name}</div>
+                              <div className="text-gray-600 text-xs">{t('recentProjectsNoPreview')}</div>
+                            </div>
+                          </div>
 
-                        {/* Info + actions */}
-                        <div className="px-3 py-2">
-                          <div className="text-white text-sm font-medium truncate" title={entry.name}>{entry.name}</div>
-                          <div className="text-gray-400 text-xs mt-0.5">{t('recentProjectsSaved').replace('{date}', new Date(entry.savedAt).toLocaleDateString())}</div>
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              className="flex-1 py-1 rounded bg-purple-700 hover:bg-purple-600 text-white text-xs font-semibold"
-                              onClick={(ev) => { ev.stopPropagation(); doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}
-                            >{t('recentProjectsLoadBtn')}</button>
-                            <button
-                              className="py-1 px-2 rounded bg-gray-600 hover:bg-red-700 text-gray-300 hover:text-white text-xs"
-                              title={t('recentProjectsDeleteBtn')}
-                              onClick={(ev) => { ev.stopPropagation(); removeEntry(entry.id); }}
-                            >✕</button>
+                          {/* Info + actions */}
+                          <div className="px-3 py-2">
+                            <div className="text-white text-sm font-medium truncate" title={entry.name}>{entry.name}</div>
+                            <div className="text-gray-400 text-xs mt-0.5">{t('recentProjectsSaved').replace('{date}', new Date(entry.savedAt).toLocaleDateString())}</div>
+                            {pathMissing && (
+                              <div className="text-yellow-600 text-xs mt-1">⚠ {t('recentProjectsPathMissingLabel')}</div>
+                            )}
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                disabled={pathMissing}
+                                className={`flex-1 py-1 rounded text-xs font-semibold ${pathMissing ? 'bg-gray-600 text-gray-500 cursor-not-allowed' : 'bg-purple-700 hover:bg-purple-600 text-white'}`}
+                                onClick={(ev) => { ev.stopPropagation(); if (!pathMissing) doLoad(() => { setShowRecentProjectsDialog(false); loadFromPath(entry.filename); }); }}
+                              >{t('recentProjectsLoadBtn')}</button>
+                              <button
+                                className="py-1 px-2 rounded bg-gray-600 hover:bg-red-700 text-gray-300 hover:text-white text-xs"
+                                title={t('recentProjectsDeleteBtn')}
+                                onClick={(ev) => { ev.stopPropagation(); removeEntry(entry.id); }}
+                              >✕</button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Footer — Browse button */}
+              {/* Footer — Browse + Clear unavailable */}
               <div className="flex justify-between items-center px-5 py-4 border-t border-gray-600 flex-shrink-0">
-                <div className="text-gray-500 text-xs">{recents.length > 0 ? `${recents.length} / 20` : ''}</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-gray-500 text-xs">{recents.length > 0 ? `${recents.length} / 20` : ''}</div>
+                  {recents.some(e => !e.filename) && (
+                    <button
+                      onClick={() => {
+                        const cleaned = recents.filter(e => !!e.filename);
+                        localStorage.setItem('tcad_recent_projects', JSON.stringify(cleaned));
+                        setShowRecentProjectsDialog(false);
+                        setTimeout(() => setShowRecentProjectsDialog(true), 0);
+                      }}
+                      className="text-xs text-yellow-600 hover:text-yellow-400 underline underline-offset-2"
+                      title={t('recentProjectsClearUnavailableHint')}
+                    >
+                      {t('recentProjectsClearUnavailable')}
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={() => doLoad(() => { setShowRecentProjectsDialog(false); loadProject(); })}
                   className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-lg border border-gray-500"
@@ -14319,36 +15188,6 @@ const TattingDesigner = () => {
           </>
         );
       })()}
-
-      {showLoadConfirmDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
-          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-gray-600 shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">{t('loadConfirmTitle')}</h2>
-            <p className="text-gray-300 text-sm mb-5">{t('loadConfirmBody')}</p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowLoadConfirmDialog(false)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded"
-                autoFocus
-              >
-                {t('loadConfirmCancel')}
-              </button>
-              <button
-                onClick={() => {
-                  setShowLoadConfirmDialog(false);
-                  loadProject();
-                }}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-semibold"
-              >
-                {t('loadConfirmConfirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
 
     </div>
     
@@ -14738,81 +15577,54 @@ const TattingDesigner = () => {
           {/* Polar Grid section */}
           <div className="px-3 py-1 text-xs text-gray-400 font-semibold">{t('arrangePolarHeader')}</div>
 
-          {polarGrids.length <= 1 ? (
+          {/* Grid selector — only shown when 2+ grids exist */}
+          {polarGrids.length > 1 && (
+            <div className="flex items-center gap-2 px-4 py-1">
+              <span className="text-xs text-gray-400">{t('arrangeGridSelectorLabel')}</span>
+              <select
+                value={selectedPolarGridId || ''}
+                onChange={(e) => setSelectedPolarGridId(e.target.value)}
+                className="flex-1 px-2 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
+              >
+                {polarGrids.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {polarGrids.length > 0 ? (
             <button
-              onClick={() => { centerToPolarGrid(); setShowArrangeMenu(false); }}
+              onClick={() => { centerToPolarGrid(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
               className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${
-                (selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
+                selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              disabled={selectedIds.length === 0 || polarGrids.length === 0}
+              disabled={selectedIds.length === 0}
             >
               <IconPolarGrid size={16} />
               <span>{t('arrangeCenterToPolarGrid')}</span>
             </button>
           ) : (
-            <>
-              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeCenterToPolarGrid')}</div>
-              {polarGrids.map(g => (
-                <button
-                  key={g.id}
-                  onClick={() => { centerToPolarGrid(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${
-                    selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                  disabled={selectedIds.length === 0}
-                >
-                  <IconPolarGrid size={14} className="text-gray-400" />
-                  <span>{g.name}</span>
-                </button>
-              ))}
-            </>
+            <div className="px-4 py-2 text-xs text-gray-500 italic">No polar grids</div>
           )}
 
-          {/* Align to Grid Horizontally */}
-          {polarGrids.length <= 1 ? (
-            <button
-              onClick={() => { alignToGridHorizontal(); setShowArrangeMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={selectedIds.length === 0 || polarGrids.length === 0}
-            >
-              <IconPolarGrid size={16} />
-              <span>{t('arrangeAlignToGridH')}</span>
-            </button>
-          ) : (
-            <>
-              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridH')}</div>
-              {polarGrids.map(g => (
-                <button key={g.id} onClick={() => { alignToGridHorizontal(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={selectedIds.length === 0}>
-                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
-                </button>
-              ))}
-            </>
-          )}
+          <button
+            onClick={() => { alignToGridHorizontal(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0 || polarGrids.length === 0}
+          >
+            <IconPolarGrid size={16} />
+            <span>{t('arrangeAlignToGridH')}</span>
+          </button>
 
-          {/* Align to Grid Vertically */}
-          {polarGrids.length <= 1 ? (
-            <button
-              onClick={() => { alignToGridVertical(); setShowArrangeMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={selectedIds.length === 0 || polarGrids.length === 0}
-            >
-              <IconPolarGrid size={16} />
-              <span>{t('arrangeAlignToGridV')}</span>
-            </button>
-          ) : (
-            <>
-              <div className="px-4 py-1 text-xs text-gray-500">{t('arrangeAlignToGridV')}</div>
-              {polarGrids.map(g => (
-                <button key={g.id} onClick={() => { alignToGridVertical(g.id); setShowArrangeMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-6 py-1.5 hover:bg-gray-600 text-left text-gray-200 text-sm ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={selectedIds.length === 0}>
-                  <IconPolarGrid size={14} className="text-gray-400" /><span>{g.name}</span>
-                </button>
-              ))}
-            </>
-          )}
+          <button
+            onClick={() => { alignToGridVertical(selectedPolarGridId || undefined); setShowArrangeMenu(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200 ${(selectedIds.length === 0 || polarGrids.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={selectedIds.length === 0 || polarGrids.length === 0}
+          >
+            <IconPolarGrid size={16} />
+            <span>{t('arrangeAlignToGridV')}</span>
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -14822,7 +15634,7 @@ const TattingDesigner = () => {
           <button
             onClick={() => {
               const linked = selectedIds.length > 0 ? (() => {
-                const els = elements.filter(e => selectedIds.includes(e.id));
+                const els = elements.filter(e => selectedIdSet.has(e.id));
                 const gid = els[0]?.polarRotationGridId;
                 return gid && els.every(e => e.polarRotationGridId === gid) ? gid : null;
               })() : null;
@@ -14843,8 +15655,9 @@ const TattingDesigner = () => {
             onClick={() => {
               setLinearArrayCount(4);
               setLinearArrayAngle(0);
-              setLinearArraySpacing(60);
+              setLinearArraySpacing(100);
               setLinearArrayRotStep(0);
+              setLinearArrayCreateGhosts(false);
               setShowLinearArrayDialog(true);
               setShowArrangeMenu(false);
             }}
@@ -14871,10 +15684,332 @@ const TattingDesigner = () => {
             <IconCopy size={16} />
             <span>{t('arrangeSpiralArray')}</span>
           </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          {/* Array Manager */}
+          <button
+            onClick={() => { 
+              setShowArrayManager(!showArrayManager);
+              setShowArrangeMenu(false); 
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            <span>👻</span>
+            <span>{t('ghostArrayManagerTitle')}</span>
+          </button>
         </div>
       </>
     )}
-    
+
+    {/* Ghost Array Manager Modal */}
+    {showArrayManager && (
+      <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
+        <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+          style={{ width: 'min(560px, 95vw)', maxHeight: '85dvh' }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
+            <h2 className="text-gray-100 font-bold text-lg">{t('ghostArrayManagerTitle')}</h2>
+            <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
+          </div>
+          <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
+            {ghostArrays.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-8">{t('ghostArrayManagerEmpty')}</p>
+            ) : (
+              ghostArrays.map((array) => {
+                const sourceEl = elementById.get(array.sourceId);
+                const existingGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === array.sourceId);
+                return (
+                  <div key={array.id} className="flex flex-col gap-2 bg-gray-700 rounded-lg px-3 py-3">
+                    {/* Header row: type + source status + action buttons */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl flex-shrink-0">👻</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-sm font-medium capitalize">{array.type} array</div>
+                        <div className="text-gray-400 text-xs">{t('ghostArraySource')}: {sourceEl ? '✓' : t('ghostArraySourceDeleted')}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (sourceEl) {
+                            setSelectedIds([sourceEl.id]);
+                          } else {
+                            const firstGhost = existingGhosts[0];
+                            if (firstGhost) setSelectedIds([firstGhost.id]);
+                          }
+                          setShowArrayManager(false);
+                        }}
+                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
+                        title={sourceEl ? t('ghostArraySelectTitle') : t('ghostArraySelectGhostTitle')}
+                      >{t('ghostArraySelect')}</button>
+                      <button
+                        onClick={() => {
+                          // Delete ghosts by sourceId (ghostIds may be stale after undo)
+                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId)));
+                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+                        }}
+                        className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
+                      >✕</button>
+                    </div>
+
+                    {/* Editable fields row */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-gray-400">{t('ghostArrayCount')}:</label>
+                        <input
+                          type="number"
+                          min={2}
+                          max={100}
+                          defaultValue={array.instanceCount}
+                          id={`ghost-count-${array.id}`}
+                          className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-gray-400">{array.type === 'polar' ? t('ghostArrayAngle') : t('ghostArrayDir')}:</label>
+                        <input
+                          type="number"
+                          step={0.5}
+                          defaultValue={array.angle}
+                          id={`ghost-angle-${array.id}`}
+                          className="w-16 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
+                        />
+                        <span className="text-xs text-gray-500">°</span>
+                      </div>
+                      {array.type === 'polar' && (
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-400">{t('ghostArrayGrid')}:</label>
+                          <select
+                            defaultValue={array.pivotId || 'selection'}
+                            id={`ghost-grid-${array.id}`}
+                            className="px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
+                          >
+                            <option value="selection">{t('ghostArraySelectionCenter')}</option>
+                            {polarGrids.map(g => (
+                              <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {array.type === 'linear' && (
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-400">{t('ghostArraySpacePct')}:</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={500}
+                            step={0.5}
+                            defaultValue={array.spacing}
+                            id={`ghost-spacing-${array.id}`}
+                            onBlur={e => {
+                              const val = parseFloat(e.target.value);
+                              if (isNaN(val) || val < 0) e.target.value = '0';
+                              else if (val > 500) e.target.value = '500';
+                            }}
+                            className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
+                          />
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (!sourceEl) return;
+                          const countInput = document.getElementById(`ghost-count-${array.id}`) as HTMLInputElement;
+                          const angleInput = document.getElementById(`ghost-angle-${array.id}`) as HTMLInputElement;
+                          const gridSelect = document.getElementById(`ghost-grid-${array.id}`) as HTMLSelectElement;
+                          const spacingInput = document.getElementById(`ghost-spacing-${array.id}`) as HTMLInputElement | null;
+                          const count = parseInt(countInput?.value || '2', 10);
+                          const angle = parseFloat(angleInput?.value || '0');
+                          const pivot = gridSelect?.value || array.pivotId || 'selection';
+                          const spacing = spacingInput ? parseFloat(spacingInput.value || '0') : 0;
+                          if (count < 2) return;
+
+                          // Save state BEFORE deletion
+                          const oldGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === sourceEl.id);
+                          const oldGhostById = new Map(oldGhosts.map(g => [g.id, g]));
+                          const oldGhostIdsSorted = [...oldGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0)).map(g => g.id);
+
+                          // Save picotConnections involving these ghosts
+                          const savedConnections = picotConnectionsRef.current.filter(conn =>
+                            conn.picots.some(p => oldGhostById.has(p.elementId))
+                          );
+
+                          // Delete old ghosts
+                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === sourceEl.id)));
+                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
+                          setSelectedIds([sourceEl.id]);
+
+                          // Recreate with new parameters
+                          setTimeout(() => {
+                            if (array.type === 'polar') {
+                              executePolarArray(count, angle, pivot, true, [sourceEl.id]);
+                            } else if (array.type === 'linear') {
+                              executeLinearArray(count, angle, spacing, array.rotStep, true, [sourceEl.id]);
+                            }
+                            // After recreation, remap connections: old ghost[i] → new ghost[i] by sorted order
+                            setTimeout(() => {
+                              const newGhosts = elementsRef.current.filter(e => e.type === 'ghost' && e.sourceId === sourceEl.id);
+                              const newGhostIdsSorted = [...newGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0)).map(g => g.id);
+
+                              if (savedConnections.length > 0 && newGhostIdsSorted.length > 0) {
+                                const oldToNew = new Map<string, string>();
+                                for (let i = 0; i < Math.min(oldGhostIdsSorted.length, newGhostIdsSorted.length); i++) {
+                                  oldToNew.set(oldGhostIdsSorted[i], newGhostIdsSorted[i]);
+                                }
+                                // Remove old connections and add remapped ones
+                                const currentConns = picotConnectionsRef.current.filter(conn =>
+                                  !conn.picots.some(p => oldGhostById.has(p.elementId))
+                                );
+                                const remappedConns = savedConnections.map(conn => ({
+                                  ...conn,
+                                  id: generateId(),
+                                  picots: conn.picots.map(p => ({
+                                    ...p,
+                                    elementId: oldToNew.get(p.elementId) || p.elementId,
+                                  })),
+                                }));
+                                const merged = [...currentConns, ...remappedConns];
+                                setPicotConnections(merged);
+                                picotConnectionsRef.current = merged;
+                              }
+                            }, 60);
+                          }, 50);
+                        }}
+                        disabled={!sourceEl}
+                        className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
+                        title={sourceEl ? t('ghostArrayApplyTitle') : t('ghostArraySourceDeleted')}
+                      >
+                        {t('ghostArrayApply')}
+                      </button>
+                      <button
+                        onClick={() => setConvertConfirm(array)}
+                        disabled={existingGhosts.length === 0}
+                        className="text-xs px-2 py-1 bg-amber-700 hover:bg-amber-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
+                        title={t('ghostArrayConvertTitle')}
+                      >
+                        {t('ghostArrayConvert')}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <div className="px-5 pb-2 flex-shrink-0">
+            <button
+              onClick={() => setConvertConfirm('all')}
+              className="w-full px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm font-medium"
+            >
+              {t('ghostArrayConvertAll')}
+            </button>
+          </div>
+          <div className="px-5 pb-4 flex-shrink-0">
+            <p className="text-xs text-gray-500">{t('ghostArrayApplyTitle')}</p>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Convert Ghost Array confirmation modal */}
+    {convertConfirm && (
+      <>
+        <div className="fixed inset-0 bg-black/50" style={{zIndex: 2147483646}} onClick={() => setConvertConfirm(null)}></div>
+        <div
+          className="fixed bg-gray-700 rounded-lg shadow-xl border border-gray-600 p-5 w-80"
+          style={{zIndex: 2147483647, top: '50%', left: '50%', transform: 'translate(-50%, -50%)'}}
+        >
+          {convertConfirm === 'all' ? (
+            <>
+              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertAllTitle')}</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                {t('ghostArrayConvertAllConfirm')
+                  .replace('{total}', String(ghostArrays.reduce((sum, a) => sum + a.ghostIds.length, 0)))
+                  .replace('{arrays}', String(ghostArrays.length))}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setConvertConfirm(null)}
+                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                >
+                  {t('ghostArrayCancel')}
+                </button>
+                <button
+                  onClick={() => {
+                    let allNewIds: string[] = [];
+                    const oldToNewId = new Map<string, string>();
+                    // Find all ghosts by sourceId (ghostIds may be stale after undo)
+                    const allGhostsToConvert = ghostArrays.flatMap(a =>
+                      elements.filter(e => e.type === 'ghost' && e.sourceId === a.sourceId)
+                    );
+                    // Deduplicate in case multiple arrays share the same ghost
+                    const seen = new Set<string>();
+                    const uniqueGhosts = allGhostsToConvert.filter(e => {
+                      if (seen.has(e.id)) return false;
+                      seen.add(e.id);
+                      return true;
+                    });
+                    setElements(prev => {
+                      const withoutGhosts = prev.filter(el => el.type !== 'ghost');
+                      const realElements = uniqueGhosts.map(ghost => {
+                        const newEl = JSON.parse(JSON.stringify(ghost));
+                        oldToNewId.set(ghost.id, newEl.id);
+                        const source = elementById.get(ghost.sourceId);
+                        newEl.type = source?.type || newEl.type;
+                        delete newEl.sourceId;
+                        delete newEl.isBoundary;
+                        delete newEl.isGhostMother;
+                        delete newEl.ghostArrayIds;
+                        allNewIds.push(newEl.id);
+                        return newEl;
+                      });
+                      return [...withoutGhosts, ...realElements];
+                    });
+
+                    // Update picotConnections: replace old ghost IDs with new real element IDs
+                    setPicotConnections(prev => prev.map(conn => ({
+                      ...conn,
+                      picots: conn.picots.map(p => ({
+                        ...p,
+                        elementId: oldToNewId.get(p.elementId) || p.elementId,
+                      })),
+                    })));
+
+                    const sourceIds = ghostArrays.map(a => a.sourceId).filter(Boolean);
+                    setSelectedIds([...sourceIds, ...allNewIds]);
+                    setGhostArrays([]);
+                    setConvertConfirm(null);
+                  }}
+                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
+                >
+                  {t('ghostArrayConvert')} {t('ghostArrayConvertAll').split(' ').slice(0,2).join(' ')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertTitle')}</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                {t('ghostArrayConvertConfirm')
+                  .replace('{count}', String(convertConfirm.instanceCount - 1))
+                  .replace('{name}', convertConfirm.name)}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setConvertConfirm(null)}
+                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                >
+                  {t('ghostArrayCancel')}
+                </button>
+                <button
+                  onClick={() => convertGhostArray(convertConfirm)}
+                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
+                >
+                  {t('ghostArrayConvert')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </>
+    )}
+
 
     {/* View dropdown menu - rendered at top level to avoid clipping */}
     {showViewMenu && (
@@ -15215,7 +16350,7 @@ const TattingDesigner = () => {
                 {/* Select all */}
                 <button
                   onClick={() => {
-                    const ids = elements.filter(el => (el.materialId || 'default') === mat.id || (el.isSplitRing && (el.materialIdB || el.materialId || 'default') === mat.id)).map(el => el.id);
+                    const ids = elements.filter(el => el.type !== 'ghost' && ((el.materialId || 'default') === mat.id || (el.isSplitRing && (el.materialIdB || el.materialId || 'default') === mat.id))).map(el => el.id);
                     setSelectedIds(ids);
                     setShowMaterialsPanel(false);
                   }}
@@ -15250,7 +16385,7 @@ const TattingDesigner = () => {
                   setMaterials(prev => [...prev, { id, name: `${t('materialNewName')} ${prev.length}`, color: '#AAAAAA', isGradient: false }]);
                   if (selectedIds.length > 0) {
                     setElements(prev => prev.map(el =>
-                      selectedIds.includes(el.id) ? { ...el, materialId: id } : el
+                      selectedIdSet.has(el.id) ? { ...el, materialId: id } : el
                     ));
                   }
                 }}
@@ -15974,25 +17109,7 @@ const TattingDesigner = () => {
     )}
 
     {/* ── Polar Array Dialog ────────────────────────────────────── */}
-    {showPolarArrayDialog && (
-      <>
-        {/* Backdrop — clicking it closes */}
-        <div
-          className="fixed inset-0 bg-black bg-opacity-60"
-          style={{ zIndex: 2147483640, opacity: polarArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}
-          onClick={() => setShowPolarArrayDialog(false)}
-        />
-
-        {/* Dialog panel */}
-        <div
-          className="fixed inset-0 flex items-center justify-center pointer-events-none"
-          style={{ zIndex: 2147483641, opacity: polarArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}
-        >
-          <div
-            className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5"
-            style={{ width: 'min(340px, 92vw)' }}
-            onClick={e => e.stopPropagation()}
-          >
+    <ArrayDialogShell show={showPolarArrayDialog} peek={polarArrayPeek} onClose={() => setShowPolarArrayDialog(false)}>
             {/* Title */}
             <div className="text-white font-semibold text-base">{t('polarArrayTitle')}</div>
 
@@ -16057,6 +17174,18 @@ const TattingDesigner = () => {
               </select>
             </div>
 
+            {/* Create as ghosts checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="polar-ghosts"
+                checked={polarArrayCreateGhosts}
+                onChange={e => setPolarArrayCreateGhosts(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
+              />
+              <label htmlFor="polar-ghosts" className="text-sm text-gray-300">Create as ghosts</label>
+            </div>
+
             {/* Step preview text */}
             <div className="text-xs text-gray-400 text-center">
               {polarArrayCount} copies · every {(polarArrayAngle / polarArrayCount).toFixed(1)}° · over {polarArrayAngle}°
@@ -16066,8 +17195,9 @@ const TattingDesigner = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  executePolarArray(polarArrayCount, polarArrayAngle, polarArrayPivotId);
+                  executePolarArray(polarArrayCount, polarArrayAngle, polarArrayPivotId, polarArrayCreateGhosts);
                   setShowPolarArrayDialog(false);
+                  setPolarArrayCreateGhosts(false);
                 }}
                 className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
               >{t('polarArrayApply')}</button>
@@ -16086,17 +17216,10 @@ const TattingDesigner = () => {
               onTouchStart={() => setPolarArrayPeek(true)}
               onTouchEnd={() => setPolarArrayPeek(false)}
             >👁 {t('polarArrayPeekHint')}</button>
-          </div>
-        </div>
-      </>
-    )}
+    </ArrayDialogShell>
 
     {/* ── Linear Array Dialog ───────────────────────────────────── */}
-    {showLinearArrayDialog && (
-      <>
-        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 2147483640, opacity: linearArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }} onClick={() => setShowLinearArrayDialog(false)} />
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483641, opacity: linearArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}>
-          <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5" style={{ width: 'min(340px, 92vw)' }} onClick={e => e.stopPropagation()}>
+    <ArrayDialogShell show={showLinearArrayDialog} peek={linearArrayPeek} onClose={() => setShowLinearArrayDialog(false)}>
             <div className="text-white font-semibold text-base">{t('linearArrayTitle')}</div>
 
             {/* Count */}
@@ -16122,8 +17245,13 @@ const TattingDesigner = () => {
 
             {/* Spacing */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">{t('linearArraySpacing')}</label>
-              <input type="number" min={1} value={linearArraySpacing} onChange={e => setLinearArraySpacing(parseFloat(e.target.value) || 1)} className="w-28 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+              <label className="text-xs text-gray-400">Spacing (100% = touching, 200% = 1 element gap)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={500} step={10} value={linearArraySpacing} onChange={e => setLinearArraySpacing(parseFloat(e.target.value) || 0)} onBlur={e => setLinearArraySpacing(Math.max(0, Math.min(500, parseFloat(e.target.value) || 0)))} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
+                <span className="text-gray-400 text-xs">%</span>
+                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100% touch</button>
+                <button onClick={() => setLinearArraySpacing(200)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">200%</button>
+              </div>
             </div>
 
             {/* Rotation per step */}
@@ -16136,13 +17264,32 @@ const TattingDesigner = () => {
               </div>
             </div>
 
+            {/* Create as ghosts checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="linear-ghosts"
+                checked={linearArrayCreateGhosts}
+                onChange={e => setLinearArrayCreateGhosts(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
+              />
+              <label htmlFor="linear-ghosts" className="text-sm text-gray-300">Create as ghosts</label>
+            </div>
+
             {/* Summary */}
             <div className="text-xs text-gray-400 text-center">
-              {linearArrayCount} copies · {linearArrayAngle}° · every {linearArraySpacing}px{linearArrayRotStep !== 0 ? ` · +${linearArrayRotStep}°/step` : ''}
+              {linearArrayCount} copies · {linearArrayAngle}° · {linearArraySpacing}% spacing{linearArrayRotStep !== 0 ? ` · +${linearArrayRotStep}°/step` : ''}
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => { executeLinearArray(linearArrayCount, linearArrayAngle, linearArraySpacing, linearArrayRotStep); setShowLinearArrayDialog(false); }} className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold">{t('linearArrayApply')}</button>
+              <button
+                onClick={() => {
+                  executeLinearArray(linearArrayCount, linearArrayAngle, linearArraySpacing, linearArrayRotStep, linearArrayCreateGhosts);
+                  setShowLinearArrayDialog(false);
+                  setLinearArrayCreateGhosts(false);
+                }}
+                className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
+              >{t('linearArrayApply')}</button>
               <button onClick={() => setShowLinearArrayDialog(false)} className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm">{t('confirmCancel')}</button>
             </div>
 
@@ -16155,17 +17302,10 @@ const TattingDesigner = () => {
               onTouchStart={() => setLinearArrayPeek(true)}
               onTouchEnd={() => setLinearArrayPeek(false)}
             >👁 {t('linearArrayPeekHint')}</button>
-          </div>
-        </div>
-      </>
-    )}
+    </ArrayDialogShell>
 
     {/* ── Spiral Array Dialog ───────────────────────────────────── */}
-    {showSpiralArrayDialog && (
-      <>
-        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 2147483640, opacity: spiralArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }} onClick={() => setShowSpiralArrayDialog(false)} />
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483641, opacity: spiralArrayPeek ? 0 : 1, transition: 'opacity 0.15s' }}>
-          <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5" style={{ width: 'min(340px, 92vw)' }} onClick={e => e.stopPropagation()}>
+    <ArrayDialogShell show={showSpiralArrayDialog} peek={spiralArrayPeek} onClose={() => setShowSpiralArrayDialog(false)}>
             <div className="text-white font-semibold text-base">{t('spiralArrayTitle')}</div>
 
             {/* Count */}
@@ -16228,10 +17368,7 @@ const TattingDesigner = () => {
               onTouchStart={() => setSpiralArrayPeek(true)}
               onTouchEnd={() => setSpiralArrayPeek(false)}
             >👁 {t('spiralArrayPeekHint')}</button>
-          </div>
-        </div>
-      </>
-    )}
+    </ArrayDialogShell>
 
     {/* ── In-app Confirm Dialog ─────────────────────────────────── */}
     {confirmDialog && (
@@ -16240,6 +17377,7 @@ const TattingDesigner = () => {
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483647 }}>
           <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto px-6 py-5 flex flex-col gap-4"
             style={{ width: 'min(360px, 90vw)' }}>
+            {confirmDialog.title && <h2 className="text-lg font-bold text-white">{confirmDialog.title}</h2>}
             <p className="text-white text-sm text-center">{confirmDialog.message}</p>
             <div className="flex gap-2">
               <button

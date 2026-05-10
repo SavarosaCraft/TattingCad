@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TattingCAD",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "com.savarosa.tattingcad",
   "build": {
     "frontendDist": "../dist",
@@ -20,7 +20,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     },
     "withGlobalTauri": true
   },
