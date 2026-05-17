@@ -32,11 +32,19 @@ Windows: When prompted by SmartScreen, click More info → Run anyway.
 macOS: Apple blocks unsigned apps by default. To open TattingCAD:
 
 Download the .dmg and drag TattingCAD to your Applications folder
-Try to open it — you'll get a warning that it can't be opened
-Go to System Settings → Privacy & Security
-Scroll down and you'll see a message about TattingCAD being blocked — click Open Anyway
-Confirm in the dialog that appears
-You only need to do this once.
+Fix “can’t open app” on macOS (Terminal method)
+1) Open Finder
+2)Go to Applications
+3)Find TattingCAD.app
+4)Open Terminal
+          Press Cmd + Space
+          Type Terminal
+          Press Enter
+5)Copy and paste this command into Terminal:
+xattr -cr /Applications/TattingCAD.app
+6)Press Enter
+7)Close Terminal
+8)Open TattingCAD normally from Applications 
 
 Android: Enable Install from unknown sources in your device settings, then open the .apk file to install.
 
