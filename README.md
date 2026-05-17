@@ -34,17 +34,13 @@ macOS: Apple blocks unsigned apps by default. To open TattingCAD:
 Download the .dmg and drag TattingCAD to your Applications folder
 Fix “can’t open app” on macOS (Terminal method)
 1) Open Finder
-2)Go to Applications
-3)Find TattingCAD.app
-4)Open Terminal
-          Press Cmd + Space
-          Type Terminal
-          Press Enter
-5)Copy and paste this command into Terminal:
-xattr -cr /Applications/TattingCAD.app
-6)Press Enter
-7)Close Terminal
-8)Open TattingCAD normally from Applications 
+2) Go to Applications
+3) Find TattingCAD.app
+4) Open Terminal: (Press Cmd + Space, Type: Terminal, Press Enter)
+5) Copy and paste this command into Terminal: xattr -cr /Applications/TattingCAD.app
+6) Press Enter
+7) Close Terminal
+8) Open TattingCAD normally from Applications
 
 Android: Enable Install from unknown sources in your device settings, then open the .apk file to install.
 
