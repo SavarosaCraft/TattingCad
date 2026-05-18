@@ -23,26 +23,24 @@ Built because nothing like it existed.
 No account. No cloud. No trackers. Everything stays on your device.
 
 ⚠️ Installation Notes:
-
 TattingCAD is an independent release and the installers are currently unsigned. 
 This means your OS may show a security warning — this is expected and safe to dismiss.
 
-Windows: When prompted by SmartScreen, click More info → Run anyway.
+🪟 Windows: When prompted by SmartScreen, click More info → Run anyway.
 
-macOS: Apple blocks unsigned apps by default. To open TattingCAD:
+🍎 macOS: Apple blocks unsigned apps by default. To open TattingCAD:
+  Download the .dmg and drag TattingCAD to your Applications folder
+  Fix “can’t open app” on macOS (Terminal method)
+  1) Open Finder
+  2) Go to Applications
+  3) Find TattingCAD.app
+  4) Open Terminal: (Press Cmd + Space, Type: Terminal, Press Enter)
+  5) Copy and paste this command into Terminal: xattr -cr /Applications/TattingCAD.app
+  6) Press Enter
+  7) Close Terminal
+  8) Open TattingCAD normally from Applications
 
-Download the .dmg and drag TattingCAD to your Applications folder
-Fix “can’t open app” on macOS (Terminal method)
-1) Open Finder
-2) Go to Applications
-3) Find TattingCAD.app
-4) Open Terminal: (Press Cmd + Space, Type: Terminal, Press Enter)
-5) Copy and paste this command into Terminal: xattr -cr /Applications/TattingCAD.app
-6) Press Enter
-7) Close Terminal
-8) Open TattingCAD normally from Applications
-
-Android: Enable Install from unknown sources in your device settings, then open the .apk file to install.
+📱 Android: Enable Install from unknown sources in your device settings, then open the .apk file to install.
 
 ---
 
