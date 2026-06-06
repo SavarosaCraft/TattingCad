@@ -151,12 +151,18 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
         }
       } else if (picot.beadType) {
         parts.push('bp');
-      } else {
-        const lengthToken = picot.length === 'small' ? 'sp'
-          : picot.length === 'large' ? 'lp'
-          : 'p';
-        parts.push(lengthToken);
-      }
+     } else {
+  const lengthToken = picot.length === 'small' ? 'sp'
+    : picot.length === 'large' ? 'lp'
+    : 'p';
+  const refs = picotConnectionMap[key] || [];
+  if (refs.length > 0) {
+    const refStrs = [...refs].sort().map(refToLower);
+    parts.push(lengthToken + refStrs.map(r => `//${r}`).join('') + '//');
+  } else {
+    parts.push(lengthToken);
+  }
+}
 
       prev = picot.stitchesBefore;
     }

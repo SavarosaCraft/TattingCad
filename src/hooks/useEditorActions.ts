@@ -24,6 +24,17 @@ import {
   createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths,
 } from '../geometry/paths';
+import { writeText as tauriWrite, readText as tauriRead } from '@tauri-apps/plugin-clipboard-manager';
+
+// Use Tauri native clipboard when available (avoids browser permission prompts).
+// Falls back to navigator.clipboard when running in browser dev server.
+const isTauri = () => typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+
+const writeClipboardText = (text: string): Promise<void> =>
+  isTauri() ? tauriWrite(text) : navigator.clipboard.writeText(text);
+
+const readClipboardText = (): Promise<string> =>
+  isTauri() ? tauriRead() : navigator.clipboard.readText();
 
 export interface UseEditorActionsParams {
   // State values
@@ -49,6 +60,7 @@ export interface UseEditorActionsParams {
   needsHistoryPushRef: React.RefObject<boolean>;
   skipAutoHistoryRef: React.RefObject<boolean>;
   lastUsedMaterialIdRef: React.RefObject<string>;
+  beadLibrary: any[];
   // Setters
   setElements: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setSelectedIds: (ids: string[]) => void;
@@ -353,21 +365,85 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
   // ── Clipboard ─────────────────────────────────────────────────────────────
 
+  const TATCAD_PREFIX = 'TATCAD_ELEMENTS:';
+
+  const inlineBeadData = (els: any[]) => els.map(el => ({
+    ...el,
+    picots: (el.picots || []).map((pic: any) => {
+      if (pic.beadType !== 'be') return pic;
+      const inlinedBeads: Record<string, any> = {};
+      [...(pic.coreBeads || []), ...(pic.picotBeads || [])].forEach((id: string) => {
+        if (!id) return;
+        const b = p.beadLibrary.find((lib: any) => lib.id === id);
+        if (b) inlinedBeads[id] = { name: b.name, color: b.color, size: b.size, shape: b.shape };
+      });
+      return { ...pic, inlinedBeads };
+    }),
+  }));
+
+  const stripUnknownBeadRefs = (els: any[]) => els.map(el => ({
+    ...el,
+    picots: (el.picots || []).map((pic: any) => {
+      if (pic.beadType !== 'be') return pic;
+      const resolveId = (id: string | null) => {
+        if (!id) return null;
+        if (p.beadLibrary.find((b: any) => b.id === id)) return id;
+        return null;
+      };
+      const { inlinedBeads: _inline, ...picotClean } = pic;
+      return {
+        ...picotClean,
+        coreBeads: (pic.coreBeads || []).map(resolveId),
+        picotBeads: (pic.picotBeads || []).map(resolveId),
+      };
+    }),
+  }));
+
   const copySelected = () => {
     if (p.selectedIds.length === 0) return;
-    p.setClipboard(JSON.parse(JSON.stringify(p.elements.filter(el => p.selectedIdSet.has(el.id)))));
+    const copied = JSON.parse(JSON.stringify(p.elements.filter(el => p.selectedIdSet.has(el.id))));
+    const relevantConnections = p.picotConnections.filter(conn =>
+      conn.picots.every(pt => p.selectedIdSet.has(pt.elementId))
+    );
+    p.setClipboard(copied);
+    const payload = TATCAD_PREFIX + JSON.stringify({
+      elements: inlineBeadData(copied),
+      connections: relevantConnections,
+    });
+    writeClipboardText(payload).catch(err => console.error('[TATCAD] Clipboard write failed:', err));
   };
 
   const cutSelected = () => {
     if (p.selectedIds.length === 0) return;
-    p.setClipboard(JSON.parse(JSON.stringify(p.elements.filter(el => p.selectedIdSet.has(el.id)))));
+    const copied = JSON.parse(JSON.stringify(p.elements.filter(el => p.selectedIdSet.has(el.id))));
+    p.setClipboard(copied);
+    const payload = TATCAD_PREFIX + JSON.stringify({ elements: inlineBeadData(copied), connections: [] });
+    writeClipboardText(payload).catch(err => console.error('[TATCAD] Clipboard write failed:', err));
     p.setElements(prev => prev.filter(e => !p.selectedIdSet.has(e.id)));
     p.setSelectedIds([]);
   };
 
-  const pasteFromClipboard = useCallback(() => {
-    const board = p.clipboardRef.current;
-    if (board.length === 0) return;
+  const pasteFromClipboard = useCallback(async () => {
+    let board = p.clipboardRef.current;
+    let connections = p.picotConnectionsRef.current.filter(conn =>
+      board.every && conn.picots.every(pt => board.some((el: any) => el.id === pt.elementId))
+    );
+
+    try {
+      const sysText = await readClipboardText().catch(() => null);
+      if (sysText?.startsWith(TATCAD_PREFIX)) {
+        const parsed = JSON.parse(sysText.slice(TATCAD_PREFIX.length));
+        const { elements: sysEls, connections: sysConns } = parsed;
+        if (Array.isArray(sysEls) && sysEls.length > 0) {
+          board = stripUnknownBeadRefs(sysEls);
+          connections = sysConns || [];
+        }
+      }
+    } catch {
+      // fall through to internal clipboard
+    }
+
+    if (!board || board.length === 0) return;
 
     const offset = 30;
     const groupIdMap = new Map<string, string>();
@@ -400,10 +476,10 @@ export function useEditorActions(p: UseEditorActionsParams) {
       return newEl;
     });
 
-    const clipboardIds = new Set(board.map(el => el.id));
-    const newConnections = p.picotConnectionsRef.current
-      .filter(conn => conn.picots.every(pt => clipboardIds.has(pt.elementId)))
-      .map(conn => ({
+    const clipboardIds = new Set(board.map((el: any) => el.id));
+    const newConnections = connections
+      .filter((conn: any) => conn.picots.every((pt: any) => clipboardIds.has(pt.elementId)))
+      .map((conn: any) => ({
         id: generateId(),
         picots: conn.picots.map(pt => ({ elementId: elementIdMap.get(pt.elementId), picotId: pt.picotId })),
       }));
@@ -577,8 +653,6 @@ export function useEditorActions(p: UseEditorActionsParams) {
   };
 
   // ── Return ────────────────────────────────────────────────────────────────
-  // Helpers are returned so tattingindex can use them in render and other callbacks
-  // that haven't been extracted yet.
 
   return {
     // Helpers (still needed in tattingindex)

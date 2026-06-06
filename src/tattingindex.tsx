@@ -80,6 +80,7 @@ import {
   getStitchTypes as getStitchTypesPure,
   isNotationValid,
   expandTokens,
+  normalizeNotationInput,
   isZeroWidth,
 } from './domain/parser';
 const logoUrl = '/logo.png';
@@ -754,7 +755,7 @@ const TattingDesigner = () => {
     const parsed = parseNotation(pending.notation, true);
     if (parsed && parsed.stitchCount > 0) {
       setDraftNotation(null);
-      updateNotation(pending.notation, pending.notationB ?? null, pending.elementId);
+     updateNotation(normalizeNotationInput(pending.notation), pending.notationB ?? null, pending.elementId);
     } else {
     }
   }, [selectedIds]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1877,6 +1878,7 @@ const TattingDesigner = () => {
   } = useEditorActions({
     elements, selectedIds, dsWidth, camera, zoom, polarGrids,
     elementById, selectedIdSet,
+    beadLibrary, picotConnections,
     canvasRef, elementsRef, selectedIdsRef, picotConnectionsRef, orderGroupsRef,
     clipboardRef, historyRef, historyIndexRef,
     isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef,
@@ -2853,20 +2855,19 @@ const TattingDesigner = () => {
     }
   }, [elements, projectName, patternNotes, orderGroups, dsWidth]);
 
-  const generatePattern = useCallback(() => {
-    const result = generatePatternText({
-      elements, picotConnections, orderGroups, materials, beadLibrary,
-      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
-    });
-    if (result === null) {
-      // No tatting elements on canvas — copyToClipboard stays in component (side effect)
-      const notesBlock = patternNotes?.trim() ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
-      copyToClipboard('No objects on canvas.' + notesBlock);
-      return;
-    }
-    copyToClipboard(result.text, result.elementCount);
-  }, [elements, picotConnections, orderGroups, materials, beadLibrary,
-      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
+const generatePattern = useCallback(() => {
+  const result = generatePatternText({
+    elements, picotConnections, orderGroups, materials, beadLibrary,
+    threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
+  });
+  const notesBlock = patternNotes?.trim() ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
+  const text = result === null ? 'No objects on canvas.' + notesBlock : result.text;
+  navigator.clipboard.writeText(text).then(
+    () => { setLoadMsg({ type: 'success', text: t('notationCopied') }); setTimeout(() => setLoadMsg(null), 3000); },
+    () => { setLoadMsg({ type: 'error', text: t('notationCopyFailed') }); setTimeout(() => setLoadMsg(null), 4000); }
+  );
+}, [elements, picotConnections, orderGroups, materials, beadLibrary,
+    threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
   // Export as PNG
 
   // Join selected picots with a connection.
@@ -4044,12 +4045,7 @@ const TattingDesigner = () => {
             picotBeads: [...(p.picotBeads || [null, null, null])],
           });
         } else {
-          // Copy selected elements using refs
-          if (selectedIdsRef.current.length > 0) {
-            const selectedElements = elementsRef.current.filter(el => selectedIdsRef.current.includes(el.id));
-            const cloned = JSON.parse(JSON.stringify(selectedElements)); // Deep clone
-            setClipboard(cloned);
-          }
+          copySelected();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
         e.preventDefault();
@@ -4079,13 +4075,7 @@ const TattingDesigner = () => {
             }));
           }
         } else {
-          // Cut selected elements: copy then delete
-          const ids = selectedIdsRef.current;
-          if (ids.length === 0) return;
-          const selectedElements = elementsRef.current.filter(el => ids.includes(el.id));
-          setClipboard(JSON.parse(JSON.stringify(selectedElements)));
-          setElements(prev => prev.filter(e => !ids.includes(e.id)));
-          setSelectedIds([]);
+          cutSelected();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
@@ -4105,7 +4095,7 @@ const TattingDesigner = () => {
             return { ...el, picots: newPicots };
           }));
         } else {
-          pasteFromClipboard();
+          pasteFromClipboard().catch(() => {});
         }
 
       // ── Add-element & mode shortcuts (Shift + key, no Ctrl/Cmd) ────────────
@@ -6720,7 +6710,7 @@ const TattingDesigner = () => {
           <button 
             onClick={() => {
               if (activeMode === 'beading') pasteBeClipboard();
-              else pasteFromClipboard();
+              else pasteFromClipboard().catch(() => {});
             }}
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{ width: '44px', height: '44px' }}
@@ -7754,13 +7744,14 @@ const TattingDesigner = () => {
                     onBlur={(e) => {
                       pendingNotationRef.current = null;
                       if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
-                      const notation = e.target.value.trim();
-                      const parsed = parseNotation(notation);
-                      const currentElement = elementById.get(selectedElement.id);
-                      if (!currentElement) { return; }
-                      if (parsed && parsed.stitchCount > 0) {
-                        setDraftNotation(null);
-                        updateNotation(notation, null, currentElement.id);
+const rawNotation = e.target.value.trim();
+const normalized = normalizeNotationInput(rawNotation);
+const parsed = parseNotation(normalized);
+const currentElement = elementById.get(selectedElement.id);
+if (!currentElement) { return; }
+if (parsed && parsed.stitchCount > 0) {
+  setDraftNotation(null);
+  updateNotation(normalized, null, currentElement.id);
                       } else {
                         if (parsed && parsed.stitchCount === 0) {
                           setAlertDialog({ message: 'Element must have at least 1 stitch.' });

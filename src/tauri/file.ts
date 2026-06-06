@@ -14,6 +14,12 @@
 import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
 import { writeFile, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
+
+// - clipboard
+export const writeClipboardText = (text: string): Promise<void> => writeText(text);
+export const readClipboardText = (): Promise<string> => readText();
+
 
 // ── Dialogs ────────────────────────────────────────────────────────────────
 

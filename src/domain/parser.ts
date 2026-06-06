@@ -6,8 +6,15 @@
 import { generateId } from '../utils/id';
 
 // ── Token helpers ──────────────────────────────────────────────────────────
+const normalizePattern = (pat: string): string =>
+  pat.trim()
+    .replace(/\bspaces?\b/gi, '-')
+    .replace(/(\d)d(?=[^s]|$)/g, '$1ds')
+.replace(/[\s.\-]+/g, '-');
+
 
 export const expandTokens = (pat: string): string[] => {
+	pat = normalizePattern(pat);
   const parts: string[] = [];
   let current = '';
   let depth = 0;
@@ -560,4 +567,11 @@ export const getStitchTypes = (
   } catch (err) { console.error('Error parsing stitch types:', err); }
   cache?.set(notation, stitchMap);
   return stitchMap;
+  };
+  export const normalizeNotationInput = (notation: string): string => {
+  const match = notation.match(/^(r|c|sc|sr):\s*/i);
+  if (!match) return notation;
+  const prefix = match[0];
+let pat = normalizePattern(notation.slice(prefix.length));
+  return prefix.trimEnd().replace(/:$/, '') + ': ' + pat;
 };
