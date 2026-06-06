@@ -388,7 +388,7 @@
         <div class="step-num">3</div>
         <div class="step-body">
           <h5>Add Picots &amp; Joins</h5>
-          <p>Use <code class="code-inline">p</code> for picots, <code class="code-inline">jp</code> for join points, <code class="code-inline">gp</code> for guide points, <code class="code-inline">jpg</code> for guide joined picots.</p>
+          <p>Use <code class="code-inline">p</code> for picots (any picot can be joined), <code class="code-inline">gp</code> for guide points, <code class="code-inline">jpg</code> for guide joined picots. Use <code class="code-inline">jp</code> for legacy join picots.</p>
         </div>
       </div>
       <div class="step">
@@ -563,6 +563,17 @@
       <div><code class="code-inline">Nrds</code> &nbsp;Reinforced double stitch(es) — path length N × 2</div>
     </div>
   </div>
+<!-- Input shortcuts -->
+<div class="notation-section">
+  <div class="notation-label">Input shortcuts</div>
+  <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">These are accepted as you type and automatically corrected.</p>
+  <div class="notation-rows">
+    <div><code class="code-inline">d</code> &nbsp;Shorthand for <code class="code-inline">ds</code> — e.g. <code class="code-inline">6d</code> becomes <code class="code-inline">6ds</code></div>
+    <div><code class="code-inline">space</code> or <code class="code-inline">spaces</code> &nbsp;Converted to <code class="code-inline">-</code> separator</div>
+    <div>Whitespace between tokens &nbsp;Treated as <code class="code-inline">-</code> separator — <code class="code-inline">6ds p 6ds</code> is valid</div>
+    <div>Mixed separators &nbsp;<code class="code-inline">-.-</code>, <code class="code-inline">--</code>, trailing dots collapsed to a single <code class="code-inline">-</code></div>
+  </div>
+</div>
 
   <!-- Picot tokens -->
   <div class="notation-section">
@@ -572,7 +583,7 @@
       <div><code class="code-inline">p</code> &nbsp;Regular picot (medium length)</div>
       <div><code class="code-inline">sp</code> or <code class="code-inline">cp</code> &nbsp;Small picot</div>
       <div><code class="code-inline">lp</code> &nbsp;Large picot</div>
-      <div><code class="code-inline">jp</code> &nbsp;Join picot — marks a connection point between elements. Green (free) → yellow (connected) → pink (selected)</div>
+	  <div><code class="code-inline">jp</code> &nbsp;Join picot <span class="muted">(legacy — any <code class="code-inline">p</code>, <code class="code-inline">sp</code>, or <code class="code-inline">lp</code> can now be joined directly)</span>. Green (free) → yellow (connected) → pink (selected)</div>
       <div><code class="code-inline">jpg</code> &nbsp;Guide join picot — rendered as a green arm; selectable in join tool and acts as snap point</div>
 	  <div><code class="code-inline">cj</code> &nbsp;Core join, when the core thread is used to connect to an other join picot.</div>
 	  <div><code class="code-inline">cjp</code> &nbsp;Core join with a picot.</div>
