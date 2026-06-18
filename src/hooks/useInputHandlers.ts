@@ -91,6 +91,7 @@ export interface UseInputHandlersParams {
   getHandleAtPoint: (el: any, x: number, y: number) => any;
   getPicotPosition: (el: any, p: any, baseOnly?: boolean) => any;
   getSnapPoints: (el: any) => any[];
+  getEndpointPseudoPicots: (el: any) => Array<{ id: string; x: number; y: number }>;
   findNearestSnapPointWithPolar: (x: number, y: number, excludeId?: any) => any;
   isPointInElement: (el: any, x: number, y: number) => boolean;
   getPolarPivot: (ids: string[]) => any;
@@ -153,7 +154,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
         const effectivePivotX = polarGridPivot ? polarGridPivot.x : pivotX;
         const effectivePivotY = polarGridPivot ? polarGridPivot.y : pivotY;
 
-        if (Math.hypot(pivotX - world.x, pivotY - world.y) < 12 / p.zoom) {
+        if (Math.hypot(pivotX - world.x, pivotY - world.y) < 16 / p.zoom) {
           p.setMovingPivot(true);
           p.setDragStart({ x: world.x, y: world.y });
           p.pivotDragStartRef.current = {
@@ -174,7 +175,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
             { x: bbox.x,              y: bbox.y + bbox.height, name: 'bl' },
           ];
           for (const corner of corners) {
-            if (Math.hypot(corner.x - world.x, corner.y - world.y) < 10) {
+            if (Math.hypot(corner.x - world.x, corner.y - world.y) < 10 / p.zoom) {
               p.setRotationHandle(corner.name);
               p.setDragStart({ x: world.x, y: world.y, centerX: effectivePivotX, centerY: effectivePivotY });
               p.rotationDragStartRef.current = { x: world.x, y: world.y, pivotX: effectivePivotX, pivotY: effectivePivotY };
@@ -687,13 +688,21 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       } else if (p.activeMode === 'picotJoin') {
         const selPicots: any[] = [];
         p.elements.forEach(el => {
-          if (!el.picots || (el.type === 'ghost' && !el.isBoundary)) return;
-          el.picots.forEach((picot: any) => {
-            if (picot.isGuidePoint) return;
-            if (picot.beadType && !picot.isJoint && !(picot.beadType === 'be' && picot.beIsJoint)) return;
-            const pos = p.getPicotPosition(el, picot);
-            if (!pos) return;
-            if (pos.x >= minX-5 && pos.x <= maxX+5 && pos.y >= minY-5 && pos.y <= maxY+5) selPicots.push({ elementId: el.id, picotId: picot.id });
+          if (el.type === 'ghost' && !el.isBoundary) return;
+          // Regular picots
+          if (el.picots) {
+            el.picots.forEach((picot: any) => {
+              if (picot.isGuidePoint) return;
+              if (picot.beadType && !picot.isJoint && !(picot.beadType === 'be' && picot.beIsJoint)) return;
+              const pos = p.getPicotPosition(el, picot);
+              if (!pos) return;
+              if (pos.x >= minX-5 && pos.x <= maxX+5 && pos.y >= minY-5 && pos.y <= maxY+5) selPicots.push({ elementId: el.id, picotId: picot.id });
+            });
+          }
+          // Endpoint pseudo-picots
+          p.getEndpointPseudoPicots(el).forEach(ep => {
+            if (ep.x >= minX-5 && ep.x <= maxX+5 && ep.y >= minY-5 && ep.y <= maxY+5)
+              selPicots.push({ elementId: el.id, picotId: ep.id });
           });
         });
         const isClick = Math.abs(p.selectionBox.width) < 15 && Math.abs(p.selectionBox.height) < 15;

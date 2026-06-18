@@ -2870,6 +2870,44 @@ const generatePattern = useCallback(() => {
     threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
   // Export as PNG
 
+  // ── Endpoint pseudo-picot helpers ────────────────────────────────────────
+  const isEndpointPicotId = (id: string) =>
+    id === '__start__' || id === '__end__' || id === '__anchor__';
+
+  const getConnectionBeadSeq = (conn: any) => {
+    for (const p of conn.picots) {
+      if (isEndpointPicotId(p.picotId)) continue;
+      const el = elementById.get(p.elementId);
+      const picot = el?.picots?.find(pic => pic.id === p.picotId);
+      if ((picot?.beadType === 'bjp' || picot?.beadType === 'bcjp') && picot?.beadSeq) return picot.beadSeq;
+    }
+    return null;
+  };
+
+  const getEndpointPseudoPicots = (el: any): Array<{ id: string; x: number; y: number }> => {
+    if (el.type === 'ghost' && !el.isBoundary) return [];
+    if (el.isSplitRing) {
+      if (!el.paths?.length) return [];
+      return [
+        { id: '__start__', x: el.paths[0].x,    y: el.paths[0].y },
+        { id: '__end__',   x: el.paths[0].endX,  y: el.paths[0].endY },
+      ];
+    }
+    if (el.type === 'chain') {
+      if (!el.paths?.length) return [];
+      const last = el.paths[el.paths.length - 1];
+      return [
+        { id: '__start__', x: el.paths[0].x, y: el.paths[0].y },
+        { id: '__end__',   x: last.endX,      y: last.endY },
+      ];
+    }
+    if (el.type === 'ring') {
+      if (!el.paths?.length) return [];
+      return [{ id: '__anchor__', x: el.paths[0].x, y: el.paths[0].y }];
+    }
+    return [];
+  };
+
   // Join selected picots with a connection.
   // Uses refs internally so it can be safely called from keyboard handlers.
   const joinSelectedPicots = useCallback(() => {
@@ -2890,8 +2928,8 @@ const generatePattern = useCallback(() => {
     setPicotConnections(newConns);
     picotConnectionsRef.current = newConns;
 
-    // Auto-promote all selected picots to isJoint: true
-    const jointSet = new Set(sel.map(sp => `${sp.elementId}::${sp.picotId}`));
+    // Auto-promote all selected picots to isJoint: true (skip endpoint pseudo-picots)
+    const jointSet = new Set(sel.filter(sp => !isEndpointPicotId(sp.picotId)).map(sp => `${sp.elementId}::${sp.picotId}`));
     let newEls = elementsRef.current.map(el => {
       if (!el.picots) return el;
       const updated = el.picots.map(p =>
@@ -2935,7 +2973,8 @@ const generatePattern = useCallback(() => {
     elementsRef.current = newEls;
 
     // Phase 2: Detect boundary ghost joins and store inherited join template
-    checkAndStoreInheritedJoin(sel, newEls);
+    // Skip for endpoint pseudo-picot connections
+    if (!sel.some(sp => isEndpointPicotId(sp.picotId))) checkAndStoreInheritedJoin(sel, newEls);
 
     setSelectedPicots([]);
     pushHistoryState(newEls, newConns, orderGroupsRef.current);
@@ -3132,8 +3171,8 @@ const generatePattern = useCallback(() => {
     );
     setPicotConnections(newConns);
 
-    // Auto-demote picots with no remaining connections to isJoint: false
-    const brokenSet = new Set(sel.map(sp => `${sp.elementId}::${sp.picotId}`));
+    // Auto-demote picots with no remaining connections to isJoint: false (skip endpoint pseudo-picots)
+    const brokenSet = new Set(sel.filter(sp => !isEndpointPicotId(sp.picotId)).map(sp => `${sp.elementId}::${sp.picotId}`));
     const stillConnected = new Set(newConns.flatMap(conn =>
       conn.picots.map(p => `${p.elementId}::${p.picotId}`)
     ));
@@ -3864,6 +3903,7 @@ const generatePattern = useCallback(() => {
     getPicotPosition, getSnapPoints, findNearestSnapPointWithPolar,
     isPointInElement, getPolarPivot, pushHistoryState,
     updateGhostArraysForMother, assignOrderNumber, zoomToRect,
+    getEndpointPseudoPicots,
   });
 
   useEffect(() => {
@@ -9808,8 +9848,10 @@ if (parsed && parsed.stitchCount > 0) {
                   const el = elementById.get(p.elementId);
                   if (!el) return null;
                   const picot = el.picots?.find(pic => pic.id === p.picotId);
-                  if (!picot) return null;
-                  return getPicotPosition(el, picot, true); // baseOnly: connection starts at path, not arm tip
+                  if (picot) return getPicotPosition(el, picot, true);
+                  // Endpoint pseudo-picot (__start__, __end__, __anchor__)
+                  const ep = getEndpointPseudoPicots(el).find(e => e.id === p.picotId);
+                  return ep ? { x: ep.x, y: ep.y } : null;
                 }).filter(Boolean);
                 
                 if (positions.length < 2) return null;
@@ -9835,14 +9877,7 @@ if (parsed && parsed.stitchCount > 0) {
                     lineColor = (pickedEl ? getSolidColor(pickedEl) : null) || '#FF8C00';
                   }
                   const lineWidth = firstEl?.lineWidth || 2;
-                  const beadSeqForConnR = (() => {
-                    for (const p of conn.picots) {
-                      const el = elementById.get(p.elementId);
-                      const picot = el?.picots?.find(pic => pic.id === p.picotId);
-                      if ((picot?.beadType === 'bjp' || picot?.beadType === 'bcjp') && picot?.beadSeq) return picot.beadSeq;
-                    }
-                    return null;
-                  })();
+                  const beadSeqForConnR = getConnectionBeadSeq(conn);
                   return (
                     <g key={conn.id}>
                       {positions.map((pos, i) => (
@@ -9862,14 +9897,7 @@ if (parsed && parsed.stitchCount > 0) {
                   );
                 } else {
                   // Schematic mode: each picot → center, dotted orange
-                  const beadSeqForConn = (() => {
-                    for (const p of conn.picots) {
-                      const el = elementById.get(p.elementId);
-                      const picot = el?.picots?.find(pic => pic.id === p.picotId);
-                      if ((picot?.beadType === 'bjp' || picot?.beadType === 'bcjp') && picot?.beadSeq) return picot.beadSeq;
-                    }
-                    return null;
-                  })();
+                  const beadSeqForConn = getConnectionBeadSeq(conn);
                   return (
                     <g key={conn.id}>
                       {positions.map((pos, i) => (
@@ -10637,6 +10665,29 @@ if (parsed && parsed.stitchCount > 0) {
                   });
               })()}
 
+              {/* Endpoint pseudo-picot dots in picotJoin mode */}
+              {activeMode === 'picotJoin' && showEditingArtifacts && renderMode !== 'realistic' && elements.map(el => {
+                const eps = getEndpointPseudoPicots(el);
+                if (!eps.length) return null;
+                return eps.map(ep => {
+                  const isSelected = selectedPicots.some(sp => sp.elementId === el.id && sp.picotId === ep.id);
+                  const isConnected = picotConnections.some(conn =>
+                    conn.picots.some(cp => cp.elementId === el.id && cp.picotId === ep.id)
+                  );
+                  const fill = isSelected ? theme.jpSelected : isConnected ? theme.jpConnected : theme.jpUnconnected;
+                  const r = isSelected ? 6 / zoom : 4.5 / zoom;
+                  return (
+                    <circle
+                      key={`ep-${el.id}-${ep.id}`}
+                      data-ui="1"
+                      cx={ep.x} cy={ep.y} r={r}
+                      fill={fill} stroke="#000" strokeWidth={2 / zoom}
+                      opacity={0.9}
+                    />
+                  );
+                });
+              })}
+
               {/* ── Ruler tool overlay ─────────────────────────────────────────── */}
               {currentTool === 'ruler' && (() => {
                 // Determine the two endpoints: [p1, p2] or [p1, liveMousePos]
@@ -10824,10 +10875,10 @@ if (parsed && parsed.stitchCount > 0) {
                     {/* Rotation handles at corners - show when Shift is held OR toggle is on */}
                     {shouldShowRotationHandles && (
                       <>
-                        <circle cx={bbox.x} cy={bbox.y} r="8" fill="#3B82F6" stroke="#FFF" strokeWidth="2" className="cursor-grab" />
-                        <circle cx={bbox.x + bbox.width} cy={bbox.y} r="8" fill="#3B82F6" stroke="#FFF" strokeWidth="2" className="cursor-grab" />
-                        <circle cx={bbox.x + bbox.width} cy={bbox.y + bbox.height} r="8" fill="#3B82F6" stroke="#FFF" strokeWidth="2" className="cursor-grab" />
-                        <circle cx={bbox.x} cy={bbox.y + bbox.height} r="8" fill="#3B82F6" stroke="#FFF" strokeWidth="2" className="cursor-grab" />
+                        <circle cx={bbox.x} cy={bbox.y} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x + bbox.width} cy={bbox.y} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x + bbox.width} cy={bbox.y + bbox.height} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x} cy={bbox.y + bbox.height} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
                       </>
                     )}
                     
@@ -10837,7 +10888,7 @@ if (parsed && parsed.stitchCount > 0) {
                         <circle 
                           cx={pivotX} 
                           cy={pivotY} 
-                          r={6 / zoom}
+                          r={10 / zoom}
                           fill="#FF8C00" 
                           stroke="#FFF"
                           strokeWidth={2 / zoom}

@@ -61,7 +61,11 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     const el = elementById.get(elementId);
     if (!el) return null;
     const num = el.orderNumber?.toString().trim();
-    const typeLabel = el.type === 'ring' ? 'R' : el.type === 'chain' ? (el.isSplitChain ? 'SC' : 'CH') : null;
+const typeLabel = el.type === 'ring'
+  ? (el.isSplitRing ? 'SR' : 'R')
+  : el.type === 'chain'
+    ? (el.isSplitChain ? 'SC' : 'CH')
+    : null;
     if (!typeLabel) return null;
     if (!num) return `${typeLabel}#?`;
     const samNumEls = elements.filter(e => e.orderNumber?.toString().trim() === num);
@@ -233,6 +237,21 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     });
   }
 
+  // ── Endpoint connection suffix ─────────────────────────────────────────
+  // Appends //ref// for any start/end/anchor connections on the element.
+  const buildEndpointSuffix = (el: any): string => {
+    const endpointIds = ['__start__', '__end__', '__anchor__'];
+    const refs: string[] = [];
+    endpointIds.forEach(epId => {
+      const key = `${el.id}:${epId}`;
+      (picotConnectionMap[key] || []).forEach(ref => {
+        if (!refs.includes(ref)) refs.push(ref);
+      });
+    });
+    if (refs.length === 0) return '';
+    return ' ' + refs.sort().map(r => `//${r.toLowerCase().replace('#', '')}//`).join('');
+  };
+
   // ── Element line renderer ──────────────────────────────────────────────
   const renderElementLine = (item: any): string => {
     const el = item.element;
@@ -243,7 +262,8 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     const dupWarning = isDup ? ' ⚠DUPLICATE#' : '';
     if (el.type === 'line') return `${item.rawOrder}${dupWarning}. [Line]`;
     const notationText = buildOutputNotation(el, el.id);
-    return `${item.rawOrder}${dupWarning}. ${notationText}${el.rw ? ' RW' : ''}`;
+    const endpointSuffix = buildEndpointSuffix(el);
+    return `${item.rawOrder}${dupWarning}. ${notationText}${el.rw ? ' RW' : ''}${endpointSuffix}`;
   };
 
   // ── Pattern body — grouped or flat ────────────────────────────────────
