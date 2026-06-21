@@ -69,6 +69,7 @@ export interface UseEditorActionsParams {
   setClipboard: (items: any[]) => void;
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
+  setGroupRotationInput: (val: string) => void;
   // Utilities
   pushHistoryState: (elements: any[], picotConnections: any[], orderGroups: any[]) => void;
 }
@@ -652,6 +653,95 @@ export function useEditorActions(p: UseEditorActionsParams) {
     p.setElements(prev => prev.map(el => p.selectedIdSet.has(el.id) ? moveElement(el, dx, dy) : el));
   };
 
+  // ── Rotation ──────────────────────────────────────────────────────────────
+
+  const applySingleRotationDelta = (elId: string, delta: number, pushHistory = true) => {
+    if (delta === 0) return;
+    const rad = delta * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    p.setElements(prev => prev.map(el => {
+      if (el.id !== elId) return el;
+      const polarPivot = getPolarPivot([el.id]);
+      const pivot = polarPivot || getElementPivot(el);
+      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
+      const newRotation = (el.rotation || 0) + delta;
+      const newPivot = polarPivot
+        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
+            y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+        : getElementPivot({ ...el, paths: newPaths });
+      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
+    }));
+    if (pushHistory) p.needsHistoryPushRef.current = true;
+  };
+
+  const applyMultiSelectRotationDelta = (delta: number) => {
+    if (p.selectedIds.length < 2) return;
+    if (delta === 0) return;
+    const selEls = p.elements.filter(e => p.selectedIdSet.has(e.id));
+    const polarPivot = getPolarPivot(p.selectedIds);
+    const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
+    const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
+    const rad = delta * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    p.setElements(prev => prev.map(el => {
+      if (!p.selectedIdSet.has(el.id)) return el;
+      const dx = el.center.x - centerX, dy = el.center.y - centerY;
+      const newCenterX = centerX + dx * cos - dy * sin;
+      const newCenterY = centerY + dx * sin + dy * cos;
+      const newRotation = ((el.rotation || 0) + delta) % 360;
+      if (el.isSplitRing && el.splitPosition) {
+        const pathData = createSplitRingPathFromEl(el, p.dsWidth, { cx: newCenterX, cy: newCenterY });
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: ((newRotation % 360) + 360) % 360 };
+      }
+      if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || (el.squeeze !== undefined && el.squeeze > 0))) {
+        const pathData = createTeardropPath(newCenterX, newCenterY, el.stitchCount * p.dsWidth, el.squeeze ?? 0);
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: ((newRotation % 360) + 360) % 360 };
+      }
+      return { ...el, center: { x: newCenterX, y: newCenterY },
+        paths: rotatePaths(el.paths, centerX, centerY, delta),
+        rotation: ((newRotation % 360) + 360) % 360 };
+    }));
+  };
+
+  const applyGroupRotation = (targetRotation: number) => {
+    if (p.selectedIds.length === 0) return;
+    const firstElement = p.elementById.get(p.selectedIds[0]);
+    if (!firstElement || !firstElement.groupId) return;
+    const groupElements = p.elements.filter(e => e.groupId === firstElement.groupId);
+    if (groupElements.length <= 1) return;
+    const currentRotation = groupElements[0]?.rotation || 0;
+    const delta = targetRotation - currentRotation;
+    if (delta === 0) return;
+    const rad = delta * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const polarPivot = getPolarPivot(p.selectedIds);
+    const groupCenterX = polarPivot ? polarPivot.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
+    const groupCenterY = polarPivot ? polarPivot.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
+    p.setElements(prev => prev.map(el => {
+      if (!p.selectedIdSet.has(el.id)) return el;
+      const dx = el.center.x - groupCenterX, dy = el.center.y - groupCenterY;
+      const newCenterX = groupCenterX + dx * cos - dy * sin;
+      const newCenterY = groupCenterY + dx * sin + dy * cos;
+      const newRotation = ((el.rotation || 0) + delta) % 360;
+      if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || el.shapeStyle === 'split-ring' || (el.squeeze !== undefined && el.squeeze > 0))) {
+        const pathData = el.isSplitRing && el.splitPosition
+          ? createSplitRingPathFromEl(el, p.dsWidth, { cx: newCenterX, cy: newCenterY })
+          : createTeardropPath(newCenterX, newCenterY, el.stitchCount * p.dsWidth, el.squeeze ?? 0);
+        return { ...el, center: { x: newCenterX, y: newCenterY },
+          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
+          rotation: newRotation };
+      }
+      return { ...el, center: { x: newCenterX, y: newCenterY },
+        paths: rotatePaths(el.paths, groupCenterX, groupCenterY, delta),
+        rotation: newRotation };
+    }));
+    p.setGroupRotationInput('');
+  };
+
   // ── Return ────────────────────────────────────────────────────────────────
 
   return {
@@ -674,5 +764,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
     alignLeft, alignRight, alignTop, alignBottom,
     alignCenterHorizontal, alignCenterVertical,
     alignToGridHorizontal, alignToGridVertical, centerToPolarGrid,
+    // Rotation
+    applySingleRotationDelta,
+    applyMultiSelectRotationDelta,
+    applyGroupRotation,
   };
 }

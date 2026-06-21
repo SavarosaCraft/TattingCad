@@ -7,15 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import {
-  showSaveDialog,
-  showOpenDialog,
-  showSaveSvgDialog,
-  writeProjectFile,
-  writeTextToFile,
-  readProjectFile,
-  addToRecents,
   getRecents,
-  generateThumbnailPng,
   thumbSrcFor,
   thumbPathFor,
 } from './tauri/file';
@@ -30,14 +22,18 @@ import {
 import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
-import { prepareSvgForExport, ORDER_GROUP_COLORS } from './render/svgExport';
+import { ORDER_GROUP_COLORS } from './render/svgExport';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths, mirrorPaths, applyRotationToPathData, rotatePathsAroundCenter,
   applyPathPreset, applyLinePreset,
 } from './geometry/paths';
 import { useEditorActions } from './hooks/useEditorActions';
+import { useBEClipboard } from './hooks/useBEClipboard';
+import { useHistoryActions } from './hooks/useHistoryActions';
 import { useInputHandlers } from './hooks/useInputHandlers';
+import { useJoinActions } from './hooks/useJoinActions';
+import { useProjectFile } from './hooks/useProjectFile';
 import { useUIState } from './hooks/useUIState';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useTattingOrder } from './hooks/useTattingOrder';
@@ -308,47 +304,6 @@ const ThreadPropertiesNumInput = ({ label, value, onChange = null, unit = 'mm', 
   );
 };
 
-// Canonical project serializer — single source of truth for both manual save and autosave.
-// Accepts all project data explicitly so it stays pure and testable.
-// isAutoSave=true → writes 'autoSaved' timestamp key; false → writes 'created'.
-function serializeProject(data: {
-  name: string;
-  elements: any[]; picotConnections: any[]; camera: any; zoom: number; dsWidth: number;
-  bgColor: string; gridEnabled: boolean; customColors: any[]; referenceImage: any;
-  refImageProps: any; renderMode: string; patternNotes: string; materials: any[];
-  orderGroups: any[]; beadLibrary: any[]; polarGrids: any[]; selectedPolarGridId: string | null;
-  threadPresets: any[]; activePresetId: string;
-}, isAutoSave = false) {
-  return {
-    version: 90,
-    name: data.name,
-    ...(isAutoSave
-      ? { autoSaved: new Date().toISOString() }
-      : { created: new Date().toISOString() }),
-    elements:            data.elements,
-    picotConnections:    data.picotConnections,
-    camera:              data.camera,
-    zoom:                data.zoom,
-    dsWidth:             data.dsWidth,
-    bgColor:             data.bgColor,
-    gridEnabled:         data.gridEnabled,
-    customColors:        data.customColors,
-    referenceImage:      data.referenceImage,
-    refImageProps:       data.refImageProps,
-    renderMode:          data.renderMode,
-    patternNotes:        data.patternNotes,
-    materials:           data.materials,
-    orderGroups:         data.orderGroups,
-    beadLibrary:         data.beadLibrary,
-    polarGrids:          data.polarGrids,
-    selectedPolarGridId: data.selectedPolarGridId,
-    activeThreadPreset:
-      data.threadPresets.find(p => p.id === data.activePresetId)
-      ?? data.threadPresets[0]
-      ?? null,
-  };
-}
-
 // Numeric input that only commits its value on blur or Enter.
 // While focused, the user can type freely without the field fighting them.
 // Quick-pick buttons work correctly because clicking them blurs the input first.
@@ -500,6 +455,12 @@ const TattingDesigner = () => {
     resolvedUiGuideUrl, setResolvedUiGuideUrl,
     uiGuideUrlReady, setUiGuideUrlReady,
   } = useUIState();
+
+  // Toast helper — sets the load/save message and auto-dismisses it.
+  const showLoadMsg = useCallback((type: 'success' | 'error', text: string) => {
+    setLoadMsg({ type, text });
+    setTimeout(() => setLoadMsg(null), type === 'success' ? 3000 : 4000);
+  }, []);
 
   // ── Canvas interaction state ─────────────────────────────────────────────
   const {
@@ -682,32 +643,10 @@ const TattingDesigner = () => {
   const skipAutoHistoryRef = useRef(false);   // Flag: explicit pushHistoryState already called — skip useEffect auto-push
   const pathDragStartRef = useRef(null);  // Store initial control points and position for smooth path editing
 
-  // Shared history push — used by the elements useEffect and by the mouseUp handler.
-  // Reads history from refs (always current), writes via setters (stable references).
-  const pushHistoryState = useCallback((els, conns, groups?) => {
-    const currentHistory = historyRef.current;
-    const currentIndex = historyIndexRef.current;
-    const currentState = currentHistory[currentIndex];
-
-    const normalGroups = groups ?? [];
-    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: normalGroups });
-    const oldStateStr = currentState
-      ? JSON.stringify({ elements: currentState.elements, connections: currentState.connections, orderGroups: currentState.orderGroups ?? [] })
-      : null;
-    if (oldStateStr === newStateStr) return;
-
-    const cloned = {
-      elements: JSON.parse(JSON.stringify(els)),
-      connections: JSON.parse(JSON.stringify(conns)),
-      orderGroups: JSON.parse(JSON.stringify(groups ?? [])),
-    };
-
-    const newHistory = currentHistory.slice(0, currentIndex + 1);
-    newHistory.push(cloned);
-    if (newHistory.length > 50) newHistory.shift();
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
-  }, []); // refs and state setters are stable — no deps needed
+  // Shared history push — delegated to useHistoryActions hook
+  const { pushHistoryState } = useHistoryActions({
+    historyRef, historyIndexRef, setHistory, setHistoryIndex,
+  });
 
   // Keep history refs updated
   useEffect(() => {
@@ -1779,81 +1718,6 @@ const TattingDesigner = () => {
 
 
   // Apply group rotation from input field
-  const applyMultiSelectRotationDelta = (delta) => {
-    if (selectedIds.length < 2) return;
-    if (delta === 0) return;
-    const selEls = elements.filter(e => selectedIdSet.has(e.id));
-    const polarPivot = getPolarPivot(selectedIds);
-    const centerX = polarPivot ? polarPivot.x : selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-    const centerY = polarPivot ? polarPivot.y : selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
-    const rad = delta * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-
-    setElements(prev => prev.map(el => {
-      if (!selectedIdSet.has(el.id)) return el;
-      const dx = el.center.x - centerX, dy = el.center.y - centerY;
-      const newCenterX = centerX + dx * cos - dy * sin;
-      const newCenterY = centerY + dx * sin + dy * cos;
-      const newRotation = ((el.rotation || 0) + delta) % 360;
-
-      // Split rings & teardrops: regenerate path at new center + apply rotation
-      if (el.isSplitRing && el.splitPosition) {
-        const pathData = createSplitRingPathFromEl(el, dsWidth, { cx: newCenterX, cy: newCenterY });
-        return { ...el, center: { x: newCenterX, y: newCenterY },
-          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
-          rotation: ((newRotation % 360) + 360) % 360 };
-      }
-      if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || (el.squeeze !== undefined && el.squeeze > 0))) {
-        const pathData = createTeardropPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.squeeze ?? 0);
-        return { ...el, center: { x: newCenterX, y: newCenterY },
-          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
-          rotation: ((newRotation % 360) + 360) % 360 };
-      }
-      // Chains & circle rings: rotate path points around global centroid
-      return { ...el, center: { x: newCenterX, y: newCenterY },
-        paths: rotatePaths(el.paths, centerX, centerY, delta),
-        rotation: ((newRotation % 360) + 360) % 360 };
-    }));
-  };
-
-  // Rotate a single selected element by an arbitrary delta — used by ±1° nudge buttons
-  // and can be reused by any other single-element rotation trigger.
-  const applySingleRotationDelta = useCallback((elId: string, delta: number) => {
-    if (delta === 0) return;
-    const rad = delta * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    setElements(prev => prev.map(el => {
-      if (el.id !== elId) return el;
-      const polarPivot = getPolarPivot([el.id]);
-      const pivot = polarPivot || getElementPivot(el);
-      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
-      const newRotation = (el.rotation || 0) + delta;
-      const newPivot = polarPivot
-        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
-        : getElementPivot({ ...el, paths: newPaths });
-      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-    }));
-    needsHistoryPushRef.current = true;
-  }, []);
-
-  // Same rotation logic but WITHOUT setting the history flag — for nudge hold-to-repeat
-  const applySingleRotationDeltaNoHistory = useCallback((elId: string, delta: number) => {
-    if (delta === 0) return;
-    const rad = delta * Math.PI / 180;
-    const cos = Math.cos(rad), sin = Math.sin(rad);
-    setElements(prev => prev.map(el => {
-      if (el.id !== elId) return el;
-      const polarPivot = getPolarPivot([el.id]);
-      const pivot = polarPivot || getElementPivot(el);
-      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
-      const newRotation = (el.rotation || 0) + delta;
-      const newPivot = polarPivot
-        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin, y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
-        : getElementPivot({ ...el, paths: newPaths });
-      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-    }));
-  }, []);
-
   // PERFORMANCE: O(1) element lookup by id — replaces elements.find(e => e.id === x) everywhere
   // Defined early because it is used in event handlers and callbacks throughout the component.
   const elementById = useMemo(() => new Map(elements.map(e => [e.id, e])), [elements]);
@@ -1875,6 +1739,9 @@ const TattingDesigner = () => {
     alignLeft, alignRight, alignTop, alignBottom,
     alignCenterHorizontal, alignCenterVertical,
     alignToGridHorizontal, alignToGridVertical, centerToPolarGrid,
+    applySingleRotationDelta,
+    applyMultiSelectRotationDelta,
+    applyGroupRotation,
   } = useEditorActions({
     elements, selectedIds, dsWidth, camera, zoom, polarGrids,
     elementById, selectedIdSet,
@@ -1884,6 +1751,7 @@ const TattingDesigner = () => {
     isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef,
     setElements, setSelectedIds, setPicotConnections, setOrderGroups,
     setClipboard, setGhostArrays, setHistoryIndex,
+    setGroupRotationInput,
     pushHistoryState,
   });
 
@@ -1891,84 +1759,31 @@ const TattingDesigner = () => {
   // element every render. This map makes it O(1) and speeds up stitchCache builds too.
   const materialsById = useMemo(() => new Map(materials.map(m => [m.id, m])), [materials]);
 
-  const applyGroupRotation = (targetRotation) => {
-    if (selectedIds.length === 0) return;
-    
-    const firstElement = elementById.get(selectedIds[0]);
-    if (!firstElement || !firstElement.groupId) return;
-    
-    const groupElements = elements.filter(e => e.groupId === firstElement.groupId);
-    if (groupElements.length <= 1) return;
-    
-    const currentRotation = groupElements[0]?.rotation || 0;
-    const delta = targetRotation - currentRotation;
-    
-    if (delta === 0) return;
-    
-    const rad = delta * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    
-    // Calculate group center (or polar pivot if set)
-    const polarPivot = getPolarPivot(selectedIds);
-    const groupCenterX = polarPivot ? polarPivot.x : groupElements.reduce((sum, el) => sum + el.center.x, 0) / groupElements.length;
-    const groupCenterY = polarPivot ? polarPivot.y : groupElements.reduce((sum, el) => sum + el.center.y, 0) / groupElements.length;
-
-    setElements(prev => prev.map(el => {
-      if (!selectedIdSet.has(el.id)) return el;
-
-      // Rotate element center around group center
-      const dx = el.center.x - groupCenterX;
-      const dy = el.center.y - groupCenterY;
-      const newCenterX = groupCenterX + dx * cos - dy * sin;
-      const newCenterY = groupCenterY + dx * sin + dy * cos;
-      const newRotation = ((el.rotation || 0) + delta) % 360;
-
-      // Teardrops and split rings: regenerate at new center then apply rotation
-      if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || el.shapeStyle === 'split-ring' || (el.squeeze !== undefined && el.squeeze > 0))) {
-        const pathData = el.isSplitRing && el.splitPosition
-          ? createSplitRingPathFromEl(el, dsWidth, { cx: newCenterX, cy: newCenterY })
-          : createTeardropPath(newCenterX, newCenterY, el.stitchCount * dsWidth, el.squeeze ?? 0);
-        return { ...el, center: { x: newCenterX, y: newCenterY },
-          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
-          rotation: newRotation };
-      }
-
-      // Chains and circle rings: rotate path points around group center
-      return { ...el, center: { x: newCenterX, y: newCenterY },
-        paths: rotatePaths(el.paths, groupCenterX, groupCenterY, delta),
-        rotation: newRotation };
-    }));
-    
-    // Clear input after applying
-    setGroupRotationInput('');
-  };
-
   // Convert a ghost array to real elements (called after confirmation)
-  const convertGhostArray = (array: any) => {
-    // Find ghosts by sourceId (ghostIds may be stale after undo)
-    const currentGhosts = elements.filter(e => e.type === 'ghost' && e.sourceId === array.sourceId);
-    const sourceEl = elementById.get(array.sourceId);
+  // Shared core: converts a set of ghost elements into real elements and
+  // rewires any picotConnections pointing at their old ghost IDs.
+  // Used by both "Convert this array" and "Convert all arrays".
+  const convertGhostsToReal = (ghostsToConvert: any[]): string[] => {
     const newIds: string[] = [];
     const oldToNewId = new Map<string, string>();
+    const ghostIdSet = new Set(ghostsToConvert.map(g => g.id));
 
     setElements(prev => {
-      const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId));
-      const realElements = currentGhosts.map(ghost => {
+      const withoutGhosts = prev.filter(el => !ghostIdSet.has(el.id));
+      const realElements = ghostsToConvert.map(ghost => {
         const newEl = JSON.parse(JSON.stringify(ghost));
         oldToNewId.set(ghost.id, newEl.id);
-        newEl.type = sourceEl?.type || newEl.type;
+        const source = elementById.get(ghost.sourceId);
+        newEl.type = source?.type || newEl.type;
         delete newEl.sourceId;
         delete newEl.isBoundary;
         delete newEl.isGhostMother;
-        delete newEl.ghostArrayIds;
         newIds.push(newEl.id);
         return newEl;
       });
       return [...withoutGhosts, ...realElements];
     });
 
-    // Update picotConnections: replace old ghost IDs with new real element IDs
     setPicotConnections(prev => prev.map(conn => ({
       ...conn,
       picots: conn.picots.map(p => ({
@@ -1977,8 +1792,35 @@ const TattingDesigner = () => {
       })),
     })));
 
+    return newIds;
+  };
+
+  const convertGhostArray = (array: any) => {
+    // Find ghosts by sourceId (ghostIds may be stale after undo)
+    const currentGhosts = elements.filter(e => e.type === 'ghost' && e.sourceId === array.sourceId);
+    const sourceEl = elementById.get(array.sourceId);
+    const newIds = convertGhostsToReal(currentGhosts);
     setGhostArrays(prev => prev.filter(a => a.id !== array.id));
     setSelectedIds(sourceEl ? [sourceEl.id, ...newIds] : [...newIds]);
+    setConvertConfirm(null);
+  };
+
+  const convertAllGhostArrays = () => {
+    // Find all ghosts by sourceId (ghostIds may be stale after undo), deduplicated
+    // in case multiple arrays share the same ghost.
+    const allGhostsToConvert = ghostArrays.flatMap(a =>
+      elements.filter(e => e.type === 'ghost' && e.sourceId === a.sourceId)
+    );
+    const seen = new Set<string>();
+    const uniqueGhosts = allGhostsToConvert.filter(e => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+    const newIds = convertGhostsToReal(uniqueGhosts);
+    const sourceIds = ghostArrays.map(a => a.sourceId).filter(Boolean);
+    setSelectedIds([...sourceIds, ...newIds]);
+    setGhostArrays([]);
     setConvertConfirm(null);
   };
 
@@ -2099,11 +1941,14 @@ const TattingDesigner = () => {
     const newGhostIds: string[] = [];
     const boundaryGhostIds: string[] = [];
 
+    // Single array ID used consistently for the mother flag and the ghostArrays entry
+    const arrayId = createGhosts ? generateId() : undefined;
+
     // Mark source elements as mothers
     if (createGhosts) {
       setElements(prev => prev.map(el =>
         currentSelectedIds.includes(el.id)
-          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), `polar_${Date.now()}`] }
+          ? { ...el, isGhostMother: true }
           : el
       ));
     }
@@ -2154,7 +1999,6 @@ const TattingDesigner = () => {
 
     // Save ghost array metadata for Update functionality
     if (createGhosts && newGhostIds.length > 0) {
-      const arrayId = `polar_${Date.now()}`;
       setGhostArrays(prev => [...prev, {
         id: arrayId,
         name: `Polar Array ${prev.length + 1}`,
@@ -2222,27 +2066,6 @@ const TattingDesigner = () => {
     return { minX, minY, maxX, maxY, elementSize };
   };
 
-  // ── Pure helper: calculate bounding box for a set of elements ──
-  // Uses control-point hull (fast but overestimates). Kept for backward compatibility.
-  const calculateBbox = (els: any[]) => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    els.forEach(el => {
-      if (el.paths && el.paths.length > 0) {
-        el.paths.forEach(p => {
-          minX = Math.min(minX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
-          maxX = Math.max(maxX, p.x, p.endX, p.control1X ?? p.controlX, p.control2X ?? p.controlX);
-          minY = Math.min(minY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
-          maxY = Math.max(maxY, p.y, p.endY, p.control1Y ?? p.controlY, p.control2Y ?? p.controlY);
-        });
-      } else {
-        minX = Math.min(minX, el.center.x);
-        maxX = Math.max(maxX, el.center.x);
-        minY = Math.min(minY, el.center.y);
-        maxY = Math.max(maxY, el.center.y);
-      }
-    });
-    return { minX, minY, maxX, maxY, elementSize: Math.max(maxX - minX, maxY - minY, 1) };
-  };
 
   // ── Pure helper: create one linear array instance ──
   // Designed to be extracted to src/geometry/ later.
@@ -2295,7 +2118,6 @@ const TattingDesigner = () => {
       newEl.sourceId = options?.sourceId || sourceEl.id;
       newEl.isBoundary = options?.isBoundary ?? false;
       delete newEl.isGhostMother;
-      delete newEl.ghostArrayIds;
     }
 
     return newEl;
@@ -2320,12 +2142,14 @@ const TattingDesigner = () => {
     const newGhostIds: string[] = [];
     const boundaryGhostIds: string[] = [];
 
+    // Single array ID used consistently for the mother flag and the ghostArrays entry
+    const arrayId = createGhosts ? generateId() : undefined;
+
     // Mark source elements as mothers
     if (createGhosts) {
-      const arrayId = `linear_${Date.now()}`;
       setElements(prev => prev.map(el =>
         currentSelectedIds.includes(el.id)
-          ? { ...el, isGhostMother: true, ghostArrayIds: [...(el.ghostArrayIds || []), arrayId] }
+          ? { ...el, isGhostMother: true }
           : el
       ));
     }
@@ -2335,7 +2159,7 @@ const TattingDesigner = () => {
     selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
 
     for (let i = 1; i < count; i++) {
-      const isBoundary = (i === count - 1); // Last element is boundary for linear
+      const isBoundary = (i === 1); // Ghost closest to the mother is the boundary for linear
 
       selectedEls.forEach(el => {
         const newEl = createLinearInstance(el, i, dx, dy, rotStep, {
@@ -2358,7 +2182,6 @@ const TattingDesigner = () => {
 
     // Save ghost array metadata for Update functionality
     if (createGhosts && newGhostIds.length > 0) {
-      const arrayId = `linear_${Date.now()}`;
       setGhostArrays(prev => [...prev, {
         id: arrayId,
         name: `Linear Array ${prev.length + 1}`,
@@ -2413,6 +2236,12 @@ const TattingDesigner = () => {
     };
 
     const newElements = [];
+
+    // Build groupId mapping once for all spiral copies — was previously rebuilt
+    // every iteration, which assigned a different new group to each copy.
+    const groupIdMap = new Map<string, string>();
+    selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
+
     for (let i = 1; i < count; i++) {
       const pos = spiralPos(i);
       // Offset moves the centroid to pos; each element keeps its relative position within the group
@@ -2421,8 +2250,6 @@ const TattingDesigner = () => {
       // Rotation delta relative to original angle — how much the spiral has turned
       // offsetX/Y moves each element's centroid to the new spiral position
 
-      const groupIdMap = new Map<string, string>();
-      selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
       selectedEls.forEach(el => {
         const newEl = JSON.parse(JSON.stringify(el));
         newEl.id = generateId();
@@ -2594,197 +2421,6 @@ const TattingDesigner = () => {
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
 
-  // Build the project data object (shared by save and autosave)
-  const buildProjectData = useCallback((finalName: string) =>
-    serializeProject({
-      name: finalName,
-      elements, picotConnections, camera, zoom, dsWidth,
-      bgColor, gridEnabled, customColors, referenceImage, refImageProps,
-      renderMode, patternNotes, materials, orderGroups, beadLibrary,
-      polarGrids, selectedPolarGridId, threadPresets, activePresetId,
-    }),
-    [elements, picotConnections, camera, zoom, dsWidth, bgColor, gridEnabled,
-     customColors, referenceImage, refImageProps, renderMode, patternNotes,
-     materials, orderGroups, beadLibrary, polarGrids, selectedPolarGridId,
-     threadPresets, activePresetId]
-  );
-
-  // Ref updated every render so autosave always calls the latest closure
-  // without needing refs for every individual state value.
-  const buildProjectDataRef = useRef(buildProjectData);
-  useEffect(() => { buildProjectDataRef.current = buildProjectData; });
-
-  // Write to a known path — no dialog, used for Ctrl+S when file already exists
-  const saveToPath = useCallback(async (filePath: string, finalName: string) => {
-    await writeProjectFile(filePath, buildProjectData(finalName));
-    // Name shown in recents always derived from the actual filename — never from projectName state
-    const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? finalName;
-    const thumbPath = await generateThumbnailPng(elements, dsWidth, filePath);
-    addToRecents(displayName, filePath, thumbPath);
-    setLastSavedHistoryIndex(historyIndexRef.current);
-  }, [buildProjectData, elements, dsWidth]);
-
-  // Show native Save As dialog then write
-  const performSave = useCallback(async (nameOverride?: string) => {
-    const finalName = (nameOverride ?? projectName).trim() || 'Untitled Pattern';
-    try {
-      const filePath = await showSaveDialog(finalName);
-      if (!filePath) return;
-      setProjectName(finalName);
-      await saveToPath(filePath, finalName);
-      setCurrentFilePath(filePath);
-    } catch (err) {
-      console.error('Save failed:', err);
-    }
-  }, [projectName, saveToPath]);
-
-  // Ctrl+S: silent save if path known, else go straight to OS dialog
-  const saveProject = useCallback(() => {
-    if (currentFilePath) {
-      saveToPath(currentFilePath, projectName).catch(console.error);
-    } else {
-      performSave();
-    }
-  }, [currentFilePath, projectName, saveToPath, performSave]);
-
-  // Save As — always shows OS dialog
-  const saveProjectAs = useCallback(() => {
-    performSave();
-  }, [performSave]);
-
-  // Shared project data applier — used by both loadProject and recent-project quick-load
-  const applyProjectData = useCallback(async (projectData: any, filePath: string) => {
-    // Validate it's a tatting project
-    if (!projectData.elements || !Array.isArray(projectData.elements)) {
-      showLoadMsg('error', t('loadErrMissingElements'));
-      return;
-    }
-
-    const invalidElements = projectData.elements.filter((el: any) =>
-      !el.id || !el.type || !el.paths || !Array.isArray(el.paths) ||
-      (el.type !== 'ring' && el.type !== 'chain' && el.type !== 'line')
-    );
-    if (invalidElements.length > 0) {
-      showLoadMsg('error', t('loadErrInvalidElements').replace('{n}', String(invalidElements.length)));
-      return;
-    }
-
-    if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
-      projectData.camera = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
-    }
-    if (projectData.zoom && (typeof projectData.zoom !== 'number' || projectData.zoom <= 0)) {
-      projectData.zoom = 1;
-    }
-    if (projectData.picotConnections && !Array.isArray(projectData.picotConnections)) {
-      projectData.picotConnections = [];
-    }
-
-    // Migrate legacy labelsInside → labelOffset
-    // Also clear isJoint:true on any picot with no corresponding entry in picotConnections
-    // (old files may have manually-declared JPs that were never connected)
-    const loadedConns: any[] = projectData.picotConnections || [];
-    const connectedPicotKeys = new Set(
-      loadedConns.flatMap((conn: any) =>
-        (conn.picots || []).map((cp: any) => `${cp.elementId}::${cp.picotId}`)
-      )
-    );
-    setElements((projectData.elements || []).map((el: any) => {
-      // Legacy labelsInside migration
-      let migrated = 'labelsInside' in el && !('labelOffset' in el)
-        ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
-        : el;
-      // Clear stale isJoint flags
-      if (migrated.picots?.some((p: any) => p.isJoint && !connectedPicotKeys.has(`${migrated.id}::${p.id}`))) {
-        migrated = {
-          ...migrated,
-          picots: migrated.picots.map((p: any) =>
-            p.isJoint && !connectedPicotKeys.has(`${migrated.id}::${p.id}`)
-              ? { ...p, isJoint: false }
-              : p
-          ),
-        };
-      }
-      return migrated;
-    }));
-    setPicotConnections(projectData.picotConnections || []);
-    setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
-    setZoom(projectData.zoom || 1);
-    setDsWidth(projectData.dsWidth || 10);
-    setBgColor(projectData.bgColor || '#1F2937');
-    setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
-    setCustomColors(projectData.customColors || []);
-    setReferenceImage(projectData.referenceImage || null);
-    setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-    setProjectName(projectData.name || 'Untitled Pattern');
-    setRenderMode(projectData.renderMode || 'schematic');
-    setPatternNotes(projectData.patternNotes || '');
-    setMaterials(projectData.materials || DEFAULT_MATERIALS);
-    setOrderGroups(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
-    setActiveOrderGroupId(null);
-    if (Array.isArray(projectData.polarGrids)) {
-      setPolarGrids(prev => {
-        const existing = new Set(prev.map((g: any) => g.id));
-        return [...prev, ...projectData.polarGrids.filter((g: any) => !existing.has(g.id))];
-      });
-    }
-    if (projectData.selectedPolarGridId) setSelectedPolarGridId(projectData.selectedPolarGridId);
-    if (projectData.activeThreadPreset) {
-      const pt = projectData.activeThreadPreset;
-      setThreadPresets(prev => {
-        const exists = prev.find((p: any) => p.id === pt.id);
-        return exists ? prev.map((p: any) => p.id === pt.id ? pt : p) : [...prev, pt];
-      });
-      setActivePresetId(pt.id);
-      localStorage.setItem('tcad_active_preset_id', pt.id);
-    }
-
-    setSelectedIds([]);
-    setSelectedPicots([]);
-    setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
-    setHistoryIndex(0);
-    setCurrentFilePath(filePath);
-
-    const count = (projectData.elements || []).length;
-    setTimeout(() => showLoadMsg('success', t('loadSuccess').replace('{n}', String(count))), 50);
-
-    const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? projectData.name ?? 'Project';
-    const thumbPath = await generateThumbnailPng(projectData.elements || [], projectData.dsWidth || 10, filePath);
-    addToRecents(displayName, filePath, thumbPath);
-  }, [t]);
-
-  // Load directly from a known path — used by recent project cards (no OS dialog)
-  const loadFromPath = useCallback(async (filePath: string) => {
-    if (!filePath) {
-      showLoadMsg('error', t('loadErrFileNotFound'));
-      return;
-    }
-    try {
-      const projectData = await readProjectFile(filePath);
-      applyProjectData(projectData, filePath);
-    } catch (error: any) {
-      const isNotFound = error.message?.toLowerCase().includes('not found') ||
-                         error.message?.toLowerCase().includes('no such file') ||
-                         error.code === 'NOT_FOUND';
-      if (isNotFound) {
-        showLoadMsg('error', t('loadErrFileNotFound'));
-      } else {
-        showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
-      }
-    }
-  }, [applyProjectData, t]);
-
-  // Load project — native OS open dialog (Browse button only)
-  const loadProject = useCallback(async () => {
-    const filePath = await showOpenDialog();
-    if (!filePath) return;
-    try {
-      const projectData = await readProjectFile(filePath);
-      applyProjectData(projectData, filePath);
-    } catch (error: any) {
-      showLoadMsg('error', t('loadErrGeneric').replace('{msg}', error.message));
-    }
-  }, [applyProjectData, t]);
-
   // Load a theme JSON file and merge it over the default (unknown keys are ignored)
   const loadTheme = (e) => {
     const file = e.target.files[0];
@@ -2813,61 +2449,19 @@ const TattingDesigner = () => {
   };
 
 
-  const exportSVG = useCallback(async () => {
-    if (!canvasRef.current) return;
-    const svgElement = canvasRef.current.querySelector('svg');
-    if (!svgElement) return;
-    const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
-
-    // Bounds calculation stays here — needs getPicotPosition which closes over component state
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const expandBounds = (x: number, y: number) => {
-      minX = Math.min(minX, x); minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-    };
-    elements.forEach(el => {
-      if (el.isClosed && el.shapeStyle === 'circle' && el.center) {
-        const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
-        expandBounds(el.center.x - r, el.center.y - r);
-        expandBounds(el.center.x + r, el.center.y + r);
-      }
-      (el.paths || []).forEach(path =>
-        sampleBezierPath(path, 20).forEach(pt => expandBounds(pt.x, pt.y))
-      );
-      (el.picots || []).forEach(p => {
-        const pos = getPicotPosition(el, p, false);
-        if (pos) expandBounds(pos.x, pos.y);
-      });
+  const generatePattern = useCallback(() => {
+    const result = generatePatternText({
+      elements, picotConnections, orderGroups, materials, beadLibrary,
+      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
     });
-    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 200; maxY = 200; }
-
-    const svgString = prepareSvgForExport(clonedSvg, {
-      bounds: { minX, minY, maxX, maxY },
-      elements, orderGroups, patternNotes, dsWidth,
-    });
-
-    try {
-      const filePath = await showSaveSvgDialog(projectName.replace(/[^a-z0-9]/gi, '_'));
-      if (!filePath) return;
-      await writeTextToFile(filePath, svgString);
-    } catch (err) {
-      console.error('SVG export failed:', err);
-    }
-  }, [elements, projectName, patternNotes, orderGroups, dsWidth]);
-
-const generatePattern = useCallback(() => {
-  const result = generatePatternText({
-    elements, picotConnections, orderGroups, materials, beadLibrary,
-    threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
-  });
-  const notesBlock = patternNotes?.trim() ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
-  const text = result === null ? 'No objects on canvas.' + notesBlock : result.text;
-  navigator.clipboard.writeText(text).then(
-    () => { setLoadMsg({ type: 'success', text: t('notationCopied') }); setTimeout(() => setLoadMsg(null), 3000); },
-    () => { setLoadMsg({ type: 'error', text: t('notationCopyFailed') }); setTimeout(() => setLoadMsg(null), 4000); }
-  );
-}, [elements, picotConnections, orderGroups, materials, beadLibrary,
-    threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
+    const notesBlock = patternNotes?.trim() ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
+    const text = result === null ? 'No objects on canvas.' + notesBlock : result.text;
+    navigator.clipboard.writeText(text).then(
+      () => { setLoadMsg({ type: 'success', text: t('notationCopied') }); setTimeout(() => setLoadMsg(null), 3000); },
+      () => { setLoadMsg({ type: 'error', text: t('notationCopyFailed') }); setTimeout(() => setLoadMsg(null), 4000); }
+    );
+  }, [elements, picotConnections, orderGroups, materials, beadLibrary,
+      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
   // Export as PNG
 
   // ── Endpoint pseudo-picot helpers ────────────────────────────────────────
@@ -2886,373 +2480,38 @@ const generatePattern = useCallback(() => {
 
   const getEndpointPseudoPicots = (el: any): Array<{ id: string; x: number; y: number }> => {
     if (el.type === 'ghost' && !el.isBoundary) return [];
-    if (el.isSplitRing) {
-      if (!el.paths?.length) return [];
+    if (!el.paths?.length) return [];
+    // Ghost copies always have el.type === 'ghost' — the real shape (ring/chain)
+    // lives on the source element, so boundary ghosts must resolve through it.
+    const refEl = el.type === 'ghost' ? (elementById.get(el.sourceId) || el) : el;
+    const refIsSplitRing = el.isSplitRing ?? refEl.isSplitRing;
+
+    if (refIsSplitRing) {
       return [
         { id: '__start__', x: el.paths[0].x,    y: el.paths[0].y },
         { id: '__end__',   x: el.paths[0].endX,  y: el.paths[0].endY },
       ];
     }
-    if (el.type === 'chain') {
-      if (!el.paths?.length) return [];
+    if (refEl.type === 'chain') {
       const last = el.paths[el.paths.length - 1];
       return [
         { id: '__start__', x: el.paths[0].x, y: el.paths[0].y },
         { id: '__end__',   x: last.endX,      y: last.endY },
       ];
     }
-    if (el.type === 'ring') {
-      if (!el.paths?.length) return [];
+    if (refEl.type === 'ring') {
       return [{ id: '__anchor__', x: el.paths[0].x, y: el.paths[0].y }];
     }
     return [];
   };
 
-  // Join selected picots with a connection.
-  // Uses refs internally so it can be safely called from keyboard handlers.
-  const joinSelectedPicots = useCallback(() => {
-    const sel = selectedPicotsRef.current;
-    if (sel.length < 2) return;
-
-    // First selected picot's element donates the material to the connection
-    const firstEl = elementById.get(sel[0].elementId);
-    const connMaterialId = firstEl?.materialId || 'default';
-
-    const connection = {
-      id: generateId(),
-      picots: [...sel],
-      materialId: connMaterialId,
-    };
-
-    const newConns = [...picotConnectionsRef.current, connection];
-    setPicotConnections(newConns);
-    picotConnectionsRef.current = newConns;
-
-    // Auto-promote all selected picots to isJoint: true (skip endpoint pseudo-picots)
-    const jointSet = new Set(sel.filter(sp => !isEndpointPicotId(sp.picotId)).map(sp => `${sp.elementId}::${sp.picotId}`));
-    let newEls = elementsRef.current.map(el => {
-      if (!el.picots) return el;
-      const updated = el.picots.map(p =>
-        jointSet.has(`${el.id}::${p.id}`) && !p.isJoint ? { ...p, isJoint: true } : p
-      );
-      return updated === el.picots ? el : { ...el, picots: updated };
-    });
-
-    // Mirror isJoint:true to sibling boundary ghosts by picot index.
-    // For each directly-promoted picot, find its index in its element's picots array,
-    // then set isJoint:true on the same index in every boundary ghost of the same array.
-    const mirrorSet: Array<{ arrayId: string; picotIndex: number }> = [];
-    for (const sp of sel) {
-      const el = newEls.find(e => e.id === sp.elementId);
-      if (!el) continue;
-      const picotIdx = el.picots?.findIndex(p => p.id === sp.picotId) ?? -1;
-      if (picotIdx < 0) continue;
-      // Check if this element is the source or a boundary ghost of any array
-      const arr = ghostArrays.find(a =>
-        a.sourceId === el.id || a.boundaryIds?.includes(el.id)
-      );
-      if (!arr) continue;
-      mirrorSet.push({ arrayId: arr.id, picotIndex: picotIdx });
-    }
-    if (mirrorSet.length > 0) {
-      newEls = newEls.map(el => {
-        if (el.type !== 'ghost' || !el.isBoundary || !el.picots) return el;
-        const arr = ghostArrays.find(a => a.boundaryIds?.includes(el.id));
-        if (!arr) return el;
-        const indicesToMirror = mirrorSet
-          .filter(m => m.arrayId === arr.id)
-          .map(m => m.picotIndex);
-        if (indicesToMirror.length === 0) return el;
-        const updated = el.picots.map((p, idx) =>
-          indicesToMirror.includes(idx) && !p.isJoint ? { ...p, isJoint: true } : p
-        );
-        return updated === el.picots ? el : { ...el, picots: updated };
-      });
-    }
-    setElements(newEls);
-    elementsRef.current = newEls;
-
-    // Phase 2: Detect boundary ghost joins and store inherited join template
-    // Skip for endpoint pseudo-picot connections
-    if (!sel.some(sp => isEndpointPicotId(sp.picotId))) checkAndStoreInheritedJoin(sel, newEls);
-
-    setSelectedPicots([]);
-    pushHistoryState(newEls, newConns, orderGroupsRef.current);
-  }, [elementById]);
-
-  // Phase 2: Check if selected picots are from boundary ghosts (or source ring) of the same array
-  // If so, extract relative picot indices and create inherited join connections for ALL ghosts
-  const checkAndStoreInheritedJoin = (selPicots, currentElements) => {
-    if (selPicots.length < 2) return;
-
-    const el1 = currentElements.find(e => e.id === selPicots[0].elementId);
-    const el2 = currentElements.find(e => e.id === selPicots[1].elementId);
-
-    // Determine which is ghost and which is source/boundary
-    const ghostEl = el1?.type === 'ghost' ? el1 : el2?.type === 'ghost' ? el2 : null;
-    const otherEl = ghostEl === el1 ? el2 : el1;
-
-    if (!ghostEl || !otherEl) return;
-    if (!ghostEl.isBoundary) return;
-
-    // Find the ghost array that contains this boundary ghost
-    const matchingArray = ghostArrays.find(a =>
-      a.boundaryIds?.includes(ghostEl.id)
-    );
-    if (!matchingArray) return;
-
-    // The "other" element must be either the source element or another boundary ghost
-    const isSourceElement = otherEl.id === matchingArray.sourceId;
-    const isOtherBoundary = otherEl.type === 'ghost' && otherEl.isBoundary && matchingArray.boundaryIds?.includes(otherEl.id);
-    if (!isSourceElement && !isOtherBoundary) return;
-
-    // Find picot indices in each element's picots array
-    const ghostPicotIdx = ghostEl.picots?.findIndex(p => p.id === selPicots[ghostEl === el1 ? 0 : 1].picotId) ?? -1;
-    const otherPicotIdx = otherEl.picots?.findIndex(p => p.id === selPicots[otherEl === el1 ? 0 : 1].picotId) ?? -1;
-    if (ghostPicotIdx < 0 || otherPicotIdx < 0) return;
-
-    // Determine picot propagation pattern based on what was joined
-    let sourcePicotIndex, targetPicotIndex;
-
-    if (isSourceElement) {
-      // Source ring → boundary ghost: ghost[i]'s picot[ghostPicotIdx] connects to ghost[i-1]'s picot[otherPicotIdx]
-      sourcePicotIndex = ghostPicotIdx;
-      targetPicotIndex = otherPicotIdx;
-    } else {
-      // Boundary ghost → boundary ghost: use rotation to determine order
-      const isGhostEarlier = ghostEl.rotation < otherEl.rotation;
-      sourcePicotIndex = isGhostEarlier ? ghostPicotIdx : otherPicotIdx;
-      targetPicotIndex = isGhostEarlier ? otherPicotIdx : ghostPicotIdx;
-    }
-
-    // Check if this inherited join already exists
-    const alreadyExists = matchingArray.inheritedJoins?.some(
-      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex
-    );
-    if (alreadyExists) return;
-
-    // Get all ghosts in this array, sorted by rotation
-    const allGhosts = currentElements.filter(e => matchingArray.ghostIds?.includes(e.id));
-    const sortedGhosts = [...allGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0));
-    if (sortedGhosts.length < 2) return;
-
-    // Create picot connections for ALL inherited joins
-    const newInheritedConns = [];
-
-    if (isSourceElement) {
-      // Source → boundary: User joined mother.picot[otherPicotIdx] ← ghost[0].picot[ghostPicotIdx]
-      // Inherited pattern: ghost[i].picot[otherPicotIdx] → ghost[i+1].picot[ghostPicotIdx]
-      // Close loop: ghost[last].picot[otherPicotIdx] → mother.picot[ghostPicotIdx]
-      const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
-      if (!sourceEl) return;
-
-      const sendPicotIdx = otherPicotIdx;   // picot that sends (on current element)
-      const recvPicotIdx = ghostPicotIdx;   // picot that receives (on next element)
-
-      // Propagate forward: ghost[i] → ghost[i+1] for i = 0 to last-1
-      for (let i = 0; i < sortedGhosts.length - 1; i++) {
-        const ghost = sortedGhosts[i];
-        const nextGhost = sortedGhosts[i + 1];
-
-        const srcPicot = ghost.picots?.[sendPicotIdx];
-        const tgtPicot = nextGhost.picots?.[recvPicotIdx];
-        if (!srcPicot || !tgtPicot) continue;
-
-        const exists = picotConnectionsRef.current.some(conn =>
-          conn.picots.some(p => p.elementId === ghost.id && p.picotId === srcPicot.id) &&
-          conn.picots.some(p => p.elementId === nextGhost.id && p.picotId === tgtPicot.id)
-        );
-        if (exists) continue;
-
-        newInheritedConns.push({
-          id: generateId(),
-          picots: [
-            { elementId: ghost.id, picotId: srcPicot.id },
-            { elementId: nextGhost.id, picotId: tgtPicot.id },
-          ],
-          materialId: ghostEl.materialId || 'default',
-          isInheritedJoin: matchingArray.id,
-        });
-      }
-
-      // Close loop: last ghost → mother
-      const lastGhost = sortedGhosts[sortedGhosts.length - 1];
-      const srcPicotLast = lastGhost.picots?.[sendPicotIdx];
-      const tgtPicotLast = sourceEl.picots?.[recvPicotIdx];
-      if (srcPicotLast && tgtPicotLast) {
-        const exists = picotConnectionsRef.current.some(conn =>
-          conn.picots.some(p => p.elementId === lastGhost.id && p.picotId === srcPicotLast.id) &&
-          conn.picots.some(p => p.elementId === sourceEl.id && p.picotId === tgtPicotLast.id)
-        );
-        if (!exists) {
-          newInheritedConns.push({
-            id: generateId(),
-            picots: [
-              { elementId: lastGhost.id, picotId: srcPicotLast.id },
-              { elementId: sourceEl.id, picotId: tgtPicotLast.id },
-            ],
-            materialId: ghostEl.materialId || 'default',
-            isInheritedJoin: matchingArray.id,
-          });
-        }
-      }
-    } else {
-      // Boundary → boundary: wrap-around chain
-      for (let i = 0; i < sortedGhosts.length; i++) {
-        const ghost = sortedGhosts[i];
-        const prevIndex = (i - 1 + sortedGhosts.length) % sortedGhosts.length;
-        const prevGhost = sortedGhosts[prevIndex];
-
-        const srcPicot = ghost.picots?.[sourcePicotIndex];
-        const tgtPicot = prevGhost.picots?.[targetPicotIndex];
-        if (!srcPicot || !tgtPicot) continue;
-
-        const exists = picotConnectionsRef.current.some(conn =>
-          conn.picots.some(p => p.elementId === ghost.id && p.picotId === srcPicot.id) &&
-          conn.picots.some(p => p.elementId === prevGhost.id && p.picotId === tgtPicot.id)
-        );
-        if (exists) continue;
-
-        newInheritedConns.push({
-          id: generateId(),
-          picots: [
-            { elementId: ghost.id, picotId: srcPicot.id },
-            { elementId: prevGhost.id, picotId: tgtPicot.id },
-          ],
-          materialId: ghostEl.materialId || 'default',
-          isInheritedJoin: matchingArray.id,
-        });
-      }
-    }
-
-    // Update both picotConnections and inheritedJoins
-    const allNewConns = [...picotConnectionsRef.current, ...newInheritedConns];
-    setPicotConnections(allNewConns);
-    picotConnectionsRef.current = allNewConns;
-
-    // Promote isJoint:true on every ghost picot that just got an inherited connection
-    if (newInheritedConns.length > 0) {
-      const inheritedKeys = new Set(
-        newInheritedConns.flatMap(conn =>
-          conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
-        )
-      );
-      const updatedEls = currentElements.map(el => {
-        if (!el.picots) return el;
-        const updated = el.picots.map(p =>
-          inheritedKeys.has(`${el.id}::${p.id}`) && !p.isJoint
-            ? { ...p, isJoint: true }
-            : p
-        );
-        return updated === el.picots ? el : { ...el, picots: updated };
-      });
-      setElements(updatedEls);
-      elementsRef.current = updatedEls;
-    }
-
-    setGhostArrays(prev => prev.map(a =>
-      a.id === matchingArray.id
-        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex }] }
-        : a
-    ));
-  };
-
-  // Break connections for selected picots.
-  // Uses refs internally so it can be safely called from keyboard handlers.
-  const breakSelectedPicots = useCallback(() => {
-    const sel = selectedPicotsRef.current;
-    if (sel.length === 0) return;
-
-    // Phase 2: Remove inherited join templates if breaking boundary ghost picots
-    removeInheritedJoins(sel, elementsRef.current);
-
-    const newConns = picotConnectionsRef.current.filter(conn =>
-      !conn.picots.some(p => sel.some(sp => sp.elementId === p.elementId && sp.picotId === p.picotId))
-    );
-    setPicotConnections(newConns);
-
-    // Auto-demote picots with no remaining connections to isJoint: false (skip endpoint pseudo-picots)
-    const brokenSet = new Set(sel.filter(sp => !isEndpointPicotId(sp.picotId)).map(sp => `${sp.elementId}::${sp.picotId}`));
-    const stillConnected = new Set(newConns.flatMap(conn =>
-      conn.picots.map(p => `${p.elementId}::${p.picotId}`)
-    ));
-    const newEls = elementsRef.current.map(el => {
-      if (!el.picots) return el;
-      const updated = el.picots.map(p => {
-        const key = `${el.id}::${p.id}`;
-        return (brokenSet.has(key) && !stillConnected.has(key) && p.isJoint)
-          ? { ...p, isJoint: false }
-          : p;
-      });
-      return updated === el.picots ? el : { ...el, picots: updated };
-    });
-    setElements(newEls);
-
-    setSelectedPicots([]);
-    pushHistoryState(newEls, newConns, orderGroupsRef.current);
-  }, []);
-
-  // Phase 2: Remove inherited join connections and templates when breaking boundary ghost picots
-  const removeInheritedJoins = (selPicots, currentElements) => {
-    // Find which boundary ghosts have picots being broken
-    const affectedGhostIds = new Set<string>();
-    selPicots.forEach(sp => {
-      const el = currentElements.find(e => e.id === sp.elementId);
-      if (el?.type === 'ghost' && el.isBoundary) {
-        affectedGhostIds.add(el.id);
-      }
-    });
-    if (affectedGhostIds.size === 0) return;
-
-    // Remove inherited join connections from picotConnections
-    const newConns = picotConnectionsRef.current.filter(conn => {
-      for (const p of conn.picots) {
-        if (affectedGhostIds.has(p.elementId)) return false;
-      }
-      return true;
-    });
-
-    // Collect which picot keys are being removed from connections
-    const removedKeys = new Set<string>();
-    picotConnectionsRef.current.forEach(conn => {
-      const removing = conn.picots.some(p => affectedGhostIds.has(p.elementId));
-      if (removing) {
-        conn.picots.forEach(p => removedKeys.add(`${p.elementId}::${p.picotId}`));
-      }
-    });
-
-    // Keys that still appear in a surviving connection — don't clear those
-    const stillConnectedKeys = new Set<string>(
-      newConns.flatMap(conn => conn.picots.map(p => `${p.elementId}::${p.picotId}`))
-    );
-
-    if (newConns.length !== picotConnectionsRef.current.length) {
-      setPicotConnections(newConns);
-      picotConnectionsRef.current = newConns;
-
-      // Clear isJoint:false on any picot that lost its last connection
-      const updatedEls = currentElements.map(el => {
-        if (!el.picots) return el;
-        const updated = el.picots.map(p => {
-          const key = `${el.id}::${p.id}`;
-          return (removedKeys.has(key) && !stillConnectedKeys.has(key) && p.isJoint)
-            ? { ...p, isJoint: false }
-            : p;
-        });
-        return updated === el.picots ? el : { ...el, picots: updated };
-      });
-      setElements(updatedEls);
-      elementsRef.current = updatedEls;
-    }
-
-    // Find affected ghost arrays and remove inherited joins
-    setGhostArrays(prev => prev.map(a => {
-      const hasAffectedBoundary = a.boundaryIds?.some(bid => affectedGhostIds.has(bid));
-      if (!hasAffectedBoundary) return a;
-      return { ...a, inheritedJoins: [] };
-    }));
-  };
-
+  // Join/break actions delegated to useJoinActions hook
+  const { joinSelectedPicots, breakSelectedPicots } = useJoinActions({
+    selectedPicotsRef, elementsRef, picotConnectionsRef, orderGroupsRef,
+    elementById, ghostArrays,
+    setElements, setPicotConnections, setSelectedPicots, setGhostArrays,
+    pushHistoryState,
+  });
 
   const allColors = [...COLORS, ...customColors];
 
@@ -3653,7 +2912,28 @@ const generatePattern = useCallback(() => {
     };
   };
 
-
+  // Build the project data object (shared by save and autosave)
+  const {
+    buildProjectData, buildProjectDataRef,
+    saveToPath, performSave, saveProject, saveProjectAs,
+    applyProjectData, loadFromPath, loadProject,
+    exportSVG,
+  } = useProjectFile({
+    elements, picotConnections, camera, zoom, dsWidth,
+    bgColor, gridEnabled, customColors, referenceImage, refImageProps,
+    renderMode, patternNotes, materials, orderGroups, beadLibrary,
+    polarGrids, selectedPolarGridId, threadPresets, activePresetId,
+    projectName, currentFilePath,
+    historyIndexRef, canvasRef,
+    setElements, setPicotConnections, setCamera, setZoom, setDsWidth,
+    setBgColor, setGridEnabled, setCustomColors, setReferenceImage, setRefImageProps,
+    setProjectName, setRenderMode, setPatternNotes, setMaterials,
+    setOrderGroups, setActiveOrderGroupId, setPolarGrids, setSelectedPolarGridId,
+    setThreadPresets, setActivePresetId,
+    setSelectedIds, setSelectedPicots,
+    setHistory, setHistoryIndex, setCurrentFilePath, setLastSavedHistoryIndex,
+    getPicotPosition, showLoadMsg, t,
+  });
 
   // ── Input handlers ─────────────────────────────────────────────────────
   const getSnapPoints = (element) => {
@@ -3787,34 +3067,39 @@ const generatePattern = useCallback(() => {
   };
 
 
-  const updateGhostArraysForMother = (motherId: string) => {
-    const motherEl = elementById.get(motherId);
-    if (!motherEl || !motherEl.isGhostMother) return;
+  // Pure: regenerates ghost-array copies for one or more mothers, given a
+  // snapshot of elements + ghostArrays — NOT React state directly. This lets
+  // callers (move, rotate, notation edit) compose ghost regeneration into
+  // their OWN setElements call, so the whole thing commits as a single
+  // render/history step instead of two separate ones.
+  const regenerateGhostArrays = (
+    elementsSnapshot: any[],
+    ghostArraysSnapshot: any[],
+    motherIds: string[]
+  ): { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } => {
+    let workingElements = elementsSnapshot;
+    let workingGhostArrays = ghostArraysSnapshot;
+    const connectionIdMap = new Map<string, string>();
 
-    // Find all ghost arrays where this element is the source
-    const relevantArrays = ghostArrays.filter(array => array.sourceId === motherId);
+    motherIds.forEach(motherId => {
+      const motherEl = workingElements.find(e => e.id === motherId);
+      if (!motherEl || !motherEl.isGhostMother) return;
 
-    relevantArrays.forEach(array => {
-      // Delete old ghosts and recreate in same state update to avoid race conditions
-      setElements(prev => {
-        // Filter out old ghosts (find by sourceId, not stale ghostIds)
-        const withoutGhosts = prev.filter(el => !(el.type === 'ghost' && el.sourceId === motherId));
+      const relevantArrays = workingGhostArrays.filter(array => array.sourceId === motherId);
 
-        // Find the source element in the current state (might have been updated)
+      relevantArrays.forEach(array => {
+        const withoutGhosts = workingElements.filter(el => !(el.type === 'ghost' && el.sourceId === motherId));
         const sourceEl = withoutGhosts.find(e => e.id === motherId);
-        if (!sourceEl) return prev;
+        if (!sourceEl) return;
 
-        // Recreate ghosts with stored parameters using current mother state
-        const newGhosts = [];
-        const newGhostIds = [];
-        const boundaryGhostIds = [];
+        const newGhosts: any[] = [];
+        const newGhostIds: string[] = [];
+        const boundaryGhostIds: string[] = [];
 
         if (array.type === 'polar') {
-          // Recreate polar array ghosts using shared helper
           const count = array.instanceCount;
           const fillAngle = array.angle;
           const pivotId = array.pivotId || 'selection';
-          const stepDeg = fillAngle / count;
 
           let pivotX: number, pivotY: number;
           if (pivotId && pivotId !== 'selection') {
@@ -3828,18 +3113,14 @@ const generatePattern = useCallback(() => {
 
           for (let i = 1; i < count; i++) {
             const isBoundary = (i === 1 || i === count - 1);
-
             const ghostEl = createPolarInstance(sourceEl, i, pivotX, pivotY, count, fillAngle, {
-              asGhost: true,
-              sourceId: motherId,
-              isBoundary,
+              asGhost: true, sourceId: motherId, isBoundary,
             });
             newGhosts.push(ghostEl);
             newGhostIds.push(ghostEl.id);
             if (isBoundary) boundaryGhostIds.push(ghostEl.id);
           }
         } else if (array.type === 'linear') {
-          // Recreate linear array ghosts using shared helper
           const count = array.instanceCount;
           const angleDeg = array.angle;
           const spacingPercent = array.spacing;
@@ -3853,30 +3134,59 @@ const generatePattern = useCallback(() => {
           const dy = Math.sin(rad) * spacing;
 
           for (let i = 1; i < count; i++) {
-            const isBoundary = (i === count - 1);
-
+            const isBoundary = (i === 1); // Ghost closest to the mother is the boundary for linear
             const ghostEl = createLinearInstance(sourceEl, i, dx, dy, rotStep, {
-              asGhost: true,
-              sourceId: motherId,
-              isBoundary,
+              asGhost: true, sourceId: motherId, isBoundary,
             });
-
             newGhosts.push(ghostEl);
             newGhostIds.push(ghostEl.id);
             if (isBoundary) boundaryGhostIds.push(ghostEl.id);
           }
         }
 
-        // Update ghostArrays state
-        setGhostArrays(prev => prev.map(a =>
+        // Map old ghost IDs to new ones by position — both lists are built by
+        // the same `for (i = 1; i < count; i++)` order, so index k always
+        // refers to the same array slot before and after regeneration.
+        const oldGhostIds = array.ghostIds || [];
+        for (let k = 0; k < Math.min(oldGhostIds.length, newGhostIds.length); k++) {
+          connectionIdMap.set(oldGhostIds[k], newGhostIds[k]);
+        }
+
+        workingGhostArrays = workingGhostArrays.map(a =>
           a.id === array.id
             ? { ...a, ghostIds: newGhostIds, boundaryIds: boundaryGhostIds, inheritedJoins: a.inheritedJoins || [] }
             : a
-        ));
-
-        return [...withoutGhosts, ...newGhosts];
+        );
+        workingElements = [...withoutGhosts, ...newGhosts];
       });
     });
+
+    return { elements: workingElements, ghostArrays: workingGhostArrays, connectionIdMap };
+  };
+
+  // Applies a regenerateGhostArrays() result via setElements/setGhostArrays/
+  // setPicotConnections — all three calls happen synchronously in the same
+  // tick, so React batches them into one commit (one history entry), instead
+  // of the old setTimeout/effect-deferred approach which caused two.
+  const applyGhostRegenResult = (result: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> }) => {
+    setElements(result.elements);
+    setGhostArrays(result.ghostArrays);
+    if (result.connectionIdMap.size > 0) {
+      setPicotConnections(prev => prev.map(conn => ({
+        ...conn,
+        picots: conn.picots.map(cp => ({
+          ...cp,
+          elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
+        })),
+      })));
+    }
+  };
+
+  // Thin wrapper for standalone use (e.g. the "Update Array" button in the
+  // Array Manager dialog, which already runs synchronously from an onClick).
+  const updateGhostArraysForMother = (motherId: string) => {
+    const result = regenerateGhostArrays(elementsRef.current, ghostArrays, [motherId]);
+    applyGhostRegenResult(result);
   };
 
 
@@ -3902,7 +3212,9 @@ const generatePattern = useCallback(() => {
     screenToWorld, getBoundingBox, findClosestElement, getHandleAtPoint,
     getPicotPosition, getSnapPoints, findNearestSnapPointWithPolar,
     isPointInElement, getPolarPivot, pushHistoryState,
-    updateGhostArraysForMother, assignOrderNumber, zoomToRect,
+    assignOrderNumber, zoomToRect,
+    ghostArrays, regenerateGhostArrays, setGhostArrays, setPicotConnections,
+    skipAutoHistoryRef,
     getEndpointPseudoPicots,
   });
 
@@ -4199,220 +3511,238 @@ const generatePattern = useCallback(() => {
     const parsed = parseNotation(notation);
     if (!parsed) return;
 
-    // ── Fix 6: Remap picotConnections before rebuilding the element ──────────
-    // Get the current element snapshot (before setElements runs)
     const currentElement = elementsRef.current.find(e => e.id === targetId);
-    let remappedConns = picotConnectionsRef.current;
+    if (!currentElement) return;
 
-    if (currentElement) {
-      // Which old picot IDs are currently in a connection for this element?
-      const connectedOldIds = new Set(
-        picotConnectionsRef.current.flatMap(conn =>
-          conn.picots
-            .filter(cp => cp.elementId === targetId)
-            .map(cp => cp.picotId)
-        )
-      );
+    // Ghosts deep-clone the mother's picots verbatim (same IDs), so a join made
+    // on a ghost must be considered too — not just joins made on the mother itself.
+    const ghostIdsOfMother = new Set(
+      elementsRef.current
+        .filter(el => el.type === 'ghost' && el.sourceId === targetId)
+        .map(el => el.id)
+    );
+    const isTargetOrGhost = (elId: string) => elId === targetId || ghostIdsOfMother.has(elId);
 
-      // Map stitchesBefore → old picot for any picot that was connected or isJoint
-      const oldPicotBySb: Record<number, any> = {};
-      (currentElement.picots || []).forEach(p => {
-        if (p.isJoint || connectedOldIds.has(p.id)) {
-          oldPicotBySb[p.stitchesBefore] = p;
-        }
-      });
+    const hasExistingJoins =
+      picotConnectionsRef.current.some(conn => conn.picots.some(cp => isTargetOrGhost(cp.elementId))) ||
+      (currentElement.picots || []).some(p => p.isJoint);
 
-      // Build oldId → newId remap from the parsed picots
-      const picotIdRemap = new Map<string, string>();
-      parsed.picots.forEach(p => {
-        const old = oldPicotBySb[p.stitchesBefore];
-        if (old) picotIdRemap.set(old.id, old.id); // we reuse old.id, so remap is identity
-      });
-
-      // Remap connections — for this element, update picotId entries;
-      // drop any connection where the target picot no longer exists
-      const oldSbPositions = new Set(parsed.picots.map(p => p.stitchesBefore));
-      const validOldIds = new Set(
-        (currentElement.picots || [])
-          .filter(p => oldSbPositions.has(p.stitchesBefore))
-          .map(p => p.id)
-      );
-
-      const newConns = picotConnectionsRef.current
-        .map(conn => ({
-          ...conn,
-          picots: conn.picots.map(cp =>
-            cp.elementId !== targetId ? cp :
-            { ...cp, picotId: picotIdRemap.get(cp.picotId) ?? cp.picotId }
-          ),
-        }))
-        .filter(conn =>
-          conn.picots.every(cp =>
-            cp.elementId !== targetId || validOldIds.has(cp.picotId)
-          )
+    // Trying to surgically preserve connections/IDs across a notation edit (matching
+    // by stitchesBefore position, across the mother AND every ghost sharing its picot
+    // IDs) is fragile and led to visible drift (picot shows "joined" yellow after the
+    // connection was actually dropped). Simpler and more predictable: if anything is
+    // joined, wipe all of it and let the person redo the joins after editing.
+    const applyNotationChange = () => {
+      let survivingConnKeys: Set<string>;
+      if (hasExistingJoins) {
+        const newConns = picotConnectionsRef.current.filter(conn =>
+          !conn.picots.some(cp => isTargetOrGhost(cp.elementId))
         );
-
-      if (newConns.length !== picotConnectionsRef.current.length || picotIdRemap.size > 0) {
         setPicotConnections(newConns);
         picotConnectionsRef.current = newConns;
-        remappedConns = newConns;
-      }
-    }
-
-    // Surviving connection keys after remap — used to clear stale isJoint flags
-    const survivingConnKeys = new Set(
-      remappedConns.flatMap(conn =>
-        conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
-      )
-    );
-    // ──────────────────────────────────────────────────────────────────────────
-
-    setElements(prev => prev.map(el => {
-      if (el.id !== targetId) return el;
-
-      // Handle split ring notation update
-      if (el.isSplitRing) {
-        const notationAText = notation.replace(/^sr:\s*/, '');
-        const notationBText = notationB || el.notationB || '5ds';
-
-        const parsedA = parseNotation(`sr: ${notationAText}`);
-        const parsedB = parseNotation(`sr: ${notationBText}`);
-
-        if (!parsedA || !parsedB) return el;
-
-        const stitchCountA = parsedA.stitchCount;
-        const stitchCountB = parsedB.stitchCount;
-        const totalStitches = stitchCountA + stitchCountB;
-
-        // Scale existing paths proportionally — preserves rotation/flip/shape
-        // same approach as closed rings and chains
-        const oldTotal = el.stitchCount;
-        const cx = el.center.x, cy = el.center.y;
-        let finalPaths = el.paths;
-        if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
-          const scaleFactor = totalStitches / oldTotal;
-          finalPaths = el.paths.map(path => {
-            const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
-            const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
-              control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          });
-        }
-
-        // Path A runs from paths[0].x/y (start) to paths[0].endX/Y.
-        // parsedA picots have stitchesBefore counting from 0 → stitchCountA.
-        // We reverse the A-side positions so stitch 0 of the notation is at the path start.
-        const reversedAPicots = parsedA.picots.map(p => ({
-          ...p,
-          stitchesBefore: stitchCountA - p.stitchesBefore,
-        })).reverse();
-
-        const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
-          ...p, stitchesBefore: p.stitchesBefore + stitchCountA
-        }))].map(p => {
-          const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
-          return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
-        });
-
-        return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
-          stitchCount: totalStitches,
-          picots: restoreBEConfigs(allPicots, extractBEConfigs(el.picots)),
-          paths: finalPaths, splitPosition: stitchCountA };
+        survivingConnKeys = new Set(
+          newConns.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
+        );
+      } else {
+        survivingConnKeys = new Set(
+          picotConnectionsRef.current.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
+        );
       }
 
-      // Closed ring: scale existing paths to new stitch count, preserving rotation/flip/shape
-      // Regenerating from the canonical template (createTeardropPath) would reset any
-      // physical rotation applied via ±90° buttons or manual path edits — so we scale instead.
-      let newPathData = {};
-      if (el.isClosed) {
-        const oldLength = el.stitchCount * dsWidth;
-        const newLength = parsed.stitchCount * dsWidth;
-        if (Math.abs(oldLength - newLength) > 0.01) {
+      let capturedGhostResult: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } | null = null;
+
+      // Read elementsRef.current directly rather than via a setElements
+      // updater — regenerateGhostArrays calls generateId() per ghost, and
+      // React can invoke functional updaters more than once (e.g. Strict
+      // Mode's double-invoke check for impure updaters), which would desync
+      // the ghost IDs actually committed from the ones used to rewire
+      // picotConnections. Computing everything as a plain value up front and
+      // committing once with setElements(value) avoids that entirely.
+      const updated = elementsRef.current.map(el => {
+        if (el.id !== targetId) return el;
+
+        // Handle split ring notation update
+        if (el.isSplitRing) {
+          const notationAText = notation.replace(/^sr:\s*/, '');
+          const notationBText = notationB || el.notationB || '5ds';
+
+          const parsedA = parseNotation(`sr: ${notationAText}`);
+          const parsedB = parseNotation(`sr: ${notationBText}`);
+
+          if (!parsedA || !parsedB) return el;
+
+          const stitchCountA = parsedA.stitchCount;
+          const stitchCountB = parsedB.stitchCount;
+          const totalStitches = stitchCountA + stitchCountB;
+
+          // Scale existing paths proportionally — preserves rotation/flip/shape
+          // same approach as closed rings and chains
+          const oldTotal = el.stitchCount;
           const cx = el.center.x, cy = el.center.y;
-          const scaleFactor = newLength / oldLength;
-          const scaledPaths = el.paths.map(path => {
-            const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-            if (path.type === 'cubic') {
+          let finalPaths = el.paths;
+          if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
+            const scaleFactor = totalStitches / oldTotal;
+            finalPaths = el.paths.map(path => {
+              const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
               const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
               const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-            }
-            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
-            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
-          });
-          newPathData = { paths: scaledPaths };
-        }
-      } else {
-        // Open chain: bend curve to new length keeping endpoints fixed
-        if (el.paths && el.paths.length > 0) {
-          const newLength = parsed.stitchCount * dsWidth;
-          const tolerance = newLength * 0.005;
-          const adjustedPaths = el.paths.map(path => {
-            if (path.type !== 'cubic') {
-              const startX = path.x, startY = path.y;
-              const scaleFactor = newLength / (el.stitchCount * dsWidth);
-              return { ...path,
-                endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
-                controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
-            }
-            const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
-            const midX=(sx+ex)/2,midY=(sy+ey)/2;
-            const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
-            const perpLen=Math.hypot(perpX,perpY);
-            const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
-            const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
-            const straightLen=Math.hypot(ex-sx,ey-sy);
-            let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
-            for (let iter=0;iter<20;iter++) {
-              const tryDepth=(minDepth+maxDepth)/2;
-              const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
-              const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
-              const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
-              const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
-              const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
-              const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
-              bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
-              if(Math.abs(tryLen-newLength)<tolerance)break;
-              if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
-            }
-            return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
-          });
-          newPathData = { paths: adjustedPaths };
-        }
-      }
+              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
+                control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+            });
+          }
 
-      // Merge picots: reuse old IDs for picots at the same stitchesBefore position
-      // so picotConnections (already remapped above) still points to valid IDs.
-      const oldPicotBySb2: Record<number, any> = {};
-      (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
-      const mergedPicots = parsed.picots.map(p => {
-        const old = oldPicotBySb2[p.stitchesBefore];
-        if (old) {
-          const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
-          return { ...p, id: old.id, isJoint: isStillJoint };
+          // Path A runs from paths[0].x/y (start) to paths[0].endX/Y.
+          // parsedA picots have stitchesBefore counting from 0 → stitchCountA.
+          // We reverse the A-side positions so stitch 0 of the notation is at the path start.
+          const reversedAPicots = parsedA.picots.map(p => ({
+            ...p,
+            stitchesBefore: stitchCountA - p.stitchesBefore,
+          })).reverse();
+
+          const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
+            ...p, stitchesBefore: p.stitchesBefore + stitchCountA
+          }))].map(p => {
+            const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
+            return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
+          });
+
+          return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
+            stitchCount: totalStitches,
+            picots: restoreBEConfigs(allPicots, extractBEConfigs(el.picots)),
+            paths: finalPaths, splitPosition: stitchCountA };
         }
-        return p;
+
+        // Closed ring: scale existing paths to new stitch count, preserving rotation/flip/shape
+        // Regenerating from the canonical template (createTeardropPath) would reset any
+        // physical rotation applied via ±90° buttons or manual path edits — so we scale instead.
+        let newPathData = {};
+        if (el.isClosed) {
+          const oldLength = el.stitchCount * dsWidth;
+          const newLength = parsed.stitchCount * dsWidth;
+          if (Math.abs(oldLength - newLength) > 0.01) {
+            const cx = el.center.x, cy = el.center.y;
+            const scaleFactor = newLength / oldLength;
+            const scaledPaths = el.paths.map(path => {
+              const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+              if (path.type === 'cubic') {
+                const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+                const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+                return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+              }
+              const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
+            });
+            newPathData = { paths: scaledPaths };
+          }
+        } else {
+          // Open chain: bend curve to new length keeping endpoints fixed
+          if (el.paths && el.paths.length > 0) {
+            const newLength = parsed.stitchCount * dsWidth;
+            const tolerance = newLength * 0.005;
+            const adjustedPaths = el.paths.map(path => {
+              if (path.type !== 'cubic') {
+                const startX = path.x, startY = path.y;
+                const scaleFactor = newLength / (el.stitchCount * dsWidth);
+                return { ...path,
+                  endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
+                  controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
+              }
+              const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
+              const midX=(sx+ex)/2,midY=(sy+ey)/2;
+              const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
+              const perpLen=Math.hypot(perpX,perpY);
+              const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
+              const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
+              const straightLen=Math.hypot(ex-sx,ey-sy);
+              let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
+              for (let iter=0;iter<20;iter++) {
+                const tryDepth=(minDepth+maxDepth)/2;
+                const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
+                const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
+                const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
+                const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
+                const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
+                const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
+                bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
+                if(Math.abs(tryLen-newLength)<tolerance)break;
+                if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
+              }
+              return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
+            });
+            newPathData = { paths: adjustedPaths };
+          }
+        }
+
+        // Merge picots: reuse old IDs for picots at the same stitchesBefore position
+        // so picotConnections (already remapped above) still points to valid IDs.
+        const oldPicotBySb2: Record<number, any> = {};
+        (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
+        const mergedPicots = parsed.picots.map(p => {
+          const old = oldPicotBySb2[p.stitchesBefore];
+          if (old) {
+            const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
+            return { ...p, id: old.id, isJoint: isStillJoint };
+          }
+          return p;
+        });
+
+        return {
+          ...el, notation, stitchCount: parsed.stitchCount,
+          picots: restoreBEConfigs(mergedPicots, extractBEConfigs(el.picots)),
+          isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
+          ...(Object.keys(newPathData).length > 0 ? newPathData : {})
+        };
       });
 
-      return {
-        ...el, notation, stitchCount: parsed.stitchCount,
-        picots: restoreBEConfigs(mergedPicots, extractBEConfigs(el.picots)),
-        isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
-        ...(Object.keys(newPathData).length > 0 ? newPathData : {})
-      };
-    }));
-    // Update ghosts if this element is a ghost mother
-    setTimeout(() => {
-      updateGhostArraysForMother(targetId);
-    }, 100);
+      // Compose ghost regeneration with the notation edit when the edited
+      // element is a ghost mother, so the whole thing commits as one
+      // render/history step instead of two — was previously deferred via
+      // pendingGhostUpdateRef + a separate effect, which caused a visible
+      // two-step undo and a brief desynced frame between mother and ghosts.
+      let finalElements = updated;
+      const motherEl = updated.find(e => e.id === targetId);
+      if (motherEl?.isGhostMother) {
+        capturedGhostResult = regenerateGhostArrays(updated, ghostArrays, [targetId]);
+        finalElements = capturedGhostResult.elements;
+      }
+
+      setElements(finalElements);
+
+      if (capturedGhostResult) {
+        const result = capturedGhostResult;
+        setGhostArrays(result.ghostArrays);
+        if (result.connectionIdMap.size > 0) {
+          setPicotConnections(prev => prev.map(conn => ({
+            ...conn,
+            picots: conn.picots.map(cp => ({
+              ...cp,
+              elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
+            })),
+          })));
+        }
+      }
+    };
+
+    if (hasExistingJoins) {
+      setConfirmDialog({
+        title: t('notationChangeConfirmTitle'),
+        message: t('notationChangeConfirmMessage'),
+        confirmLabel: t('notationChangeConfirmBtn'),
+        onConfirm: applyNotationChange,
+      });
+    } else {
+      applyNotationChange();
+    }
   };
 
   // Update ghosts when mother element changes (notation, rotation, shape, etc.)
   const toggleShape = () => {
     if (selectedIds.length !== 1) return;
-    
-    setElements(prev => prev.map(el => {
+
+    // Read elementsRef.current directly rather than via a setElements
+    // updater — see updateNotation for why (avoids React's double-invoke of
+    // functional updaters desyncing regenerateGhostArrays' impure output).
+    const updated = elementsRef.current.map(el => {
       if (el.id === selectedIds[0] && el.isClosed) {
         const newStyle = el.shapeStyle === 'circle' ? 'teardrop' : 'circle';
         const targetLength = el.stitchCount * dsWidth;
@@ -4424,12 +3754,31 @@ const generatePattern = useCallback(() => {
         return { ...el, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
       }
       return el;
-    }));
+    });
 
-    // Update ghosts if this element is a ghost mother
-    setTimeout(() => {
-      updateGhostArraysForMother(selectedIds[0]);
-    }, 100);
+    let finalElements = updated;
+    let capturedGhostResult: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } | null = null;
+    const motherEl = updated.find(e => e.id === selectedIds[0]);
+    if (motherEl?.isGhostMother) {
+      capturedGhostResult = regenerateGhostArrays(updated, ghostArrays, [selectedIds[0]]);
+      finalElements = capturedGhostResult.elements;
+    }
+
+    setElements(finalElements);
+
+    if (capturedGhostResult) {
+      const result = capturedGhostResult;
+      setGhostArrays(result.ghostArrays);
+      if (result.connectionIdMap.size > 0) {
+        setPicotConnections(prev => prev.map(conn => ({
+          ...conn,
+          picots: conn.picots.map(cp => ({
+            ...cp,
+            elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
+          })),
+        })));
+      }
+    }
   };
 
   const setLabelOffset = useCallback((value: number) => {
@@ -4690,63 +4039,9 @@ const generatePattern = useCallback(() => {
   // ── Stable BE clipboard operations (component-level, not inside render IIFE) ─
   // These always read current state, eliminating stale-closure issues.
 
-  const copyBEToClipboard = useCallback(() => {
-    const lastBE = selectedBEs[selectedBEs.length - 1];
-    if (!lastBE) return;
-    const el = elementById.get(lastBE.elementId);
-    const picot = el?.picots?.find(p => p.id === lastBE.picotId);
-    if (!picot) return;
-    setBeClipboard({
-      beStructure: picot.beStructure,
-      beIsJoint:   picot.beIsJoint,
-      coreBeads:   [...(picot.coreBeads  || [null, null, null])],
-      picotBeads:  [...(picot.picotBeads || [null, null, null])],
-    });
-  }, [selectedBEs, elements]);
-
-  const cutBEToClipboard = useCallback(() => {
-    const lastBE = selectedBEs[selectedBEs.length - 1];
-    if (!lastBE) return;
-    const el = elementById.get(lastBE.elementId);
-    const picot = el?.picots?.find(p => p.id === lastBE.picotId);
-    if (!picot) return;
-    setBeClipboard({
-      beStructure: picot.beStructure,
-      beIsJoint:   picot.beIsJoint,
-      coreBeads:   [...(picot.coreBeads  || [null, null, null])],
-      picotBeads:  [...(picot.picotBeads || [null, null, null])],
-    });
-    // Reset the selected BEs to default state
-    setElements(prev => prev.map(el2 => {
-      const toReset = selectedBEs.filter(s => s.elementId === el2.id);
-      if (toReset.length === 0) return el2;
-      const newPicots = (el2.picots || []).map(p =>
-        toReset.some(s => s.picotId === p.id)
-          ? { ...p, beStructure: 'core', beIsJoint: false, coreBeads: [null, null, null], picotBeads: [null, null, null] }
-          : p
-      );
-      return { ...el2, picots: newPicots };
-    }));
-  }, [selectedBEs, elements]);
-
-  const pasteBeClipboard = useCallback(() => {
-    if (!beClipboard || selectedBEs.length === 0) return;
-    setElements(prev => prev.map(el => {
-      const toUpdate = selectedBEs.filter(s => s.elementId === el.id);
-      if (toUpdate.length === 0) return el;
-      const newPicots = (el.picots || []).map(p =>
-        toUpdate.some(s => s.picotId === p.id)
-          ? { ...p,
-              beStructure: beClipboard.beStructure,
-              beIsJoint:   beClipboard.beIsJoint,
-              coreBeads:   [...beClipboard.coreBeads],
-              picotBeads:  [...beClipboard.picotBeads],
-            }
-          : p
-      );
-      return { ...el, picots: newPicots };
-    }));
-  }, [beClipboard, selectedBEs]);
+  const { copyBEToClipboard, cutBEToClipboard, pasteBeClipboard } = useBEClipboard({
+    selectedBEs, elementById, beClipboard, setBeClipboard, setElements,
+  });
 
   // Restore BE configs into freshly-parsed picots by ordinal index.
   // If new notation has fewer BEs, extras are silently dropped.
@@ -7884,7 +7179,7 @@ if (parsed && parsed.stitchCount > 0) {
                     applySingleRotationDelta(selectedElement.id, 1);
                     nudgeIntervalRef.current = setInterval(() => {
                       nudgeAccumulatedDeltaRef.current += 1;
-                      applySingleRotationDeltaNoHistory(selectedElement.id, 1);
+                      applySingleRotationDelta(selectedElement.id, 1, false);
                     }, 80);
                   }}
                   onMouseUp={() => {
@@ -7914,7 +7209,7 @@ if (parsed && parsed.stitchCount > 0) {
                     applySingleRotationDelta(selectedElement.id, -1);
                     nudgeIntervalRef.current = setInterval(() => {
                       nudgeAccumulatedDeltaRef.current -= 1;
-                      applySingleRotationDeltaNoHistory(selectedElement.id, -1);
+                      applySingleRotationDelta(selectedElement.id, -1, false);
                     }, 80);
                   }}
                   onMouseUp={() => {
@@ -12481,6 +11776,14 @@ if (parsed && parsed.stitchCount > 0) {
             <span>👻</span>
             <span>{t('ghostArrayManagerTitle')}</span>
           </button>
+
+          {/* Polar Grids */}
+          <button
+            onClick={() => { setShowPolarGridPanel(true); setShowArrangeMenu(false); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            <span>{t('viewPolarGrids')}</span>
+          </button>
         </div>
       </>
     )}
@@ -12534,7 +11837,7 @@ if (parsed && parsed.stitchCount > 0) {
                     </div>
 
                     {/* Editable fields row */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1">
                         <label className="text-xs text-gray-400">{t('ghostArrayCount')}:</label>
                         <input
@@ -12706,7 +12009,7 @@ if (parsed && parsed.stitchCount > 0) {
                   .replace('{total}', String(ghostArrays.reduce((sum, a) => sum + a.ghostIds.length, 0)))
                   .replace('{arrays}', String(ghostArrays.length))}
               </p>
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end flex-wrap">
                 <button
                   onClick={() => setConvertConfirm(null)}
                   className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
@@ -12714,54 +12017,10 @@ if (parsed && parsed.stitchCount > 0) {
                   {t('ghostArrayCancel')}
                 </button>
                 <button
-                  onClick={() => {
-                    let allNewIds: string[] = [];
-                    const oldToNewId = new Map<string, string>();
-                    // Find all ghosts by sourceId (ghostIds may be stale after undo)
-                    const allGhostsToConvert = ghostArrays.flatMap(a =>
-                      elements.filter(e => e.type === 'ghost' && e.sourceId === a.sourceId)
-                    );
-                    // Deduplicate in case multiple arrays share the same ghost
-                    const seen = new Set<string>();
-                    const uniqueGhosts = allGhostsToConvert.filter(e => {
-                      if (seen.has(e.id)) return false;
-                      seen.add(e.id);
-                      return true;
-                    });
-                    setElements(prev => {
-                      const withoutGhosts = prev.filter(el => el.type !== 'ghost');
-                      const realElements = uniqueGhosts.map(ghost => {
-                        const newEl = JSON.parse(JSON.stringify(ghost));
-                        oldToNewId.set(ghost.id, newEl.id);
-                        const source = elementById.get(ghost.sourceId);
-                        newEl.type = source?.type || newEl.type;
-                        delete newEl.sourceId;
-                        delete newEl.isBoundary;
-                        delete newEl.isGhostMother;
-                        delete newEl.ghostArrayIds;
-                        allNewIds.push(newEl.id);
-                        return newEl;
-                      });
-                      return [...withoutGhosts, ...realElements];
-                    });
-
-                    // Update picotConnections: replace old ghost IDs with new real element IDs
-                    setPicotConnections(prev => prev.map(conn => ({
-                      ...conn,
-                      picots: conn.picots.map(p => ({
-                        ...p,
-                        elementId: oldToNewId.get(p.elementId) || p.elementId,
-                      })),
-                    })));
-
-                    const sourceIds = ghostArrays.map(a => a.sourceId).filter(Boolean);
-                    setSelectedIds([...sourceIds, ...allNewIds]);
-                    setGhostArrays([]);
-                    setConvertConfirm(null);
-                  }}
+                  onClick={convertAllGhostArrays}
                   className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
                 >
-                  {t('ghostArrayConvert')} {t('ghostArrayConvertAll').split(' ').slice(0,2).join(' ')}
+                  {t('ghostArrayConvertAllBtn')}
                 </button>
               </div>
             </>
@@ -12773,7 +12032,7 @@ if (parsed && parsed.stitchCount > 0) {
                   .replace('{count}', String(convertConfirm.instanceCount - 1))
                   .replace('{name}', convertConfirm.name)}
               </p>
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end flex-wrap">
                 <button
                   onClick={() => setConvertConfirm(null)}
                   className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"

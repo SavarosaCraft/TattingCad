@@ -61,11 +61,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     const el = elementById.get(elementId);
     if (!el) return null;
     const num = el.orderNumber?.toString().trim();
-const typeLabel = el.type === 'ring'
-  ? (el.isSplitRing ? 'SR' : 'R')
-  : el.type === 'chain'
-    ? (el.isSplitChain ? 'SC' : 'CH')
-    : null;
+    const typeLabel = el.type === 'ring' ? 'R' : el.type === 'chain' ? (el.isSplitChain ? 'SC' : 'CH') : null;
     if (!typeLabel) return null;
     if (!num) return `${typeLabel}#?`;
     const samNumEls = elements.filter(e => e.orderNumber?.toString().trim() === num);
@@ -576,3 +572,45 @@ const typeLabel = el.type === 'ring'
 
   return { text, elementCount: orderedElements.length };
 }
+
+// Canonical project serializer — single source of truth for both manual save and autosave.
+// Accepts all project data explicitly so it stays pure and testable.
+// isAutoSave=true → writes 'autoSaved' timestamp key; false → writes 'created'.
+export function serializeProject(data: {
+  name: string;
+  elements: any[]; picotConnections: any[]; camera: any; zoom: number; dsWidth: number;
+  bgColor: string; gridEnabled: boolean; customColors: any[]; referenceImage: any;
+  refImageProps: any; renderMode: string; patternNotes: string; materials: any[];
+  orderGroups: any[]; beadLibrary: any[]; polarGrids: any[]; selectedPolarGridId: string | null;
+  threadPresets: any[]; activePresetId: string;
+}, isAutoSave = false) {
+  return {
+    version: 90,
+    name: data.name,
+    ...(isAutoSave
+      ? { autoSaved: new Date().toISOString() }
+      : { created: new Date().toISOString() }),
+    elements:            data.elements,
+    picotConnections:    data.picotConnections,
+    camera:              data.camera,
+    zoom:                data.zoom,
+    dsWidth:             data.dsWidth,
+    bgColor:             data.bgColor,
+    gridEnabled:         data.gridEnabled,
+    customColors:        data.customColors,
+    referenceImage:      data.referenceImage,
+    refImageProps:       data.refImageProps,
+    renderMode:          data.renderMode,
+    patternNotes:        data.patternNotes,
+    materials:           data.materials,
+    orderGroups:         data.orderGroups,
+    beadLibrary:         data.beadLibrary,
+    polarGrids:          data.polarGrids,
+    selectedPolarGridId: data.selectedPolarGridId,
+    activeThreadPreset:
+      data.threadPresets.find(p => p.id === data.activePresetId)
+      ?? data.threadPresets[0]
+      ?? null,
+  };
+}
+

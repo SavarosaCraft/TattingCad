@@ -96,7 +96,12 @@ export interface UseInputHandlersParams {
   isPointInElement: (el: any, x: number, y: number) => boolean;
   getPolarPivot: (ids: string[]) => any;
   pushHistoryState: (elements: any[], connections: any[], groups: any[]) => void;
-  updateGhostArraysForMother: (id: string) => void;
+  ghostArrays: any[];
+  regenerateGhostArrays: (elementsSnapshot: any[], ghostArraysSnapshot: any[], motherIds: string[]) =>
+    { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> };
+  setGhostArrays: (arrays: any[]) => void;
+  setPicotConnections: (fn: ((prev: any[]) => any[]) | any[]) => void;
+  skipAutoHistoryRef: React.RefObject<boolean>;
   assignOrderNumber: (id: string, n: number) => void;
   zoomToRect: (minX: number, minY: number, maxX: number, maxY: number) => void;
 }
@@ -763,14 +768,44 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           dx+=bDx; dy+=bDy;
         }
       }
-      p.setElements(prev => prev.map((el:any) => {
+      // Compute the moved elements as a plain value, NOT inside a setElements
+      // functional updater. Updaters can be invoked more than once by React
+      // (e.g. Strict Mode's double-invoke check for impure updaters), and
+      // regenerateGhostArrays is inherently impure (calls generateId() per
+      // ghost) — running it inside an updater let two different sets of new
+      // ghost IDs get generated from the SAME old IDs, desyncing the IDs that
+      // actually got committed from the ones used to rewire picotConnections.
+      const moved = p.elements.map((el:any) => {
         if (!p.selectedIds.includes(el.id)) return el;
         const np = el.paths.map((path:any) => path.type==='cubic'
           ? {...path, x:path.x+dx, y:path.y+dy, endX:path.endX+dx, endY:path.endY+dy, control1X:path.control1X+dx, control1Y:path.control1Y+dy, control2X:path.control2X+dx, control2Y:path.control2Y+dy}
           : {...path, x:path.x+dx, y:path.y+dy, endX:path.endX+dx, endY:path.endY+dy, controlX:path.controlX+dx, controlY:path.controlY+dy});
         return { ...el, center: { x: el.center.x+dx, y: el.center.y+dy }, paths: np };
-      }));
+      });
+
+      let finalElements = moved;
+      let ghostResult: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } | null = null;
+      if (p.selectedIds.length > 0) {
+        ghostResult = p.regenerateGhostArrays(moved, p.ghostArrays, [...p.selectedIds]);
+        finalElements = ghostResult.elements;
+      }
+
+      p.setElements(finalElements);
       p.dragOffsetRef.current = { active: false, dx: 0, dy: 0 };
+
+      if (ghostResult) {
+        p.setGhostArrays(ghostResult.ghostArrays);
+        if (ghostResult.connectionIdMap.size > 0) {
+          const map = ghostResult.connectionIdMap;
+          p.setPicotConnections(prev => prev.map((conn:any) => ({
+            ...conn,
+            picots: conn.picots.map((cp:any) => ({
+              ...cp,
+              elementId: map.get(cp.elementId) || cp.elementId,
+            })),
+          })));
+        }
+      }
     }
 
     p.lastMousePosRef.current = null;
@@ -783,8 +818,31 @@ export function useInputHandlers(p: UseInputHandlersParams) {
     p.setMovingPivot(false);
 
     if (wasRotating && p.selectedIds.length > 0) {
-      const ids = [...p.selectedIds];
-      setTimeout(() => { ids.forEach(id => p.updateGhostArraysForMother(id)); }, 100);
+      // Rotation commits incrementally during mousemove (unlike move, which
+      // commits once at mouseUp), so the rotation's own final position was
+      // already captured by the explicit pushHistoryState call above. Ghost
+      // regen here is a second, necessary setElements call — suppress ITS
+      // auto-history-push so it doesn't create a separate undo step; the
+      // live state simply extends slightly past the last history entry,
+      // which undo handles correctly (reverting the rotation also reverts
+      // the ghost regen, since neither was ever recorded separately).
+      const motherIds = [...p.selectedIds];
+      // Use p.elements directly (a plain value) rather than computing inside
+      // a setElements updater — see the move-handler comment above for why.
+      const ghostResult = p.regenerateGhostArrays(p.elements, p.ghostArrays, motherIds);
+      p.skipAutoHistoryRef.current = true;
+      p.setElements(ghostResult.elements);
+      p.setGhostArrays(ghostResult.ghostArrays);
+      if (ghostResult.connectionIdMap.size > 0) {
+        const map = ghostResult.connectionIdMap;
+        p.setPicotConnections(prev => prev.map((conn:any) => ({
+          ...conn,
+          picots: conn.picots.map((cp:any) => ({
+            ...cp,
+            elementId: map.get(cp.elementId) || cp.elementId,
+          })),
+        })));
+      }
     }
 
     p.setElements(prev => prev.filter((el:any) => {
