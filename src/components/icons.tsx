@@ -453,21 +453,22 @@ export const IconRuler = ({ size = 20, className = '' }) => (
   </svg>
 );
 
-export const IconSendToBack = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="1" y="5" width="11" height="11" rx="1.5" fill="currentColor" opacity="0.35"/>
-    <rect x="5" y="1" width="11" height="11" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6"/>
-    <line x1="2.5" y1="17.5" x2="8.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    <line x1="5.5" y1="14.5" x2="5.5" y2="20.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+export const IconSendToBack = ({ size = 20, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
+    <path d="M200-120q-33 0-56.5-23.5T120-200v-480h80v480h480v80H200Zm160-240v80q-33 0-56.5-23.5T280-360h80Zm-80-80v-80h80v80h-80Zm0-160v-80h80v80h-80Zm80-160h-80q0-33 23.5-56.5T360-840v80Zm80 480v-80h80v80h-80Zm0-480v-80h80v80h-80Zm160 0v-80h80v80h-80Zm0 480v-80h80v80h-80Zm160-480v-80q33 0 56.5 23.5T840-760h-80Zm0 400h80q0 33-23.5 56.5T760-280v-80Zm0-80v-80h80v80h-80Zm0-160v-80h80v80h-80Z"/>
   </svg>
 );
 
-export const IconBringToFront = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="1" y="5" width="11" height="11" rx="1.5" fill="currentColor" opacity="0.35"/>
-    <rect x="5" y="1" width="11" height="11" rx="1.5" fill="currentColor" stroke="currentColor" strokeWidth="1.6"/>
-    <line x1="2.5" y1="17.5" x2="8.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    <line x1="5.5" y1="14.5" x2="5.5" y2="20.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+export const IconBringToFront = ({ size = 20, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
+    <path d="M360-280q-33 0-56.5-23.5T280-360v-400q0-33 23.5-56.5T360-840h400q33 0 56.5 23.5T840-760v400q0 33-23.5 56.5T760-280H360Zm0-80h400v-400H360v400ZM200-200v80q-33 0-56.5-23.5T120-200h80Zm-80-80v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm160 480v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Z"/>
+  </svg>
+);
+
+// Magic wand — Picot Tools popover trigger (clear/add/fill-density/scale)
+export const IconMagicWand = ({ size = 20, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 -960 960 960" fill="currentColor" className={className}>
+    <path d="m176-120-56-56 301-302-181-45 198-123-17-234 179 151 216-88-87 217 151 178-234-16-124 198-45-181-301 301Zm24-520-80-80 80-80 80 80-80 80Zm355 197 48-79 93 7-60-71 35-86-86 35-71-59 7 92-79 49 90 22 23 90Zm165 323-80-80 80-80 80 80-80 80ZM569-570Z"/>
   </svg>
 );
 

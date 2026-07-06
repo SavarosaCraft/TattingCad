@@ -516,7 +516,7 @@
   "ghostArrayCancel": "Cancelar",
   "ghostArrayConvert": "Convertir",
   "ghostArrayConvertAll": "Convertir todas las matrices",
-  "ghostArrayConvertAllBtn": "Convertir todas las matrices",
+  "ghostArrayConvertAllBtn": "Convertir todo",
   "ghostArrayConvertAllConfirm": "¿Convertir los {total} fantasmas de {arrays} matrices en elementos reales e independientes?",
   "ghostArrayConvertAllTitle": "Convertir todas las matrices",
   "ghostArrayConvertConfirm": "¿Convertir los {count} fantasmas de \"{name}\" en elementos reales e independientes?",

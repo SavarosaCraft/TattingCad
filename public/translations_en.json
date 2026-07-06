@@ -514,7 +514,7 @@
 "ghostArrayCancel": "Cancel",
 "ghostArrayConvert": "Convert",
 "ghostArrayConvertAll": "Convert All Arrays",
-"ghostArrayConvertAllBtn": "Convert All Arrays",
+"ghostArrayConvertAllBtn": "Convert All",
 "ghostArrayConvertAllConfirm": "Convert all {total} ghosts across {arrays} arrays into real, independent elements?",
 "ghostArrayConvertAllTitle": "Convert All Arrays",
 "ghostArrayConvertConfirm": "Convert {count} ghosts in \"{name}\" into real, independent elements?",

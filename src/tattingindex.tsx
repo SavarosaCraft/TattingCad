@@ -623,7 +623,7 @@ const TattingDesigner = () => {
   const isUndoRedoRef = useRef(false);  // Flag to prevent adding history during undo/redo
   const notationEscapeRef = useRef(false); // Flag: ESC was pressed on notation input — suppress blur commit
   const pendingNotationRef = useRef(null); // { elementId, notation, notationB? } — survives re-renders/unmount
-  const historyRef = useRef([{ elements: [], connections: [] }]);  // Ref to current history
+  const historyRef = useRef([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
   const historyIndexRef = useRef(0);  // Ref to current index
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
@@ -708,8 +708,8 @@ const TattingDesigner = () => {
       return;
     }
     if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
-    pushHistoryState(elements, picotConnections, orderGroupsRef.current);
-  }, [elements, picotConnections]); // Depend on both elements and connections
+    pushHistoryState(elements, picotConnections, orderGroupsRef.current, polarGrids);
+  }, [elements, picotConnections, polarGrids]); // Depend on elements, connections, and polarGrids
 
   // Auto-save to localStorage every 30 seconds
   // PERFORMANCE: Use refs to avoid recreating interval on every state change
@@ -833,7 +833,7 @@ const TattingDesigner = () => {
         setActivePresetId(preset.id);
         localStorage.setItem('tcad_active_preset_id', preset.id);
       }
-      setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
+      setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [], polarGrids: projectData.polarGrids || [] }]);
       setHistoryIndex(0);
     } catch (error) {
       console.error('Error loading auto-save:', error);
@@ -1751,7 +1751,7 @@ const TattingDesigner = () => {
     isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef,
     setElements, setSelectedIds, setPicotConnections, setOrderGroups,
     setClipboard, setGhostArrays, setHistoryIndex,
-    setGroupRotationInput,
+    setGroupRotationInput, setPolarGrids,
     pushHistoryState,
   });
 
@@ -2063,7 +2063,7 @@ const TattingDesigner = () => {
       // Use the larger dimension (fallback)
       elementSize = hasPaths ? Math.max(width, height, 1) : 1;
     }
-    return { minX, minY, maxX, maxY, elementSize };
+    return { minX, minY, maxX, maxY, elementSize: elementSize + 5 };
   };
 
 
@@ -2338,6 +2338,26 @@ const TattingDesigner = () => {
     pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
   };
 
+  const assignRepeat = (targetElId: string) => {
+    const newEls = elements.map(e =>
+      e.id === targetElId
+        ? { ...e, isRepeat: true, orderNumber: null, orderGroup: activeOrderGroupId ?? undefined }
+        : e
+    );
+    setElements(newEls);
+    setTattingOrderInput('');
+    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+  };
+
+  const clearOrderAssignment = (targetElId: string) => {
+    const newEls = elementsRef.current.map(e =>
+      e.id === targetElId ? { ...e, orderNumber: null, orderGroup: undefined, isRepeat: false } : e
+    );
+    setElements(newEls);
+    setTattingOrderInput('');
+    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+  };
+
   const resolveTattingOrderConflict = (action: 'swap' | 'shift' | 'cancel') => {
     if (!tattingOrderConflict) return;
     const { newNum, existingElId, targetElId } = tattingOrderConflict;
@@ -2410,7 +2430,7 @@ const TattingDesigner = () => {
     setProjectName('Untitled Pattern');
     setCamera({ x: 0, y: 0 });
     setZoom(1);
-    setHistory([{ elements: [], connections: [] }]);
+    setHistory([{ elements: [], connections: [], polarGrids: [] }]);
     setHistoryIndex(0);
     // Hide (don't delete) all polar grids — user can re-enable in the Polar Grid panel
     setPolarGrids(prev => prev.map(g => ({ ...g, visible: false })));
@@ -3448,6 +3468,23 @@ const TattingDesigner = () => {
           }));
         } else {
           pasteFromClipboard().catch(() => {});
+        }
+
+      // ── Tatting order shortcuts ──────────────────────────────────────────
+      } else if (activeModeRef.current === 'tattingOrder' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const selId = selectedIds.length === 1 ? selectedIds[0] : null;
+        if (!selId) {
+          // no-op
+        } else if (e.key === 'r' || e.key === 'R') {
+          if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            assignRepeat(selId);
+          }
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            clearOrderAssignment(selId);
+          }
         }
 
       // ── Add-element & mode shortcuts (Shift + key, no Ctrl/Cmd) ────────────
@@ -6369,7 +6406,7 @@ const TattingDesigner = () => {
           })() : activeMode === 'tattingOrder' ? (() => {
             // ── Tatting Order mode property bar ──────────────────────────
             const selectedEl = selectedElement;
-            const numbered = elements.filter(e => e.orderNumber != null && String(e.orderNumber).trim() !== '').length;
+            const numbered = elements.filter(e => e.isRepeat || (e.orderNumber != null && String(e.orderNumber).trim() !== '')).length;
             const total = elements.length;
 
             // Active group object (null = Ungrouped scope)
@@ -6385,7 +6422,7 @@ const TattingDesigner = () => {
 
             // Per-group numbered count for the progress chip
             const numberedInScope = elements.filter(e => {
-              const hasNum = e.orderNumber != null && String(e.orderNumber).trim() !== '';
+              const hasNum = e.isRepeat || (e.orderNumber != null && String(e.orderNumber).trim() !== '');
               return hasNum && inActiveGroup(e);
             }).length;
             const totalInScope = elements.filter(inActiveGroup).length;
@@ -6607,7 +6644,7 @@ const TattingDesigner = () => {
                     <button
                       onClick={() => {
                         const unnumbered = elements.filter(e =>
-                          e.type !== 'line' && (!e.orderNumber || String(e.orderNumber).trim() === '')
+                          e.type !== 'line' && !e.isRepeat && (!e.orderNumber || String(e.orderNumber).trim() === '')
                         ).length;
                         setActiveMode(null);
                         setSelectedIds([]);
@@ -6705,16 +6742,18 @@ const TattingDesigner = () => {
                       RW
                     </button>
                     <button
-                      onClick={() => {
-                        const newEls = elementsRef.current.map(e =>
-                          e.id === selectedEl.id ? { ...e, orderNumber: null, orderGroup: undefined } : e
-                        );
-                        setElements(newEls);
-                        setTattingOrderInput('');
-                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
-                      }}
-                      disabled={!selectedEl.orderNumber}
+                      onClick={() => assignRepeat(selectedEl.id)}
+                      disabled={selectedEl.isRepeat}
+                      className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 disabled:opacity-40 text-gray-300 text-sm border border-gray-500"
+                      title="R"
+                    >
+                      {t('btnAssignRepeat')}
+                    </button>
+                    <button
+                      onClick={() => clearOrderAssignment(selectedEl.id)}
+                      disabled={!selectedEl.orderNumber && !selectedEl.isRepeat}
                       className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 text-sm border border-gray-600"
+                      title="Delete"
                     >
                       {t('tattingOrderClear')}
                     </button>
@@ -9227,7 +9266,7 @@ if (parsed && parsed.stitchCount > 0) {
                 if (!isInViewport(el)) return null;
 
                 const isSelected = selectedIdSet.has(el.id);
-                const isUnnumbered = !el.orderNumber || el.orderNumber.toString().trim() === '';
+                const isUnnumbered = !el.isRepeat && (!el.orderNumber || el.orderNumber.toString().trim() === '');
                 const shouldHighlight = (showUnnumbered || activeMode === 'tattingOrder') && isUnnumbered;
                 const activeDraft = draftNotation?.elementId === el.id ? draftNotation.value : null;
                 const hasInvalidNotation = el.type !== 'line' && renderMode === 'schematic' && (() => {
@@ -9324,6 +9363,9 @@ if (parsed && parsed.stitchCount > 0) {
                           </text>
                         );
                       })()}
+                      {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (
+                        <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
+                      )}
                     </g>
                   );
                 }
@@ -9443,6 +9485,9 @@ if (parsed && parsed.stitchCount > 0) {
                           const [_f3, _s3] = getGroupBadgeColor(el);
                           return <text data-layer="order" x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && el.paths?.length > 0 && (
+                          <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
+                        )}
                       </>
                     ) : (
                     /* Chains and teardrops */
@@ -9657,6 +9702,9 @@ if (parsed && parsed.stitchCount > 0) {
                           const [_f5, _s5] = getGroupBadgeColor(el);
                           return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (
+                          <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
+                        )}
                         {el.groupId && (
                           <text
                             data-layer="groups"

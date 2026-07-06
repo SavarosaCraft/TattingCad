@@ -187,6 +187,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   // ── Ordered elements ───────────────────────────────────────────────────
   const orderedElements = elements
     .filter(el => {
+      if (el.isRepeat) return false; // repeat elements are excluded from output
       const num = el.orderNumber?.toString().trim();
       return num && num !== '';
     })
