@@ -3378,6 +3378,9 @@ const TattingDesigner = () => {
         e.preventDefault();
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
           breakSelectedPicots();
+        } else if (activeModeRef.current === 'tattingOrder') {
+          const selId = selectedIdsRef.current.length === 1 ? selectedIdsRef.current[0] : null;
+          if (selId) clearOrderAssignment(selId);
         } else {
           deleteSelected();
         }
@@ -3472,13 +3475,18 @@ const TattingDesigner = () => {
 
       // ── Tatting order shortcuts ──────────────────────────────────────────
       } else if (activeModeRef.current === 'tattingOrder' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-        const selId = selectedIds.length === 1 ? selectedIds[0] : null;
+        const selId = selectedIdsRef.current.length === 1 ? selectedIdsRef.current[0] : null;
         if (!selId) {
           // no-op
         } else if (e.key === 'r' || e.key === 'R') {
           if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             e.preventDefault();
             assignRepeat(selId);
+          }
+        } else if (e.key === 'n' || e.key === 'N') {
+          if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            assignOrderNumber(selId, getNextAvailableNumber());
           }
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {

@@ -293,6 +293,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   // ── Unnumbered block ───────────────────────────────────────────────────
   const unnumberedElements = elements.filter(el => {
     if (el.type === 'line') return false;
+    if (el.isRepeat) return false;
     const num = el.orderNumber?.toString().trim();
     return !num || num === '';
   });
