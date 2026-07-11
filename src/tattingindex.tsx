@@ -64,7 +64,7 @@ import {
   IconNotationS, IconNotationM, IconNotationH,
   IconNotes, IconPolarGrid, IconCut,
   IconNotationOn, IconNotationOff, IconRuler,
-  IconBringToFront, IconSendToBack,
+  IconBringToFront, IconSendToBack, IconMagicWand,
 } from './components/icons';
 import {
   parseNotation as parseNotationPure,
@@ -79,6 +79,19 @@ import {
   normalizeNotationInput,
   isZeroWidth,
 } from './domain/parser';
+import {
+  analyzeNotation as analyzeNotationForWizard,
+  clearUnjoinedPicots as clearUnjoinedPicotsText,
+  addPicotsToRuns as addPicotsToRunsText,
+  hasUnjoinedPicots as hasUnjoinedPicotsText,
+  hasAddablePicotRuns as hasAddablePicotRunsText,
+  previewFillDensity,
+  maxUsefulFillGap,
+  compactRepeatedPicots,
+  hasCompactableGroups,
+  scaleNotation,
+  suggestScalePresets,
+} from './domain/picotTools';
 const logoUrl = '/logo.png';
 
 // Icons imported from ./components/icons
@@ -428,6 +441,10 @@ const TattingDesigner = () => {
     convertConfirm, setConvertConfirm,
     ghostArrays, setGhostArrays,
     polarGridPeek, setPolarGridPeek,
+    showPicotWizard, setShowPicotWizard,
+    picotWizardSymmetric, setPicotWizardSymmetric,
+    picotWizardFillGap, setPicotWizardFillGap,
+    picotWizardScalePct, setPicotWizardScalePct,
     colorPickerTab, setColorPickerTab,
     pickerTabsAllowed, setPickerTabsAllowed,
     pickerColor, setPickerColor,
@@ -3548,7 +3565,8 @@ const TattingDesigner = () => {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [saveProject]);
 
-  const updateNotation = (notation, notationB = null, elementId = null) => {
+  const updateNotation = (notation, notationB = null, elementId = null, opts: { preservesExistingPicots?: boolean; picotMatchMode?: 'stitchesBefore' | 'order' } = {}) => {
+    const { preservesExistingPicots = false, picotMatchMode = 'stitchesBefore' } = opts;
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
     if (!targetId) return;
 
@@ -3569,14 +3587,25 @@ const TattingDesigner = () => {
     const isTargetOrGhost = (elId: string) => elId === targetId || ghostIdsOfMother.has(elId);
 
     const hasExistingJoins =
-      picotConnectionsRef.current.some(conn => conn.picots.some(cp => isTargetOrGhost(cp.elementId))) ||
-      (currentElement.picots || []).some(p => p.isJoint);
+      !preservesExistingPicots && (
+        picotConnectionsRef.current.some(conn => conn.picots.some(cp => isTargetOrGhost(cp.elementId))) ||
+        (currentElement.picots || []).some(p => p.isJoint)
+      );
 
     // Trying to surgically preserve connections/IDs across a notation edit (matching
     // by stitchesBefore position, across the mother AND every ghost sharing its picot
     // IDs) is fragile and led to visible drift (picot shows "joined" yellow after the
     // connection was actually dropped). Simpler and more predictable: if anything is
     // joined, wipe all of it and let the person redo the joins after editing.
+    //
+    // preservesExistingPicots is the deliberate, narrow exception: it's for callers
+    // (Picot Wizard: clear/add/fill/compact) that can *prove* they never change the
+    // cumulative ds-count anywhere in the notation — they only ever insert or remove
+    // zero-width picot tokens inside a run that's already picot-free, or re-serialize
+    // existing tokens into repeat-group syntax. Every already-existing picot's
+    // stitchesBefore is provably identical before and after, so the ordinary
+    // stitchesBefore-based merge below can safely re-attach isJoint on its own —
+    // no wipe, no confirm dialog needed.
     const applyNotationChange = () => {
       let survivingConnKeys: Set<string>;
       if (hasExistingJoins) {
@@ -3718,18 +3747,41 @@ const TattingDesigner = () => {
           }
         }
 
-        // Merge picots: reuse old IDs for picots at the same stitchesBefore position
-        // so picotConnections (already remapped above) still points to valid IDs.
-        const oldPicotBySb2: Record<number, any> = {};
-        (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
-        const mergedPicots = parsed.picots.map(p => {
-          const old = oldPicotBySb2[p.stitchesBefore];
-          if (old) {
+        // Merge picots: reuse old IDs so picotConnections (already remapped
+        // above) still points to valid IDs.
+        //
+        // 'stitchesBefore' (default): match old<->new picot by exact ds
+        // position. Correct for edits that never move an existing picot —
+        // Clear/Add/Fill/Compact all guarantee this (see their own comments).
+        //
+        // 'order': match old<->new picot by sequential index instead.
+        // Needed when ds counts around picots actually change (scaling) —
+        // positions shift, so a position-keyed match would find nothing and
+        // silently treat every picot as brand new, losing every join. Only
+        // valid when the caller can guarantee the same picots survive in the
+        // same order with nothing added or removed — true for Scale, since
+        // it only resizes the runs between picots, never adds/removes one.
+        let mergedPicots;
+        if (picotMatchMode === 'order') {
+          const oldList = el.picots || [];
+          mergedPicots = parsed.picots.map((p, idx) => {
+            const old = oldList[idx];
+            if (!old) return p;
             const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
             return { ...p, id: old.id, isJoint: isStillJoint };
-          }
-          return p;
-        });
+          });
+        } else {
+          const oldPicotBySb2: Record<number, any> = {};
+          (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
+          mergedPicots = parsed.picots.map(p => {
+            const old = oldPicotBySb2[p.stitchesBefore];
+            if (old) {
+              const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
+              return { ...p, id: old.id, isJoint: isStillJoint };
+            }
+            return p;
+          });
+        }
 
         return {
           ...el, notation, stitchCount: parsed.stitchCount,
@@ -6155,7 +6207,7 @@ const TattingDesigner = () => {
             onClick={() => setShowOptionsMenu(!showOptionsMenu)}
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
             style={{ height: '44px', width: window.innerWidth <= 768 ? '44px' : 'auto' }}
-            title={t('menuOptionsTitle')}
+            title={t('menuOptions')}
           >
             <IconSettings size={18} />
             <span className="text-sm font-medium hide-label-mobile">{t('menuOptions')}</span>
@@ -6196,7 +6248,7 @@ const TattingDesigner = () => {
                   className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
                   title={t('toolSwitchSchematic')}
                 >
-                  <IconRenderSchematic size={14} /> {t('realisticSwitchToSchematic')}
+                  <IconRenderSchematic size={14} /> {t('viewSwitchSchematic')}
                 </button>
               </div>
             </div>
@@ -6374,7 +6426,7 @@ const TattingDesigner = () => {
                       className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
                       title={t('toolExitBeadEdit')}
                     >
-                      ✕ {t('beadExitBtn')}
+                      ✕ {t('picotExitBtn')}
                     </button>
                   </div>
                 </div>
@@ -6664,7 +6716,7 @@ const TattingDesigner = () => {
                       }}
                       className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
                     >
-                      ✕ {t('tattingOrderExitBtn')}
+                      ✕ {t('picotExitBtn')}
                     </button>
                   </div>
                 </div>
@@ -7115,7 +7167,7 @@ const TattingDesigner = () => {
                 <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                   {/* Label removed - icon/placeholder is sufficient */}
                   <input
-                    key={selectedElement.id} 
+                    key={`${selectedElement.id}::${selectedElement.notation}`}
                     type="text"
                     defaultValue={draftNotation?.elementId === selectedElement.id ? draftNotation.value : selectedElement.notation}
                     onChange={(e) => {
@@ -7159,6 +7211,176 @@ if (parsed && parsed.stitchCount > 0) {
                     className={`notation-input px-2 py-1 bg-gray-700 rounded border text-sm ${draftNotation?.elementId === selectedElement.id && notationError ? 'border-red-500' : 'border-gray-600'}`}
                     placeholder="r: 20ds"
                   />
+                  {/* Picot Wizard — add / clear picots directly on the notation */}
+                  <div className="relative" style={{ overflow: 'visible' }}>
+                    <button
+                      onClick={() => {
+                        setPicotWizardScalePct(100);
+                        setShowPicotWizard(!showPicotWizard);
+                      }}
+                      className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
+                      title={t('picotWizardTitle')}
+                    >
+                      <IconMagicWand size={16} />
+                    </button>
+                    {showPicotWizard && (() => {
+                      const currentElement = elementById.get(selectedElement.id);
+                      const notation = currentElement?.notation || '';
+                      const picots = currentElement?.picots || [];
+                      const analysis = analyzeNotationForWizard(notation, picots);
+                      const canClear = analysis.supported && hasUnjoinedPicotsText(notation, picots);
+                      const canAdd = analysis.supported && hasAddablePicotRunsText(notation, picots);
+                      const maxGap = analysis.supported ? maxUsefulFillGap(notation, picots) : 1;
+                      const effectiveGap = Math.min(picotWizardFillGap, maxGap);
+                      const fillPreview = analysis.supported ? previewFillDensity(notation, picots, effectiveGap) : null;
+                      const canCompact = analysis.supported && hasCompactableGroups(notation, picots);
+                      return (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowPicotWizard(false)} />
+                          <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-3" style={{ width: '240px' }}>
+                            <div className="text-gray-100 font-semibold text-sm mb-2 flex items-center gap-2">
+                              <IconMagicWand size={14} /> {t('picotWizardTitle')}
+                            </div>
+                            {!analysis.supported ? (
+                              <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
+                            ) : (
+                              <>
+                                <button
+                                  disabled={!canClear}
+                                  onClick={() => {
+                                    const result = clearUnjoinedPicotsText(notation, picots);
+                                    if (result) { setDraftNotation(null); updateNotation(result, null, currentElement.id, { preservesExistingPicots: true }); }
+                                    setShowPicotWizard(false);
+                                  }}
+                                  className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700 mb-3"
+                                >{t('picotWizardClearUnjoined')}</button>
+
+                                <div className="border-t border-gray-600 pt-2 mb-3">
+                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardAddSection')}</div>
+                                  <div className="flex gap-1 mb-2">
+                                    <button
+                                      onClick={() => setPicotWizardSymmetric(false)}
+                                      className={`flex-1 py-1 rounded text-xs border ${!picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                                    >{t('picotWizardAsymmetric')}</button>
+                                    <button
+                                      onClick={() => setPicotWizardSymmetric(true)}
+                                      className={`flex-1 py-1 rounded text-xs border ${picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                                    >{t('picotWizardSymmetric')}</button>
+                                  </div>
+                                  <button
+                                    disabled={!canAdd}
+                                    onClick={() => {
+                                      const result = addPicotsToRunsText(notation, picots, picotWizardSymmetric);
+                                      if (result) { setDraftNotation(null); updateNotation(result, null, currentElement.id, { preservesExistingPicots: true }); }
+                                      setShowPicotWizard(false);
+                                    }}
+                                    className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                  >{t('picotWizardAddApply')}</button>
+                                </div>
+
+                                <div className="border-t border-gray-600 pt-2">
+                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardFillSection')}</div>
+                                  <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                                    <span>{t('picotWizardFillDense')}</span>
+                                    <span>{t('picotWizardFillSparse')}</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min={1}
+                                    max={Math.max(1, maxGap)}
+                                    value={effectiveGap}
+                                    onChange={(e) => setPicotWizardFillGap(parseInt(e.target.value, 10))}
+                                    className="w-full mb-1"
+                                    disabled={maxGap <= 1}
+                                  />
+                                  <div className="text-xs text-gray-400 mb-2">
+                                    {fillPreview && fillPreview.addedCount > 0
+                                      ? t('picotWizardFillPreview').replace('{n}', String(fillPreview.addedCount))
+                                      : t('picotWizardFillNoChange')}
+                                  </div>
+                                  <button
+                                    disabled={!fillPreview || fillPreview.addedCount === 0}
+                                    onClick={() => {
+                                      if (fillPreview && fillPreview.addedCount > 0) { setDraftNotation(null); updateNotation(fillPreview.notation, null, currentElement.id, { preservesExistingPicots: true }); }
+                                      setShowPicotWizard(false);
+                                    }}
+                                    className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                  >{t('picotWizardFillApply')}</button>
+                                </div>
+
+                                <div className="border-t border-gray-600 pt-2 mt-3">
+                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardCompactSection')}</div>
+                                  <button
+                                    disabled={!canCompact}
+                                    onClick={() => {
+                                      const result = compactRepeatedPicots(notation, picots);
+                                      if (result) { setDraftNotation(null); updateNotation(result.notation, null, currentElement.id, { preservesExistingPicots: true }); }
+                                      setShowPicotWizard(false);
+                                    }}
+                                    className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                  >{t('picotWizardCompactApply')}</button>
+                                </div>
+
+                                <div className="border-t border-gray-600 pt-2 mt-3">
+                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardScaleSection')}</div>
+                                  {(() => {
+                                    const totalDs = analysis.segments.reduce((sum, s) => sum + (s.kind === 'run' ? (s.ds || 0) : 0), 0);
+                                    const presets = suggestScalePresets(totalDs);
+                                    const factor = picotWizardScalePct / 100;
+                                    const scalePreview = factor > 0 ? scaleNotation(notation, picots, factor) : null;
+                                    return (
+                                      <>
+                                        <div className="flex flex-wrap gap-1 mb-2">
+                                          {presets.map(preset => (
+                                            <button
+                                              key={preset.label}
+                                              onClick={() => setPicotWizardScalePct(Math.round(preset.factor * 100))}
+                                              className={`px-2 py-1 rounded text-xs border ${Math.round(preset.factor * 100) === picotWizardScalePct ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                                            >{preset.label}</button>
+                                          ))}
+                                        </div>
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            max={1000}
+                                            value={picotWizardScalePct}
+                                            onChange={(e) => setPicotWizardScalePct(Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 100)))}
+                                            className="w-20 px-2 py-1 bg-gray-700 rounded border border-gray-600 text-xs text-gray-200"
+                                          />
+                                          <span className="text-xs text-gray-400">% {t('picotWizardScaleCustomLabel')}</span>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mb-1">
+                                          {scalePreview
+                                            ? t('picotWizardScalePreview').replace('{n}', String(scalePreview.actualTotalDs))
+                                            : ''}
+                                        </div>
+                                        {scalePreview && scalePreview.anyClamped && (
+                                          <div className="text-xs text-amber-400 mb-2">{t('picotWizardScaleClamped')}</div>
+                                        )}
+                                        <button
+                                          disabled={!scalePreview || picotWizardScalePct === 100}
+                                          onClick={() => {
+                                            if (scalePreview && picotWizardScalePct !== 100) {
+                                              setDraftNotation(null);
+                                              updateNotation(scalePreview.notation, null, currentElement.id, { preservesExistingPicots: true, picotMatchMode: 'order' });
+                                            }
+                                            setPicotWizardScalePct(100);
+                                            setShowPicotWizard(false);
+                                          }}
+                                          className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                        >{t('picotWizardScaleApply')}</button>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
               
@@ -8058,7 +8280,7 @@ if (parsed && parsed.stitchCount > 0) {
 
                     {/* Rotate + Flip */}
                     <div className="flex items-center gap-0.5 md:gap-1 top-toolbar-scalable">
-                      <button onClick={() => applyMultiSelectRotationDelta(-90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiRotateMinus')}><IconRotateCCW size={16} /></button>
+                      <button onClick={() => applyMultiSelectRotationDelta(-90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('propRotateMinus90')}><IconRotateCCW size={16} /></button>
                       <input
                         type="text"
                         value={groupRotationInput}
@@ -8095,7 +8317,7 @@ if (parsed && parsed.stitchCount > 0) {
                         style={{ width: '3.4rem' }}
                         placeholder="Δ°"
                       />
-                      <button onClick={() => applyMultiSelectRotationDelta(90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiRotatePlus')}><IconRotateCW size={16} /></button>
+                      <button onClick={() => applyMultiSelectRotationDelta(90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('propRotatePlus90')}><IconRotateCW size={16} /></button>
                       <button onClick={doFlipH} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipH')}><IconFlipH size={16} /></button>
                       <button onClick={doFlipV} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipV')}><IconFlipV size={16} /></button>
 
@@ -8711,7 +8933,7 @@ if (parsed && parsed.stitchCount > 0) {
                   onClick={() => setShowRemoveConfirm(false)}
                   className="flex-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded"
                 >
-                  {t('removeImageCancel')}
+                  {t('confirmCancel')}
                 </button>
                 <button
                   onClick={() => {
@@ -8720,7 +8942,7 @@ if (parsed && parsed.stitchCount > 0) {
                   }}
                   className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 rounded"
                 >
-                  {t('removeImageConfirm')}
+                  {t('refImageRemove')}
                 </button>
               </div>
             </div>
@@ -11151,7 +11373,7 @@ if (parsed && parsed.stitchCount > 0) {
                 onClick={() => resolveTattingOrderConflict('cancel')}
                 className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
               >
-                {t('tattingOrderConflictCancel')}
+                {t('confirmCancel')}
               </button>
             </div>
           </div>
@@ -11305,7 +11527,7 @@ if (parsed && parsed.stitchCount > 0) {
                   <div className="flex gap-3 justify-end">
                     <button onClick={() => setShowRecentLoadConfirm(false)}
                       className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm">
-                      {t('recentProjectsLoadConfirmCancel')}
+                      {t('confirmCancel')}
                     </button>
                     <button onClick={() => {
                       setShowRecentLoadConfirm(false);
@@ -11906,7 +12128,7 @@ if (parsed && parsed.stitchCount > 0) {
                         />
                       </div>
                       <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">{array.type === 'polar' ? t('ghostArrayAngle') : t('ghostArrayDir')}:</label>
+                        <label className="text-xs text-gray-400">{array.type === 'polar' ? t('ghostArrayAngle') : t('linearArrayDirection')}:</label>
                         <input
                           type="number"
                           step={0.5}
@@ -12039,7 +12261,7 @@ if (parsed && parsed.stitchCount > 0) {
               onClick={() => setConvertConfirm('all')}
               className="w-full px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm font-medium"
             >
-              {t('ghostArrayConvertAll')}
+              {t('ghostArrayConvertAllTitle')}
             </button>
           </div>
           <div className="px-5 pb-4 flex-shrink-0">
@@ -12070,7 +12292,7 @@ if (parsed && parsed.stitchCount > 0) {
                   onClick={() => setConvertConfirm(null)}
                   className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
                 >
-                  {t('ghostArrayCancel')}
+                  {t('confirmCancel')}
                 </button>
                 <button
                   onClick={convertAllGhostArrays}
@@ -12093,7 +12315,7 @@ if (parsed && parsed.stitchCount > 0) {
                   onClick={() => setConvertConfirm(null)}
                   className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
                 >
-                  {t('ghostArrayCancel')}
+                  {t('confirmCancel')}
                 </button>
                 <button
                   onClick={() => convertGhostArray(convertConfirm)}
@@ -12331,7 +12553,7 @@ if (parsed && parsed.stitchCount > 0) {
                       : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
                   }`}
                 >
-                  {s === 'normal' ? t('uiScaleNormal') : t('uiScaleLarge')}
+                  {s === 'normal' ? t('uiScaleNormal') : t('optionsSizeLarge')}
                 </button>
               ))}
             </div>
@@ -12463,7 +12685,16 @@ if (parsed && parsed.stitchCount > 0) {
                   <button
                     onClick={() => {
                       setMaterials(prev => prev.filter((_, i) => i !== idx));
-                      setElements(prev => prev.map(el => el.materialId === mat.id ? { ...el, materialId: 'default' } : el));
+                      setElements(prev => prev.map(el => {
+                        const clearA = el.materialId === mat.id;
+                        const clearB = el.isSplitRing && el.materialIdB === mat.id;
+                        if (!clearA && !clearB) return el;
+                        return {
+                          ...el,
+                          ...(clearA ? { materialId: 'default' } : {}),
+                          ...(clearB ? { materialIdB: 'default' } : {}),
+                        };
+                      }));
                     }}
                     className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded flex-shrink-0"
                   >
@@ -12482,9 +12713,12 @@ if (parsed && parsed.stitchCount > 0) {
                   const id = `mat_${Date.now()}`;
                   setMaterials(prev => [...prev, { id, name: `${t('materialNewName')} ${prev.length}`, color: '#AAAAAA', isGradient: false }]);
                   if (selectedIds.length > 0) {
-                    setElements(prev => prev.map(el =>
-                      selectedIdSet.has(el.id) ? { ...el, materialId: id } : el
-                    ));
+                    setElements(prev => prev.map(el => {
+                      if (!selectedIdSet.has(el.id)) return el;
+                      // Split rings: set both A and B
+                      if (el.isSplitRing) return { ...el, materialId: id, materialIdB: id };
+                      return { ...el, materialId: id };
+                    }));
                   }
                 }}
                 className="w-full py-2 rounded-lg border-2 border-dashed border-gray-500 text-gray-400 hover:border-white hover:text-white text-sm"
@@ -12546,7 +12780,7 @@ if (parsed && parsed.stitchCount > 0) {
                     className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('beadAdd')}</button>
                   {activeBead && beadLibrary.length > 1 && (
                     <button onClick={() => setConfirmDialog({ message: `Delete "${activeBead.name}"?`, onConfirm: () => deleteBead(activeBead.id) })}
-                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('beadDelete')}</button>
+                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
                   )}
                 </div>
               </div>
@@ -12594,7 +12828,7 @@ if (parsed && parsed.stitchCount > 0) {
                         </div>
                       </div>
                       <div className="flex items-center gap-3 mb-4">
-                        <span className="text-gray-300 text-sm w-16">{t('beadColorLabel')}</span>
+                        <span className="text-gray-300 text-sm w-16">{t('infoColorPrefix')}</span>
                         <div className="flex items-center gap-2">
                           <div
                             className="w-8 h-8 rounded-full border-2 border-gray-500 cursor-pointer hover:border-white flex-shrink-0"
@@ -12749,12 +12983,16 @@ if (parsed && parsed.stitchCount > 0) {
                     </button>
                   ))}
                 </div>
+                <div className="p-2 border-t border-gray-600">
+                  <button onClick={() => setShowPolarGridPanel(false)}
+                    className="w-full py-1.5 rounded text-xs bg-blue-700 hover:bg-blue-600 text-white font-medium">{t('aboutClose')}</button>
+                </div>
                 <div className="p-2 border-t border-gray-600 flex gap-1">
                   <button onClick={addGrid}
                     className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('polarGridAdd')}</button>
                   {activeGrid && (
                     <button onClick={() => setConfirmDialog({ message: `Delete "${activeGrid.name}"?`, onConfirm: () => deleteGrid(activeGrid.id) })}
-                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('polarGridDelete')}</button>
+                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
                   )}
                 </div>
               </div>
@@ -12776,7 +13014,7 @@ if (parsed && parsed.stitchCount > 0) {
                           setPickerCallback(() => (color) => updateGrid(activeGrid.id, { color }));
                           setShowColorPicker(true);
                         }}
-                        title={t('polarGridColorLabel')}
+                        title={t('infoColorPrefix')}
                       />
                       {/* Opacity slider */}
                       <input
@@ -12992,10 +13230,10 @@ if (parsed && parsed.stitchCount > 0) {
                 </div>
                 <div className="p-2 border-t border-gray-600 flex gap-1">
                   <button onClick={addPreset}
-                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('threadPresetAdd')}</button>
+                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('beadAdd')}</button>
                   {threadPresets.length > 1 && (
                     <button onClick={() => setConfirmDialog({ message: `Delete "${activePreset.name}"?`, onConfirm: () => deletePreset(activePresetId) })}
-                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('threadPresetDelete')}</button>
+                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
                   )}
                 </div>
               </div>
@@ -13029,9 +13267,9 @@ if (parsed && parsed.stitchCount > 0) {
                   {/* Picot lengths */}
                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadPicotLengthsHeader')}</div>
                   <div className="grid grid-cols-2 gap-x-4">
-                    <ThreadPropertiesNumInput label={t('threadRegularPicotLabel')} value={activePreset.picotRegular}
+                    <ThreadPropertiesNumInput label={t('threadRegularPicot')} value={activePreset.picotRegular}
                       onChange={v => updatePreset(activePreset.id, { picotRegular: v })} />
-                    <ThreadPropertiesNumInput label={t('threadJoinedPicotLabel')} value={activePreset.picotJoined}
+                    <ThreadPropertiesNumInput label={t('threadJoinedPicot')} value={activePreset.picotJoined}
                       onChange={v => updatePreset(activePreset.id, { picotJoined: v })} />
                     <ThreadPropertiesNumInput label={t('threadLongPicotLabel')} value={activePreset.picotRegular * 2} readOnly hint={t('threadLongPicotHint')} />
                     <ThreadPropertiesNumInput label={t('threadShortPicotLabel')} value={activePreset.picotShort ?? activePreset.picotRegular * 0.5} readOnly hint={activePreset.picotShort ? t('threadShortPicotHintSample') : t('threadShortPicotHintAuto')} />
@@ -13311,7 +13549,7 @@ if (parsed && parsed.stitchCount > 0) {
               onMouseLeave={() => setPolarArrayPeek(false)}
               onTouchStart={() => setPolarArrayPeek(true)}
               onTouchEnd={() => setPolarArrayPeek(false)}
-            >👁 {t('polarArrayPeekHint')}</button>
+            >👁 {t('polarGridPeekHint')}</button>
     </ArrayDialogShell>
 
     {/* ── Linear Array Dialog ───────────────────────────────────── */}
@@ -13320,7 +13558,7 @@ if (parsed && parsed.stitchCount > 0) {
 
             {/* Count */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">{t('linearArrayCount')}</label>
+              <label className="text-xs text-gray-400">{t('polarArrayCount')}</label>
               <div className="flex items-center gap-2">
                 <ArrayInput value={linearArrayCount} onChange={setLinearArrayCount} min={2} max={100} integer className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 {[3,4,6,8].map(n => <button key={n} onClick={() => setLinearArrayCount(n)} className={`px-2 py-1 rounded text-xs ${linearArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}</button>)}
@@ -13385,7 +13623,7 @@ if (parsed && parsed.stitchCount > 0) {
                   setLinearArrayCreateGhosts(false);
                 }}
                 className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
-              >{t('linearArrayApply')}</button>
+              >{t('polarArrayApply')}</button>
               <button onClick={() => setShowLinearArrayDialog(false)} className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm">{t('confirmCancel')}</button>
             </div>
 
@@ -13397,7 +13635,7 @@ if (parsed && parsed.stitchCount > 0) {
               onMouseLeave={() => setLinearArrayPeek(false)}
               onTouchStart={() => setLinearArrayPeek(true)}
               onTouchEnd={() => setLinearArrayPeek(false)}
-            >👁 {t('linearArrayPeekHint')}</button>
+            >👁 {t('polarGridPeekHint')}</button>
     </ArrayDialogShell>
 
     {/* ── Spiral Array Dialog ───────────────────────────────────── */}
@@ -13406,7 +13644,7 @@ if (parsed && parsed.stitchCount > 0) {
 
             {/* Count */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">{t('spiralArrayCount')}</label>
+              <label className="text-xs text-gray-400">{t('polarArrayCount')}</label>
               <div className="flex items-center gap-2">
                 <ArrayInput value={spiralArrayCount} onChange={setSpiralArrayCount} min={2} max={100} integer className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 {[4,6,8,12].map(n => <button key={n} onClick={() => setSpiralArrayCount(n)} className={`px-2 py-1 rounded text-xs ${spiralArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}</button>)}
@@ -13451,7 +13689,7 @@ if (parsed && parsed.stitchCount > 0) {
             </label>
 
             <div className="flex gap-2">
-              <button onClick={() => { executeSpiralArray(spiralArrayCount, spiralArrayType, spiralArrayGap, spiralArrayGrowth, spiralArrayRotate, spiralArrayAngleStep); setShowSpiralArrayDialog(false); }} className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold">{t('spiralArrayApply')}</button>
+              <button onClick={() => { executeSpiralArray(spiralArrayCount, spiralArrayType, spiralArrayGap, spiralArrayGrowth, spiralArrayRotate, spiralArrayAngleStep); setShowSpiralArrayDialog(false); }} className="flex-1 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold">{t('polarArrayApply')}</button>
               <button onClick={() => setShowSpiralArrayDialog(false)} className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm">{t('confirmCancel')}</button>
             </div>
 
@@ -13463,7 +13701,7 @@ if (parsed && parsed.stitchCount > 0) {
               onMouseLeave={() => setSpiralArrayPeek(false)}
               onTouchStart={() => setSpiralArrayPeek(true)}
               onTouchEnd={() => setSpiralArrayPeek(false)}
-            >👁 {t('spiralArrayPeekHint')}</button>
+            >👁 {t('polarGridPeekHint')}</button>
     </ArrayDialogShell>
 
     {/* ── In-app Confirm Dialog ─────────────────────────────────── */}

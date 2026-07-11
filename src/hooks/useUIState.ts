@@ -60,6 +60,13 @@ export function useUIState() {
   // ── Polar grid ─────────────────────────────────────────────────────────
   const [polarGridPeek, setPolarGridPeek] = useState(false);
 
+  // ── Picot Wizard ───────────────────────────────────────────────────────
+  const [showPicotWizard, setShowPicotWizard] = useState(false);
+  const [picotWizardSymmetric, setPicotWizardSymmetric] = useState(true);
+  const [picotWizardFillGap, setPicotWizardFillGap] = useState(3);
+  const [picotWizardScalePct, setPicotWizardScalePct] = useState(100);
+
+
   // ── Ghost arrays ───────────────────────────────────────────────────────
   const [ghostArrays, setGhostArrays] = useState<any[]>([]);
   const [showArrayManager, setShowArrayManager] = useState(false);
@@ -148,6 +155,11 @@ export function useUIState() {
     spiralArrayAngleStep, setSpiralArrayAngleStep,
     // Polar grid
     polarGridPeek, setPolarGridPeek,
+    // Picot Wizard
+    showPicotWizard, setShowPicotWizard,
+    picotWizardSymmetric, setPicotWizardSymmetric,
+    picotWizardFillGap, setPicotWizardFillGap,
+    picotWizardScalePct, setPicotWizardScalePct,
     // Ghost arrays
     ghostArrays, setGhostArrays,
     showArrayManager, setShowArrayManager,
