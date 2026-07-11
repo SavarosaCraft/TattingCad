@@ -66,6 +66,7 @@ import {
   IconNotationOn, IconNotationOff, IconRuler,
   IconBringToFront, IconSendToBack, IconMagicWand,
 } from './components/icons';
+import { ScaleControls, WIZARD_BUTTON_CLASS } from './components/ScaleControls';
 import {
   parseNotation as parseNotationPure,
   reverseNotation,
@@ -89,8 +90,11 @@ import {
   maxUsefulFillGap,
   compactRepeatedPicots,
   hasCompactableGroups,
+  autoCompact,
   scaleNotation,
   suggestScalePresets,
+  suggestScalePresetsMulti,
+  totalRunDs,
 } from './domain/picotTools';
 const logoUrl = '/logo.png';
 
@@ -445,6 +449,8 @@ const TattingDesigner = () => {
     picotWizardSymmetric, setPicotWizardSymmetric,
     picotWizardFillGap, setPicotWizardFillGap,
     picotWizardScalePct, setPicotWizardScalePct,
+    showMultiScaleWizard, setShowMultiScaleWizard,
+    multiScalePct, setMultiScalePct,
     colorPickerTab, setColorPickerTab,
     pickerTabsAllowed, setPickerTabsAllowed,
     pickerColor, setPickerColor,
@@ -3565,7 +3571,167 @@ const TattingDesigner = () => {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [saveProject]);
 
-  const updateNotation = (notation, notationB = null, elementId = null, opts: { preservesExistingPicots?: boolean; picotMatchMode?: 'stitchesBefore' | 'order' } = {}) => {
+  // Options shared by updateNotation and updateNotationForMultiple.
+  // preservesExistingPicots and picotMatchMode are both optional here even
+  // though updateNotationForMultiple only actually supports
+  // preservesExistingPicots: true — that's enforced with a runtime check
+  // there (see its own comment), not by the type, since a plain boolean
+  // wouldn't be any safer as a required field.
+  interface NotationUpdateOpts {
+    preservesExistingPicots?: boolean;
+    picotMatchMode?: 'stitchesBefore' | 'order';
+  }
+
+  // Computes the updated element object for a notation edit — handles both
+  // split-ring (dual A/B) and plain (ring/chain) notation, path rescaling
+  // (radial for closed rings, bezier re-bend for open chains), and picot
+  // merging (by stitchesBefore position or by sequence order, per
+  // picotMatchMode). Returns null if the notation doesn't parse. Doesn't
+  // touch React state at all — pure per-element transform, safe to call once
+  // per target from either the single-element path (updateNotation) or the
+  // batch path (updateNotationForMultiple) below.
+  const computeElementAfterNotationEdit = (
+    el: any,
+    notation: string,
+    notationB: string | null,
+    picotMatchMode: 'stitchesBefore' | 'order',
+    survivingConnKeys: Set<string>
+  ): any | null => {
+    if (el.isSplitRing) {
+      const notationAText = notation.replace(/^sr:\s*/, '');
+      const notationBText = notationB || el.notationB || '5ds';
+
+      const parsedA = parseNotation(`sr: ${notationAText}`);
+      const parsedB = parseNotation(`sr: ${notationBText}`);
+      if (!parsedA || !parsedB) return null;
+
+      const stitchCountA = parsedA.stitchCount;
+      const stitchCountB = parsedB.stitchCount;
+      const totalStitches = stitchCountA + stitchCountB;
+
+      const oldTotal = el.stitchCount;
+      const cx = el.center.x, cy = el.center.y;
+      let finalPaths = el.paths;
+      if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
+        const scaleFactor = totalStitches / oldTotal;
+        finalPaths = el.paths.map(path => {
+          const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+          const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+          const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+          return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
+            control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+        });
+      }
+
+      const reversedAPicots = parsedA.picots.map(p => ({
+        ...p,
+        stitchesBefore: stitchCountA - p.stitchesBefore,
+      })).reverse();
+
+      const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
+        ...p, stitchesBefore: p.stitchesBefore + stitchCountA
+      }))].map(p => {
+        const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
+        return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
+      });
+
+      return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
+        stitchCount: totalStitches,
+        picots: restoreBEConfigs(allPicots, extractBEConfigs(el.picots)),
+        paths: finalPaths, splitPosition: stitchCountA };
+    }
+
+    const parsed = parseNotation(notation);
+    if (!parsed) return null;
+
+    let newPathData = {};
+    if (el.isClosed) {
+      const oldLength = el.stitchCount * dsWidth;
+      const newLength = parsed.stitchCount * dsWidth;
+      if (Math.abs(oldLength - newLength) > 0.01) {
+        const cx = el.center.x, cy = el.center.y;
+        const scaleFactor = newLength / oldLength;
+        const scaledPaths = el.paths.map(path => {
+          const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+          if (path.type === 'cubic') {
+            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+            const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+          }
+          const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+          return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
+        });
+        newPathData = { paths: scaledPaths };
+      }
+    } else {
+      if (el.paths && el.paths.length > 0) {
+        const newLength = parsed.stitchCount * dsWidth;
+        const tolerance = newLength * 0.005;
+        const adjustedPaths = el.paths.map(path => {
+          if (path.type !== 'cubic') {
+            const startX = path.x, startY = path.y;
+            const scaleFactor = newLength / (el.stitchCount * dsWidth);
+            return { ...path,
+              endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
+              controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
+          }
+          const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
+          const midX=(sx+ex)/2,midY=(sy+ey)/2;
+          const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
+          const perpLen=Math.hypot(perpX,perpY);
+          const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
+          const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
+          const straightLen=Math.hypot(ex-sx,ey-sy);
+          let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
+          for (let iter=0;iter<20;iter++) {
+            const tryDepth=(minDepth+maxDepth)/2;
+            const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
+            const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
+            const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
+            const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
+            const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
+            const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
+            bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
+            if(Math.abs(tryLen-newLength)<tolerance)break;
+            if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
+          }
+          return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
+        });
+        newPathData = { paths: adjustedPaths };
+      }
+    }
+
+    let mergedPicots;
+    if (picotMatchMode === 'order') {
+      const oldList = el.picots || [];
+      mergedPicots = parsed.picots.map((p, idx) => {
+        const old = oldList[idx];
+        if (!old) return p;
+        const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
+        return { ...p, id: old.id, isJoint: isStillJoint };
+      });
+    } else {
+      const oldPicotBySb2: Record<number, any> = {};
+      (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
+      mergedPicots = parsed.picots.map(p => {
+        const old = oldPicotBySb2[p.stitchesBefore];
+        if (old) {
+          const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
+          return { ...p, id: old.id, isJoint: isStillJoint };
+        }
+        return p;
+      });
+    }
+
+    return {
+      ...el, notation, stitchCount: parsed.stitchCount,
+      picots: restoreBEConfigs(mergedPicots, extractBEConfigs(el.picots)),
+      isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
+      ...(Object.keys(newPathData).length > 0 ? newPathData : {})
+    };
+  };
+
+  const updateNotation = (notation, notationB = null, elementId = null, opts: NotationUpdateOpts = {}) => {
     const { preservesExistingPicots = false, picotMatchMode = 'stitchesBefore' } = opts;
     const targetId = elementId || (selectedIds.length === 1 ? selectedIds[0] : null);
     if (!targetId) return;
@@ -3634,161 +3800,8 @@ const TattingDesigner = () => {
       // committing once with setElements(value) avoids that entirely.
       const updated = elementsRef.current.map(el => {
         if (el.id !== targetId) return el;
-
-        // Handle split ring notation update
-        if (el.isSplitRing) {
-          const notationAText = notation.replace(/^sr:\s*/, '');
-          const notationBText = notationB || el.notationB || '5ds';
-
-          const parsedA = parseNotation(`sr: ${notationAText}`);
-          const parsedB = parseNotation(`sr: ${notationBText}`);
-
-          if (!parsedA || !parsedB) return el;
-
-          const stitchCountA = parsedA.stitchCount;
-          const stitchCountB = parsedB.stitchCount;
-          const totalStitches = stitchCountA + stitchCountB;
-
-          // Scale existing paths proportionally — preserves rotation/flip/shape
-          // same approach as closed rings and chains
-          const oldTotal = el.stitchCount;
-          const cx = el.center.x, cy = el.center.y;
-          let finalPaths = el.paths;
-          if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
-            const scaleFactor = totalStitches / oldTotal;
-            finalPaths = el.paths.map(path => {
-              const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-              const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
-              const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
-                control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-            });
-          }
-
-          // Path A runs from paths[0].x/y (start) to paths[0].endX/Y.
-          // parsedA picots have stitchesBefore counting from 0 → stitchCountA.
-          // We reverse the A-side positions so stitch 0 of the notation is at the path start.
-          const reversedAPicots = parsedA.picots.map(p => ({
-            ...p,
-            stitchesBefore: stitchCountA - p.stitchesBefore,
-          })).reverse();
-
-          const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
-            ...p, stitchesBefore: p.stitchesBefore + stitchCountA
-          }))].map(p => {
-            const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
-            return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
-          });
-
-          return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
-            stitchCount: totalStitches,
-            picots: restoreBEConfigs(allPicots, extractBEConfigs(el.picots)),
-            paths: finalPaths, splitPosition: stitchCountA };
-        }
-
-        // Closed ring: scale existing paths to new stitch count, preserving rotation/flip/shape
-        // Regenerating from the canonical template (createTeardropPath) would reset any
-        // physical rotation applied via ±90° buttons or manual path edits — so we scale instead.
-        let newPathData = {};
-        if (el.isClosed) {
-          const oldLength = el.stitchCount * dsWidth;
-          const newLength = parsed.stitchCount * dsWidth;
-          if (Math.abs(oldLength - newLength) > 0.01) {
-            const cx = el.center.x, cy = el.center.y;
-            const scaleFactor = newLength / oldLength;
-            const scaledPaths = el.paths.map(path => {
-              const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-              if (path.type === 'cubic') {
-                const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
-                const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-                return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-              }
-              const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
-              return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
-            });
-            newPathData = { paths: scaledPaths };
-          }
-        } else {
-          // Open chain: bend curve to new length keeping endpoints fixed
-          if (el.paths && el.paths.length > 0) {
-            const newLength = parsed.stitchCount * dsWidth;
-            const tolerance = newLength * 0.005;
-            const adjustedPaths = el.paths.map(path => {
-              if (path.type !== 'cubic') {
-                const startX = path.x, startY = path.y;
-                const scaleFactor = newLength / (el.stitchCount * dsWidth);
-                return { ...path,
-                  endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
-                  controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
-              }
-              const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
-              const midX=(sx+ex)/2,midY=(sy+ey)/2;
-              const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
-              const perpLen=Math.hypot(perpX,perpY);
-              const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
-              const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
-              const straightLen=Math.hypot(ex-sx,ey-sy);
-              let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
-              for (let iter=0;iter<20;iter++) {
-                const tryDepth=(minDepth+maxDepth)/2;
-                const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
-                const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
-                const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
-                const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
-                const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
-                const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
-                bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
-                if(Math.abs(tryLen-newLength)<tolerance)break;
-                if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
-              }
-              return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
-            });
-            newPathData = { paths: adjustedPaths };
-          }
-        }
-
-        // Merge picots: reuse old IDs so picotConnections (already remapped
-        // above) still points to valid IDs.
-        //
-        // 'stitchesBefore' (default): match old<->new picot by exact ds
-        // position. Correct for edits that never move an existing picot —
-        // Clear/Add/Fill/Compact all guarantee this (see their own comments).
-        //
-        // 'order': match old<->new picot by sequential index instead.
-        // Needed when ds counts around picots actually change (scaling) —
-        // positions shift, so a position-keyed match would find nothing and
-        // silently treat every picot as brand new, losing every join. Only
-        // valid when the caller can guarantee the same picots survive in the
-        // same order with nothing added or removed — true for Scale, since
-        // it only resizes the runs between picots, never adds/removes one.
-        let mergedPicots;
-        if (picotMatchMode === 'order') {
-          const oldList = el.picots || [];
-          mergedPicots = parsed.picots.map((p, idx) => {
-            const old = oldList[idx];
-            if (!old) return p;
-            const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
-            return { ...p, id: old.id, isJoint: isStillJoint };
-          });
-        } else {
-          const oldPicotBySb2: Record<number, any> = {};
-          (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
-          mergedPicots = parsed.picots.map(p => {
-            const old = oldPicotBySb2[p.stitchesBefore];
-            if (old) {
-              const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
-              return { ...p, id: old.id, isJoint: isStillJoint };
-            }
-            return p;
-          });
-        }
-
-        return {
-          ...el, notation, stitchCount: parsed.stitchCount,
-          picots: restoreBEConfigs(mergedPicots, extractBEConfigs(el.picots)),
-          isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
-          ...(Object.keys(newPathData).length > 0 ? newPathData : {})
-        };
+        const next = computeElementAfterNotationEdit(el, notation, notationB, picotMatchMode, survivingConnKeys);
+        return next || el;
       });
 
       // Compose ghost regeneration with the notation edit when the edited
@@ -3830,6 +3843,46 @@ const TattingDesigner = () => {
     } else {
       applyNotationChange();
     }
+  };
+
+  // Batch version of updateNotation for operations that touch several
+  // elements at once (multi-element Scale). Calling updateNotation in a
+  // plain loop doesn't work here: elementsRef only syncs from `elements`
+  // state via a useEffect, which runs after React commits — not
+  // synchronously — so a second updateNotation call in the same tick would
+  // still see the pre-first-edit snapshot and overwrite it. This reads
+  // elementsRef.current once, applies every target within that single pass,
+  // and commits with one setElements + one history entry — which also means
+  // the whole batch undoes in one step, rather than needing N undos.
+  //
+  // Intentionally narrow: only supports preservesExistingPicots callers (so
+  // there's never a per-target wipe/confirm decision to reconcile across the
+  // batch), and skips ghost-mother elements entirely (regenerateGhostArrays
+  // is single-target; composing it across a batch is real added complexity
+  // this doesn't need yet, so a ghost mother in the selection is just left
+  // untouched rather than guessing).
+  const updateNotationForMultiple = (
+    targets: Array<{ elementId: string; notation: string }>,
+    opts: NotationUpdateOpts
+  ) => {
+    if (!opts.preservesExistingPicots) return; // see comment above
+    if (targets.length === 0) return;
+    const picotMatchMode = opts.picotMatchMode || 'stitchesBefore';
+
+    const survivingConnKeys = new Set(
+      picotConnectionsRef.current.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
+    );
+
+    const targetMap = new Map(targets.map(t => [t.elementId, t.notation]));
+    const updated = elementsRef.current.map(el => {
+      const notation = targetMap.get(el.id);
+      if (notation === undefined || el.isGhostMother) return el;
+      const next = computeElementAfterNotationEdit(el, notation, null, picotMatchMode, survivingConnKeys);
+      return next || el;
+    });
+
+    setElements(updated);
+    pushHistoryState(updated, picotConnectionsRef.current, orderGroupsRef.current);
   };
 
   // Update ghosts when mother element changes (notation, rotation, shape, etc.)
@@ -7249,10 +7302,14 @@ if (parsed && parsed.stitchCount > 0) {
                                   disabled={!canClear}
                                   onClick={() => {
                                     const result = clearUnjoinedPicotsText(notation, picots);
-                                    if (result) { setDraftNotation(null); updateNotation(result, null, currentElement.id, { preservesExistingPicots: true }); }
+                                    if (result) {
+                                      const finalNotation = autoCompact(result.notation, result.resultZeroWidth);
+                                      setDraftNotation(null);
+                                      updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true });
+                                    }
                                     setShowPicotWizard(false);
                                   }}
-                                  className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700 mb-3"
+                                  className={`${WIZARD_BUTTON_CLASS} mb-3`}
                                 >{t('picotWizardClearUnjoined')}</button>
 
                                 <div className="border-t border-gray-600 pt-2 mb-3">
@@ -7271,10 +7328,14 @@ if (parsed && parsed.stitchCount > 0) {
                                     disabled={!canAdd}
                                     onClick={() => {
                                       const result = addPicotsToRunsText(notation, picots, picotWizardSymmetric);
-                                      if (result) { setDraftNotation(null); updateNotation(result, null, currentElement.id, { preservesExistingPicots: true }); }
+                                      if (result) {
+                                        const finalNotation = autoCompact(result.notation, result.resultZeroWidth);
+                                        setDraftNotation(null);
+                                        updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true });
+                                      }
                                       setShowPicotWizard(false);
                                     }}
-                                    className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                    className={WIZARD_BUTTON_CLASS}
                                   >{t('picotWizardAddApply')}</button>
                                 </div>
 
@@ -7301,10 +7362,14 @@ if (parsed && parsed.stitchCount > 0) {
                                   <button
                                     disabled={!fillPreview || fillPreview.addedCount === 0}
                                     onClick={() => {
-                                      if (fillPreview && fillPreview.addedCount > 0) { setDraftNotation(null); updateNotation(fillPreview.notation, null, currentElement.id, { preservesExistingPicots: true }); }
+                                      if (fillPreview && fillPreview.addedCount > 0) {
+                                        const finalNotation = autoCompact(fillPreview.notation, fillPreview.resultZeroWidth);
+                                        setDraftNotation(null);
+                                        updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true });
+                                      }
                                       setShowPicotWizard(false);
                                     }}
-                                    className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                    className={WIZARD_BUTTON_CLASS}
                                   >{t('picotWizardFillApply')}</button>
                                 </div>
 
@@ -7317,60 +7382,37 @@ if (parsed && parsed.stitchCount > 0) {
                                       if (result) { setDraftNotation(null); updateNotation(result.notation, null, currentElement.id, { preservesExistingPicots: true }); }
                                       setShowPicotWizard(false);
                                     }}
-                                    className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
+                                    className={WIZARD_BUTTON_CLASS}
                                   >{t('picotWizardCompactApply')}</button>
                                 </div>
 
                                 <div className="border-t border-gray-600 pt-2 mt-3">
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardScaleSection')}</div>
                                   {(() => {
-                                    const totalDs = analysis.segments.reduce((sum, s) => sum + (s.kind === 'run' ? (s.ds || 0) : 0), 0);
+                                    const totalDs = totalRunDs(analysis.segments);
                                     const presets = suggestScalePresets(totalDs);
                                     const factor = picotWizardScalePct / 100;
                                     const scalePreview = factor > 0 ? scaleNotation(notation, picots, factor) : null;
                                     return (
-                                      <>
-                                        <div className="flex flex-wrap gap-1 mb-2">
-                                          {presets.map(preset => (
-                                            <button
-                                              key={preset.label}
-                                              onClick={() => setPicotWizardScalePct(Math.round(preset.factor * 100))}
-                                              className={`px-2 py-1 rounded text-xs border ${Math.round(preset.factor * 100) === picotWizardScalePct ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-                                            >{preset.label}</button>
-                                          ))}
-                                        </div>
-                                        <div className="flex items-center gap-2 mb-2">
-                                          <input
-                                            type="number"
-                                            min={1}
-                                            max={1000}
-                                            value={picotWizardScalePct}
-                                            onChange={(e) => setPicotWizardScalePct(Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 100)))}
-                                            className="w-20 px-2 py-1 bg-gray-700 rounded border border-gray-600 text-xs text-gray-200"
-                                          />
-                                          <span className="text-xs text-gray-400">% {t('picotWizardScaleCustomLabel')}</span>
-                                        </div>
-                                        <div className="text-xs text-gray-400 mb-1">
-                                          {scalePreview
-                                            ? t('picotWizardScalePreview').replace('{n}', String(scalePreview.actualTotalDs))
-                                            : ''}
-                                        </div>
-                                        {scalePreview && scalePreview.anyClamped && (
-                                          <div className="text-xs text-amber-400 mb-2">{t('picotWizardScaleClamped')}</div>
-                                        )}
-                                        <button
-                                          disabled={!scalePreview || picotWizardScalePct === 100}
-                                          onClick={() => {
-                                            if (scalePreview && picotWizardScalePct !== 100) {
-                                              setDraftNotation(null);
-                                              updateNotation(scalePreview.notation, null, currentElement.id, { preservesExistingPicots: true, picotMatchMode: 'order' });
-                                            }
-                                            setPicotWizardScalePct(100);
-                                            setShowPicotWizard(false);
-                                          }}
-                                          className="w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700"
-                                        >{t('picotWizardScaleApply')}</button>
-                                      </>
+                                      <ScaleControls
+                                        presets={presets}
+                                        pct={picotWizardScalePct}
+                                        onPctChange={setPicotWizardScalePct}
+                                        previewText={scalePreview ? t('picotWizardScalePreview').replace('{n}', String(scalePreview.actualTotalDs)) : null}
+                                        clampedWarningText={scalePreview && scalePreview.anyClamped ? t('picotWizardScaleClamped') : null}
+                                        customLabelText={t('picotWizardScaleCustomLabel')}
+                                        applyLabel={t('picotWizardScaleApply')}
+                                        applyDisabled={!scalePreview || picotWizardScalePct === 100}
+                                        onApply={() => {
+                                          if (scalePreview && picotWizardScalePct !== 100) {
+                                            const finalNotation = autoCompact(scalePreview.notation, picots);
+                                            setDraftNotation(null);
+                                            updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true, picotMatchMode: 'order' });
+                                          }
+                                          setPicotWizardScalePct(100);
+                                          setShowPicotWizard(false);
+                                        }}
+                                      />
                                     );
                                   })()}
                                 </div>
@@ -8397,6 +8439,81 @@ if (parsed && parsed.stitchCount > 0) {
                         <option disabled>──────</option>
                         <option value="__edit__">{t('editMaterials')}</option>
                       </select>
+                    </div>
+                    <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
+                    <div className="relative top-toolbar-scalable" style={{ overflow: 'visible' }}>
+                      <button
+                        onClick={() => {
+                          setMultiScalePct(100);
+                          setShowMultiScaleWizard(!showMultiScaleWizard);
+                        }}
+                        className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
+                        title={t('picotWizardScaleSection')}
+                      >
+                        <IconMagicWand size={16} />
+                      </button>
+                      {showMultiScaleWizard && (() => {
+                        // "Dumb" batch scale: one shared factor applied to every selected
+                        // element that Picot Tools can analyze. No per-element tuning, no
+                        // Clear/Add/Fill/Compact here — just Scale, since that's what was
+                        // actually asked for. Split rings, rds/ss stitches, and anything
+                        // with a picot-count mismatch are silently skipped (counted, not
+                        // touched) rather than blocking the whole batch.
+                        const analyzed = nonLines.map(el => ({
+                          el,
+                          analysis: analyzeNotationForWizard(el.notation, el.picots),
+                        }));
+                        const supported = analyzed.filter(a => a.analysis.supported);
+                        const skippedCount = analyzed.length - supported.length;
+                        const totalDsList = supported.map(({ analysis }) => totalRunDs(analysis.segments));
+                        const presets = suggestScalePresetsMulti(totalDsList);
+                        const factor = multiScalePct / 100;
+                        const previews = factor > 0
+                          ? supported.map(({ el }) => scaleNotation(el.notation, el.picots, factor))
+                          : [];
+                        const anyClamped = previews.some(p => p && p.anyClamped);
+
+                        return (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowMultiScaleWizard(false)} />
+                            <div className="absolute top-full right-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-3" style={{ width: '240px' }}>
+                              <div className="text-gray-100 font-semibold text-sm mb-2 flex items-center gap-2">
+                                <IconMagicWand size={14} /> {t('picotWizardScaleSection')}
+                              </div>
+                              <div className="text-xs text-gray-400 mb-2">
+                                {t('multiScaleSupportedCount').replace('{n}', String(supported.length)).replace('{m}', String(analyzed.length))}
+                                {skippedCount > 0 ? ` (${t('multiScaleSkipped').replace('{n}', String(skippedCount))})` : ''}
+                              </div>
+                              {supported.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
+                              ) : (
+                                <ScaleControls
+                                  presets={presets}
+                                  pct={multiScalePct}
+                                  onPctChange={setMultiScalePct}
+                                  clampedWarningText={anyClamped ? t('picotWizardScaleClamped') : null}
+                                  customLabelText={t('picotWizardScaleCustomLabel')}
+                                  applyLabel={t('picotWizardScaleApply')}
+                                  applyDisabled={multiScalePct === 100}
+                                  onApply={() => {
+                                    if (multiScalePct !== 100) {
+                                      const targets = supported.map(({ el }, i) => {
+                                        const preview = previews[i];
+                                        if (!preview) return null;
+                                        const finalNotation = autoCompact(preview.notation, el.picots);
+                                        return { elementId: el.id, notation: finalNotation };
+                                      }).filter(Boolean) as Array<{ elementId: string; notation: string }>;
+                                      updateNotationForMultiple(targets, { preservesExistingPicots: true, picotMatchMode: 'order' });
+                                    }
+                                    setMultiScalePct(100);
+                                    setShowMultiScaleWizard(false);
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </>
                 );

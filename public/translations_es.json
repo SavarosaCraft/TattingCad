@@ -552,5 +552,7 @@
   "picotWizardScaleCustomLabel": "de la longitud original",
   "picotWizardScalePreview": "Nueva longitud: {n}ds",
   "picotWizardScaleClamped": "Algunos picots no se pueden comprimir más — se alcanzó el mínimo de 1ds.",
-  "picotWizardScaleApply": "Aplicar escala"
+  "picotWizardScaleApply": "Aplicar escala",
+  "multiScaleSupportedCount": "{n} de {m} seleccionados se pueden escalar",
+  "multiScaleSkipped": "{n} omitido(s)"
 }

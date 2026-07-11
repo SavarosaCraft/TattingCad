@@ -552,5 +552,7 @@
   "picotWizardScaleCustomLabel": "of original length",
   "picotWizardScalePreview": "New length: {n}ds",
   "picotWizardScaleClamped": "Some picots can't compress further — the 1ds minimum was reached.",
-  "picotWizardScaleApply": "Apply scale"
+  "picotWizardScaleApply": "Apply scale",
+  "multiScaleSupportedCount": "{n} of {m} selected can be scaled",
+  "multiScaleSkipped": "{n} skipped"
 }

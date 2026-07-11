@@ -97,16 +97,41 @@ function segmentsToNotation(type: string, segments: WizardSegment[]): string {
   return `${type}: ${parts.join('-')}`;
 }
 
+// Appends a { isJoint } entry to `out` for zero-width segments (picot or
+// barrier), no-ops for runs. Shared by every transform that builds a
+// resultZeroWidth list (addPicotsToRuns, previewFillDensity) so the "what
+// counts as zero-width" rule lives in exactly one place.
+function pushZeroWidth(out: Array<{ isJoint: boolean }>, seg: WizardSegment): void {
+  if (seg.kind === 'picot' || seg.kind === 'barrier') out.push({ isJoint: !!seg.joined });
+}
+
+// Total ds across every 'run' segment — the element's stitch length as this
+// module sees it. Exported so callers (the Scale UI, single- and
+// multi-element) don't each re-derive it with their own reduce().
+export function totalRunDs(segments: WizardSegment[]): number {
+  return segments.reduce((sum, s) => sum + (s.kind === 'run' ? (s.ds || 0) : 0), 0);
+}
+
 // ── Clear unjoined picots ───────────────────────────────────────────────────
 // Removes every plain picot token whose runtime picot is not joined. Joined
 // picots and bead barriers are left exactly where they are, so their
 // stitchesBefore position is unchanged — updateNotation's old-picot merge
 // will match them back up by position.
-export function clearUnjoinedPicots(notation: string, picots: any[] | undefined): string | null {
+export interface ClearResult {
+  notation: string;
+  // One entry per zero-width token (picot or barrier) in the RESULT
+  // notation, in order — isJoint carried over for survivors. Feed this
+  // straight back into analyzeNotation/compactRepeatedPicots as the "picots"
+  // argument to auto-compact the result; it's not meant to be committed to
+  // app state (updateNotation re-derives the real picots itself).
+  resultZeroWidth: Array<{ isJoint: boolean }>;
+}
+export function clearUnjoinedPicots(notation: string, picots: any[] | undefined): ClearResult | null {
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return null;
 
   const kept: WizardSegment[] = [];
+  const resultZeroWidth: Array<{ isJoint: boolean }> = [];
   for (const seg of a.segments) {
     if (seg.kind === 'picot' && !seg.joined) continue;
     const last = kept[kept.length - 1];
@@ -115,8 +140,9 @@ export function clearUnjoinedPicots(notation: string, picots: any[] | undefined)
       continue;
     }
     kept.push({ ...seg });
+    if (seg.kind === 'picot' || seg.kind === 'barrier') resultZeroWidth.push({ isJoint: !!seg.joined });
   }
-  return segmentsToNotation(a.type, kept);
+  return { notation: segmentsToNotation(a.type, kept), resultZeroWidth };
 }
 
 export function hasUnjoinedPicots(notation: string, picots: any[] | undefined): boolean {
@@ -132,28 +158,38 @@ export function hasUnjoinedPicots(notation: string, picots: any[] | undefined): 
 //   odd N, sym    -> k - p - 1 - p - k, N = 2k+1   (two picots, 1ds gap)
 // Runs under 2ds are left untouched — there's no room for a new picot with
 // at least 1ds on each side of it.
-export function addPicotsToRuns(notation: string, picots: any[] | undefined, symmetric: boolean): string | null {
+export interface AddResult {
+  notation: string;
+  // Same shape/purpose as ClearResult.resultZeroWidth — new picots are
+  // always unjoined, carried-over ones keep their original isJoint.
+  resultZeroWidth: Array<{ isJoint: boolean }>;
+}
+export function addPicotsToRuns(notation: string, picots: any[] | undefined, symmetric: boolean): AddResult | null {
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return null;
 
   const out: WizardSegment[] = [];
+  const resultZeroWidth: Array<{ isJoint: boolean }> = [];
   const newPicot = (): WizardSegment => ({ kind: 'picot', raw: 'p', joined: false });
   const run = (ds: number): WizardSegment => ({ kind: 'run', raw: `${ds}ds`, ds });
 
   for (const seg of a.segments) {
-    if (seg.kind !== 'run' || (seg.ds || 0) < 2) { out.push({ ...seg }); continue; }
+    if (seg.kind !== 'run' || (seg.ds || 0) < 2) { out.push({ ...seg }); pushZeroWidth(resultZeroWidth, seg); continue; }
     const n = seg.ds as number;
+    let newSegs: WizardSegment[];
     if (n % 2 === 0) {
-      out.push(run(n / 2), newPicot(), run(n / 2));
+      newSegs = [run(n / 2), newPicot(), run(n / 2)];
     } else if (!symmetric || n < 3) {
       const left = Math.floor(n / 2), right = n - left;
-      out.push(run(left), newPicot(), run(right));
+      newSegs = [run(left), newPicot(), run(right)];
     } else {
       const k = (n - 1) / 2;
-      out.push(run(k), newPicot(), run(1), newPicot(), run(k));
+      newSegs = [run(k), newPicot(), run(1), newPicot(), run(k)];
     }
+    out.push(...newSegs);
+    newSegs.forEach(seg => pushZeroWidth(resultZeroWidth, seg));
   }
-  return segmentsToNotation(a.type, out);
+  return { notation: segmentsToNotation(a.type, out), resultZeroWidth };
 }
 
 export function hasAddablePicotRuns(notation: string, picots: any[] | undefined): boolean {
@@ -264,6 +300,9 @@ export function clampProtectedFloor(requestedDs: number, protectedRun: boolean):
 export interface FillDensityPreview {
   notation: string;
   addedCount: number;
+  // Same shape/purpose as ClearResult.resultZeroWidth — new picots are
+  // always unjoined, carried-over ones keep their original isJoint.
+  resultZeroWidth: Array<{ isJoint: boolean }>;
 }
 
 // Splits `total` into `parts` pieces that are each either floor(total/parts)
@@ -289,10 +328,11 @@ export function previewFillDensity(
   const g = Math.max(1, Math.round(targetGapDs));
 
   const out: WizardSegment[] = [];
+  const resultZeroWidth: Array<{ isJoint: boolean }> = [];
   let addedCount = 0;
 
   for (const seg of a.segments) {
-    if (seg.kind !== 'run') { out.push({ ...seg }); continue; }
+    if (seg.kind !== 'run') { out.push({ ...seg }); pushZeroWidth(resultZeroWidth, seg); continue; }
     const n = seg.ds || 0;
     if (n <= g) { out.push({ ...seg }); continue; }
 
@@ -304,13 +344,15 @@ export function previewFillDensity(
     parts.forEach((partDs, idx) => {
       out.push({ kind: 'run', raw: `${partDs}ds`, ds: partDs });
       if (idx < parts.length - 1) {
-        out.push({ kind: 'picot', raw: 'p', joined: false });
+        const p: WizardSegment = { kind: 'picot', raw: 'p', joined: false };
+        out.push(p);
+        pushZeroWidth(resultZeroWidth, p);
         addedCount++;
       }
     });
   }
 
-  return { notation: segmentsToNotation(a.type, out), addedCount };
+  return { notation: segmentsToNotation(a.type, out), addedCount, resultZeroWidth };
 }
 
 // Above this gap size, previewFillDensity is a no-op for this element — used
@@ -405,6 +447,19 @@ export function hasCompactableGroups(notation: string, picots: any[] | undefined
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return false;
   return foldRepeats(a.segments, minRepeat, '*').groupsCreated > 0;
+}
+
+// Runs compaction automatically on a just-transformed notation, right before
+// it's committed. Compaction is always safe and lossless (see comment
+// above), so there's no reason to make it a separate manual step for
+// notation this tool just produced — the person only sees the readable
+// grouped form, e.g. Fill Density's "11x(1ds-p)" instead of eleven spelled-
+// out "1ds-p" copies. Falls back to the input notation unchanged if
+// compaction can't run for some reason (shouldn't happen, since the caller
+// already successfully analyzed this exact notation to build it).
+export function autoCompact(notation: string, resultZeroWidth: Array<{ isJoint: boolean }>, minRepeat: number = DEFAULT_MIN_REPEAT): string {
+  const result = compactRepeatedPicots(notation, resultZeroWidth, minRepeat);
+  return result ? result.notation : notation;
 }
 
 // ── Length-aware scale ─────────────────────────────────────────────────────
@@ -504,6 +559,31 @@ export function suggestScalePresets(totalDs: number): ScalePreset[] {
   }
   for (const multiplier of [2, 3]) {
     presets.push({ label: `×${multiplier}`, factor: multiplier, resultingTotalDs: totalDs * multiplier });
+  }
+  return presets;
+}
+
+// Multi-element version, for batch-scaling a whole selection to one shared
+// factor. A divisor is only offered if it divides EVERY element's total ds
+// evenly — a preset that would leave rounding drift on some elements but not
+// others isn't a clean "common divisor" for the group. There's no single
+// "resulting total" to show across elements with different lengths, so this
+// returns just the label/factor pair; the caller previews per-element totals
+// itself via scaleNotation.
+export interface MultiScalePreset {
+  label: string; // e.g. "÷2", "×3"
+  factor: number;
+}
+
+export function suggestScalePresetsMulti(totalDsList: number[]): MultiScalePreset[] {
+  const presets: MultiScalePreset[] = [];
+  if (totalDsList.length === 0) return presets;
+  for (const divisor of [2, 3, 4]) {
+    const allDivideEvenly = totalDsList.every(t => t % divisor === 0 && t / divisor >= 1);
+    if (allDivideEvenly) presets.push({ label: `÷${divisor}`, factor: 1 / divisor });
+  }
+  for (const multiplier of [2, 3]) {
+    presets.push({ label: `×${multiplier}`, factor: multiplier });
   }
   return presets;
 }

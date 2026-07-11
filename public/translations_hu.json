@@ -552,5 +552,7 @@
   "picotWizardScaleCustomLabel": "az eredeti hosszból",
   "picotWizardScalePreview": "Új hossz: {n}ds",
   "picotWizardScaleClamped": "Néhány picot nem tömöríthető tovább — elérte az 1ds minimumot.",
-  "picotWizardScaleApply": "Méretezés alkalmazása"
+  "picotWizardScaleApply": "Méretezés alkalmazása",
+  "multiScaleSupportedCount": "{n}/{m} kijelölt méretezhető",
+  "multiScaleSkipped": "{n} kihagyva"
 }
