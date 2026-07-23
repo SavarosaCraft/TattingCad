@@ -168,13 +168,16 @@ export function addPicotsToRuns(notation: string, picots: any[] | undefined, sym
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return null;
 
+  const zones = getProtectedZones(a.segments);
   const out: WizardSegment[] = [];
   const resultZeroWidth: Array<{ isJoint: boolean }> = [];
   const newPicot = (): WizardSegment => ({ kind: 'picot', raw: 'p', joined: false });
   const run = (ds: number): WizardSegment => ({ kind: 'run', raw: `${ds}ds`, ds });
 
-  for (const seg of a.segments) {
-    if (seg.kind !== 'run' || (seg.ds || 0) < 2) { out.push({ ...seg }); pushZeroWidth(resultZeroWidth, seg); continue; }
+  a.segments.forEach((seg, idx) => {
+    if (seg.kind !== 'run' || (seg.ds || 0) < 2 || isRunProtected(a.segments, idx, zones)) {
+      out.push({ ...seg }); pushZeroWidth(resultZeroWidth, seg); return;
+    }
     const n = seg.ds as number;
     let newSegs: WizardSegment[];
     if (n % 2 === 0) {
@@ -188,14 +191,15 @@ export function addPicotsToRuns(notation: string, picots: any[] | undefined, sym
     }
     out.push(...newSegs);
     newSegs.forEach(seg => pushZeroWidth(resultZeroWidth, seg));
-  }
+  });
   return { notation: segmentsToNotation(a.type, out), resultZeroWidth };
 }
 
 export function hasAddablePicotRuns(notation: string, picots: any[] | undefined): boolean {
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return false;
-  return a.segments.some(s => s.kind === 'run' && (s.ds || 0) >= 2);
+  const zones = getProtectedZones(a.segments);
+  return a.segments.some((s, idx) => s.kind === 'run' && (s.ds || 0) >= 2 && !isRunProtected(a.segments, idx, zones));
 }
 
 // ── Protected zones ──────────────────────────────────────────────────────
@@ -463,35 +467,42 @@ export function autoCompact(notation: string, resultZeroWidth: Array<{ isJoint: 
 }
 
 // ── Length-aware scale ─────────────────────────────────────────────────────
-// Resizes every ds run by `scaleFactor`, rounding each to the nearest whole
-// ds. Picots, barriers, and their order are never touched — only the ds
-// counts between them change. That means a picot's `stitchesBefore` DOES
-// shift (unlike Clear/Add/Fill/Compact), so callers must commit the result
-// with updateNotation's `picotMatchMode: 'order'` (not the default
-// 'stitchesBefore') to keep IDs and joins attached to the right picot rather
-// than losing them because nothing lines up by position anymore.
+// Scales the element proportionally: the new total ds is computed first
+// (Math.round(totalDs * factor)), then each existing picot is placed at its
+// original proportional position within the new total (picot.stitchesBefore /
+// originalTotal * newTotal, rounded). Runs fall out as the gaps between
+// consecutive picot positions.
 //
-// Floor rule: every run has a hard floor of 1ds — 0ds isn't a logical
-// result for a scale-down (it would put two picots literally on top of each
-// other rather than adjacent). Runs flagged by getProtectedZones (the
-// first/last run, when its adjacent end picot is joined and within 3ds of
-// the edge) are still tracked and reported separately in each run's
-// `protectedRun` flag, since that's useful context for the feasibility
-// summary even though the numeric floor is now the same 1ds for every run.
+// This gives correct results for uniform patterns like "6ds-p-6ds ÷2 → 3ds-p-3ds"
+// and preserves the visual rhythm of irregular patterns like "3ds-p-6ds-p-9ds".
+// Per-run scaling (the old approach) broke because rounding each run
+// independently could give the wrong answer even for clean divisors (6ds ÷4
+// rounds per-run to 2ds instead of the correct 1.5→1 being wrong, or being
+// taken from 3ds not 6ds).
+//
+// Nudge rule: if two picots round to the same stitchesBefore position, each
+// one after the first is nudged +1ds to keep them distinct. If the new total
+// is so small that picots can't all fit with ≥1ds between them, `anyClamped`
+// is set but we still produce the best-effort result (picots as close as
+// possible without overlapping) rather than refusing.
+//
+// Connections are safe: since we never add, remove, or reorder picots,
+// callers commit the result with { picotMatchMode: 'order' } which matches
+// old↔new picots by sequential index regardless of stitchesBefore shift.
 export interface RunScaleDetail {
   segmentIndex: number;
   originalDs: number;
-  idealDs: number;   // originalDs * scaleFactor, unrounded
-  actualDs: number;  // after rounding + floor clamp
+  idealDs: number;
+  actualDs: number;
   protectedRun: boolean;
-  clamped: boolean;  // true if the floor changed the rounded value
+  clamped: boolean;
 }
 
 export interface ScaleResult {
   notation: string;
   originalTotalDs: number;
-  idealTotalDs: number;   // originalTotalDs * scaleFactor, unrounded
-  actualTotalDs: number;  // sum of actualDs across all runs
+  idealTotalDs: number;
+  actualTotalDs: number;
   runs: RunScaleDetail[];
   anyClamped: boolean;
 }
@@ -501,66 +512,146 @@ export function scaleNotation(notation: string, picots: any[] | undefined, scale
   if (!a.supported) return null;
   if (!(scaleFactor > 0)) return null;
 
-  const zones = getProtectedZones(a.segments);
-  const runs: RunScaleDetail[] = [];
-  const outParts: string[] = [];
-  let originalTotalDs = 0;
-  let actualTotalDs = 0;
+  const originalTotalDs = totalRunDs(a.segments);
+  const newTotalDs = Math.max(1, Math.round(originalTotalDs * scaleFactor));
 
+  // Collect zero-width segments (picots/barriers) in order, paired with
+  // their original cumulative stitchesBefore position.
+  interface ZwEntry { segIdx: number; raw: string; originalSb: number; }
+  const zwEntries: ZwEntry[] = [];
+  let cumDs = 0;
   a.segments.forEach((seg, idx) => {
-    if (seg.kind !== 'run') {
-      outParts.push(seg.raw);
-      return;
-    }
-    const originalDs = seg.ds || 0;
-    originalTotalDs += originalDs;
-    const idealDs = originalDs * scaleFactor;
-    const protectedRun = isRunProtected(a.segments, idx, zones);
-    const rounded = Math.round(idealDs);
-    const actualDs = Math.max(1, rounded);
-    actualTotalDs += actualDs;
-    runs.push({
-      segmentIndex: idx,
-      originalDs,
-      idealDs,
-      actualDs,
-      protectedRun,
-      clamped: actualDs !== rounded,
-    });
-    outParts.push(`${actualDs}ds`);
+    if (seg.kind === 'run') { cumDs += seg.ds || 0; return; }
+    zwEntries.push({ segIdx: idx, raw: seg.raw, originalSb: cumDs });
   });
+
+  // Compute each picot's new stitchesBefore proportionally.
+  const newSbList: number[] = zwEntries.map(zw =>
+    originalTotalDs > 0
+      ? Math.round((zw.originalSb / originalTotalDs) * newTotalDs)
+      : 0
+  );
+
+  // Nudge: ensure strictly increasing positions with minimum 1ds gap.
+  // Work forward — each position must be > the previous one.
+  for (let i = 1; i < newSbList.length; i++) {
+    if (newSbList[i] <= newSbList[i - 1]) newSbList[i] = newSbList[i - 1] + 1;
+  }
+  // Also ensure the last picot leaves at least 1ds before the end.
+  // (Work backward if the nudges pushed too far.)
+  for (let i = newSbList.length - 1; i >= 0; i--) {
+    const maxSb = newTotalDs - (newSbList.length - i); // at least 1ds for each remaining gap
+    if (newSbList[i] > maxSb) newSbList[i] = Math.max(i > 0 ? newSbList[i - 1] + 1 : 0, maxSb);
+  }
+
+  // Build the output segment list from the new picot positions.
+  const outParts: string[] = [];
+  let prevSb = 0;
+  const runs: RunScaleDetail[] = [];
+  const zones = getProtectedZones(a.segments);
+
+  zwEntries.forEach((zw, i) => {
+    const runDs = newSbList[i] - prevSb;
+    const originalRunDs = zw.originalSb - (i === 0 ? 0 : zwEntries[i - 1].originalSb);
+    const idealDs = originalRunDs * scaleFactor;
+    const protectedRun = isRunProtected(a.segments, zw.segIdx - 1, zones);
+    const clamped = runDs !== Math.round(idealDs);
+    runs.push({ segmentIndex: zw.segIdx - 1, originalDs: originalRunDs, idealDs, actualDs: runDs, protectedRun, clamped });
+    if (runDs > 0) outParts.push(`${runDs}ds`);
+    outParts.push(zw.raw);
+    prevSb = newSbList[i];
+  });
+
+  // Trailing run (after last picot/barrier to end of element)
+  const trailingDs = newTotalDs - prevSb;
+  const originalTrailingDs = originalTotalDs - (zwEntries.length > 0 ? zwEntries[zwEntries.length - 1].originalSb : 0);
+  const trailingIdeal = originalTrailingDs * scaleFactor;
+  const trailingProtected = isRunProtected(a.segments, a.segments.length - 1, zones);
+  runs.push({ segmentIndex: a.segments.length - 1, originalDs: originalTrailingDs, idealDs: trailingIdeal, actualDs: trailingDs, protectedRun: trailingProtected, clamped: trailingDs !== Math.round(trailingIdeal) });
+  if (trailingDs > 0) outParts.push(`${trailingDs}ds`);
+
+  const actualTotalDs = newSbList.reduce((sum, sb, i) => {
+    const prev = i === 0 ? 0 : newSbList[i - 1];
+    return sum + (sb - prev);
+  }, 0) + trailingDs;
 
   return {
     notation: `${a.type}: ${outParts.join('-')}`,
     originalTotalDs,
     idealTotalDs: originalTotalDs * scaleFactor,
-    actualTotalDs,
+    actualTotalDs: newTotalDs,
     runs,
     anyClamped: runs.some(r => r.clamped),
   };
 }
 
-// "Common divisors/multiples" preset suggestions for a given total ds count —
-// e.g. offering ÷2, ÷3, ×2, ×3 as quick-pick buttons. Only suggests factors
-// that divide evenly (or multiply to a whole number), since those are the
-// ones likely to scale cleanly without relying on rounding at all.
-export interface ScalePreset {
-  label: string;    // e.g. "÷2", "×3"
-  factor: number;
-  resultingTotalDs: number;
+// "Common divisors/multiples" preset suggestions, categorised as exact vs
+// rounded based on proportional placement (not per-run divisibility).
+//
+// A preset is "exact" when:
+//   1. Math.round(totalDs * factor) == totalDs * factor (total is a whole ds)
+//   2. Every picot's proportional position Math.round(sb/total * newTotal)
+//      lands on a whole ds with no nudging needed (i.e. sb/total * newTotal
+//      is already a whole number)
+//   3. Every resulting run is ≥ 1ds (no zero-length gaps)
+//
+// This means "÷2" for "6ds-p-6ds" is exact (picot at 50% → 3ds, all runs=3),
+// but "÷4" for "6ds-p-6ds" is rounded (picot at 50% of 6ds = 1.5ds → rounds
+// to 2ds, leaving runs of 2 and 1 rather than the ideal 1.5/1.5).
+function isExactPreset(totalDs: number, picotSbList: number[], factor: number): boolean {
+  const newTotal = totalDs * factor;
+  if (!Number.isInteger(newTotal)) return false;
+  if (newTotal < 1) return false;
+  let prevSb = 0;
+  for (const sb of picotSbList) {
+    const newSb = (sb / totalDs) * newTotal;
+    if (!Number.isInteger(newSb)) return false;
+    if (newSb - prevSb < 1) return false;
+    prevSb = newSb;
+  }
+  // trailing run
+  if (newTotal - prevSb < 1) return false;
+  return true;
 }
 
-export function suggestScalePresets(totalDs: number): ScalePreset[] {
-  const presets: ScalePreset[] = [];
+export interface ScalePreset {
+  label: string;
+  factor: number;
+  resultingTotalDs: number;
+  isRounded: boolean;
+}
+
+export interface ScalePresetRows {
+  exact: ScalePreset[];
+  rounded: ScalePreset[];
+}
+
+export function suggestScalePresets(totalDs: number, picots?: any[]): ScalePresetRows {
+  const exact: ScalePreset[] = [];
+  const rounded: ScalePreset[] = [];
+
+  // Extract picot stitchesBefore positions for the exactness check.
+  // If no picots provided, only the total divisibility matters.
+  const sbList = (picots || []).map(p => p.stitchesBefore as number);
+
   for (const divisor of [2, 3, 4]) {
-    if (totalDs % divisor === 0 && totalDs / divisor >= 1) {
-      presets.push({ label: `÷${divisor}`, factor: 1 / divisor, resultingTotalDs: totalDs / divisor });
+    const newTotal = totalDs / divisor;
+    if (newTotal < 1) continue;
+    const factor = 1 / divisor;
+    const resultingTotalDs = Math.round(newTotal);
+    if (isExactPreset(totalDs, sbList, factor)) {
+      exact.push({ label: `:${divisor}`, factor, resultingTotalDs, isRounded: false });
+    } else {
+      rounded.push({ label: `:${divisor}`, factor, resultingTotalDs, isRounded: true });
     }
   }
+
+  // Multiples: always exact since newSb = sb * multiplier is always a whole number
   for (const multiplier of [2, 3]) {
-    presets.push({ label: `×${multiplier}`, factor: multiplier, resultingTotalDs: totalDs * multiplier });
+    exact.push({ label: `x${multiplier}`, factor: multiplier, resultingTotalDs: totalDs * multiplier, isRounded: false });
   }
-  return presets;
+
+  return { exact, rounded };
 }
 
 // Multi-element version, for batch-scaling a whole selection to one shared
@@ -580,10 +671,10 @@ export function suggestScalePresetsMulti(totalDsList: number[]): MultiScalePrese
   if (totalDsList.length === 0) return presets;
   for (const divisor of [2, 3, 4]) {
     const allDivideEvenly = totalDsList.every(t => t % divisor === 0 && t / divisor >= 1);
-    if (allDivideEvenly) presets.push({ label: `÷${divisor}`, factor: 1 / divisor });
+    if (allDivideEvenly) presets.push({ label: `:${divisor}`, factor: 1 / divisor });
   }
   for (const multiplier of [2, 3]) {
-    presets.push({ label: `×${multiplier}`, factor: multiplier });
+    presets.push({ label: `x${multiplier}`, factor: multiplier });
   }
   return presets;
 }

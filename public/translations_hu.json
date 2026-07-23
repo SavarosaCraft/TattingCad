@@ -554,5 +554,10 @@
   "picotWizardScaleClamped": "Néhány picot nem tömöríthető tovább — elérte az 1ds minimumot.",
   "picotWizardScaleApply": "Méretezés alkalmazása",
   "multiScaleSupportedCount": "{n}/{m} kijelölt méretezhető",
-  "multiScaleSkipped": "{n} kihagyva"
+  "multiScaleSkipped": "{n} kihagyva",
+  "jkConvertTitle": "Átalakítás Josephine csomóvá",
+  "jkConvertMessage": "Ez a gyűrűt Josephine csomóvá alakítja — az összes picot és kötés eltávolításra kerül, az öltések ds-ből ss-re változnak.",
+  "jkConvertConfirm": "Átalakítás JK-vá",
+  "propShapeTeardrop": "Könnycsepp",
+  "propShapeCircle": "Kör"
 }

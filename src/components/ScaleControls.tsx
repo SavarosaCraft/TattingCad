@@ -1,40 +1,40 @@
 // ScaleControls.tsx
-// Shared "Scale" UI: preset buttons, a free-form percentage input, an
-// optional preview line, an optional feasibility warning, and an Apply
-// button. Used by both the single-element Picot Wizard's Scale section and
-// the multi-element batch Scale tool — extracted because those two were an
-// almost line-for-line copy of each other in tattingindex.tsx, differing
-// only in what happens on Apply and how the preview text is computed.
+// Shared "Scale" UI: a single row of preset buttons (exact and rounded mixed),
+// a free-form percentage input, an optional preview line, an optional
+// feasibility warning, and an Apply button. Used by both the single-element
+// Picot Wizard and the multi-element batch Scale tool.
 //
-// Purely presentational: it doesn't know about notation, picots, or
-// translation keys — the caller passes already-translated strings and a
-// plain (label, factor) preset list, and owns all the domain logic
-// (analyzeNotation, scaleNotation, autoCompact, etc.) and the actual commit.
+// Exact presets (clean division) use the standard button style.
+// Rounded presets (approximate — some runs will gain/lose 1ds) use an amber-
+// tinted background so they're visually distinct without a separate row.
+// A "~" suffix and the result total appear on every preset button.
+//
+// Purely presentational — all domain logic and translation live in the caller.
 
 import React from 'react';
-
-export interface ScalePresetOption {
-  label: string;   // e.g. "÷2", "×3"
-  factor: number;  // e.g. 0.5, 3
-}
+import { ScalePreset } from '../domain/picotTools';
 
 export interface ScaleControlsProps {
-  presets: ScalePresetOption[];
+  // All presets in one flat list — exact and rounded mixed, order preserved.
+  // suggestScalePresets() returns { exact, rounded }; callers spread them:
+  //   presets={[...exactPresets, ...roundedPresets]}
+  // Multi-element callers only pass exactPresets (no rounded row for batch).
+  presets: ScalePreset[];
   pct: number;
   onPctChange: (pct: number) => void;
   /** Already-formatted preview line, e.g. "New length: 12ds". Omit to hide. */
   previewText?: string | null;
   /** Already-translated warning shown when the floor forced a deviation. Omit to hide. */
   clampedWarningText?: string | null;
-  /** Already-translated label placed after the "%" custom input, e.g. "of original length". */
+  /** Already-translated label placed after the "%" custom input. */
   customLabelText: string;
   applyLabel: string;
   applyDisabled: boolean;
   onApply: () => void;
 }
 
-// Exported so callers (Clear/Add/Fill/Compact buttons elsewhere in the same
-// popover) can reuse the exact same button styling instead of re-typing it.
+// Exported so callers (Clear/Add/Fill/Compact buttons in the same popover)
+// can reuse the exact same button styling without re-typing it.
 export const WIZARD_BUTTON_CLASS =
   'w-full text-left px-2 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700';
 
@@ -52,19 +52,35 @@ export function ScaleControls({
   return (
     <>
       <div className="flex flex-wrap gap-1 mb-2">
-        {presets.map(preset => (
-          <button
-            key={preset.label}
-            onClick={() => onPctChange(Math.round(preset.factor * 100))}
-            className={`px-2 py-1 rounded text-xs border ${
-              Math.round(preset.factor * 100) === pct
-                ? 'bg-blue-700 border-blue-500 text-white'
-                : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
-            {preset.label}
-          </button>
-        ))}
+        {presets.map(preset => {
+          const presetPct = Math.round(preset.factor * 100);
+          const isActive = presetPct === pct;
+          const activeClass = 'bg-blue-700 border-blue-500 text-white';
+          const exactClass = 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700';
+          return (
+            <button
+              key={preset.label}
+              onClick={() => onPctChange(presetPct)}
+              className={`px-2 py-1 rounded text-sm border ${isActive ? activeClass : exactClass}`}
+              style={!isActive && preset.isRounded ? { backgroundColor: '#451a03', borderColor: '#92400e', color: '#fcd34d' } : undefined}
+              title={preset.isRounded ? `≈ ${preset.resultingTotalDs}ds (rounded)` : `→ ${preset.resultingTotalDs}ds`}
+            >
+              {preset.label}
+              <span
+                className={`ml-1 text-sm ${isActive ? 'text-blue-200' : 'text-gray-500'}`}
+                style={!isActive && preset.isRounded ? { color: '#f59e0b' } : undefined}
+              >
+                {preset.resultingTotalDs}ds
+              </span>
+              {preset.isRounded && (
+                <span
+                  className={isActive ? 'text-amber-400 ml-0.5' : 'ml-0.5'}
+                  style={!isActive ? { color: '#d97706' } : undefined}
+                >~</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-2 mb-2">

@@ -554,5 +554,10 @@
   "picotWizardScaleClamped": "Algunos picots no se pueden comprimir más — se alcanzó el mínimo de 1ds.",
   "picotWizardScaleApply": "Aplicar escala",
   "multiScaleSupportedCount": "{n} de {m} seleccionados se pueden escalar",
-  "multiScaleSkipped": "{n} omitido(s)"
+  "multiScaleSkipped": "{n} omitido(s)",
+  "jkConvertTitle": "Convertir a nudo Josephine",
+  "jkConvertMessage": "Esto convertirá el anillo en un nudo Josephine — se eliminarán todos los picots y conexiones, y los puntos cambiarán de ds a ss.",
+  "jkConvertConfirm": "Convertir a JK",
+  "propShapeTeardrop": "Lágrima",
+  "propShapeCircle": "Círculo"
 }

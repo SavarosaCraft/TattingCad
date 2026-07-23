@@ -554,5 +554,10 @@
   "picotWizardScaleClamped": "Some picots can't compress further — the 1ds minimum was reached.",
   "picotWizardScaleApply": "Apply scale",
   "multiScaleSupportedCount": "{n} of {m} selected can be scaled",
-  "multiScaleSkipped": "{n} skipped"
+  "multiScaleSkipped": "{n} skipped",
+  "jkConvertTitle": "Convert to Josephine Knot",
+  "jkConvertMessage": "This will convert the ring to a Josephine Knot — all picots and connections will be removed, and the stitches will change from ds to ss.",
+  "jkConvertConfirm": "Convert to JK",
+  "propShapeTeardrop": "Teardrop",
+  "propShapeCircle": "Circle"
 }

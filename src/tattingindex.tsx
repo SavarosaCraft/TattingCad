@@ -748,6 +748,7 @@ const TattingDesigner = () => {
   const selectedPicotsRef = useRef([]);
   const beClipboardRef = useRef(beClipboard);
   const orderGroupsRef = useRef(orderGroups);
+  const activeOrderGroupIdRef = useRef(activeOrderGroupId);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
   const pivotOffsetRef = useRef({ x: 0, y: 0 });  // always-current mirror of pivotOffset state
   const pivotDragStartRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 }); // world pos + offset at drag start
@@ -775,6 +776,7 @@ const TattingDesigner = () => {
     selectedBEsRef.current = selectedBEs;
     beClipboardRef.current = beClipboard;
     orderGroupsRef.current = orderGroups;
+    activeOrderGroupIdRef.current = activeOrderGroupId;
     selectedPicotsRef.current = selectedPicots;
     pivotOffsetRef.current = pivotOffset;
     movingPivotRef.current = movingPivot;
@@ -923,6 +925,22 @@ const TattingDesigner = () => {
     return () => {
       document.removeEventListener('wheel', preventBrowserZoom);
     };
+  }, []);
+
+  // Safety net: if a property-bar slider (squeeze, etc.) loses its onMouseUp
+  // because setElements causes a mid-drag remount, isInteractingRef can get
+  // permanently stuck at true — leaving the canvas thinking a drag is still
+  // in progress. A document-level pointerup clears it regardless of which
+  // element originally received the pointerdown.
+  useEffect(() => {
+    const handleDocPointerUp = () => {
+      if (isInteractingRef.current) {
+        isInteractingRef.current = false;
+        needsHistoryPushRef.current = true;
+      }
+    };
+    document.addEventListener('pointerup', handleDocPointerUp);
+    return () => document.removeEventListener('pointerup', handleDocPointerUp);
   }, []);
 
   // PERFORMANCE: Track canvas size via ResizeObserver for viewport culling.
@@ -1294,18 +1312,25 @@ const TattingDesigner = () => {
     const allSamples = renderPaths.map(p => sampleBezierPath(p, 50));
     const pathLengths = allSamples.map(s => calculatePathLength(s));
     const totalLength = pathLengths.reduce((a, b) => a + b, 0);
-    
-    for (let i = 0; i < stitchCount; i++) {
-      const type = stitchTypeMap[i] || 'ds';
+
+    // Determine step size: 0.5 when the element uses ss/lss/rss stitches
+    // (which sit at half-integer dsPosition keys), 1 otherwise.
+    const hasHalfStitches = Object.keys(stitchTypeMap).some(k => parseFloat(k) % 1 !== 0);
+    const step = hasHalfStitches ? 0.5 : 1;
+    const totalSteps = Math.round(stitchCount / step);
+
+    for (let step_i = 0; step_i < totalSteps; step_i++) {
+      const i = step_i * step;
+      const type = stitchTypeMap[i] || (step === 0.5 ? 'ss' : 'ds');
       if (type === 'rds-cont') continue; // second DS slot of RDS — skip
 
       // RDS spans 2 DS slots: sample at midpoint of the full span
-      const position = type === 'rds' ? (i + 1) / stitchCount : (i + 0.5) / stitchCount;
+      const position = type === 'rds' ? (i + 1) / stitchCount : (i + step * 0.5) / stitchCount;
       const distance = position * totalLength;
       const { x, y, angle } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, distance);
       
       const startDist = (i / stitchCount) * totalLength;
-      const endDist = ((i + (type === 'rds' ? 2 : 1)) / stitchCount) * totalLength;
+      const endDist = ((i + (type === 'rds' ? 2 : step)) / stitchCount) * totalLength;
       const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, startDist);
       const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, endDist);
       
@@ -1383,15 +1408,19 @@ const TattingDesigner = () => {
     
     // Parse stitch types from notation
     const stitchTypeMap = getStitchTypes(element.notation || '');
-    
-    for (let i = 0; i < stitchCount; i++) {
-      // Get stitch type for this DS position - default to 'ds'
-      // May be an array for SS (2 stitches per DS position)
-      const type = stitchTypeMap[i] || 'ds';
-      if (type === 'rds-cont') continue; // second DS slot of an RDS — skip, already covered by the first slot
+
+    // Use 0.5 step when the element has half-stitches (ss/lss/rss sit at
+    // half-integer dsPosition keys). Integer-only step misses them entirely.
+    const hasHalfStitches = Object.keys(stitchTypeMap).some(k => parseFloat(k) % 1 !== 0);
+    const step = hasHalfStitches ? 0.5 : 1;
+    const totalSteps = Math.round(stitchCount / step);
+
+    for (let step_i = 0; step_i < totalSteps; step_i++) {
+      const i = step_i * step;
+      const type = stitchTypeMap[i] || (hasHalfStitches ? ['ss', 'ss'] : 'ds');
+      if (type === 'rds-cont') continue;
       
-      // RDS spans 2 DS slots: center it between slot i and i+1
-      const position = type === 'rds' ? (i + 1) / stitchCount : (i + 0.5) / stitchCount;
+      const position = type === 'rds' ? (i + 1) / stitchCount : (i + step * 0.5) / stitchCount;
       const angle = position * Math.PI * 2 + rotation;
       const x = element.center.x + Math.cos(angle) * radius;
       const y = element.center.y + Math.sin(angle) * radius;
@@ -3511,6 +3540,51 @@ const TattingDesigner = () => {
             e.preventDefault();
             assignOrderNumber(selId, getNextAvailableNumber());
           }
+        } else if (e.key === 'PageUp') {
+          // PgUp — move to next group (higher round number), create one if at the end
+          e.preventDefault();
+          const groups = orderGroupsRef.current;
+          if (activeOrderGroupIdRef.current === null) {
+            // Ungrouped → first group
+            if (groups.length > 0) {
+              setActiveOrderGroupId(groups[0].id);
+            } else {
+              // No groups yet — create the first one
+              const name = t('tattingOrderGroupDefault').replace('{n}', '1');
+              const id = crypto.randomUUID();
+              const newGroups = [{ id, name }];
+              setOrderGroups(newGroups);
+              setActiveOrderGroupId(id);
+              pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
+            }
+          } else {
+            const idx = groups.findIndex(g => g.id === activeOrderGroupIdRef.current);
+            if (idx < groups.length - 1) {
+              // Move to next group
+              setActiveOrderGroupId(groups[idx + 1].id);
+            } else {
+              // At last group — create a new one
+              const name = t('tattingOrderGroupDefault').replace('{n}', String(groups.length + 1));
+              const id = crypto.randomUUID();
+              const newGroups = [...groups, { id, name }];
+              setOrderGroups(newGroups);
+              setActiveOrderGroupId(id);
+              pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
+            }
+          }
+        } else if (e.key === 'PageDown') {
+          // PgDn — move to previous group (lower round number), back to ungrouped if at first
+          e.preventDefault();
+          const groups = orderGroupsRef.current;
+          if (activeOrderGroupIdRef.current !== null) {
+            const idx = groups.findIndex(g => g.id === activeOrderGroupIdRef.current);
+            if (idx === 0) {
+              setActiveOrderGroupId(null); // back to ungrouped
+            } else if (idx > 0) {
+              setActiveOrderGroupId(groups[idx - 1].id);
+            }
+          }
+          // Already ungrouped — PgDn is a no-op (nothing lower to go to)
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             e.preventDefault();
@@ -3698,6 +3772,23 @@ const TattingDesigner = () => {
           return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
         });
         newPathData = { paths: adjustedPaths };
+
+        // Flag the chain as visually too short if its natural length is so
+        // close to the straight-line endpoint distance that it can't form a
+        // meaningful curve. Threshold 0.92: if the chain's physical length
+        // is less than ~8% longer than the straight line between its endpoints
+        // it'll render nearly flat.
+        // Uses the first path only (covers simple chains; split chains each
+        // get checked independently when their own notation is edited).
+        const firstPath = el.paths[0];
+        if (firstPath) {
+          const endpointDist = Math.hypot(firstPath.endX - firstPath.x, firstPath.endY - firstPath.y);
+          const TOO_SHORT_THRESHOLD = 0.92;
+          newPathData = {
+            ...newPathData,
+            isTooShort: newLength > 0 && (endpointDist / newLength) > TOO_SHORT_THRESHOLD,
+          };
+        }
       }
     }
 
@@ -3901,7 +3992,12 @@ const TattingDesigner = () => {
           ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
           : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
 
-        return { ...el, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
+        // If the element was a Josephine Knot (jk:), toggling back to a
+        // teardrop or circle shape means it's no longer a JK — rewrite the
+        // notation prefix to r: so the element is treated as a normal ring.
+        const notation = el.notation?.replace(/^jk:/i, 'r:') ?? el.notation;
+
+        return { ...el, notation, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
       }
       return el;
     });
@@ -3929,6 +4025,96 @@ const TattingDesigner = () => {
         })));
       }
     }
+  };
+
+  // Converts the selected ring to a Josephine Knot:
+  //   1. Strips all picots and their connections
+  //   2. Rewrites notation from "r: Nds..." to "jk: Nss" (same stitch count,
+  //      ds → ss, single run, no picots)
+  //   3. Forces circle shape and regenerates the path accordingly
+  //
+  // This is intentionally destructive (all picots and connections on the
+  // element are wiped) and is gated behind a confirm dialog.
+  const convertToJosephineKnot = () => {
+    if (selectedIds.length !== 1) return;
+    const el = elementsRef.current.find(e => e.id === selectedIds[0]);
+    if (!el || !el.isClosed || el.isSplitRing) return;
+
+    setConfirmDialog({
+      title: t('jkConvertTitle'),
+      message: t('jkConvertMessage'),
+      confirmLabel: t('jkConvertConfirm'),
+      onConfirm: () => {
+        const currentEl = elementsRef.current.find(e => e.id === selectedIds[0]);
+        if (!currentEl) return;
+
+        // Build jk: notation — 2ss per ds (preserves physical path length since
+        // ss = 0.5ds). Picots are stripped. Mixed ds/ss/lss/rss all convert:
+        //   1ds → 2ss,  1rds → 2ss,  1ss/lss/rss → 1ss
+        const rawNotation = currentEl.notation || `r: ${(currentEl.stitchCount || 10) * 2}ss`;
+        const totalSS = (() => {
+          let count = 0;
+          const tokens = rawNotation.replace(/^[a-z]+:\s*/i, '').split(/[-\s,]+/);
+          for (const token of tokens) {
+            const m = token.match(/^(\d+)?\s*(ds|rds|ss|lss|rss)$/i);
+            if (!m) continue;
+            const n = parseInt(m[1] || '1');
+            const type = m[2].toLowerCase();
+            count += (type === 'ds' || type === 'rds') ? n * 2 : n;
+          }
+          return count || (currentEl.stitchCount || 10) * 2;
+        })();
+        const newNotation = `jk: ${totalSS}ss`;
+
+        // Parse to get proper stitchCount back (ss counts as 0.5ds each,
+        // so stitchCount in the parsed result will be stitchCount * 0.5)
+        const parsed = parseNotation(newNotation);
+        if (!parsed) return;
+
+        // Regenerate circle path at the new (halved) length
+        const targetLength = parsed.stitchCount * dsWidth;
+        const squeeze = currentEl.squeeze || 0;
+        const circlePaths = createCirclePath(currentEl.center.x, currentEl.center.y, targetLength, squeeze);
+        const rotatedPaths = applyRotationToPathData(currentEl, circlePaths).paths;
+
+        const updatedEl = {
+          ...currentEl,
+          notation: newNotation,
+          stitchCount: parsed.stitchCount,
+          picots: [],
+          shapeStyle: 'circle',
+          paths: rotatedPaths,
+        };
+
+        // Wipe all picot connections that reference this element
+        const newConns = picotConnectionsRef.current.filter(
+          conn => !conn.picots.some(cp => cp.elementId === currentEl.id)
+        );
+        setPicotConnections(newConns);
+        picotConnectionsRef.current = newConns;
+
+        let finalElements = elementsRef.current.map(e => e.id === currentEl.id ? updatedEl : e);
+
+        // Propagate to ghost array if this is a ghost mother
+        if (currentEl.isGhostMother) {
+          const result = regenerateGhostArrays(finalElements, ghostArrays, [currentEl.id]);
+          finalElements = result.elements;
+          setGhostArrays(result.ghostArrays);
+          if (result.connectionIdMap.size > 0) {
+            setPicotConnections(prev => prev.map(conn => ({
+              ...conn,
+              picots: conn.picots.map(cp => ({
+                ...cp,
+                elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
+              })),
+            })));
+          }
+        }
+
+        setElements(finalElements);
+        pushHistoryState(finalElements, newConns, orderGroupsRef.current);
+      },
+    });
   };
 
   const setLabelOffset = useCallback((value: number) => {
@@ -7222,7 +7408,7 @@ const TattingDesigner = () => {
                   <input
                     key={`${selectedElement.id}::${selectedElement.notation}`}
                     type="text"
-                    defaultValue={draftNotation?.elementId === selectedElement.id ? draftNotation.value : selectedElement.notation}
+                    defaultValue={(draftNotation?.elementId === selectedElement.id && draftNotation) ? draftNotation.value : selectedElement.notation}
                     onChange={(e) => {
                       const val = e.target.value.trim();
                       pendingNotationRef.current = { elementId: selectedElement.id, notation: val };
@@ -7390,12 +7576,12 @@ if (parsed && parsed.stitchCount > 0) {
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardScaleSection')}</div>
                                   {(() => {
                                     const totalDs = totalRunDs(analysis.segments);
-                                    const presets = suggestScalePresets(totalDs);
+                                    const { exact: exactPresets, rounded: roundedPresets } = suggestScalePresets(totalDs, picots);
                                     const factor = picotWizardScalePct / 100;
                                     const scalePreview = factor > 0 ? scaleNotation(notation, picots, factor) : null;
                                     return (
                                       <ScaleControls
-                                        presets={presets}
+                                        presets={[...exactPresets, ...roundedPresets]}
                                         pct={picotWizardScalePct}
                                         onPctChange={setPicotWizardScalePct}
                                         previewText={scalePreview ? t('picotWizardScalePreview').replace('{n}', String(scalePreview.actualTotalDs)) : null}
@@ -7779,39 +7965,107 @@ if (parsed && parsed.stitchCount > 0) {
               {/* Ring-specific properties */}
               {selectedElement.isClosed && (
                 <>
-                  {/* Shape toggle - hide for split rings */}
+                  {/* Shape radio buttons - hide for split rings */}
                   {!selectedElement.isSplitRing && (
                     <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                       <label className="text-xs text-gray-400 hide-label-mobile">{t('propShape')}</label>
-                      <button
-                        onClick={toggleShape}
-                        className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 flex items-center gap-1"
-                        title={t('propToggleShape')}
-                      >
-                        {selectedElement.shapeStyle === 'circle' ? <IconShapeCircle size={16} /> : <IconShapeTeardrop size={16} />}
-                      </button>
+                      <div className="flex rounded overflow-hidden border border-gray-600">
+                        {/* Teardrop */}
+                        <button
+                          onClick={() => {
+                            if (/^jk:/i.test(selectedElement.notation || '')) {
+                              // Was JK — rewrite notation to r: and toggle to teardrop
+                              const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
+                              setElements(prev => prev.map(el => {
+                                if (el.id !== selectedElement.id) return el;
+                                const targetLength = el.stitchCount * dsWidth;
+                                const paths = applyRotationToPathData(el, createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
+                                return { ...el, notation, shapeStyle: 'teardrop', paths };
+                              }));
+                              pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                            } else if (selectedElement.shapeStyle !== 'teardrop') {
+                              toggleShape();
+                            }
+                          }}
+                          className={`px-2 py-1 flex items-center gap-1 text-xs ${
+                            selectedElement.shapeStyle !== 'circle' && !/^jk:/i.test(selectedElement.notation || '')
+                              ? 'bg-blue-700 text-white'
+                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title={t('propShapeTeardrop')}
+                        >
+                          <IconShapeTeardrop size={14} />
+                        </button>
+                        {/* Circle */}
+                        <button
+                          onClick={() => {
+                            if (/^jk:/i.test(selectedElement.notation || '')) {
+                              const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
+                              setElements(prev => prev.map(el => {
+                                if (el.id !== selectedElement.id) return el;
+                                const targetLength = el.stitchCount * dsWidth;
+                                const paths = applyRotationToPathData(el, createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
+                                return { ...el, notation, shapeStyle: 'circle', paths };
+                              }));
+                              pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                            } else if (selectedElement.shapeStyle !== 'circle') {
+                              toggleShape();
+                            }
+                          }}
+                          className={`px-2 py-1 flex items-center gap-1 text-xs border-l border-gray-600 ${
+                            selectedElement.shapeStyle === 'circle' && !/^jk:/i.test(selectedElement.notation || '')
+                              ? 'bg-blue-700 text-white'
+                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title={t('propShapeCircle')}
+                        >
+                          <IconShapeCircle size={14} />
+                        </button>
+                        {/* Josephine Knot */}
+                        <button
+                          onClick={convertToJosephineKnot}
+                          className={`px-2 py-1 flex items-center gap-1 text-xs border-l border-gray-600 ${
+                            /^jk:/i.test(selectedElement.notation || '')
+                              ? 'bg-blue-700 text-white'
+                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                          }`}
+                          title={t('jkConvertTitle')}
+                        >
+                          JK
+                        </button>
+                      </div>
                     </div>
                   )}
                   
                   {/* Squeeze sliders */}
-                  {selectedElement.isSplitRing ? (
+                  {(() => {
+                    // Shared mouse/touch events for every squeeze slider — extracted
+                    // because: (a) 4 sliders had identical onMouseDown/Up/Touch handlers,
+                    // (b) the handlers must mark isInteractingRef so the canvas doesn't
+                    //     start a drag during squeeze, and (c) the doc-level pointerup
+                    //     safety net catches cases where the slider remounts mid-drag and
+                    //     loses its own onMouseUp.
+                    const squeezeSliderEvents = {
+                      onMouseDown: () => { isInteractingRef.current = true; },
+                      onTouchStart: () => { isInteractingRef.current = true; },
+                      onMouseUp:   () => { isInteractingRef.current = false; needsHistoryPushRef.current = true; },
+                      onTouchEnd:  () => { isInteractingRef.current = false; needsHistoryPushRef.current = true; },
+                    };
+                    return selectedElement.isSplitRing ? (
                     /* Split ring: Sq=squash, CA=C-shape section A, CB=C-shape section B */
                     <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable flex-wrap">
                       <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueezeSq')}</label>
                       <input
                         type="range" min="0" max="1" step="0.05"
                         value={selectedElement.squeeze ?? 0.25}
-                        onMouseDown={() => { isInteractingRef.current = true; }}
-                        onTouchStart={() => { isInteractingRef.current = true; }}
+                        {...squeezeSliderEvents}
                         onChange={(e) => {
                           const squeeze = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            return applyRotationToPathData({ ...el, squeeze }, createSplitRingPathFromEl(el, dsWidth, { squeeze }));
+                            return { ...el, squeeze, paths: applyRotationToPathData({ ...el, squeeze }, createSplitRingPathFromEl(el, dsWidth, { squeeze })).paths };
                           }));
                         }}
-                        onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
-                        onTouchEnd={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
                         className="w-14"
                       />
                       <span className="text-xs text-gray-400 w-6">{(selectedElement.squeeze ?? 0.25).toFixed(2)}</span>
@@ -7819,17 +8073,14 @@ if (parsed && parsed.stitchCount > 0) {
                       <input
                         type="range" min="0" max="3" step="0.05"
                         value={selectedElement.squeezeCA ?? 0.75}
-                        onMouseDown={() => { isInteractingRef.current = true; }}
-                        onTouchStart={() => { isInteractingRef.current = true; }}
+                        {...squeezeSliderEvents}
                         onChange={(e) => {
                           const squeezeCA = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            return applyRotationToPathData({ ...el, squeezeCA }, createSplitRingPathFromEl(el, dsWidth, { squeezeCA }));
+                            return { ...el, squeezeCA, paths: applyRotationToPathData({ ...el, squeezeCA }, createSplitRingPathFromEl(el, dsWidth, { squeezeCA })).paths };
                           }));
                         }}
-                        onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
-                        onTouchEnd={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
                         className="w-14"
                       />
                       <span className="text-xs text-gray-400 w-6">{(selectedElement.squeezeCA ?? 0.75).toFixed(2)}</span>
@@ -7837,17 +8088,14 @@ if (parsed && parsed.stitchCount > 0) {
                       <input
                         type="range" min="0" max="3" step="0.05"
                         value={selectedElement.squeezeCB ?? 0.75}
-                        onMouseDown={() => { isInteractingRef.current = true; }}
-                        onTouchStart={() => { isInteractingRef.current = true; }}
+                        {...squeezeSliderEvents}
                         onChange={(e) => {
                           const squeezeCB = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
                             if (el.id !== selectedElement.id) return el;
-                            return applyRotationToPathData({ ...el, squeezeCB }, createSplitRingPathFromEl(el, dsWidth, { squeezeCB }));
+                            return { ...el, squeezeCB, paths: applyRotationToPathData({ ...el, squeezeCB }, createSplitRingPathFromEl(el, dsWidth, { squeezeCB })).paths };
                           }));
                         }}
-                        onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
-                        onTouchEnd={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
                         className="w-14"
                       />
                       <span className="text-xs text-gray-400 w-6">{(selectedElement.squeezeCB ?? 0.75).toFixed(2)}</span>
@@ -7870,8 +8118,7 @@ if (parsed && parsed.stitchCount > 0) {
                       <input
                         type="range" min="-0.5" max="0.5" step="0.1"
                         value={selectedElement.squeeze || 0}
-                        onMouseDown={() => { isInteractingRef.current = true; }}
-                        onTouchStart={() => { isInteractingRef.current = true; }}
+                        {...squeezeSliderEvents}
                         onChange={(e) => {
                           const squeeze = parseFloat(e.target.value);
                           setElements(prev => prev.map(el => {
@@ -7880,11 +8127,9 @@ if (parsed && parsed.stitchCount > 0) {
                             const newPathData = el.shapeStyle === 'circle'
                               ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
                               : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-                            return applyRotationToPathData({ ...el, squeeze }, newPathData);
+                            return { ...el, squeeze, paths: applyRotationToPathData({ ...el, squeeze }, newPathData).paths };
                           }));
                         }}
-                        onMouseUp={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
-                        onTouchEnd={() => { isInteractingRef.current = false; needsHistoryPushRef.current = true; }}
                         className="w-24"
                         disabled={selectedElement.shapeStyle === 'circle'}
                       />
@@ -7905,7 +8150,8 @@ if (parsed && parsed.stitchCount > 0) {
                         disabled={selectedElement.shapeStyle === 'circle'}
                       >{t('propResetBtn')}</button>
                     </div>
-                  )}
+                  );
+                  })()}
                 </>
               )}
               </>
@@ -9321,6 +9567,11 @@ if (parsed && parsed.stitchCount > 0) {
               <filter id="red-glow" x="-40%" y="-40%" width="180%" height="180%">
                 <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#ef4444" floodOpacity="1"/>
               </filter>
+
+              {/* Amber glow filter for chains stretched too flat to hold their curve */}
+              <filter id="amber-glow" x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#f59e0b" floodOpacity="1"/>
+              </filter>
               
               {/* NEW: Realistic rendering stitch patterns */}
               <g id="ds-stitch">
@@ -9615,12 +9866,19 @@ if (parsed && parsed.stitchCount > 0) {
                 const isSelected = selectedIdSet.has(el.id);
                 const isUnnumbered = !el.isRepeat && (!el.orderNumber || el.orderNumber.toString().trim() === '');
                 const shouldHighlight = (showUnnumbered || activeMode === 'tattingOrder') && isUnnumbered;
-                const activeDraft = draftNotation?.elementId === el.id ? draftNotation.value : null;
+                const activeDraft = (draftNotation?.elementId === el.id && draftNotation) ? draftNotation.value : null;
                 const hasInvalidNotation = el.type !== 'line' && renderMode === 'schematic' && (() => {
                   const notationToCheck = activeDraft ?? el.notation;
+                  // jk: is a valid prefix that isNotationValid doesn't recognise (it only
+                  // checks r|c|sc|sr). Exempt it here — parseNotation accepts jk: correctly.
+                  if (notationToCheck && /^jk:/i.test(notationToCheck.trim())) return false;
                   return notationToCheck && !isNotationValid(notationToCheck.trim());
                 })();
-                const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)' : shouldHighlight ? 'url(#pink-glow)' : undefined;
+                const isTooShort = !el.isClosed && !!el.isTooShort;
+                const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)'
+                  : (showInvalidNotation && isTooShort) ? 'url(#amber-glow)'
+                  : shouldHighlight ? 'url(#pink-glow)'
+                  : undefined;
                 // In tattingOrder mode, hide notation labels so only order numbers are visible
                 const hideNotationInMode = activeMode === 'tattingOrder';
                 // Ghost elements are non-interactive visual copies
