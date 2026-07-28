@@ -22,7 +22,8 @@ import { expandTokens, isZeroWidth } from './parser';
 // not from which of these token spellings was used.)
 const EDITABLE_PICOT_RE = /^(sp|cp|p|lp|jp|jpg|cj|cjp|gp)$/i;
 const DS_RE = /^(\d+)?\s*ds$/i;
-const PREFIX_RE = /^(r|c|sc|sr):\s*/i;
+const SS_RE = /^(\d+)?\s*(ss|lss|rss)$/i;  // half-stitches: count as 0.5ds each
+const PREFIX_RE = /^(r|c|sc|sr|jk|fr):\s*/i;
 
 export interface WizardSegment {
   kind: 'run' | 'picot' | 'barrier';
@@ -67,6 +68,16 @@ export function analyzeNotation(notation: string, picots: any[] | undefined): Wi
       else segments.push({ kind: 'run', raw: token, ds: n });
       continue;
     }
+    const ssMatch = SS_RE.exec(token);
+    if (ssMatch) {
+      // Each ss/lss/rss = 0.5ds. Accumulate as fractional ds in the current run.
+      const n = ssMatch[1] ? parseInt(ssMatch[1], 10) : 1;
+      const ds = n * 0.5;
+      const last = segments[segments.length - 1];
+      if (last && last.kind === 'run') last.ds = (last.ds || 0) + ds;
+      else segments.push({ kind: 'run', raw: token, ds });
+      continue;
+    }
     if (isZeroWidth(token)) {
       const picot = picotList[zwIndex];
       zwIndex++;
@@ -78,7 +89,7 @@ export function analyzeNotation(notation: string, picots: any[] | undefined): Wi
       }
       continue;
     }
-    // rds / ss / lss / rss / malformed — not handled by v1.
+    // rds / malformed — not handled by the Wizard.
     return { supported: false, reason: 'unsupportedToken', segments: [], type: split.type };
   }
 
@@ -545,6 +556,11 @@ export function scaleNotation(notation: string, picots: any[] | undefined, scale
   }
 
   // Build the output segment list from the new picot positions.
+  // For jk: elements, runs are internally tracked in ds units (each ss = 0.5ds)
+  // but must be serialized back as ss tokens (Nds → 2N ss).
+  const isJk = /^jk$/i.test(a.type);
+  const runToken = (ds: number) => isJk ? `${Math.round(ds * 2)}ss` : `${ds}ds`;
+
   const outParts: string[] = [];
   let prevSb = 0;
   const runs: RunScaleDetail[] = [];
@@ -557,7 +573,7 @@ export function scaleNotation(notation: string, picots: any[] | undefined, scale
     const protectedRun = isRunProtected(a.segments, zw.segIdx - 1, zones);
     const clamped = runDs !== Math.round(idealDs);
     runs.push({ segmentIndex: zw.segIdx - 1, originalDs: originalRunDs, idealDs, actualDs: runDs, protectedRun, clamped });
-    if (runDs > 0) outParts.push(`${runDs}ds`);
+    if (runDs > 0) outParts.push(runToken(runDs));
     outParts.push(zw.raw);
     prevSb = newSbList[i];
   });
@@ -568,7 +584,7 @@ export function scaleNotation(notation: string, picots: any[] | undefined, scale
   const trailingIdeal = originalTrailingDs * scaleFactor;
   const trailingProtected = isRunProtected(a.segments, a.segments.length - 1, zones);
   runs.push({ segmentIndex: a.segments.length - 1, originalDs: originalTrailingDs, idealDs: trailingIdeal, actualDs: trailingDs, protectedRun: trailingProtected, clamped: trailingDs !== Math.round(trailingIdeal) });
-  if (trailingDs > 0) outParts.push(`${trailingDs}ds`);
+  if (trailingDs > 0) outParts.push(runToken(trailingDs));
 
   const actualTotalDs = newSbList.reduce((sum, sb, i) => {
     const prev = i === 0 ? 0 : newSbList[i - 1];

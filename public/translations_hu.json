@@ -559,5 +559,7 @@
   "jkConvertMessage": "Ez a gyűrűt Josephine csomóvá alakítja — az összes picot és kötés eltávolításra kerül, az öltések ds-ből ss-re változnak.",
   "jkConvertConfirm": "Átalakítás JK-vá",
   "propShapeTeardrop": "Könnycsepp",
-  "propShapeCircle": "Kör"
+  "propShapeCircle": "Kör",
+  "picotWizardSideBoth": "Mindkettő",
+  "picotWizardReverse": "Jelölés megfordítása"
 }

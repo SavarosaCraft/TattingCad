@@ -207,6 +207,46 @@ const categorizeColor = (color) => {
   return 'neutrals';
 };
 
+// Hex (#rrggbb, with or without '#') -> { h, s, v }, each in [0, 1].
+// Extracted from the color picker, which previously had this same
+// parse-and-compute-hue block inlined 8 times across its grid/slider
+// handlers.
+const hexToHsv = (hex: string): { h: number; s: number; v: number } => {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.substr(0, 2), 16) / 255;
+  const g = parseInt(clean.substr(2, 2), 16) / 255;
+  const b = parseInt(clean.substr(4, 2), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  let h = 0;
+  if (delta !== 0) {
+    if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / delta + 2) / 6;
+    else h = ((r - g) / delta + 4) / 6;
+  }
+  const s = max === 0 ? 0 : delta / max;
+  const v = max;
+  return { h, s, v };
+};
+
+// { h, s, v } (each in [0, 1]) -> hex color string ('#rrggbb').
+const hsvToHex = (h: number, s: number, v: number): string => {
+  const c = v * s;
+  const hPrime = h * 6;
+  const x = c * (1 - Math.abs((hPrime % 2) - 1));
+  const m = v - c;
+  let r: number, g: number, b: number;
+  if (hPrime < 1) { r = c; g = x; b = 0; }
+  else if (hPrime < 2) { r = x; g = c; b = 0; }
+  else if (hPrime < 3) { r = 0; g = c; b = x; }
+  else if (hPrime < 4) { r = 0; g = x; b = c; }
+  else if (hPrime < 5) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  const toHex = (val: number) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
 // ============================================================================
 // REALISTIC RENDERING: DS STITCH SVG PATH
 // ============================================================================
@@ -449,6 +489,7 @@ const TattingDesigner = () => {
     picotWizardSymmetric, setPicotWizardSymmetric,
     picotWizardFillGap, setPicotWizardFillGap,
     picotWizardScalePct, setPicotWizardScalePct,
+    picotWizardSide, setPicotWizardSide,
     showMultiScaleWizard, setShowMultiScaleWizard,
     multiScalePct, setMultiScalePct,
     colorPickerTab, setColorPickerTab,
@@ -2725,15 +2766,13 @@ const TattingDesigner = () => {
           stitchCount: sca + scb, picots: allPicots, splitPosition: sca };
       }
 
-      // ── All closed rings (circle and teardrop) ───────────────────────────
-      // Physical mirror of path coords + updated rotation angle
-      if (el.isClosed) {
-        const newPaths = el.paths.map(mirrorPath).reverse();
-        return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
-          isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV };
-      }
-
-      // ── Chains and lines ──────────────────────────────────────────────────
+      // ── Closed rings, chains, and lines ─────────────────────────────────
+      // Mirror path coords + reverse notation so tatting order reads
+      // correctly in the new orientation. Without notation reversal a
+      // mirrored element has reversed physical structure but the same
+      // notation — wrong for pattern output. Lines have no notation to
+      // reverse, and closed rings always satisfy type !== 'line', so one
+      // branch covers all three cases.
       const newPaths = el.paths.map(mirrorPath).reverse();
       let reversedNotation = el.notation, picots = el.picots;
       if (el.type !== 'line' && el.notation) {
@@ -3261,6 +3300,17 @@ const TattingDesigner = () => {
     applyGhostRegenResult(result);
   };
 
+  // Commits a single replaced path segment onto one element (single-path
+  // chains/lines only). Used by path/line preset angle application, both
+  // from the keyboard shortcuts and the floating preset-angle panel buttons.
+  // Computes the updated array once and reuses it for both setElements and
+  // pushHistoryState, rather than recomputing the same .map() twice.
+  const commitSinglePathUpdate = (elId: string, newPath: any) => {
+    const updated = elementsRef.current.map(e => e.id === elId ? { ...e, paths: [newPath] } : e);
+    setElements(updated);
+    pushHistoryState(updated, picotConnectionsRef.current, orderGroupsRef.current);
+  };
+
 
   const { handleMouseDown, handleMouseMove, handleMouseUp } = useInputHandlers({
     elements, selectedIds, selectedIdSet, elementById,
@@ -3384,14 +3434,7 @@ const TattingDesigner = () => {
             if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
               const newPath = applyPathPreset(path, presetDeg, targetLength, true); // presets always symmetric
               if (newPath !== path) {
-                setElements(prev => prev.map(e =>
-                  e.id === el.id ? { ...e, paths: [newPath] } : e
-                ));
-                pushHistoryState(
-                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                  picotConnectionsRef.current,
-                  orderGroupsRef.current
-                );
+                commitSinglePathUpdate(el.id, newPath);
               }
             }
           }
@@ -3412,14 +3455,7 @@ const TattingDesigner = () => {
             if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
               const newPath = applyLinePreset(path, presetDeg);
               if (newPath !== path) {
-                setElements(prev => prev.map(e =>
-                  e.id === el.id ? { ...e, paths: [newPath] } : e
-                ));
-                pushHistoryState(
-                  elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                  picotConnectionsRef.current,
-                  orderGroupsRef.current
-                );
+                commitSinglePathUpdate(el.id, newPath);
               }
             }
           }
@@ -3880,8 +3916,6 @@ const TattingDesigner = () => {
         );
       }
 
-      let capturedGhostResult: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } | null = null;
-
       // Read elementsRef.current directly rather than via a setElements
       // updater — regenerateGhostArrays calls generateId() per ghost, and
       // React can invoke functional updaters more than once (e.g. Strict
@@ -3900,27 +3934,11 @@ const TattingDesigner = () => {
       // render/history step instead of two — was previously deferred via
       // pendingGhostUpdateRef + a separate effect, which caused a visible
       // two-step undo and a brief desynced frame between mother and ghosts.
-      let finalElements = updated;
       const motherEl = updated.find(e => e.id === targetId);
       if (motherEl?.isGhostMother) {
-        capturedGhostResult = regenerateGhostArrays(updated, ghostArrays, [targetId]);
-        finalElements = capturedGhostResult.elements;
-      }
-
-      setElements(finalElements);
-
-      if (capturedGhostResult) {
-        const result = capturedGhostResult;
-        setGhostArrays(result.ghostArrays);
-        if (result.connectionIdMap.size > 0) {
-          setPicotConnections(prev => prev.map(conn => ({
-            ...conn,
-            picots: conn.picots.map(cp => ({
-              ...cp,
-              elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
-            })),
-          })));
-        }
+        applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, [targetId]));
+      } else {
+        setElements(updated);
       }
     };
 
@@ -4002,28 +4020,11 @@ const TattingDesigner = () => {
       return el;
     });
 
-    let finalElements = updated;
-    let capturedGhostResult: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } | null = null;
     const motherEl = updated.find(e => e.id === selectedIds[0]);
     if (motherEl?.isGhostMother) {
-      capturedGhostResult = regenerateGhostArrays(updated, ghostArrays, [selectedIds[0]]);
-      finalElements = capturedGhostResult.elements;
-    }
-
-    setElements(finalElements);
-
-    if (capturedGhostResult) {
-      const result = capturedGhostResult;
-      setGhostArrays(result.ghostArrays);
-      if (result.connectionIdMap.size > 0) {
-        setPicotConnections(prev => prev.map(conn => ({
-          ...conn,
-          picots: conn.picots.map(cp => ({
-            ...cp,
-            elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
-          })),
-        })));
-      }
+      applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, [selectedIds[0]]));
+    } else {
+      setElements(updated);
     }
   };
 
@@ -4099,19 +4100,11 @@ const TattingDesigner = () => {
         if (currentEl.isGhostMother) {
           const result = regenerateGhostArrays(finalElements, ghostArrays, [currentEl.id]);
           finalElements = result.elements;
-          setGhostArrays(result.ghostArrays);
-          if (result.connectionIdMap.size > 0) {
-            setPicotConnections(prev => prev.map(conn => ({
-              ...conn,
-              picots: conn.picots.map(cp => ({
-                ...cp,
-                elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
-              })),
-            })));
-          }
+          applyGhostRegenResult(result);
+        } else {
+          setElements(finalElements);
         }
 
-        setElements(finalElements);
         pushHistoryState(finalElements, newConns, orderGroupsRef.current);
       },
     });
@@ -5910,6 +5903,180 @@ const TattingDesigner = () => {
     return nearestPoint;
   };
 
+  // Rotate ±90°, ±1° nudge, and mirror H/V buttons for the single-element
+  // property bar. Shared between the line-only branch and the general
+  // (ring/chain/split-ring) branch below — both act on selectedElement.id via
+  // the same setElements/rotatePaths/flipElements calls, so there's no reason
+  // for the logic to differ by element type; only the surrounding layout
+  // (what else appears alongside it) differs per branch.
+  const renderRotateFlipControls = () => (
+    <>
+      <button
+        onClick={() => {
+          const newRotation = (selectedElement.rotation || 0) - 90;
+          setElements(prev => prev.map(el => {
+            if (el.id !== selectedElement.id) return el;
+            const polarPivot = getPolarPivot([el.id]);
+            const pivot = polarPivot || getElementPivot(el);
+            const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, -90);
+            const newPivot = polarPivot
+              ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(-Math.PI/2) - (el.center.y - pivot.y) * Math.sin(-Math.PI/2),
+                  y: pivot.y + (el.center.x - pivot.x) * Math.sin(-Math.PI/2) + (el.center.y - pivot.y) * Math.cos(-Math.PI/2) }
+              : getElementPivot({ ...el, paths: newPaths });
+            return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
+          }));
+        }}
+        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
+        title={t('propRotateMinus90')}
+      >
+        <IconRotateCCW size={16} />
+      </button>
+      <input
+        type="text"
+        value={singleRotationInput !== '' ? singleRotationInput : String(parseFloat((((selectedElement.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
+        onChange={(e) => setSingleRotationInput(e.target.value)}
+        onBlur={(e) => {
+          const currentDeg = ((selectedElement.rotation || 0) % 360 + 360) % 360;
+          const result = parseRotationExpr(e.target.value, currentDeg);
+          setSingleRotationInput('');
+          if (result === null) return;
+          const delta = result - (selectedElement.rotation || 0);
+          if (Math.abs(delta) < 0.001) return;
+          setElements(prev => prev.map(el => {
+            if (el.id !== selectedElement.id) return el;
+            const polarPivot = getPolarPivot([el.id]);
+            const pivot = polarPivot || getElementPivot(el);
+            const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
+            const rad = delta * Math.PI / 180;
+            const cos = Math.cos(rad), sin = Math.sin(rad);
+            const newPivot = polarPivot
+              ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
+                  y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+              : getElementPivot({ ...el, paths: newPaths });
+            return { ...el, paths: newPaths, rotation: result, center: { x: newPivot.x, y: newPivot.y } };
+          }));
+          needsHistoryPushRef.current = true;
+        }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+        className="px-1 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white text-center"
+        style={{width:'6.5ch', minWidth:'6.5ch'}}
+        placeholder="0°"
+      />
+      {/* ±1° nudge arrows — side by side, press-and-hold to repeat.
+          All intermediate rotations skip history; one push on mouseUp captures the full delta. */}
+      <button
+        onMouseDown={() => {
+          nudgeActiveRef.current = true;
+          nudgeAccumulatedDeltaRef.current = 1;
+          applySingleRotationDelta(selectedElement.id, 1);
+          nudgeIntervalRef.current = setInterval(() => {
+            nudgeAccumulatedDeltaRef.current += 1;
+            applySingleRotationDelta(selectedElement.id, 1, false);
+          }, 80);
+        }}
+        onMouseUp={() => {
+          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+          }
+          nudgeActiveRef.current = false;
+          nudgeAccumulatedDeltaRef.current = 0;
+        }}
+        onMouseLeave={() => {
+          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+          }
+          nudgeActiveRef.current = false;
+          nudgeAccumulatedDeltaRef.current = 0;
+        }}
+        className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
+        style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
+        title={t('rotateNudgePlus')}
+      >▲</button>
+      <button
+        onMouseDown={() => {
+          nudgeActiveRef.current = true;
+          nudgeAccumulatedDeltaRef.current = -1;
+          applySingleRotationDelta(selectedElement.id, -1);
+          nudgeIntervalRef.current = setInterval(() => {
+            nudgeAccumulatedDeltaRef.current -= 1;
+            applySingleRotationDelta(selectedElement.id, -1, false);
+          }, 80);
+        }}
+        onMouseUp={() => {
+          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+          }
+          nudgeActiveRef.current = false;
+          nudgeAccumulatedDeltaRef.current = 0;
+        }}
+        onMouseLeave={() => {
+          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
+          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+          }
+          nudgeActiveRef.current = false;
+          nudgeAccumulatedDeltaRef.current = 0;
+        }}
+        className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
+        style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
+        title={t('rotateNudgeMinus')}
+      >▼</button>
+      <button
+        onClick={() => {
+          const newRotation = (selectedElement.rotation || 0) + 90;
+          setElements(prev => prev.map(el => {
+            if (el.id !== selectedElement.id) return el;
+            const polarPivot = getPolarPivot([el.id]);
+            const pivot = polarPivot || getElementPivot(el);
+            const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, 90);
+            const newPivot = polarPivot
+              ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(Math.PI/2) - (el.center.y - pivot.y) * Math.sin(Math.PI/2),
+                  y: pivot.y + (el.center.x - pivot.x) * Math.sin(Math.PI/2) + (el.center.y - pivot.y) * Math.cos(Math.PI/2) }
+              : getElementPivot({ ...el, paths: newPaths });
+            return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
+          }));
+        }}
+        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
+        title={t('propRotatePlus90')}
+      >
+        <IconRotateCW size={16} />
+      </button>
+
+      {/* Flip buttons */}
+      <button
+        onClick={() => {
+          // FlipH: mirror left-right across vertical axis.
+          // Pivot = grid center if a grid is linked/selected, else element's own center.
+          const pfg = getPolarFlipGrid([selectedElement.id]);
+          const pivX = pfg ? pfg.center.x : selectedElement.center.x;
+          const pivY = pfg ? pfg.center.y : selectedElement.center.y;
+          flipElements([selectedElement.id], 90, pivX, pivY);
+        }}
+        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
+        title={t('propFlipH')}
+      >
+        <IconFlipH size={16} />
+      </button>
+
+      <button
+        onClick={() => {
+          // FlipV: mirror top-bottom across horizontal axis.
+          const pfg = getPolarFlipGrid([selectedElement.id]);
+          const pivX = pfg ? pfg.center.x : selectedElement.center.x;
+          const pivY = pfg ? pfg.center.y : selectedElement.center.y;
+          flipElements([selectedElement.id], 0, pivX, pivY);
+        }}
+        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
+        title={t('propFlipV')}
+      >
+        <IconFlipV size={16} />
+      </button>
+    </>
+  );
+
   // ── Polar grid snap candidates ───────────────────────────────────────────
   // Injected after element snap: polar ring×spoke intersections are candidates
   // only when snapEnabled. Uses same nearestDist so element snaps still win.
@@ -7079,6 +7246,9 @@ const TattingDesigner = () => {
                 <div className="flex items-center gap-0.5 md:gap-3">
                   <span className="text-xs text-gray-400 px-2">{t('infoLine')}</span>
                   <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
+                    {renderRotateFlipControls()}
+                  </div>
+                  <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                     <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
                     <input
                       type="text"
@@ -7464,15 +7634,86 @@ if (parsed && parsed.stitchCount > 0) {
                     </button>
                     {showPicotWizard && (() => {
                       const currentElement = elementById.get(selectedElement.id);
-                      const notation = currentElement?.notation || '';
-                      const picots = currentElement?.picots || [];
-                      const analysis = analyzeNotationForWizard(notation, picots);
-                      const canClear = analysis.supported && hasUnjoinedPicotsText(notation, picots);
-                      const canAdd = analysis.supported && hasAddablePicotRunsText(notation, picots);
-                      const maxGap = analysis.supported ? maxUsefulFillGap(notation, picots) : 1;
+                      const isSR = !!currentElement?.isSplitRing;
+
+                      // For split rings: split the interleaved picots array into A and B sides.
+                      // A-side picots have stitchesBefore < splitPosition (stored in reversed-A space).
+                      // B-side picots have stitchesBefore >= splitPosition.
+                      // Each side is analyzed independently against its own notation.
+                      const splitPos = isSR ? (currentElement?.splitPosition || Math.floor((currentElement?.stitchCount || 0) / 2)) : 0;
+                      const allPicots = currentElement?.picots || [];
+
+                      // A side: notation is el.notation (sr: ...), picots with sb < splitPos,
+                      // but stitchesBefore needs to be re-normalized to A's own 0..stitchCountA space.
+                      // The element stores reversed-A picots, so sb = splitPos - originalSb (already inverted).
+                      // For analyzeNotation we need picots in the same order/space as the notation text.
+                      // The notation text sr: Xds... reads left-to-right as A in reverse, so the picots
+                      // in the array that map to A are already in the right order for the notation.
+                      const picotsA = isSR
+                        ? allPicots.filter(p => p.stitchesBefore < splitPos)
+                                   .map(p => ({ ...p, stitchesBefore: splitPos - p.stitchesBefore }))
+                                   .reverse()
+                        : allPicots;
+                      const picotsB = isSR
+                        ? allPicots.filter(p => p.stitchesBefore >= splitPos)
+                                   .map(p => ({ ...p, stitchesBefore: p.stitchesBefore - splitPos }))
+                        : [];
+
+                      const notationA = currentElement?.notation || '';
+                      const notationBRaw = isSR ? (currentElement?.notationB || '') : '';
+                      const notationBFull = isSR ? `sr: ${notationBRaw}` : '';
+
+                      const analysisA = analyzeNotationForWizard(notationA, picotsA);
+                      const analysisB = isSR ? analyzeNotationForWizard(notationBFull, picotsB) : analysisA;
+
+                      // For single rings: use A analysis only
+                      const activeSides: Array<'A' | 'B'> = isSR
+                        ? (picotWizardSide === 'both' ? ['A', 'B'] : [picotWizardSide])
+                        : ['A'];
+
+                      const notationFor = (side: 'A' | 'B') => side === 'A' ? notationA : notationBFull;
+                      const picotsFor = (side: 'A' | 'B') => side === 'A' ? picotsA : picotsB;
+                      const analysisFor = (side: 'A' | 'B') => side === 'A' ? analysisA : analysisB;
+
+                      // A helper that applies a transform to the active sides and commits.
+                      // Returns the final notationA and notationB strings after transforms.
+                      const applyToSides = (transform: (notation: string, picots: any[]) => { notation: string; resultZeroWidth: Array<{ isJoint: boolean }> } | null) => {
+                        let newNotationA = notationA;
+                        let newNotationB = notationBFull;
+                        for (const side of activeSides) {
+                          const result = transform(notationFor(side), picotsFor(side));
+                          if (!result) continue;
+                          const compacted = autoCompact(result.notation, result.resultZeroWidth);
+                          if (side === 'A') newNotationA = compacted;
+                          else newNotationB = compacted;
+                        }
+                        setDraftNotation(null);
+                        // For split rings updateNotation takes (notationA, notationBRaw, id)
+                        // notationB is stored without the sr: prefix
+                        const notationBToCommit = isSR ? newNotationB.replace(/^sr:\s*/i, '') : null;
+                        updateNotation(newNotationA, notationBToCommit, currentElement?.id, { preservesExistingPicots: true });
+                        setShowPicotWizard(false);
+                      };
+
+                      const canClear = activeSides.some(s => analysisFor(s).supported && hasUnjoinedPicotsText(notationFor(s), picotsFor(s)));
+                      const canAdd = activeSides.some(s => analysisFor(s).supported && hasAddablePicotRunsText(notationFor(s), picotsFor(s)));
+                      const canCompact = activeSides.some(s => analysisFor(s).supported && hasCompactableGroups(notationFor(s), picotsFor(s)));
+                      const maxGap = Math.max(...activeSides.map(s => analysisFor(s).supported ? maxUsefulFillGap(notationFor(s), picotsFor(s)) : 1));
                       const effectiveGap = Math.min(picotWizardFillGap, maxGap);
-                      const fillPreview = analysis.supported ? previewFillDensity(notation, picots, effectiveGap) : null;
-                      const canCompact = analysis.supported && hasCompactableGroups(notation, picots);
+                      const fillPreviews = activeSides.map(s => analysisFor(s).supported ? previewFillDensity(notationFor(s), picotsFor(s), effectiveGap) : null);
+                      const fillAddedCount = fillPreviews.reduce((sum, p) => sum + (p?.addedCount || 0), 0);
+
+                      // Scale: both sides always scale together to preserve shape
+                      const scaleFactor = picotWizardScalePct / 100;
+                      const scalePreviewA = analysisA.supported && scaleFactor > 0 ? scaleNotation(notationA, picotsA, scaleFactor) : null;
+                      const scalePreviewB = isSR && analysisB.supported && scaleFactor > 0 ? scaleNotation(notationBFull, picotsB, scaleFactor) : null;
+                      const scaleActualTotal = (scalePreviewA?.actualTotalDs || 0) + (scalePreviewB?.actualTotalDs || 0);
+                      const scaleAnyClamped = !!(scalePreviewA?.anyClamped || scalePreviewB?.anyClamped);
+                      const scaleTotalDs = totalRunDs(analysisA.segments) + (isSR ? totalRunDs(analysisB.segments) : 0);
+                      const { exact: exactPresets, rounded: roundedPresets } = suggestScalePresets(scaleTotalDs, [...picotsA, ...picotsB]);
+
+                      const anySupported = activeSides.some(s => analysisFor(s).supported);
+
                       return (
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => setShowPicotWizard(false)} />
@@ -7480,127 +7721,130 @@ if (parsed && parsed.stitchCount > 0) {
                             <div className="text-gray-100 font-semibold text-sm mb-2 flex items-center gap-2">
                               <IconMagicWand size={14} /> {t('picotWizardTitle')}
                             </div>
-                            {!analysis.supported ? (
+
+                            {/* Side radio buttons — split rings only */}
+                            {isSR && (
+                              <div className="flex gap-1 mb-3">
+                                {(['A', 'both', 'B'] as const).map(side => (
+                                  <button
+                                    key={side}
+                                    onClick={() => setPicotWizardSide(side)}
+                                    className={`flex-1 py-1 rounded text-xs border ${picotWizardSide === side ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                                  >
+                                    {side === 'both' ? t('picotWizardSideBoth') : side}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {!anySupported ? (
                               <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
                             ) : (
                               <>
                                 <button
-                                  disabled={!canClear}
                                   onClick={() => {
-                                    const result = clearUnjoinedPicotsText(notation, picots);
-                                    if (result) {
-                                      const finalNotation = autoCompact(result.notation, result.resultZeroWidth);
-                                      setDraftNotation(null);
-                                      updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true });
+                                    const currentElement = elementById.get(selectedElement.id);
+                                    if (!currentElement) return;
+                                    setDraftNotation(null);
+                                    if (isSR) {
+                                      // Split ring: swap and reverse both sides
+                                      const revA = reverseNotation(notationA).replace(/^sr:\s*/i, '');
+                                      const revB = reverseNotation(notationBFull).replace(/^sr:\s*/i, '');
+                                      // After reversal A and B are swapped (B becomes A, A becomes B)
+                                      updateNotation(`sr: ${revB}`, revA, currentElement.id, { preservesExistingPicots: false });
+                                    } else {
+                                      updateNotation(reverseNotation(notationA), null, currentElement.id, { preservesExistingPicots: false });
                                     }
                                     setShowPicotWizard(false);
                                   }}
+                                  className={`${WIZARD_BUTTON_CLASS} mb-3`}
+                                >{t('picotWizardReverse')}</button>
+
+                                <button
+                                  disabled={!canClear}
+                                  onClick={() => applyToSides((n, p) => clearUnjoinedPicotsText(n, p))}
                                   className={`${WIZARD_BUTTON_CLASS} mb-3`}
                                 >{t('picotWizardClearUnjoined')}</button>
 
                                 <div className="border-t border-gray-600 pt-2 mb-3">
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardAddSection')}</div>
                                   <div className="flex gap-1 mb-2">
-                                    <button
-                                      onClick={() => setPicotWizardSymmetric(false)}
-                                      className={`flex-1 py-1 rounded text-xs border ${!picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
-                                    >{t('picotWizardAsymmetric')}</button>
-                                    <button
-                                      onClick={() => setPicotWizardSymmetric(true)}
-                                      className={`flex-1 py-1 rounded text-xs border ${picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
-                                    >{t('picotWizardSymmetric')}</button>
+                                    <button onClick={() => setPicotWizardSymmetric(false)} className={`flex-1 py-1 rounded text-xs border ${!picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>{t('picotWizardAsymmetric')}</button>
+                                    <button onClick={() => setPicotWizardSymmetric(true)} className={`flex-1 py-1 rounded text-xs border ${picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>{t('picotWizardSymmetric')}</button>
                                   </div>
                                   <button
                                     disabled={!canAdd}
-                                    onClick={() => {
-                                      const result = addPicotsToRunsText(notation, picots, picotWizardSymmetric);
-                                      if (result) {
-                                        const finalNotation = autoCompact(result.notation, result.resultZeroWidth);
-                                        setDraftNotation(null);
-                                        updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true });
-                                      }
-                                      setShowPicotWizard(false);
-                                    }}
+                                    onClick={() => applyToSides((n, p) => addPicotsToRunsText(n, p, picotWizardSymmetric))}
                                     className={WIZARD_BUTTON_CLASS}
                                   >{t('picotWizardAddApply')}</button>
                                 </div>
 
-                                <div className="border-t border-gray-600 pt-2">
+                                <div className="border-t border-gray-600 pt-2 mb-3">
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardFillSection')}</div>
                                   <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
                                     <span>{t('picotWizardFillDense')}</span>
                                     <span>{t('picotWizardFillSparse')}</span>
                                   </div>
-                                  <input
-                                    type="range"
-                                    min={1}
-                                    max={Math.max(1, maxGap)}
-                                    value={effectiveGap}
+                                  <input type="range" min={1} max={Math.max(1, maxGap)} value={effectiveGap}
                                     onChange={(e) => setPicotWizardFillGap(parseInt(e.target.value, 10))}
-                                    className="w-full mb-1"
-                                    disabled={maxGap <= 1}
-                                  />
+                                    className="w-full mb-1" disabled={maxGap <= 1} />
                                   <div className="text-xs text-gray-400 mb-2">
-                                    {fillPreview && fillPreview.addedCount > 0
-                                      ? t('picotWizardFillPreview').replace('{n}', String(fillPreview.addedCount))
-                                      : t('picotWizardFillNoChange')}
+                                    {fillAddedCount > 0 ? t('picotWizardFillPreview').replace('{n}', String(fillAddedCount)) : t('picotWizardFillNoChange')}
                                   </div>
                                   <button
-                                    disabled={!fillPreview || fillPreview.addedCount === 0}
+                                    disabled={fillAddedCount === 0}
                                     onClick={() => {
-                                      if (fillPreview && fillPreview.addedCount > 0) {
-                                        const finalNotation = autoCompact(fillPreview.notation, fillPreview.resultZeroWidth);
-                                        setDraftNotation(null);
-                                        updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true });
-                                      }
+                                      let newNotationA = notationA;
+                                      let newNotationB = notationBFull;
+                                      activeSides.forEach((side, idx) => {
+                                        const preview = fillPreviews[idx];
+                                        if (!preview || preview.addedCount === 0) return;
+                                        const compacted = autoCompact(preview.notation, preview.resultZeroWidth);
+                                        if (side === 'A') newNotationA = compacted;
+                                        else newNotationB = compacted;
+                                      });
+                                      setDraftNotation(null);
+                                      updateNotation(newNotationA, isSR ? newNotationB.replace(/^sr:\s*/i, '') : null, currentElement?.id, { preservesExistingPicots: true });
                                       setShowPicotWizard(false);
                                     }}
                                     className={WIZARD_BUTTON_CLASS}
                                   >{t('picotWizardFillApply')}</button>
                                 </div>
 
-                                <div className="border-t border-gray-600 pt-2 mt-3">
+                                <div className="border-t border-gray-600 pt-2 mb-3">
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardCompactSection')}</div>
                                   <button
                                     disabled={!canCompact}
-                                    onClick={() => {
-                                      const result = compactRepeatedPicots(notation, picots);
-                                      if (result) { setDraftNotation(null); updateNotation(result.notation, null, currentElement.id, { preservesExistingPicots: true }); }
-                                      setShowPicotWizard(false);
-                                    }}
+                                    onClick={() => applyToSides((n, p) => {
+                                      const r = compactRepeatedPicots(n, p);
+                                      return r ? { notation: r.notation, resultZeroWidth: p } : null;
+                                    })}
                                     className={WIZARD_BUTTON_CLASS}
                                   >{t('picotWizardCompactApply')}</button>
                                 </div>
 
-                                <div className="border-t border-gray-600 pt-2 mt-3">
+                                <div className="border-t border-gray-600 pt-2">
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardScaleSection')}</div>
-                                  {(() => {
-                                    const totalDs = totalRunDs(analysis.segments);
-                                    const { exact: exactPresets, rounded: roundedPresets } = suggestScalePresets(totalDs, picots);
-                                    const factor = picotWizardScalePct / 100;
-                                    const scalePreview = factor > 0 ? scaleNotation(notation, picots, factor) : null;
-                                    return (
-                                      <ScaleControls
-                                        presets={[...exactPresets, ...roundedPresets]}
-                                        pct={picotWizardScalePct}
-                                        onPctChange={setPicotWizardScalePct}
-                                        previewText={scalePreview ? t('picotWizardScalePreview').replace('{n}', String(scalePreview.actualTotalDs)) : null}
-                                        clampedWarningText={scalePreview && scalePreview.anyClamped ? t('picotWizardScaleClamped') : null}
-                                        customLabelText={t('picotWizardScaleCustomLabel')}
-                                        applyLabel={t('picotWizardScaleApply')}
-                                        applyDisabled={!scalePreview || picotWizardScalePct === 100}
-                                        onApply={() => {
-                                          if (scalePreview && picotWizardScalePct !== 100) {
-                                            const finalNotation = autoCompact(scalePreview.notation, picots);
-                                            setDraftNotation(null);
-                                            updateNotation(finalNotation, null, currentElement.id, { preservesExistingPicots: true, picotMatchMode: 'order' });
-                                          }
-                                          setPicotWizardScalePct(100);
-                                          setShowPicotWizard(false);
-                                        }}
-                                      />
-                                    );
-                                  })()}
+                                  <ScaleControls
+                                    presets={[...exactPresets, ...roundedPresets]}
+                                    pct={picotWizardScalePct}
+                                    onPctChange={setPicotWizardScalePct}
+                                    previewText={scalePreviewA ? t('picotWizardScalePreview').replace('{n}', String(scaleActualTotal)) : null}
+                                    clampedWarningText={scaleAnyClamped ? t('picotWizardScaleClamped') : null}
+                                    customLabelText={t('picotWizardScaleCustomLabel')}
+                                    applyLabel={t('picotWizardScaleApply')}
+                                    applyDisabled={!scalePreviewA || picotWizardScalePct === 100}
+                                    onApply={() => {
+                                      if (scalePreviewA && picotWizardScalePct !== 100) {
+                                        const newNotationA = autoCompact(scalePreviewA.notation, picotsA);
+                                        const newNotationB = isSR && scalePreviewB ? autoCompact(scalePreviewB.notation, picotsB).replace(/^sr:\s*/i, '') : null;
+                                        setDraftNotation(null);
+                                        updateNotation(newNotationA, newNotationB, currentElement?.id, { preservesExistingPicots: true, picotMatchMode: 'order' });
+                                      }
+                                      setPicotWizardScalePct(100);
+                                      setShowPicotWizard(false);
+                                    }}
+                                  />
                                 </div>
                               </>
                             )}
@@ -7616,169 +7860,7 @@ if (parsed && parsed.stitchCount > 0) {
               {/* Rotation input */}
               <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                 {/* Label removed - icons are self-explanatory */}
-                <button
-                  onClick={() => {
-                    const newRotation = (selectedElement.rotation || 0) - 90;
-                    setElements(prev => prev.map(el => {
-                      if (el.id !== selectedElement.id) return el;
-                      const polarPivot = getPolarPivot([el.id]);
-                      const pivot = polarPivot || getElementPivot(el);
-                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, -90);
-                      const newPivot = polarPivot
-                        ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(-Math.PI/2) - (el.center.y - pivot.y) * Math.sin(-Math.PI/2),
-                            y: pivot.y + (el.center.x - pivot.x) * Math.sin(-Math.PI/2) + (el.center.y - pivot.y) * Math.cos(-Math.PI/2) }
-                        : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-                    }));
-                  }}
-                  className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                  title={t('propRotateMinus90')}
-                >
-                  <IconRotateCCW size={16} />
-                </button>
-                <input
-                  type="text"
-                  value={singleRotationInput !== '' ? singleRotationInput : String(parseFloat((((selectedElement.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
-                  onChange={(e) => setSingleRotationInput(e.target.value)}
-                  onBlur={(e) => {
-                    const currentDeg = ((selectedElement.rotation || 0) % 360 + 360) % 360;
-                    const result = parseRotationExpr(e.target.value, currentDeg);
-                    setSingleRotationInput('');
-                    if (result === null) return;
-                    const delta = result - (selectedElement.rotation || 0);
-                    if (Math.abs(delta) < 0.001) return;
-                    setElements(prev => prev.map(el => {
-                      if (el.id !== selectedElement.id) return el;
-                      const polarPivot = getPolarPivot([el.id]);
-                      const pivot = polarPivot || getElementPivot(el);
-                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
-                      const rad = delta * Math.PI / 180;
-                      const cos = Math.cos(rad), sin = Math.sin(rad);
-                      const newPivot = polarPivot
-                        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
-                            y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
-                        : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: result, center: { x: newPivot.x, y: newPivot.y } };
-                    }));
-                    needsHistoryPushRef.current = true;
-                  }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                  className="px-1 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white text-center"
-                  style={{width:'6.5ch', minWidth:'6.5ch'}}
-                  placeholder="0°"
-                />
-                {/* ±1° nudge arrows — side by side, press-and-hold to repeat.
-                    All intermediate rotations skip history; one push on mouseUp captures the full delta. */}
-                <button
-                  onMouseDown={() => {
-                    nudgeActiveRef.current = true;
-                    nudgeAccumulatedDeltaRef.current = 1;
-                    applySingleRotationDelta(selectedElement.id, 1);
-                    nudgeIntervalRef.current = setInterval(() => {
-                      nudgeAccumulatedDeltaRef.current += 1;
-                      applySingleRotationDelta(selectedElement.id, 1, false);
-                    }, 80);
-                  }}
-                  onMouseUp={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
-                  onMouseLeave={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
-                  className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
-                  style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
-                  title={t('rotateNudgePlus')}
-                >▲</button>
-                <button
-                  onMouseDown={() => {
-                    nudgeActiveRef.current = true;
-                    nudgeAccumulatedDeltaRef.current = -1;
-                    applySingleRotationDelta(selectedElement.id, -1);
-                    nudgeIntervalRef.current = setInterval(() => {
-                      nudgeAccumulatedDeltaRef.current -= 1;
-                      applySingleRotationDelta(selectedElement.id, -1, false);
-                    }, 80);
-                  }}
-                  onMouseUp={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
-                  onMouseLeave={() => {
-                    if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-                    if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                    }
-                    nudgeActiveRef.current = false;
-                    nudgeAccumulatedDeltaRef.current = 0;
-                  }}
-                  className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
-                  style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
-                  title={t('rotateNudgeMinus')}
-                >▼</button>
-                <button
-                  onClick={() => {
-                    const newRotation = (selectedElement.rotation || 0) + 90;
-                    setElements(prev => prev.map(el => {
-                      if (el.id !== selectedElement.id) return el;
-                      const polarPivot = getPolarPivot([el.id]);
-                      const pivot = polarPivot || getElementPivot(el);
-                      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, 90);
-                      const newPivot = polarPivot
-                        ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(Math.PI/2) - (el.center.y - pivot.y) * Math.sin(Math.PI/2),
-                            y: pivot.y + (el.center.x - pivot.x) * Math.sin(Math.PI/2) + (el.center.y - pivot.y) * Math.cos(Math.PI/2) }
-                        : getElementPivot({ ...el, paths: newPaths });
-                      return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-                    }));
-                  }}
-                  className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                  title={t('propRotatePlus90')}
-                >
-                  <IconRotateCW size={16} />
-                </button>
-                
-                {/* Flip buttons */}
-                <button
-                  onClick={() => {
-                    // FlipH: mirror left-right across vertical axis.
-                    // Pivot = grid center if a grid is linked/selected, else element's own center.
-                    const pfg = getPolarFlipGrid([selectedElement.id]);
-                    const pivX = pfg ? pfg.center.x : selectedElement.center.x;
-                    const pivY = pfg ? pfg.center.y : selectedElement.center.y;
-                    flipElements([selectedElement.id], 90, pivX, pivY);
-                  }}
-                  className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                  title={t('propFlipH')}
-                >
-                  <IconFlipH size={16} />
-                </button>
-                
-                <button
-                  onClick={() => {
-                    // FlipV: mirror top-bottom across horizontal axis.
-                    const pfg = getPolarFlipGrid([selectedElement.id]);
-                    const pivX = pfg ? pfg.center.x : selectedElement.center.x;
-                    const pivY = pfg ? pfg.center.y : selectedElement.center.y;
-                    flipElements([selectedElement.id], 0, pivX, pivY);
-                  }}
-                  className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                  title={t('propFlipV')}
-                >
-                  <IconFlipV size={16} />
-                </button>
+                {renderRotateFlipControls()}
 
                 {/* Notation label offset slider */}
                 <div className="flex items-center gap-1" title={t('propNotationPos')}>
@@ -8926,14 +9008,7 @@ if (parsed && parsed.stitchCount > 0) {
                       const targetLength = el.stitchCount * dsWidth;
                       const newPath = applyPathPreset(path, preset.deg, targetLength, true); // presets always symmetric
                       if (newPath !== path) {
-                        setElements(prev => prev.map(e =>
-                          e.id === el.id ? { ...e, paths: [newPath] } : e
-                        ));
-                        pushHistoryState(
-                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                          picotConnectionsRef.current,
-                          orderGroupsRef.current
-                        );
+                        commitSinglePathUpdate(el.id, newPath);
                       }
                     }}
                     className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
@@ -8979,14 +9054,7 @@ if (parsed && parsed.stitchCount > 0) {
                       const path = el.paths[0];
                       const newPath = applyLinePreset(path, preset.deg);
                       if (newPath !== path) {
-                        setElements(prev => prev.map(e =>
-                          e.id === el.id ? { ...e, paths: [newPath] } : e
-                        ));
-                        pushHistoryState(
-                          elementsRef.current.map(e => e.id === el.id ? { ...e, paths: [newPath] } : e),
-                          picotConnectionsRef.current,
-                          orderGroupsRef.current
-                        );
+                        commitSinglePathUpdate(el.id, newPath);
                       }
                     }}
                     className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
@@ -10982,23 +11050,7 @@ if (parsed && parsed.stitchCount > 0) {
                     style={{
                       background: `
                         linear-gradient(to top, black, transparent),
-                        linear-gradient(to right, white, hsl(${(() => {
-                          // Extract hue from current color
-                          const hex = pickerColor.replace('#', '');
-                          const r = parseInt(hex.substr(0, 2), 16) / 255;
-                          const g = parseInt(hex.substr(2, 2), 16) / 255;
-                          const b = parseInt(hex.substr(4, 2), 16) / 255;
-                          const max = Math.max(r, g, b);
-                          const min = Math.min(r, g, b);
-                          const delta = max - min;
-                          let h = 0;
-                          if (delta !== 0) {
-                            if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-                            else if (max === g) h = ((b - r) / delta + 2) / 6;
-                            else h = ((r - g) / delta + 4) / 6;
-                          }
-                          return Math.round(h * 360);
-                        })()}, 100%, 50%))
+                        linear-gradient(to right, white, hsl(${Math.round(hexToHsv(pickerColor).h * 360)}, 100%, 50%))
                       `,
                       touchAction: 'none'
                     }}
@@ -11006,40 +11058,8 @@ if (parsed && parsed.stitchCount > 0) {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const x = (e.clientX - rect.left) / rect.width;
                       const y = 1 - (e.clientY - rect.top) / rect.height;
-                      
-                      // Get current hue
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b);
-                      const min = Math.min(r, g, b);
-                      const delta = max - min;
-                      let h = 0;
-                      if (delta !== 0) {
-                        if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-                        else if (max === g) h = ((b - r) / delta + 2) / 6;
-                        else h = ((r - g) / delta + 4) / 6;
-                      }
-                      
-                      // Convert HSV to RGB
-                      const s = x;
-                      const v = y;
-                      const c = v * s;
-                      const hPrime = h * 6;
-                      const x2 = c * (1 - Math.abs((hPrime % 2) - 1));
-                      const m = v - c;
-                      
-                      let rNew, gNew, bNew;
-                      if (hPrime < 1) { rNew = c; gNew = x2; bNew = 0; }
-                      else if (hPrime < 2) { rNew = x2; gNew = c; bNew = 0; }
-                      else if (hPrime < 3) { rNew = 0; gNew = c; bNew = x2; }
-                      else if (hPrime < 4) { rNew = 0; gNew = x2; bNew = c; }
-                      else if (hPrime < 5) { rNew = x2; gNew = 0; bNew = c; }
-                      else { rNew = c; gNew = 0; bNew = x2; }
-                      
-                      const toHex = (val) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
-                      setPickerColor(`#${toHex(rNew)}${toHex(gNew)}${toHex(bNew)}`);
+                      const { h } = hexToHsv(pickerColor);
+                      setPickerColor(hsvToHex(h, x, y));
                     }}
                     onTouchStart={(e) => {
                       e.preventDefault(); // prevent scroll/zoom while picking
@@ -11048,28 +11068,8 @@ if (parsed && parsed.stitchCount > 0) {
                       // Clamp to [0,1] so touches outside the element don't sample wrong colors
                       const x = Math.min(1, Math.max(0, (touch.clientX - rect.left) / rect.width));
                       const y = Math.min(1, Math.max(0, 1 - (touch.clientY - rect.top) / rect.height));
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b); const min = Math.min(r, g, b); const delta = max - min;
-                      let h = 0;
-                      if (delta !== 0) {
-                        if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-                        else if (max === g) h = ((b - r) / delta + 2) / 6;
-                        else h = ((r - g) / delta + 4) / 6;
-                      }
-                      const s = x; const v = y; const c = v * s;
-                      const hPrime = h * 6; const x2 = c * (1 - Math.abs((hPrime % 2) - 1)); const m = v - c;
-                      let rNew, gNew, bNew;
-                      if (hPrime < 1) { rNew = c; gNew = x2; bNew = 0; }
-                      else if (hPrime < 2) { rNew = x2; gNew = c; bNew = 0; }
-                      else if (hPrime < 3) { rNew = 0; gNew = c; bNew = x2; }
-                      else if (hPrime < 4) { rNew = 0; gNew = x2; bNew = c; }
-                      else if (hPrime < 5) { rNew = x2; gNew = 0; bNew = c; }
-                      else { rNew = c; gNew = 0; bNew = x2; }
-                      const toHex = (val) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
-                      setPickerColor(`#${toHex(rNew)}${toHex(gNew)}${toHex(bNew)}`);
+                      const { h } = hexToHsv(pickerColor);
+                      setPickerColor(hsvToHex(h, x, y));
                     }}
                     onTouchMove={(e) => {
                       e.preventDefault(); // prevent scroll while dragging
@@ -11078,40 +11078,13 @@ if (parsed && parsed.stitchCount > 0) {
                       // Clamp: dragging outside the box still samples edge color, not random
                       const x = Math.min(1, Math.max(0, (touch.clientX - rect.left) / rect.width));
                       const y = Math.min(1, Math.max(0, 1 - (touch.clientY - rect.top) / rect.height));
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b); const min = Math.min(r, g, b); const delta = max - min;
-                      let h = 0;
-                      if (delta !== 0) {
-                        if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-                        else if (max === g) h = ((b - r) / delta + 2) / 6;
-                        else h = ((r - g) / delta + 4) / 6;
-                      }
-                      const s = x; const v = y; const c = v * s;
-                      const hPrime = h * 6; const x2 = c * (1 - Math.abs((hPrime % 2) - 1)); const m = v - c;
-                      let rNew, gNew, bNew;
-                      if (hPrime < 1) { rNew = c; gNew = x2; bNew = 0; }
-                      else if (hPrime < 2) { rNew = x2; gNew = c; bNew = 0; }
-                      else if (hPrime < 3) { rNew = 0; gNew = c; bNew = x2; }
-                      else if (hPrime < 4) { rNew = 0; gNew = x2; bNew = c; }
-                      else if (hPrime < 5) { rNew = x2; gNew = 0; bNew = c; }
-                      else { rNew = c; gNew = 0; bNew = x2; }
-                      const toHex = (val) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
-                      setPickerColor(`#${toHex(rNew)}${toHex(gNew)}${toHex(bNew)}`);
+                      const { h } = hexToHsv(pickerColor);
+                      setPickerColor(hsvToHex(h, x, y));
                     }}
                   >
                     {/* Color indicator dot */}
                     {(() => {
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b);
-                      const min = Math.min(r, g, b);
-                      const s = max === 0 ? 0 : (max - min) / max;
-                      const v = max;
+                      const { s, v } = hexToHsv(pickerColor);
                       return (
                         <div 
                           className="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg pointer-events-none"
@@ -11155,80 +11128,17 @@ if (parsed && parsed.stitchCount > 0) {
                     min="0"
                     max="360"
                     className="hue-slider w-full h-4 sm:h-8 rounded-lg cursor-pointer"
-                    value={(() => {
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b);
-                      const min = Math.min(r, g, b);
-                      const delta = max - min;
-                      let h = 0;
-                      if (delta !== 0) {
-                        if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-                        else if (max === g) h = ((b - r) / delta + 2) / 6;
-                        else h = ((r - g) / delta + 4) / 6;
-                      }
-                      return Math.round(h * 360);
-                    })()}
+                    value={Math.round(hexToHsv(pickerColor).h * 360)}
                     onChange={(e) => {
                       const h = parseInt(e.target.value) / 360;
-                      
-                      // Get current saturation and value
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b);
-                      const min = Math.min(r, g, b);
-                      const s = max === 0 ? 0 : (max - min) / max;
-                      const v = max;
-                      
-                      // Convert HSV to RGB
-                      const c = v * s;
-                      const hPrime = h * 6;
-                      const x = c * (1 - Math.abs((hPrime % 2) - 1));
-                      const m = v - c;
-                      
-                      let rNew, gNew, bNew;
-                      if (hPrime < 1) { rNew = c; gNew = x; bNew = 0; }
-                      else if (hPrime < 2) { rNew = x; gNew = c; bNew = 0; }
-                      else if (hPrime < 3) { rNew = 0; gNew = c; bNew = x; }
-                      else if (hPrime < 4) { rNew = 0; gNew = x; bNew = c; }
-                      else if (hPrime < 5) { rNew = x; gNew = 0; bNew = c; }
-                      else { rNew = c; gNew = 0; bNew = x; }
-                      
-                      const toHex = (val) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
-                      setPickerColor(`#${toHex(rNew)}${toHex(gNew)}${toHex(bNew)}`);
+                      const { s, v } = hexToHsv(pickerColor);
+                      setPickerColor(hsvToHex(h, s, v));
                     }}
                     onInput={(e) => {
                       // Same logic as onChange - ensures touch events work
                       const h = parseInt(e.target.value) / 360;
-                      
-                      const hex = pickerColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16) / 255;
-                      const g = parseInt(hex.substr(2, 2), 16) / 255;
-                      const b = parseInt(hex.substr(4, 2), 16) / 255;
-                      const max = Math.max(r, g, b);
-                      const min = Math.min(r, g, b);
-                      const s = max === 0 ? 0 : (max - min) / max;
-                      const v = max;
-                      
-                      const c = v * s;
-                      const hPrime = h * 6;
-                      const x = c * (1 - Math.abs((hPrime % 2) - 1));
-                      const m = v - c;
-                      
-                      let rNew, gNew, bNew;
-                      if (hPrime < 1) { rNew = c; gNew = x; bNew = 0; }
-                      else if (hPrime < 2) { rNew = x; gNew = c; bNew = 0; }
-                      else if (hPrime < 3) { rNew = 0; gNew = c; bNew = x; }
-                      else if (hPrime < 4) { rNew = 0; gNew = x; bNew = c; }
-                      else if (hPrime < 5) { rNew = x; gNew = 0; bNew = c; }
-                      else { rNew = c; gNew = 0; bNew = x; }
-                      
-                      const toHex = (val) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
-                      setPickerColor(`#${toHex(rNew)}${toHex(gNew)}${toHex(bNew)}`);
+                      const { s, v } = hexToHsv(pickerColor);
+                      setPickerColor(hsvToHex(h, s, v));
                     }}
                     style={{
                       background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)',

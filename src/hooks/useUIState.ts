@@ -65,6 +65,7 @@ export function useUIState() {
   const [picotWizardSymmetric, setPicotWizardSymmetric] = useState(true);
   const [picotWizardFillGap, setPicotWizardFillGap] = useState(3);
   const [picotWizardScalePct, setPicotWizardScalePct] = useState(100);
+  const [picotWizardSide, setPicotWizardSide] = useState<'A' | 'B' | 'both'>('both');
 
   // ── Multi-element Scale (dumb batch version — Scale only, no Clear/Add/Fill/Compact) ──
   const [showMultiScaleWizard, setShowMultiScaleWizard] = useState(false);
@@ -164,6 +165,7 @@ export function useUIState() {
     picotWizardSymmetric, setPicotWizardSymmetric,
     picotWizardFillGap, setPicotWizardFillGap,
     picotWizardScalePct, setPicotWizardScalePct,
+    picotWizardSide, setPicotWizardSide,
     showMultiScaleWizard, setShowMultiScaleWizard,
     multiScalePct, setMultiScalePct,
     // Ghost arrays

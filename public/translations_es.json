@@ -559,5 +559,7 @@
   "jkConvertMessage": "Esto convertirá el anillo en un nudo Josephine — se eliminarán todos los picots y conexiones, y los puntos cambiarán de ds a ss.",
   "jkConvertConfirm": "Convertir a JK",
   "propShapeTeardrop": "Lágrima",
-  "propShapeCircle": "Círculo"
+  "propShapeCircle": "Círculo",
+  "picotWizardSideBoth": "Ambos",
+  "picotWizardReverse": "Invertir notación"
 }
