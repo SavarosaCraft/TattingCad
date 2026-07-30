@@ -25,6 +25,7 @@ export interface UseJoinActionsParams {
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
   pushHistoryState: (els: any[], conns: any[], groups?: any[]) => void;
+  skipAutoHistoryRef: React.RefObject<boolean>;
 }
 
 export function useJoinActions(p: UseJoinActionsParams) {
@@ -293,6 +294,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
     if (!sel.some(sp => isEndpointPicotId(sp.picotId))) checkAndStoreInheritedJoin(sel, newEls);
 
     p.setSelectedPicots([]);
+    p.skipAutoHistoryRef.current = true;
     p.pushHistoryState(newEls, newConns, p.orderGroupsRef.current);
   }, [p.elementById, p.ghostArrays]);
 
@@ -327,6 +329,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.setElements(newEls);
 
     p.setSelectedPicots([]);
+    p.skipAutoHistoryRef.current = true;
     p.pushHistoryState(newEls, newConns, p.orderGroupsRef.current);
   }, [p.ghostArrays]);
 

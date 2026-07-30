@@ -67,6 +67,21 @@ import {
   IconBringToFront, IconSendToBack, IconMagicWand,
 } from './components/icons';
 import { ScaleControls, WIZARD_BUTTON_CLASS } from './components/ScaleControls';
+import { DropdownMenu } from './components/DropdownMenu';
+import { ToolbarButton } from './components/ToolbarButton';
+import { PresetChip } from './components/PresetChip';
+import { updateElement, updateSelected, updateWhere } from './utils/elementUpdates';
+import { Modal } from './components/Modal';
+import { AddPicotsSection } from './components/AddPicotsSection';
+import { RealisticModeBar } from './components/RealisticModeBar';
+import { PicotJoinModeBar } from './components/PicotJoinModeBar';
+import { OrderNumberInput } from './components/OrderNumberInput';
+import { RwToggleButton } from './components/RwToggleButton';
+import { NotationRotationControls } from './components/NotationRotationControls';
+import { RoundGroupPicker } from './components/RoundGroupPicker';
+import { BeadingModeBar } from './components/BeadingModeBar';
+import { FillPicotsSection } from './components/FillPicotsSection';
+import { CompactPicotsSection } from './components/CompactPicotsSection';
 import {
   parseNotation as parseNotationPure,
   reverseNotation,
@@ -406,34 +421,26 @@ const ArrayInput = ({
 };
 // Handles backdrop, peek-opacity fade, centering, and click-outside-to-close.
 // Only the inner content differs between dialogs.
+// Thin wrapper around the generalized Modal component (components/Modal.tsx) —
+// kept as its own name/API since all 3 call sites (Polar/Linear/Spiral array
+// dialogs) already use it and there's no reason to touch working call sites.
 const ArrayDialogShell = ({
   show, peek, onClose, children,
 }: {
   show: boolean; peek: boolean; onClose: () => void; children: React.ReactNode;
-}) => {
-  if (!show) return null;
-  return (
-    <>
-      <div
-        className="fixed inset-0 bg-black bg-opacity-60"
-        style={{ zIndex: 2147483640, opacity: peek ? 0 : 1, transition: 'opacity 0.15s' }}
-        onClick={onClose}
-      />
-      <div
-        className="fixed inset-0 flex items-center justify-center pointer-events-none"
-        style={{ zIndex: 2147483641, opacity: peek ? 0 : 1, transition: 'opacity 0.15s' }}
-      >
-        <div
-          className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col gap-4 p-5"
-          style={{ width: 'min(340px, 92vw)' }}
-          onClick={e => e.stopPropagation()}
-        >
-          {children}
-        </div>
-      </div>
-    </>
-  );
-};
+}) => (
+  <Modal
+    show={show}
+    peek={peek}
+    onClose={onClose}
+    backdropZIndex={2147483640}
+    wrapperZIndex={2147483641}
+    contentClassName="flex flex-col gap-4 p-5"
+    contentStyle={{ width: 'min(340px, 92vw)' }}
+  >
+    {children}
+  </Modal>
+);
 
 const TattingDesigner = () => {
   // ── UI state (dialogs, menus, toggles) ──────────────────────────────────
@@ -2039,11 +2046,7 @@ const TattingDesigner = () => {
 
     // Mark source elements as mothers
     if (createGhosts) {
-      setElements(prev => prev.map(el =>
-        currentSelectedIds.includes(el.id)
-          ? { ...el, isGhostMother: true }
-          : el
-      ));
+      setElements(prev => updateSelected(prev, currentSelectedIds, { isGhostMother: true }));
     }
 
     // Build groupId mapping once for all instances
@@ -2240,11 +2243,7 @@ const TattingDesigner = () => {
 
     // Mark source elements as mothers
     if (createGhosts) {
-      setElements(prev => prev.map(el =>
-        currentSelectedIds.includes(el.id)
-          ? { ...el, isGhostMother: true }
-          : el
-      ));
+      setElements(prev => updateSelected(prev, currentSelectedIds, { isGhostMother: true }));
     }
 
     // Build groupId map once for all instances
@@ -2496,7 +2495,7 @@ const TattingDesigner = () => {
     if (!isNaN(n) && n > 0) {
       assignOrderNumber(elementId, n);
     } else if (draft.trim() === '') {
-      setElements(prev => prev.map(el => el.id === elementId ? { ...el, orderNumber: null } : el));
+      setElements(prev => updateElement(prev, elementId, { orderNumber: null }));
       pushOrderHistory();
     }
     setPropBarOrderDraft(null);
@@ -2623,7 +2622,7 @@ const TattingDesigner = () => {
     selectedPicotsRef, elementsRef, picotConnectionsRef, orderGroupsRef,
     elementById, ghostArrays,
     setElements, setPicotConnections, setSelectedPicots, setGhostArrays,
-    pushHistoryState,
+    pushHistoryState, skipAutoHistoryRef,
   });
 
   const allColors = [...COLORS, ...customColors];
@@ -4113,9 +4112,7 @@ const TattingDesigner = () => {
   const setLabelOffset = useCallback((value: number) => {
     const currentSelectedIds = selectedIdsRef.current; // Use ref to avoid stale closure
     if (currentSelectedIds.length === 0) return;
-    setElements(prev => prev.map(el =>
-      currentSelectedIds.includes(el.id) ? { ...el, labelOffset: value } : el
-    ));
+    setElements(prev => updateSelected(prev, currentSelectedIds, { labelOffset: value }));
   }, []); // No dependencies - uses refs
 
   const handleImageUpload = (e) => {
@@ -4609,18 +4606,7 @@ const TattingDesigner = () => {
 
     return (
       <g key={key}>
-        {positions.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.bx} cy={p.by} r={p.rad + 1} fill="rgba(0,0,0,0.3)" />
-            <circle cx={p.bx} cy={p.by} r={p.rad}
-              fill={BEAD_FILL[p.size] || '#ef4444'} stroke="#111" strokeWidth="1" />
-            <ellipse
-              cx={p.bx - p.rad * 0.28} cy={p.by - p.rad * 0.3}
-              rx={p.rad * 0.3} ry={p.rad * 0.18}
-              fill="rgba(255,255,255,0.4)"
-            />
-          </g>
-        ))}
+        {positions.map((p, i) => renderBeadShape(p.bx, p.by, p.rad, 'circle', BEAD_FILL[p.size] || '#ef4444', 0, i))}
       </g>
     );
   };
@@ -4694,18 +4680,7 @@ const TattingDesigner = () => {
           x2={tipEdge.x} y2={tipEdge.y}
           stroke={color} strokeWidth="1.5" strokeLinecap="round"
         />
-        {positions.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={p.rad + 1} fill="rgba(0,0,0,0.3)" />
-            <circle cx={p.x} cy={p.y} r={p.rad}
-              fill={BEAD_FILL[p.size] || color} stroke="#111" strokeWidth="1" />
-            <ellipse
-              cx={p.x - p.rad * 0.28} cy={p.y - p.rad * 0.3}
-              rx={p.rad * 0.3} ry={p.rad * 0.18}
-              fill="rgba(255,255,255,0.4)"
-            />
-          </g>
-        ))}
+        {positions.map((p, i) => renderBeadShape(p.x, p.y, p.rad, 'circle', BEAD_FILL[p.size] || color, 0, i))}
       </g>
     );
   };
@@ -6642,234 +6617,31 @@ const TattingDesigner = () => {
         }}>
           {renderMode === 'realistic' ? (
             /* ── Realistic mode property bar ─────────────────────────────── */
-            <div className="flex items-center gap-3 flex-wrap w-full py-1 top-toolbar-scalable">
-              <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-amber-700 border border-amber-400">
-                <IconRenderRealistic size={16} />
-                <span className="font-bold text-sm text-white tracking-wide">{t('modeRealisticTitle')}</span>
-              </div>
-              <span className="text-gray-400 text-xs">{t('modeRealisticSub')}</span>
-              <div className="ml-auto">
-                <button
-                  onClick={() => handleSetRenderMode('schematic')}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                  title={t('toolSwitchSchematic')}
-                >
-                  <IconRenderSchematic size={14} /> {t('viewSwitchSchematic')}
-                </button>
-              </div>
-            </div>
+            <RealisticModeBar onSwitchToSchematic={() => handleSetRenderMode('schematic')} t={t} />
           ) : activeMode === 'picotJoin' ? (
             /* ── Picot Edit mode property bar ───────────────────────────── */
-            <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
-              {/* Row 1: mode banner + hint + exit */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-blue-700 border border-blue-400">
-                  <IconJoinPicots size={16} />
-                  <span className="font-bold text-sm text-white tracking-wide">{t('modePicotJoinTitle')}</span>
-                </div>
-                <span className="text-gray-400 text-xs">{t('modePicotJoinSub')}</span>
-                <div className="ml-auto">
-                  <button
-                    onClick={() => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); }}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                    title={t('toolExitPicotEdit')}
-                  >
-                    ✕ {t('picotExitBtn')}
-                  </button>
-                </div>
-              </div>
-              {/* Row 2: Join / Cut — bigger, prominent */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={joinSelectedPicots}
-                  disabled={selectedPicots.length < 2}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-base font-bold"
-                  title={t('toolJoinPicots')}
-                >
-                  <IconLink size={20} /> {t('picotJoinBtn')}
-                </button>
-                <button
-                  onClick={breakSelectedPicots}
-                  disabled={selectedPicots.length === 0}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-base font-bold"
-                  title={t('toolBreakPicots')}
-                >
-                  <IconUnlink size={20} /> {t('picotCutBtn')}
-                </button>
-              </div>
-            </div>
-          ) : activeMode === 'beading' ? (() => {
-            // ── Beading mode property bar ─────────────────────────────────
-            // Use last selected as reference for property display; updates apply to all
-            const lastBERef = selectedBEs[selectedBEs.length - 1] || null;
-            const bePicot = (() => {
-              if (!lastBERef) return null;
-              const el = elementById.get(lastBERef.elementId);
-              return el?.picots?.find(p => p.id === lastBERef.picotId) || null;
-            })();
-
-            const updateBEPicot = (updates) => {
-              if (selectedBEs.length === 0) return;
-              setElements(prev => prev.map(el => {
-                const toUpdate = selectedBEs.filter(s => s.elementId === el.id);
-                if (toUpdate.length === 0) return el;
-                const newPicots = (el.picots||[]).map(p =>
-                  toUpdate.some(s => s.picotId === p.id) ? {...p,...updates} : p
-                );
-                // Persist configs so notation edits don't wipe them
-                return { ...el, picots: newPicots };
-              }));
-            };
-
-            const STRUCTURES = [
-              { id: 'core',        icon: <IconBeadCore size={16} />,        desc: 'Core only' },
-              { id: 'core+picot',  icon: <IconBeadCorePicot size={16} />,   desc: 'Core + plain picot' },
-              { id: 'core+beaded', icon: <IconBeadCoreBeaded size={16} />,  desc: 'Core + beaded picot' },
-              { id: 'spike',       icon: <IconBeadSuspended size={16} />,   desc: 'Suspended' },
-              { id: 'suspended',   icon: <IconBeadSpike size={16} />,       desc: 'Beaded picot' },
-            ];
-
-            const coreBeadsEnabled = bePicot && bePicot.beStructure !== 'suspended' && bePicot.beStructure !== 'beaded';
-            const picotBeadsEnabled = bePicot && (bePicot.beStructure === 'core+beaded' || bePicot.beStructure === 'spike' || bePicot.beStructure === 'suspended');
-
-            const BeadSlot = ({ slotIdx, beadIds, field }) => {
-              const currentId = (beadIds || [])[slotIdx];
-              const bead = beadLibrary.find(b => b.id === currentId);
-              return (
-                <div className="flex items-center gap-1">
-                  {bead && <div className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-500" style={{backgroundColor: bead.color}} />}
-                  <select
-                    value={currentId || ''}
-                    onChange={e => { const ids = [...(beadIds||[null,null,null])]; ids[slotIdx] = e.target.value||null; updateBEPicot({[field]:ids}); }}
-                    className="bg-gray-700 text-white text-xs rounded px-1 py-0.5 border border-gray-600 max-w-28"
-                    style={{touchAction:'manipulation'}}
-                  >
-                    <option value="">— none —</option>
-                    {beadLibrary.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
-              );
-            };
-
-            return (
-              <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
-
-                {/* ── Row 1: Mode banner + structure buttons + join + exit ── */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Mode banner */}
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-purple-700 border border-purple-400 flex-shrink-0">
-                    <IconBeadMode size={16} />
-                    <span className="font-bold text-sm text-white tracking-wide">{t('modeBeadingTitle')}</span>
-                  </div>
-
-                  {/* Selection hint */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {selectedBEs.length === 0 && <span className="text-gray-400 text-xs">{t('beadSelectHint')}</span>}
-                    {selectedBEs.length > 1 && <span className="text-purple-300 text-xs">{t('beadSelectedCount').replace('{n}', String(selectedBEs.length))}</span>}
-                  </div>
-
-                  {bePicot && <>
-                    {/* Structure buttons */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-gray-400 text-xs mr-1">{t('modeBeadStructure')}</span>
-                      {STRUCTURES.map(s => (
-                        <button key={s.id}
-                          onClick={() => updateBEPicot({beStructure: s.id})}
-                          title={s.desc}
-                          className={`px-2 py-0.5 rounded text-xs font-mono border top-toolbar-scalable ${bePicot.beStructure === s.id ? 'bg-purple-600 border-purple-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}
-                          style={{touchAction:'manipulation'}}
-                        >{s.icon}</button>
-                      ))}
-                    </div>
-
-                    {/* Joint toggle */}
-                    <button
-                      onClick={() => updateBEPicot({beIsJoint: !bePicot.beIsJoint})}
-                      title={t('connectableJoinPoint')}
-                      className={`px-2 py-0.5 rounded text-xs border flex-shrink-0 top-toolbar-scalable ${bePicot.beIsJoint ? 'bg-yellow-600 border-yellow-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-400'}`}
-                      style={{touchAction:'manipulation'}}
-                    ><IconLink size={14} /></button>
-                  </>}
-
-                  {/* Copy / Cut / Paste BE config — always visible in beading mode so clipboard
-                      state is readable even when no BE is selected yet.
-                      Copy/Cut are disabled when no BE is focused; Paste is disabled when the
-                      clipboard is empty OR there is no selected target BE. */}
-                  <div className="flex items-center gap-1 flex-shrink-0 ml-1 border-l border-gray-600 pl-2">
-                    <button
-                      onClick={copyBEToClipboard}
-                      disabled={!bePicot}
-                      title={bePicot ? t('beCopySetup') : 'Select a BE first'}
-                      className={`px-2 py-0.5 rounded text-xs border ${bePicot ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed'}`}
-                      style={{touchAction:'manipulation'}}
-                    ><IconCopy size={13} /></button>
-                    <button
-                      onClick={cutBEToClipboard}
-                      disabled={!bePicot}
-                      title={bePicot ? t('beCutSetup') : 'Select a BE first'}
-                      className={`px-2 py-0.5 rounded text-xs border ${bePicot ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed'}`}
-                      style={{touchAction:'manipulation'}}
-                    ><IconCut size={13} /></button>
-                    <button
-                      onClick={pasteBeClipboard}
-                      disabled={!beClipboard || selectedBEs.length === 0}
-                      title={
-                        !beClipboard
-                          ? 'Paste (nothing copied yet)'
-                          : selectedBEs.length === 0
-                            ? 'Select a target BE first'
-                            : `Paste: ${beClipboard.beStructure}${beClipboard.beIsJoint ? ' + joint' : ''}`
-                      }
-                      className={`px-2 py-0.5 rounded text-xs border ${beClipboard && selectedBEs.length > 0 ? 'bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700' : 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed'}`}
-                      style={{touchAction:'manipulation'}}
-                    ><IconPaste size={13} /></button>
-                  </div>
-
-                  {/* Exit — always far right */}
-                  <div className="ml-auto flex-shrink-0">
-                    <button
-                      onClick={() => { setActiveMode(null); setSelectedBEs([]); }}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                      title={t('toolExitBeadEdit')}
-                    >
-                      ✕ {t('picotExitBtn')}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── Row 2: Bead dropdowns (only when a picot is selected) ── */}
-                {bePicot && (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {/* Core bead */}
-                    {coreBeadsEnabled && (
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <span className="text-gray-400 text-xs">{t('modeBeadCore')}</span>
-                        <BeadSlot slotIdx={0} beadIds={bePicot.coreBeads} field="coreBeads" />
-                      </div>
-                    )}
-
-                    {/* Picot beads (up to 3) */}
-                    {picotBeadsEnabled && (
-                      <div className="flex items-center gap-1 flex-shrink-0 flex-wrap">
-                        <span className="text-gray-400 text-xs">{t('modeBeadPicot')}</span>
-                        {[0,1,2].map(i => (
-                          <BeadSlot key={i} slotIdx={i} beadIds={bePicot.picotBeads} field="picotBeads" />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Open bead library */}
-                    <button
-                      onClick={() => setShowBeadLibrary(true)}
-                      className="px-2 py-0.5 bg-purple-800 hover:bg-purple-700 text-purple-200 text-xs rounded border border-purple-600 flex-shrink-0"
-                      title={t('toolManageBeadLibrary')}
-                    >{t('modeBeadLibraryBtn')}</button>
-                  </div>
-                )}
-
-              </div>
-            );
-          })() : activeMode === 'tattingOrder' ? (() => {
+            <PicotJoinModeBar
+              selectedPicotCount={selectedPicots.length}
+              onExit={() => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); }}
+              onJoin={joinSelectedPicots}
+              onBreak={breakSelectedPicots}
+              t={t}
+            />
+          ) : activeMode === 'beading' ? (
+            <BeadingModeBar
+              selectedBEs={selectedBEs}
+              elementById={elementById}
+              setElements={setElements}
+              beadLibrary={beadLibrary}
+              beClipboard={beClipboard}
+              copyBEToClipboard={copyBEToClipboard}
+              cutBEToClipboard={cutBEToClipboard}
+              pasteBeClipboard={pasteBeClipboard}
+              onExit={() => { setActiveMode(null); setSelectedBEs([]); }}
+              onOpenBeadLibrary={() => setShowBeadLibrary(true)}
+              t={t}
+            />
+          ) : activeMode === 'tattingOrder' ? (() => {
             // ── Tatting Order mode property bar ──────────────────────────
             const selectedEl = selectedElement;
             const numbered = elements.filter(e => e.isRepeat || (e.orderNumber != null && String(e.orderNumber).trim() !== '')).length;
@@ -7249,99 +7021,46 @@ const TattingDesigner = () => {
                     {renderRotateFlipControls()}
                   </div>
                   <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                    <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
-                    <input
-                      type="text"
-                      value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
-                      onChange={e => setPropBarOrderDraft(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') commitOrderDraft(selectedElement.id, propBarOrderDraft, e.target as HTMLInputElement);
-                        if (e.key === 'Escape') { setPropBarOrderDraft(null); (e.target as HTMLInputElement).blur(); }
-                      }}
-                      onFocus={() => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
-                      onBlur={() => commitOrderDraft(selectedElement.id, propBarOrderDraft)}
-                      className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
-                      placeholder="#"
-                    />
+                  <OrderNumberInput
+                    value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
+                    onChange={setPropBarOrderDraft}
+                    onCommit={(el) => commitOrderDraft(selectedElement.id, propBarOrderDraft, el)}
+                    onCancel={() => setPropBarOrderDraft(null)}
+                    onFocus={() => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
+                    label={t('propOrder')}
+                  />
                     {/* Round group picker for lines */}
-                    <div className="relative flex-shrink-0">
-                        <button
-                          ref={propBarGroupButtonRef}
-                          onClick={() => setShowPropBarGroupDropdown(d => !d)}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300"
-                          style={(() => {
-                            const grp = selectedElement?.orderGroup ? orderGroups.find(g => g.id === selectedElement.orderGroup) : null;
-                            const gi = grp ? orderGroups.findIndex(g => g.id === grp.id) : -1;
-                            const [fill] = gi >= 0 ? ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length] : [null];
-                            return fill ? { borderColor: fill, color: fill } : {};
-                          })()}
-                        >
-                          <span>{selectedElement?.orderGroup ? (orderGroups.find(g => g.id === selectedElement.orderGroup)?.name ?? t('tattingOrderUngrouped')) : t('tattingOrderUngrouped')}</span>
-                          <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
-                        </button>
-                        {showPropBarGroupDropdown && (() => {
-                          const rect = propBarGroupButtonRef.current?.getBoundingClientRect();
-                          const dropTop = rect ? rect.bottom + 4 : 60;
-                          const dropLeft = rect ? rect.left : 0;
-                          return (
-                            <>
-                              <div className="fixed inset-0" style={{ zIndex: 9998 }}
-                                onClick={() => setShowPropBarGroupDropdown(false)} />
-                              <div className="fixed rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
-                                style={{ backgroundColor: '#1f2937', zIndex: 9999, top: dropTop, left: dropLeft }}>
-                                <button
-                                  onClick={() => {
-                                    const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: undefined } : el);
-                                    setElements(newEls);
-                                    setShowPropBarGroupDropdown(false);
-                                    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
-                                  }}
-                                  className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${!selectedElement?.orderGroup ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
-                                >
-                                  <span style={{ fontSize: '8px' }}>{!selectedElement?.orderGroup ? '●' : '○'}</span>
-                                  {t('tattingOrderUngrouped')}
-                                </button>
-                                {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
-                                {orderGroups.map((grp, gi) => {
-                                  const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
-                                  const isActive = selectedElement?.orderGroup === grp.id;
-                                  return (
-                                    <button key={grp.id}
-                                      onClick={() => {
-                                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: grp.id } : el);
-                                        setElements(newEls);
-                                        setShowPropBarGroupDropdown(false);
-                                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
-                                      }}
-                                      className="w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700"
-                                      style={{ color: isActive ? gpFill : '#d1d5db' }}
-                                    >
-                                      <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
-                                      <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
-                                    </button>
-                                  );
-                                })}
-                                <div className="my-1 border-t border-gray-600" />
-                                <button
-                                  onClick={() => {
-                                    const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
-                                    const id = crypto.randomUUID();
-                                    const newGroups = [...orderGroupsRef.current, { id, name }];
-                                    const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: id } : el);
-                                    setOrderGroups(newGroups);
-                                    setElements(newEls);
-                                    setShowPropBarGroupDropdown(false);
-                                    pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
-                                  }}
-                                  className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
-                                >
-                                  {t('tattingOrderGroupNew')}
-                                </button>
-                              </div>
-                            </>
-                          );
-                        })()}
-                    </div>
+                    <RoundGroupPicker
+                      buttonRef={propBarGroupButtonRef}
+                      isOpen={showPropBarGroupDropdown}
+                      onToggle={() => setShowPropBarGroupDropdown(d => !d)}
+                      currentGroupId={selectedElement?.orderGroup}
+                      orderGroups={orderGroups}
+                      onSelectUngrouped={() => {
+                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: undefined } : el);
+                        setElements(newEls);
+                        setShowPropBarGroupDropdown(false);
+                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                      }}
+                      onSelectGroup={(groupId) => {
+                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: groupId } : el);
+                        setElements(newEls);
+                        setShowPropBarGroupDropdown(false);
+                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                      }}
+                      onCreateNew={() => {
+                        const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                        const id = crypto.randomUUID();
+                        const newGroups = [...orderGroupsRef.current, { id, name }];
+                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: id } : el);
+                        setOrderGroups(newGroups);
+                        setElements(newEls);
+                        setShowPropBarGroupDropdown(false);
+                        pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
+                      }}
+                      ungroupedLabel={t('tattingOrderUngrouped')}
+                      createNewLabel={t('tattingOrderGroupNew')}
+                    />
                     {/* ── Line bead picker ── */}
                     {(() => {
                       // Normalise: migrate legacy lineBeadId+lineBeadCount to lineBeadSlots on first render
@@ -7362,10 +7081,8 @@ const TattingDesigner = () => {
                       const showExpanded = expanded || !allSame;
 
                       const updateSlots = (newSlots, newExpanded = expanded) =>
-                        setElements(prev => prev.map(el =>
-                          el.id === selectedElement.id
-                            ? {...el, lineBeadSlots: newSlots, lineBeadExpanded: newExpanded, lineBeadId: undefined, lineBeadCount: undefined}
-                            : el
+                        setElements(prev => updateElement(prev, selectedElement.id,
+                          {lineBeadSlots: newSlots, lineBeadExpanded: newExpanded, lineBeadId: undefined, lineBeadCount: undefined}
                         ));
 
                       const setCount = (n) => {
@@ -7477,10 +7194,8 @@ const TattingDesigner = () => {
                               <button
                                 onClick={() => {
                                   const lineIds = new Set(selectedIds);
-                                  setElements(prev => prev.map(el =>
-                                    lineIds.has(el.id) && el.type === 'line'
-                                      ? {...el, lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadExpanded: false, lineBeadId: undefined, lineBeadCount: undefined}
-                                      : el
+                                  setElements(prev => updateWhere(prev, el => lineIds.has(el.id) && el.type === 'line',
+                                    {lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadExpanded: false, lineBeadId: undefined, lineBeadCount: undefined}
                                   ));
                                 }}
                                 title={selectedIds.length > 1
@@ -7766,62 +7481,55 @@ if (parsed && parsed.stitchCount > 0) {
                                   className={`${WIZARD_BUTTON_CLASS} mb-3`}
                                 >{t('picotWizardClearUnjoined')}</button>
 
-                                <div className="border-t border-gray-600 pt-2 mb-3">
-                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardAddSection')}</div>
-                                  <div className="flex gap-1 mb-2">
-                                    <button onClick={() => setPicotWizardSymmetric(false)} className={`flex-1 py-1 rounded text-xs border ${!picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>{t('picotWizardAsymmetric')}</button>
-                                    <button onClick={() => setPicotWizardSymmetric(true)} className={`flex-1 py-1 rounded text-xs border ${picotWizardSymmetric ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>{t('picotWizardSymmetric')}</button>
-                                  </div>
-                                  <button
-                                    disabled={!canAdd}
-                                    onClick={() => applyToSides((n, p) => addPicotsToRunsText(n, p, picotWizardSymmetric))}
-                                    className={WIZARD_BUTTON_CLASS}
-                                  >{t('picotWizardAddApply')}</button>
-                                </div>
+                                <AddPicotsSection
+                                  symmetric={picotWizardSymmetric}
+                                  onSymmetricChange={setPicotWizardSymmetric}
+                                  canAdd={canAdd}
+                                  onApply={() => applyToSides((n, p) => addPicotsToRunsText(n, p, picotWizardSymmetric))}
+                                  sectionLabel={t('picotWizardAddSection')}
+                                  asymmetricLabel={t('picotWizardAsymmetric')}
+                                  symmetricLabel={t('picotWizardSymmetric')}
+                                  applyLabel={t('picotWizardAddApply')}
+                                  applyClassName={WIZARD_BUTTON_CLASS}
+                                />
 
-                                <div className="border-t border-gray-600 pt-2 mb-3">
-                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardFillSection')}</div>
-                                  <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                                    <span>{t('picotWizardFillDense')}</span>
-                                    <span>{t('picotWizardFillSparse')}</span>
-                                  </div>
-                                  <input type="range" min={1} max={Math.max(1, maxGap)} value={effectiveGap}
-                                    onChange={(e) => setPicotWizardFillGap(parseInt(e.target.value, 10))}
-                                    className="w-full mb-1" disabled={maxGap <= 1} />
-                                  <div className="text-xs text-gray-400 mb-2">
-                                    {fillAddedCount > 0 ? t('picotWizardFillPreview').replace('{n}', String(fillAddedCount)) : t('picotWizardFillNoChange')}
-                                  </div>
-                                  <button
-                                    disabled={fillAddedCount === 0}
-                                    onClick={() => {
-                                      let newNotationA = notationA;
-                                      let newNotationB = notationBFull;
-                                      activeSides.forEach((side, idx) => {
-                                        const preview = fillPreviews[idx];
-                                        if (!preview || preview.addedCount === 0) return;
-                                        const compacted = autoCompact(preview.notation, preview.resultZeroWidth);
-                                        if (side === 'A') newNotationA = compacted;
-                                        else newNotationB = compacted;
-                                      });
-                                      setDraftNotation(null);
-                                      updateNotation(newNotationA, isSR ? newNotationB.replace(/^sr:\s*/i, '') : null, currentElement?.id, { preservesExistingPicots: true });
-                                      setShowPicotWizard(false);
-                                    }}
-                                    className={WIZARD_BUTTON_CLASS}
-                                  >{t('picotWizardFillApply')}</button>
-                                </div>
+                                <FillPicotsSection
+                                  gap={effectiveGap}
+                                  maxGap={maxGap}
+                                  onGapChange={setPicotWizardFillGap}
+                                  addedCount={fillAddedCount}
+                                  onApply={() => {
+                                    let newNotationA = notationA;
+                                    let newNotationB = notationBFull;
+                                    activeSides.forEach((side, idx) => {
+                                      const preview = fillPreviews[idx];
+                                      if (!preview || preview.addedCount === 0) return;
+                                      const compacted = autoCompact(preview.notation, preview.resultZeroWidth);
+                                      if (side === 'A') newNotationA = compacted;
+                                      else newNotationB = compacted;
+                                    });
+                                    setDraftNotation(null);
+                                    updateNotation(newNotationA, isSR ? newNotationB.replace(/^sr:\s*/i, '') : null, currentElement?.id, { preservesExistingPicots: true });
+                                    setShowPicotWizard(false);
+                                  }}
+                                  sectionLabel={t('picotWizardFillSection')}
+                                  denseLabel={t('picotWizardFillDense')}
+                                  sparseLabel={t('picotWizardFillSparse')}
+                                  previewText={fillAddedCount > 0 ? t('picotWizardFillPreview').replace('{n}', String(fillAddedCount)) : t('picotWizardFillNoChange')}
+                                  applyLabel={t('picotWizardFillApply')}
+                                  applyClassName={WIZARD_BUTTON_CLASS}
+                                />
 
-                                <div className="border-t border-gray-600 pt-2 mb-3">
-                                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardCompactSection')}</div>
-                                  <button
-                                    disabled={!canCompact}
-                                    onClick={() => applyToSides((n, p) => {
-                                      const r = compactRepeatedPicots(n, p);
-                                      return r ? { notation: r.notation, resultZeroWidth: p } : null;
-                                    })}
-                                    className={WIZARD_BUTTON_CLASS}
-                                  >{t('picotWizardCompactApply')}</button>
-                                </div>
+                                <CompactPicotsSection
+                                  canCompact={canCompact}
+                                  onApply={() => applyToSides((n, p) => {
+                                    const r = compactRepeatedPicots(n, p);
+                                    return r ? { notation: r.notation, resultZeroWidth: p } : null;
+                                  })}
+                                  sectionLabel={t('picotWizardCompactSection')}
+                                  applyLabel={t('picotWizardCompactApply')}
+                                  applyClassName={WIZARD_BUTTON_CLASS}
+                                />
 
                                 <div className="border-t border-gray-600 pt-2">
                                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('picotWizardScaleSection')}</div>
@@ -7858,191 +7566,78 @@ if (parsed && parsed.stitchCount > 0) {
               
               
               {/* Rotation input */}
-              <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                {/* Label removed - icons are self-explanatory */}
-                {renderRotateFlipControls()}
-
-                {/* Notation label offset slider */}
-                <div className="flex items-center gap-1" title={t('propNotationPos')}>
-                  <IconNotationM size={16} className="text-gray-400 shrink-0" />
-                  <input
-                    type="range"
-                    min="-25"
-                    max="45"
-                    step="1"
-                    value={elements.find(e => selectedIdSet.has(e.id))?.labelOffset ?? 8}
-                    onChange={e => setLabelOffset(Number(e.target.value))}
-                    className="w-20 accent-blue-500"
-                    title={t('propNotationPos')}
-                  />
-                </div>
-
-                {/* Hide notation label toggle */}
-                <button
-                  onClick={() => {
-                    const allHidden = elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel);
-                    setElements(prev => prev.map(el =>
-                      selectedIdSet.has(el.id) ? { ...el, hideLabel: !allHidden } : el
-                    ));
-                  }}
-                  className={`px-2 py-1 rounded text-xs ${
-                    elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel)
-                      ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                  }`}
-                  title={t('propHideLabel')}
-                >
-                  {elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel)
-                    ? <IconNotationOff size={16} />
-                    : <IconNotationOn size={16} />}
-                </button>
-
-                {/* Polar rotation center dropdown — only shown when polar grids exist */}
-                {polarGrids.length > 0 && (
-                  <>
-                    <div className="w-px h-5 bg-gray-600 mx-0.5" />
-                    <select
-                      value={selectedElement.polarRotationGridId || ''}
-                      onChange={e => {
-                        const val = e.target.value || null;
-                        setElements(prev => prev.map(el =>
-                          selectedIdSet.has(el.id) ? { ...el, polarRotationGridId: val } : el
-                        ));
-                        // Reset pivot offset when switching to polar pivot
-                        if (val) setPivotOffset({ x: 0, y: 0 });
-                      }}
-                      className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
-                      title={t('propPolarRotation')}
-                      style={{ maxWidth: '110px' }}
-                    >
-                      <option value="">{t('propPolarRotationNone')}</option>
-                      {polarGrids.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
-                  </>
-                )}
-              </div>
+              <NotationRotationControls
+                rotateFlipControls={renderRotateFlipControls()}
+                labelOffset={elements.find(e => selectedIdSet.has(e.id))?.labelOffset ?? 8}
+                onLabelOffsetChange={setLabelOffset}
+                allLabelsHidden={elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel)}
+                onToggleHideLabel={() => {
+                  const allHidden = elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel);
+                  setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
+                }}
+                polarGrids={polarGrids}
+                selectedPolarRotationGridId={selectedElement.polarRotationGridId}
+                onPolarRotationGridChange={(val) => {
+                  setElements(prev => updateSelected(prev, selectedIdSet, { polarRotationGridId: val }));
+                  if (val) setPivotOffset({ x: 0, y: 0 });
+                }}
+                t={t}
+              />
 
               {/* ── Row 2 starts here ── */}
               <div className="w-full" />
 
               {/* Order number - for all elements (rings and chains) */}
               <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                <label className="text-xs text-gray-400 hide-label-mobile">{t('propOrder')}</label>
-                <input
-                  type="text"
+                <OrderNumberInput
                   value={propBarOrderDraft !== null ? propBarOrderDraft : (selectedElement.orderNumber || '')}
-                  onChange={e => setPropBarOrderDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') commitOrderDraft(selectedElement.id, propBarOrderDraft, e.target as HTMLInputElement);
-                    if (e.key === 'Escape') { setPropBarOrderDraft(null); (e.target as HTMLInputElement).blur(); }
-                  }}
-                  onFocus={e => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
-                  onBlur={() => commitOrderDraft(selectedElement.id, propBarOrderDraft)}
-                  className="px-2 py-1 bg-gray-700 rounded border border-gray-600 w-16 text-sm"
-                  placeholder="#"
+                  onChange={setPropBarOrderDraft}
+                  onCommit={(el) => commitOrderDraft(selectedElement.id, propBarOrderDraft, el)}
+                  onCancel={() => setPropBarOrderDraft(null)}
+                  onFocus={() => setPropBarOrderDraft(selectedElement.orderNumber ? String(selectedElement.orderNumber) : '')}
+                  label={t('propOrder')}
                 />
               </div>
 
               {/* Round group picker — inline next to order number, available outside tatting order mode */}
-              <div className="relative flex-shrink-0 top-toolbar-scalable">
-                  <button
-                    ref={propBarGroupButtonRef}
-                    onClick={() => setShowPropBarGroupDropdown(d => !d)}
-                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300"
-                    style={(() => {
-                      const grp = selectedElement?.orderGroup ? orderGroups.find(g => g.id === selectedElement.orderGroup) : null;
-                      const gi = grp ? orderGroups.findIndex(g => g.id === grp.id) : -1;
-                      const [fill] = gi >= 0 ? ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length] : [null];
-                      return fill ? { borderColor: fill, color: fill } : {};
-                    })()}
-                    title={t('tattingOrderGroupTitle') || 'Assign to round'}
-                  >
-                    <span>{selectedElement?.orderGroup ? (orderGroups.find(g => g.id === selectedElement.orderGroup)?.name ?? t('tattingOrderUngrouped')) : t('tattingOrderUngrouped')}</span>
-                    <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
-                  </button>
-                  {showPropBarGroupDropdown && (() => {
-                    const rect = propBarGroupButtonRef.current?.getBoundingClientRect();
-                    const dropTop = rect ? rect.bottom + 4 : 60;
-                    const dropLeft = rect ? rect.left : 0;
-                    return (
-                      <>
-                        <div className="fixed inset-0" style={{ zIndex: 9998 }}
-                          onClick={() => setShowPropBarGroupDropdown(false)} />
-                        <div className="fixed rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
-                          style={{ backgroundColor: '#1f2937', zIndex: 9999, top: dropTop, left: dropLeft }}>
-                          {/* Ungrouped row */}
-                          <button
-                            onClick={() => {
-                              setElements(prev => prev.map(el =>
-                                el.id === selectedElement.id ? { ...el, orderGroup: undefined } : el
-                              ));
-                              setShowPropBarGroupDropdown(false);
-                              pushOrderHistory();
-                            }}
-                            className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${!selectedElement?.orderGroup ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
-                          >
-                            <span style={{ fontSize: '8px' }}>{!selectedElement?.orderGroup ? '●' : '○'}</span>
-                            {t('tattingOrderUngrouped')}
-                          </button>
-                          {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
-                          {orderGroups.map((grp, gi) => {
-                            const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
-                            const isActive = selectedElement?.orderGroup === grp.id;
-                            return (
-                              <button key={grp.id}
-                                onClick={() => {
-                                  setElements(prev => prev.map(el =>
-                                    el.id === selectedElement.id ? { ...el, orderGroup: grp.id } : el
-                                  ));
-                                  setShowPropBarGroupDropdown(false);
-                                  pushOrderHistory();
-                                }}
-                                className="w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700"
-                                style={{ color: isActive ? gpFill : '#d1d5db' }}
-                              >
-                                <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
-                                <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
-                              </button>
-                            );
-                          })}
-                          <div className="my-1 border-t border-gray-600" />
-                          <button
-                            onClick={() => {
-                              const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
-                              const id = crypto.randomUUID();
-                              setOrderGroups(prev => [...prev, { id, name }]);
-                              setElements(prev => prev.map(el =>
-                                el.id === selectedElement.id ? { ...el, orderGroup: id } : el
-                              ));
-                              setShowPropBarGroupDropdown(false);
-                              setTimeout(() => pushOrderHistory(), 0);
-                            }}
-                            className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
-                          >
-                            {t('tattingOrderGroupNew')}
-                          </button>
-                        </div>
-                      </>
-                    );
-                  })()}
-              </div>
+              <RoundGroupPicker
+                buttonRef={propBarGroupButtonRef}
+                isOpen={showPropBarGroupDropdown}
+                onToggle={() => setShowPropBarGroupDropdown(d => !d)}
+                currentGroupId={selectedElement?.orderGroup}
+                orderGroups={orderGroups}
+                onSelectUngrouped={() => {
+                  setElements(prev => updateElement(prev, selectedElement.id, { orderGroup: undefined }));
+                  setShowPropBarGroupDropdown(false);
+                  pushOrderHistory();
+                }}
+                onSelectGroup={(groupId) => {
+                  setElements(prev => updateElement(prev, selectedElement.id, { orderGroup: groupId }));
+                  setShowPropBarGroupDropdown(false);
+                  pushOrderHistory();
+                }}
+                onCreateNew={() => {
+                  const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                  const id = crypto.randomUUID();
+                  setOrderGroups(prev => [...prev, { id, name }]);
+                  setElements(prev => updateElement(prev, selectedElement.id, { orderGroup: id }));
+                  setShowPropBarGroupDropdown(false);
+                  setTimeout(() => pushOrderHistory(), 0);
+                }}
+                ungroupedLabel={t('tattingOrderUngrouped')}
+                createNewLabel={t('tattingOrderGroupNew')}
+                triggerTitle={t('tattingOrderGroupTitle') || 'Assign to round'}
+                wrapperClassName="relative flex-shrink-0 top-toolbar-scalable"
+              />
 
-              <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                <button
-                  onClick={() => {
-                    setElements(prev => prev.map(el =>
-                      el.id === selectedElement.id ? { ...el, rw: !el.rw } : el
-                    ));
-                    needsHistoryPushRef.current = true;
-                  }}
-                  className={`px-2 py-1 rounded text-xs font-bold ${selectedElement.rw ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                  title={t('propRWTooltip')}
-                >
-                  RW
-                </button>
-              </div>
+              <RwToggleButton
+                active={selectedElement.rw}
+                onClick={() => {
+                  setElements(prev => updateElement(prev, selectedElement.id, el => ({ rw: !el.rw })));
+                  needsHistoryPushRef.current = true;
+                }}
+                title={t('propRWTooltip')}
+              />
 
               {/* Ring-specific properties */}
               {selectedElement.isClosed && (
@@ -8249,9 +7844,7 @@ if (parsed && parsed.stitchCount > 0) {
                   onChange={(e) => {
                     const matId = e.target.value;
                     if (matId === '__edit__') { setShowMaterialsPanel(true); return; }
-                    setElements(prev => prev.map(el =>
-                      selectedIdSet.has(el.id) ? { ...el, materialId: matId } : el
-                    ));
+                    setElements(prev => updateSelected(prev, selectedIdSet, { materialId: matId }));
                   }}
                   className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
                   style={{ maxWidth: '120px' }}
@@ -8288,9 +7881,7 @@ if (parsed && parsed.stitchCount > 0) {
                        onChange={(e) => {
                          const matId = e.target.value;
                          if (matId === '__edit__') { setShowMaterialsPanel(true); return; }
-                         setElements(prev => prev.map(el =>
-                           selectedIdSet.has(el.id) ? { ...el, materialIdB: matId } : el
-                         ));
+                         setElements(prev => updateSelected(prev, selectedIdSet, { materialIdB: matId }));
                        }}
                        className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
                        style={{ maxWidth: '110px' }}
@@ -8446,9 +8037,7 @@ if (parsed && parsed.stitchCount > 0) {
                         <button
                           onClick={() => {
                             const allHidden = groupElements.every(e => e.hideLabel);
-                            setElements(prev => prev.map(el =>
-                              selectedIdSet.has(el.id) ? { ...el, hideLabel: !allHidden } : el
-                            ));
+                            setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
                           }}
                           className={`px-2 py-1 rounded text-xs ${
                             groupElements.every(e => e.hideLabel)
@@ -8466,9 +8055,7 @@ if (parsed && parsed.stitchCount > 0) {
                                 ? (groupElements[0]?.polarRotationGridId || '') : ''}
                               onChange={e => {
                                 const val = e.target.value || null;
-                                setElements(prev => prev.map(el =>
-                                  selectedIdSet.has(el.id) ? { ...el, polarRotationGridId: val } : el
-                                ));
+                                setElements(prev => updateSelected(prev, selectedIdSet, { polarRotationGridId: val }));
                               }}
                               className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
                               title={t('propPolarRotation')}
@@ -8557,10 +8144,8 @@ if (parsed && parsed.stitchCount > 0) {
                             })()}
                             <button
                               onClick={() => {
-                                setElements(prev => prev.map(el =>
-                                  selectedIdSet.has(el.id) && el.type === 'line'
-                                    ? {...el, lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadId: undefined, lineBeadCount: undefined}
-                                    : el
+                                setElements(prev => updateWhere(prev, el => selectedIdSet.has(el.id) && el.type === 'line',
+                                  {lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadId: undefined, lineBeadCount: undefined}
                                 ));
                               }}
                               title={t('lineBdPasteAll').replace('{n}', String(selEls.length))}
@@ -8709,9 +8294,7 @@ if (parsed && parsed.stitchCount > 0) {
                       <button
                         onClick={() => {
                           const allHidden = selEls.every(e => e.hideLabel);
-                          setElements(prev => prev.map(el =>
-                            selectedIdSet.has(el.id) ? { ...el, hideLabel: !allHidden } : el
-                          ));
+                          setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
                         }}
                         className={`px-2 py-1 rounded text-xs ${
                           selEls.every(e => e.hideLabel)
@@ -8729,9 +8312,7 @@ if (parsed && parsed.stitchCount > 0) {
                               ? (selEls[0]?.polarRotationGridId || '') : ''}
                             onChange={e => {
                               const val = e.target.value || null;
-                              setElements(prev => prev.map(el =>
-                                selectedIdSet.has(el.id) ? { ...el, polarRotationGridId: val } : el
-                              ));
+                              setElements(prev => updateSelected(prev, selectedIdSet, { polarRotationGridId: val }));
                             }}
                             className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
                             title={t('propPolarRotation')}
@@ -9034,8 +8615,13 @@ if (parsed && parsed.stitchCount > 0) {
           );
         })()}
 
-        {/* ── Line Preset Panel — floating overlay, line tool + line selected ── */}
-        {currentTool === 'line' && selectedIds.length === 1 && (() => {
+        {/* ── Line Preset Panel — floating overlay, line tool + line selected ──
+             Temporarily hidden: applyLinePreset's semantics (rotate the whole
+             line to an absolute angle, forcing it straight) don't match how
+             the path-edit tool now treats lines (free bezier bow, no preset
+             angle concept). Revisit once we decide what a line preset should
+             mean. ── */}
+        {false && currentTool === 'line' && selectedIds.length === 1 && (() => {
           const line = elementById.get(selectedIds[0]);
           if (line?.type !== 'line' || !line?.paths?.length || line.paths[0].type !== 'cubic') return null;
           return (
@@ -9189,43 +8775,42 @@ if (parsed && parsed.stitchCount > 0) {
           )}
           {renderMode !== 'realistic' && <>
           {/* Row 1: Pan and Select */}
-          <button onClick={() => setCurrentTool('pan')} className={`p-2 rounded pointer-events-auto touch-action-manipulation ${currentTool === 'pan' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolPan')}>
+          <ToolbarButton onClick={() => setCurrentTool('pan')} active={currentTool === 'pan'} title={t('toolPan')}>
             <IconPan size={20} />
-          </button>
-          <button onClick={() => setCurrentTool('select')} className={`p-2 rounded pointer-events-auto ${currentTool === 'select' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolSelect')}>
+          </ToolbarButton>
+          <ToolbarButton onClick={() => setCurrentTool('select')} active={currentTool === 'select'} title={t('toolSelect')}>
             <IconSelect size={20} />
-          </button>
+          </ToolbarButton>
           
           {/* Row 2: Rotation Handles and Ortho Lock */}
-          <button 
-            onClick={() => setShowRotationHandles(!showRotationHandles)} 
-            className={`p-2 rounded pointer-events-auto ${showRotationHandles ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} 
-            style={{ touchAction: 'manipulation' }}
+          <ToolbarButton
+            onClick={() => setShowRotationHandles(!showRotationHandles)}
+            active={showRotationHandles}
             title={showRotationHandles ? t('toolRotationHandlesHide') : t('toolRotationHandlesShow')}
           >
             <IconRotateMode size={20} />
-          </button>
-          <button
+          </ToolbarButton>
+          <ToolbarButton
             onClick={() => setOrthoLock(v => !v)}
-            className={`p-2 rounded pointer-events-auto ${orthoLock ? 'bg-orange-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
+            active={orthoLock}
+            activeColor="bg-orange-600"
             title={t('toolOrthoLock')}
           >
             <IconOrtho size={20} />
-          </button>
+          </ToolbarButton>
 
           {/* Row 3: Path Edit */}
-          <button onClick={() => setCurrentTool('path')} className={`p-2 rounded pointer-events-auto ${currentTool === 'path' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolPathEdit')}>
+          <ToolbarButton onClick={() => setCurrentTool('path')} active={currentTool === 'path'} title={t('toolPathEdit')}>
             <IconPathEdit size={20} />
-          </button>
+          </ToolbarButton>
 
           {/* Ruler tool */}
-          <button onClick={() => setCurrentTool('ruler')} className={`p-2 rounded pointer-events-auto ${currentTool === 'ruler' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolRuler')}>
+          <ToolbarButton onClick={() => setCurrentTool('ruler')} active={currentTool === 'ruler'} title={t('toolRuler')}>
             <IconRuler size={20} />
-          </button>
+          </ToolbarButton>
 
           {/* Picot Join button */}
-          <button 
+          <ToolbarButton
             onClick={() => {
               if (activeMode === 'picotJoin') {
                 setActiveMode(null);
@@ -9236,14 +8821,15 @@ if (parsed && parsed.stitchCount > 0) {
                 setSelectedIds([]);
               }
             }}
-            className={`p-2 rounded col-span-2 pointer-events-auto flex items-center justify-center ${activeMode === 'picotJoin' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
+            active={activeMode === 'picotJoin'}
+            colSpan2
+            flexCenter
             title={t('toolPicotJoin')}
           >
             <IconJoinPicots size={20} />
-          </button>
+          </ToolbarButton>
           {/* Beading mode button */}
-          <button
+          <ToolbarButton
             onClick={() => {
               if (activeMode === 'beading') {
                 setActiveMode(null);
@@ -9255,96 +8841,82 @@ if (parsed && parsed.stitchCount > 0) {
                 setSelectedBEs([]);
               }
             }}
-            className={`p-2 rounded col-span-2 pointer-events-auto flex items-center justify-center ${activeMode === 'beading' ? 'bg-purple-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
+            active={activeMode === 'beading'}
+            activeColor="bg-purple-600"
+            colSpan2
+            flexCenter
             title={t('toolBeadingMode')}
           >
             <IconBeadMode size={20} />
-          </button>
+          </ToolbarButton>
 
           {/* Join/Break buttons moved to properties bar in picotJoin mode */}
-          <button onClick={addRing} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+          <ToolbarButton onClick={addRing} title={t('toolAddRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddRing size={20} />
-          </button>
-          <button onClick={addSplitRing} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+          </ToolbarButton>
+          <ToolbarButton onClick={addSplitRing} title={t('toolAddSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddSplitRing size={20} />
-          </button>
-          <button onClick={() => setCurrentTool('line')} className={`p-2 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed ${currentTool === 'line' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`} style={{ touchAction: 'manipulation' }} title={t('toolLineTool')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+          </ToolbarButton>
+          <ToolbarButton onClick={() => setCurrentTool('line')} active={currentTool === 'line'} title={t('toolLineTool')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddLine size={20} />
-          </button>
-          <button onClick={addChain} className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolAddChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+          </ToolbarButton>
+          <ToolbarButton onClick={addChain} title={t('toolAddChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
             <IconAddChain size={20} />
-          </button>
-          <button onClick={deleteSelected} className="p-2 bg-gray-700 active:bg-gray-600 rounded col-span-2 pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed" style={{ touchAction: 'manipulation' }} title={t('toolDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}><IconDelete size={20} /></button>
-          <button 
-            onClick={groupSelected} 
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ touchAction: 'manipulation' }}
+          </ToolbarButton>
+          <ToolbarButton onClick={deleteSelected} colSpan2 title={t('toolDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}><IconDelete size={20} /></ToolbarButton>
+          <ToolbarButton
+            onClick={groupSelected}
             title={t('toolGroup')}
             disabled={selectedIds.length < 2 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconGroup size={20} />
-          </button>
-          <button 
-            onClick={ungroupSelected} 
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ touchAction: 'manipulation' }}
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={ungroupSelected}
             title={t('toolUngroup')}
             disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           >
             <IconUngroup size={20} />
-          </button>
-          <button 
-            onClick={() => zoomToCenter(-0.2)} 
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
-            style={{ touchAction: 'manipulation' }}
-            title={t('toolZoomOut')}
-          >
+          </ToolbarButton>
+          <ToolbarButton onClick={() => zoomToCenter(-0.2)} title={t('toolZoomOut')}>
             <IconZoomOut size={20} />
-          </button>
-          <button
-            onClick={() => zoomToCenter(0.1)}
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
-            style={{ touchAction: 'manipulation' }}
-            title={t('toolZoomIn')}
-          >
+          </ToolbarButton>
+          <ToolbarButton onClick={() => zoomToCenter(0.1)} title={t('toolZoomIn')}>
             <IconZoomIn size={20} />
-          </button>
-          <button
-            onClick={fitAllElements}
-            className="p-2 bg-gray-700 active:bg-gray-600 rounded pointer-events-auto"
-            style={{ touchAction: 'manipulation' }}
-            title="Fit All (F)"
-          >
+          </ToolbarButton>
+          <ToolbarButton onClick={fitAllElements} title="Fit All (F)">
             <IconFitView size={20} />
-          </button>
-          <button
+          </ToolbarButton>
+          <ToolbarButton
             onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')}
-            className={`p-2 rounded pointer-events-auto ${currentTool === 'zoomRect' ? 'bg-yellow-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
+            active={currentTool === 'zoomRect'}
+            activeColor="bg-yellow-600"
             title={t('toolZoomRect')}
           >
             <IconZoomRect size={20} />
-          </button>
-          <button
+          </ToolbarButton>
+          <ToolbarButton
             onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')}
-            className={`p-2 rounded col-span-2 pointer-events-auto ${currentTool === 'image' ? 'bg-blue-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
+            active={currentTool === 'image'}
+            colSpan2
             title={t('toolRefImage')}
           >
             <IconImage size={20} />
-          </button>
+          </ToolbarButton>
 
           {/* Notes toggle — bottom of left toolbar */}
-          <button
+          <ToolbarButton
             onClick={() => setNotesOpen(v => !v)}
-            className={`p-2 rounded col-span-2 pointer-events-auto flex items-center justify-center gap-1 text-xs font-semibold ${notesOpen ? 'bg-amber-600' : 'bg-gray-700 active:bg-gray-600'}`}
-            style={{ touchAction: 'manipulation' }}
+            active={notesOpen}
+            activeColor="bg-amber-600"
+            colSpan2
+            flexCenter
+            className="gap-1 text-xs font-semibold"
             title={notesOpen ? 'Close pattern notes' : 'Open pattern notes'}
           >
             <IconNotes size={16} />
             <span>{t('toolNotes')}</span>
-          </button>
+          </ToolbarButton>
           </>}
         </div>
         
@@ -10563,67 +10135,13 @@ if (parsed && parsed.stitchCount > 0) {
                 return <g key={`realistic-be-${el.id}`} transform={dragTransform}>{renderPicots(el, true)}</g>;
               })}
               {/* NEW: Path edit handles - show when in path mode with a chain selected */}
-              {currentTool === 'path' && selectedIds.length === 1 && (() => {
-                const chain = (() => { const _e = elementById.get(selectedIds[0]); return _e?.type === 'chain' ? _e : undefined; })();
-                if (!chain || !chain.paths || chain.paths.length === 0) return null;
-                const path = chain.paths[0];
+              {(currentTool === 'path' || currentTool === 'line') && selectedIds.length === 1 && (() => {
+                const el = (() => { const _e = elementById.get(selectedIds[0]); return (_e?.type === 'chain' || _e?.type === 'line') ? _e : undefined; })();
+                if (!el || !el.paths || el.paths.length === 0) return null;
+                const path = el.paths[0];
                 
                 if (path.type === 'cubic') {
                   // Cubic bezier - show 2 control points
-                  return (
-                    <>
-                      {/* Start point - green */}
-                      <circle cx={path.x} cy={path.y} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.x} cy={path.y} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* End point - green */}
-                      <circle cx={path.endX} cy={path.endY} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.endX} cy={path.endY} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* Control point 1 - blue */}
-                      <circle cx={path.control1X} cy={path.control1Y} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.control1X} cy={path.control1Y} r={12/zoom} fill={theme.handleControl1} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* Control point 2 - cyan */}
-                      <circle cx={path.control2X} cy={path.control2Y} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.control2X} cy={path.control2Y} r={12/zoom} fill={theme.handleControl2} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* Helper lines */}
-                      <line x1={path.x} y1={path.y} x2={path.control1X} y2={path.control1Y} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                      <line x1={path.control2X} y1={path.control2Y} x2={path.endX} y2={path.endY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                    </>
-                  );
-                } else {
-                  // Quadratic bezier - show 1 control point (legacy support)
-                  return (
-                    <>
-                      {/* Start point - green */}
-                      <circle cx={path.x} cy={path.y} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.x} cy={path.y} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* End point - green */}
-                      <circle cx={path.endX} cy={path.endY} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.endX} cy={path.endY} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* Control point - blue */}
-                      <circle cx={path.controlX} cy={path.controlY} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
-                      <circle cx={path.controlX} cy={path.controlY} r={12/zoom} fill={theme.handleControl1} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
-                      
-                      {/* Helper lines */}
-                      <line x1={path.x} y1={path.y} x2={path.controlX} y2={path.controlY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                      <line x1={path.endX} y1={path.endY} x2={path.controlX} y2={path.controlY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                    </>
-                  );
-                }
-              })()}
-              
-              {/* Line tool handles - show control points for editing */}
-              {currentTool === 'line' && selectedIds.length === 1 && (() => {
-                const line = (() => { const _e = elementById.get(selectedIds[0]); return _e?.type === 'line' ? _e : undefined; })();
-                if (!line || !line.paths || line.paths.length === 0) return null;
-                const path = line.paths[0];
-                
-                if (path.type === 'cubic') {
                   return (
                     <g data-ui="1">
                       {/* Start point - green */}
@@ -10647,8 +10165,28 @@ if (parsed && parsed.stitchCount > 0) {
                       <line x1={path.control2X} y1={path.control2Y} x2={path.endX} y2={path.endY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
                     </g>
                   );
+                } else {
+                  // Quadratic bezier - show 1 control point (legacy support, chains only — lines are always cubic)
+                  return (
+                    <>
+                      {/* Start point - green */}
+                      <circle cx={path.x} cy={path.y} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
+                      <circle cx={path.x} cy={path.y} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
+                      
+                      {/* End point - green */}
+                      <circle cx={path.endX} cy={path.endY} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
+                      <circle cx={path.endX} cy={path.endY} r={12/zoom} fill={theme.handleStart} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
+                      
+                      {/* Control point - blue */}
+                      <circle cx={path.controlX} cy={path.controlY} r={22/zoom} fill="transparent" stroke="none" style={{ cursor: 'move' }} />
+                      <circle cx={path.controlX} cy={path.controlY} r={12/zoom} fill={theme.handleControl1} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
+                      
+                      {/* Helper lines */}
+                      <line x1={path.x} y1={path.y} x2={path.controlX} y2={path.controlY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
+                      <line x1={path.endX} y1={path.endY} x2={path.controlX} y2={path.controlY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
+                    </>
+                  );
                 }
-                return null;
               })()}
 
               {/* Snap point indicators - hidden in realistic mode, dimmed in picotJoin mode */}
@@ -11431,13 +10969,14 @@ if (parsed && parsed.stitchCount > 0) {
                   return (
                     <div className="flex gap-2 mb-3 flex-wrap">
                       {threadLines.map(line => (
-                        <button
+                        <PresetChip
                           key={line}
                           onClick={() => { setGradientCategory(line); setGradientPage(0); }}
-                          className={`px-3 py-1 rounded text-xs ${gradientCategory === line ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                          selected={gradientCategory === line}
+                          className="px-3 py-1"
                         >
                           {line === 'all' ? 'All' : line}
-                        </button>
+                        </PresetChip>
                       ))}
                     </div>
                   );
@@ -11691,9 +11230,9 @@ if (parsed && parsed.stitchCount > 0) {
 
         return (
           <>
-            <div className="fixed inset-0 bg-black bg-opacity-70" style={{ zIndex: 10010 }} onClick={() => setShowRecentProjectsDialog(false)} />
-            <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-              style={{ zIndex: 10011, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(720px, 96vw)', maxHeight: '90dvh' }}>
+            <Modal show onClose={() => setShowRecentProjectsDialog(false)} backdropZIndex={10010} wrapperZIndex={10011}
+              backdropClassName="bg-black bg-opacity-70"
+              contentClassName="flex flex-col" contentStyle={{ width: 'min(720px, 96vw)', maxHeight: '90dvh' }}>
 
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
@@ -11799,7 +11338,7 @@ if (parsed && parsed.stitchCount > 0) {
                   {t('recentProjectsBrowse')}
                 </button>
               </div>
-            </div>
+            </Modal>
 
             {/* Inline confirm overlay for non-empty canvas */}
             {showRecentLoadConfirm && (
@@ -11835,27 +11374,7 @@ if (parsed && parsed.stitchCount > 0) {
     {/* File dropdown menu - rendered at top level to avoid clipping */}
     {/* ── Help / About dropdown ──────────────────────────────────── */}
     {showHelpMenu && (
-      <>
-        <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setShowHelpMenu(false)} />
-        <div
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[220px]"
-          onClick={(e) => e.stopPropagation()}
-          style={(() => {
-            const rect = helpButtonRef.current?.getBoundingClientRect();
-            const menuWidth = 220;
-            const spaceRight = rect ? window.innerWidth - rect.left : 0;
-            return {
-              backgroundColor: '#374151',
-              zIndex: 9999,
-              top: rect ? `${rect.bottom + 4}px` : '4rem',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              ...(rect && spaceRight < menuWidth
-                ? { right: `${window.innerWidth - rect.right}px` }
-                : { left: rect ? `${rect.left}px` : '1rem' }),
-            };
-          })()}
-        >
+      <DropdownMenu buttonRef={helpButtonRef} onClose={() => setShowHelpMenu(false)} width={220}>
           <button onClick={() => { setShowHelp(true); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <IconHelp size={16} /><span>{t('helpMenuHelp')}</span>
@@ -11878,16 +11397,13 @@ if (parsed && parsed.stitchCount > 0) {
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <span className="text-blue-300 w-4 text-center flex-shrink-0">↑</span><span>{t('helpMenuCheckUpdate')}</span>
           </button>
-        </div>
-      </>
+      </DropdownMenu>
     )}
 
     {/* ── About panel ──────────────────────────────────────────────── */}
     {showAbout && (
-      <>
-        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 10002 }} onClick={() => setShowAbout(false)} />
-        <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-          style={{ zIndex: 10003, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(440px, 95vw)', maxHeight: '95dvh', overflow: 'hidden' }}>
+        <Modal show onClose={() => setShowAbout(false)} backdropZIndex={10002} wrapperZIndex={10003}
+          contentClassName="flex flex-col" contentStyle={{ width: 'min(440px, 95vw)', maxHeight: '95dvh', overflow: 'hidden' }}>
 
 
           <div className="px-5 py-5 space-y-5 overflow-y-auto flex-1">
@@ -11954,40 +11470,11 @@ if (parsed && parsed.stitchCount > 0) {
               {t('aboutClose')}
             </button>
           </div>
-        </div>
-      </>
+        </Modal>
     )}
 
     {showFileMenu && (
-      <>
-        {/* Click overlay to close menu - allows clicks through to dropdown */}
-        <div 
-          className="fixed inset-0"
-          style={{ zIndex: 9998, pointerEvents: 'auto' }}
-          onClick={() => setShowFileMenu(false)}
-        ></div>
-        
-        {/* Dropdown menu - extremely high z-index to be above everything */}
-        <div 
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[200px]"
-          onClick={(e) => e.stopPropagation()}
-          style={(() => {
-            const rect = fileButtonRef.current?.getBoundingClientRect();
-            const menuWidth = 200;
-            const spaceRight = rect ? window.innerWidth - rect.left : 0;
-            return {
-              backgroundColor: '#374151',
-              zIndex: 9999,
-              top: rect ? `${rect.bottom + 4}px` : '4rem',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              ...(rect && spaceRight < menuWidth
-                ? { right: `${window.innerWidth - rect.right}px` }
-                : { left: rect ? `${rect.left}px` : '1rem' }),
-              pointerEvents: 'auto',
-            };
-          })()}
-        >
+      <DropdownMenu buttonRef={fileButtonRef} onClose={() => setShowFileMenu(false)} width={200}>
           <button
             onClick={() => {
               setShowFileMenu(false);
@@ -12071,41 +11558,12 @@ if (parsed && parsed.stitchCount > 0) {
             <IconDownload size={16} />
             <span>{t('fileOutputNotation')}</span>
           </button>
-        </div>
-      </>
+      </DropdownMenu>
     )}
     
     {/* Arrange dropdown menu - rendered at top level to avoid clipping */}
     {showArrangeMenu && (
-      <>
-        {/* Click overlay to close menu */}
-        <div 
-          className="fixed inset-0"
-          style={{ zIndex: 9998, pointerEvents: 'auto' }}
-          onClick={() => setShowArrangeMenu(false)}
-        ></div>
-        
-        {/* Dropdown menu */}
-        <div 
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[220px]"
-          onClick={(e) => e.stopPropagation()}
-          style={(() => {
-            const rect = arrangeButtonRef.current?.getBoundingClientRect();
-            const menuWidth = 220;
-            const spaceRight = rect ? window.innerWidth - rect.left : 0;
-            return {
-              backgroundColor: '#374151',
-              zIndex: 9999,
-              top: rect ? `${rect.bottom + 4}px` : '4rem',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              ...(rect && spaceRight < menuWidth
-                ? { right: `${window.innerWidth - rect.right}px` }
-                : { left: rect ? `${rect.left}px` : '1rem' }),
-              pointerEvents: 'auto',
-            };
-          })()}
-        >
+      <DropdownMenu buttonRef={arrangeButtonRef} onClose={() => setShowArrangeMenu(false)} width={220}>
           {/* Duplicate */}
           <button
             onClick={() => {
@@ -12347,8 +11805,7 @@ if (parsed && parsed.stitchCount > 0) {
           >
             <span>{t('viewPolarGrids')}</span>
           </button>
-        </div>
-      </>
+      </DropdownMenu>
     )}
 
     {/* Ghost Array Manager Modal */}
@@ -12618,35 +12075,7 @@ if (parsed && parsed.stitchCount > 0) {
 
     {/* View dropdown menu - rendered at top level to avoid clipping */}
     {showViewMenu && (
-      <>
-        {/* Click overlay to close menu */}
-        <div
-          className="fixed inset-0"
-          style={{ zIndex: 9998, pointerEvents: 'auto' }}
-          onClick={() => setShowViewMenu(false)}
-        ></div>
-
-        {/* Dropdown menu */}
-        <div
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[200px]"
-          onClick={(e) => e.stopPropagation()}
-          style={(() => {
-            const rect = viewButtonRef.current?.getBoundingClientRect();
-            const menuWidth = 200;
-            const spaceRight = rect ? window.innerWidth - rect.left : 0;
-            return {
-              backgroundColor: '#374151',
-              zIndex: 9999,
-              top: rect ? `${rect.bottom + 4}px` : '4rem',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              ...(rect && spaceRight < menuWidth
-                ? { right: `${window.innerWidth - rect.right}px` }
-                : { left: rect ? `${rect.left}px` : '1rem' }),
-              pointerEvents: 'auto',
-            };
-          })()}
-        >
+      <DropdownMenu buttonRef={viewButtonRef} onClose={() => setShowViewMenu(false)} width={200}>
           {/* Fit View — top of menu */}
           <button
             onClick={() => { fitAllElements(); setShowViewMenu(false); }}
@@ -12736,39 +12165,12 @@ if (parsed && parsed.stitchCount > 0) {
             {gridEnabled ? <IconGridOff size={16} /> : <IconGridOn size={16} />}
             <span>{t('optionsGrid')}</span>
           </button>
-        </div>
-      </>
+      </DropdownMenu>
     )}
 
     {/* Options dropdown menu - rendered at top level to avoid clipping */}
     {showOptionsMenu && (
-      <>
-        {/* Click overlay to close menu */}
-        <div 
-          className="fixed inset-0"
-          style={{ zIndex: 9998, pointerEvents: 'auto' }}
-          onClick={() => setShowOptionsMenu(false)}
-        ></div>
-        
-        {/* Dropdown menu */}
-        <div 
-          className="fixed bg-gray-700 rounded shadow-xl min-w-[200px] max-h-[80vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-          style={(() => {
-            const rect = optionsButtonRef.current?.getBoundingClientRect();
-            const menuWidth = 200;
-            const spaceRight = rect ? window.innerWidth - rect.left : 0;
-            return {
-              backgroundColor: '#374151',
-              zIndex: 9999,
-              top: rect ? `${rect.bottom + 4}px` : '4rem',
-              ...(rect && spaceRight < menuWidth
-                ? { right: `${window.innerWidth - rect.right}px` }
-                : { left: rect ? `${rect.left}px` : '1rem' }),
-              pointerEvents: 'auto',
-            };
-          })()}
-        >
+      <DropdownMenu buttonRef={optionsButtonRef} onClose={() => setShowOptionsMenu(false)} width={200}>
           {/* Materials Manager */}
           <button
             onClick={() => { setShowMaterialsPanel(true); setShowOptionsMenu(false); }}
@@ -12900,8 +12302,7 @@ if (parsed && parsed.stitchCount > 0) {
             <p className="text-gray-500 text-xs">{t('viewThemeHint')}</p>
           </div>
 
-        </div>
-      </>
+      </DropdownMenu>
     )}
     {/* ── Materials Manager Panel ─────────────────────────────── */}
     {showMaterialsPanel && (
@@ -13036,11 +12437,9 @@ if (parsed && parsed.stitchCount > 0) {
       };
 
       return (
-        <>
-          <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex: 2147483644 }} onClick={() => setShowBeadLibrary(false)} />
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483645 }}>
-            <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col sm:flex-row"
-              style={{ width: 'min(680px, 95vw)', height: 'min(540px, 90vh)' }}>
+        <Modal show onClose={() => setShowBeadLibrary(false)} backdropZIndex={2147483644} wrapperZIndex={2147483645}
+          backdropClassName="bg-black bg-opacity-50"
+          contentClassName="flex flex-col sm:flex-row" contentStyle={{ width: 'min(680px, 95vw)', height: 'min(540px, 90vh)' }}>
 
               {/* Left: Bead list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
@@ -13184,9 +12583,7 @@ if (parsed && parsed.stitchCount > 0) {
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
-        </>
+          </Modal>
       );
     })()}
 
@@ -13243,11 +12640,9 @@ if (parsed && parsed.stitchCount > 0) {
       };
 
       return (
-        <>
-          <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex: 2147483644, opacity: polarGridPeek ? 0 : 1, transition: 'opacity 0.15s' }} onClick={() => setShowPolarGridPanel(false)} />
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483645, opacity: polarGridPeek ? 0 : 1, transition: 'opacity 0.15s' }}>
-            <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col sm:flex-row"
-              style={{ width: 'min(820px, 95vw)', height: 'min(540px, 90vh)' }}>
+        <Modal show peek={polarGridPeek} onClose={() => setShowPolarGridPanel(false)} backdropZIndex={2147483644} wrapperZIndex={2147483645}
+          backdropClassName="bg-black bg-opacity-50"
+          contentClassName="flex flex-col sm:flex-row" contentStyle={{ width: 'min(820px, 95vw)', height: 'min(540px, 90vh)' }}>
 
               {/* Left: Grid list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
@@ -13454,9 +12849,7 @@ if (parsed && parsed.stitchCount > 0) {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        </>
+        </Modal>
       );
     })()}
 
@@ -13493,11 +12886,9 @@ if (parsed && parsed.stitchCount > 0) {
       };
 
       return (
-        <>
-          <div className="fixed inset-0 bg-black bg-opacity-50" style={{ zIndex: 2147483640 }} onClick={() => setShowThreadProperties(false)} />
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483641 }}>
-            <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto flex flex-col sm:flex-row"
-              style={{ width: 'min(700px, 95vw)', maxHeight: '85vh', overflowY: 'auto' }}>
+        <Modal show onClose={() => setShowThreadProperties(false)} backdropZIndex={2147483640} wrapperZIndex={2147483641}
+          backdropClassName="bg-black bg-opacity-50"
+          contentClassName="flex flex-col sm:flex-row" contentStyle={{ width: 'min(700px, 95vw)', maxHeight: '85vh', overflowY: 'auto' }}>
 
               {/* Left: Preset list */}
               <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
@@ -13608,9 +12999,7 @@ if (parsed && parsed.stitchCount > 0) {
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </>
+        </Modal>
       );
     })()}
 
@@ -13748,11 +13137,11 @@ if (parsed && parsed.stitchCount > 0) {
                 />
                 {/* Quick-pick buttons */}
                 {[4, 6, 8, 12].map(n => (
-                  <button
+                  <PresetChip
                     key={n}
                     onClick={() => setPolarArrayCount(n)}
-                    className={`px-2 py-1 rounded text-xs ${polarArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                  >{n}</button>
+                    selected={polarArrayCount === n}
+                  >{n}</PresetChip>
                 ))}
               </div>
             </div>
@@ -13767,14 +13156,14 @@ if (parsed && parsed.stitchCount > 0) {
                   min={1} max={360} integer
                   className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
                 />
-                <button
+                <PresetChip
                   onClick={() => setPolarArrayAngle(360)}
-                  className={`px-2 py-1 rounded text-xs ${polarArrayAngle === 360 ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                >360°</button>
-                <button
+                  selected={polarArrayAngle === 360}
+                >360°</PresetChip>
+                <PresetChip
                   onClick={() => setPolarArrayAngle(180)}
-                  className={`px-2 py-1 rounded text-xs ${polarArrayAngle === 180 ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                >180°</button>
+                  selected={polarArrayAngle === 180}
+                >180°</PresetChip>
               </div>
             </div>
 
@@ -13846,7 +13235,7 @@ if (parsed && parsed.stitchCount > 0) {
               <label className="text-xs text-gray-400">{t('polarArrayCount')}</label>
               <div className="flex items-center gap-2">
                 <ArrayInput value={linearArrayCount} onChange={setLinearArrayCount} min={2} max={100} integer className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
-                {[3,4,6,8].map(n => <button key={n} onClick={() => setLinearArrayCount(n)} className={`px-2 py-1 rounded text-xs ${linearArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}</button>)}
+                {[3,4,6,8].map(n => <PresetChip key={n} onClick={() => setLinearArrayCount(n)} selected={linearArrayCount === n}>{n}</PresetChip>)}
               </div>
             </div>
 
@@ -13855,7 +13244,7 @@ if (parsed && parsed.stitchCount > 0) {
               <label className="text-xs text-gray-400">{t('linearArrayDirection')}</label>
               <div className="flex items-center gap-2">
                 {[['H', 0], ['V', 90]].map(([label, val]) => (
-                  <button key={label} onClick={() => setLinearArrayAngle(val as number)} className={`px-3 py-1 rounded text-xs font-semibold ${linearArrayAngle === val ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{label}</button>
+                  <PresetChip key={label} onClick={() => setLinearArrayAngle(val as number)} selected={linearArrayAngle === val} className="px-3 py-1 font-semibold">{label}</PresetChip>
                 ))}
                 <ArrayInput value={linearArrayAngle} onChange={setLinearArrayAngle} min={0} max={360} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">°</span>
@@ -13868,8 +13257,8 @@ if (parsed && parsed.stitchCount > 0) {
               <div className="flex items-center gap-2">
                 <ArrayInput value={linearArraySpacing} onChange={setLinearArraySpacing} min={0} max={500} step={10} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">%</span>
-                <button onClick={() => setLinearArraySpacing(100)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">100% touch</button>
-                <button onClick={() => setLinearArraySpacing(200)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">200%</button>
+                <PresetChip onClick={() => setLinearArraySpacing(100)}>100% touch</PresetChip>
+                <PresetChip onClick={() => setLinearArraySpacing(200)}>200%</PresetChip>
               </div>
             </div>
 
@@ -13879,7 +13268,7 @@ if (parsed && parsed.stitchCount > 0) {
               <div className="flex items-center gap-2">
                 <ArrayInput value={linearArrayRotStep} onChange={setLinearArrayRotStep} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">°</span>
-                <button onClick={() => setLinearArrayRotStep(0)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">Reset</button>
+                <PresetChip onClick={() => setLinearArrayRotStep(0)}>Reset</PresetChip>
               </div>
             </div>
 
@@ -13932,7 +13321,7 @@ if (parsed && parsed.stitchCount > 0) {
               <label className="text-xs text-gray-400">{t('polarArrayCount')}</label>
               <div className="flex items-center gap-2">
                 <ArrayInput value={spiralArrayCount} onChange={setSpiralArrayCount} min={2} max={100} integer className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
-                {[4,6,8,12].map(n => <button key={n} onClick={() => setSpiralArrayCount(n)} className={`px-2 py-1 rounded text-xs ${spiralArrayCount === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}</button>)}
+                {[4,6,8,12].map(n => <PresetChip key={n} onClick={() => setSpiralArrayCount(n)} selected={spiralArrayCount === n}>{n}</PresetChip>)}
               </div>
             </div>
 
@@ -13941,7 +13330,7 @@ if (parsed && parsed.stitchCount > 0) {
               <label className="text-xs text-gray-400">{t('spiralArrayAngleStep')}</label>
               <div className="flex items-center gap-2">
                 <ArrayInput value={spiralArrayAngleStep} onChange={setSpiralArrayAngleStep} min={1} max={180} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
-                {[15,30,45,60].map(n => <button key={n} onClick={() => setSpiralArrayAngleStep(n)} className={`px-2 py-1 rounded text-xs ${spiralArrayAngleStep === n ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{n}°</button>)}
+                {[15,30,45,60].map(n => <PresetChip key={n} onClick={() => setSpiralArrayAngleStep(n)} selected={spiralArrayAngleStep === n}>{n}°</PresetChip>)}
               </div>
             </div>
 
@@ -13949,8 +13338,8 @@ if (parsed && parsed.stitchCount > 0) {
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-400">{t('spiralArrayType')}</label>
               <div className="flex gap-2">
-                <button onClick={() => setSpiralArrayType('archimedean')} className={`flex-1 py-1.5 rounded text-xs font-semibold ${spiralArrayType === 'archimedean' ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{t('spiralArrayArchimedean')}</button>
-                <button onClick={() => setSpiralArrayType('geometric')} className={`flex-1 py-1.5 rounded text-xs font-semibold ${spiralArrayType === 'geometric' ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>{t('spiralArrayGeometric')}</button>
+                <PresetChip onClick={() => setSpiralArrayType('archimedean')} selected={spiralArrayType === 'archimedean'} className="flex-1 py-1.5 font-semibold">{t('spiralArrayArchimedean')}</PresetChip>
+                <PresetChip onClick={() => setSpiralArrayType('geometric')} selected={spiralArrayType === 'geometric'} className="flex-1 py-1.5 font-semibold">{t('spiralArrayGeometric')}</PresetChip>
               </div>
             </div>
 
@@ -13991,46 +13380,37 @@ if (parsed && parsed.stitchCount > 0) {
 
     {/* ── In-app Confirm Dialog ─────────────────────────────────── */}
     {confirmDialog && (
-      <>
-        <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 2147483647 }} onClick={() => setConfirmDialog(null)} />
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483647 }}>
-          <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto px-6 py-5 flex flex-col gap-4"
-            style={{ width: 'min(360px, 90vw)' }}>
-            {confirmDialog.title && <h2 className="text-lg font-bold text-white">{confirmDialog.title}</h2>}
-            <p className="text-white text-sm text-center">{confirmDialog.message}</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
-                className="flex-1 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-semibold"
-              >{confirmDialog.confirmLabel || t('confirmDelete')}</button>
-              <button
-                onClick={() => setConfirmDialog(null)}
-                className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm"
-              >{t('confirmCancel')}</button>
-            </div>
-          </div>
+      <Modal show onClose={() => setConfirmDialog(null)} backdropZIndex={2147483647} wrapperZIndex={2147483647}
+        contentClassName="px-6 py-5 flex flex-col gap-4" contentStyle={{ width: 'min(360px, 90vw)' }}>
+        {confirmDialog.title && <h2 className="text-lg font-bold text-white">{confirmDialog.title}</h2>}
+        <p className="text-white text-sm text-center">{confirmDialog.message}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+            className="flex-1 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-semibold"
+          >{confirmDialog.confirmLabel || t('confirmDelete')}</button>
+          <button
+            onClick={() => setConfirmDialog(null)}
+            className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm"
+          >{t('confirmCancel')}</button>
         </div>
-      </>
+      </Modal>
     )}
 
     {/* ── In-app Alert Dialog ───────────────────────────────────── */}
     {alertDialog && (
-      <>
-        <div className="fixed inset-0 bg-black bg-opacity-40" style={{ zIndex: 2147483647 }} onClick={() => setAlertDialog(null)} />
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483647 }}>
-          <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto px-6 py-5 flex flex-col gap-4"
-            style={{ width: 'min(320px, 90vw)' }}>
-            <div className="flex flex-col gap-1 text-center">
-              <p className="text-white text-sm">{alertDialog.message}</p>
-              {alertDialog.sub && <p className="text-gray-400 text-xs">{alertDialog.sub}</p>}
-            </div>
-            <button
-              onClick={() => setAlertDialog(null)}
-              className="py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium"
-            >{t('alertOk')}</button>
-          </div>
+      <Modal show onClose={() => setAlertDialog(null)} backdropZIndex={2147483647} wrapperZIndex={2147483647}
+        backdropClassName="bg-black bg-opacity-40"
+        contentClassName="px-6 py-5 flex flex-col gap-4" contentStyle={{ width: 'min(320px, 90vw)' }}>
+        <div className="flex flex-col gap-1 text-center">
+          <p className="text-white text-sm">{alertDialog.message}</p>
+          {alertDialog.sub && <p className="text-gray-400 text-xs">{alertDialog.sub}</p>}
         </div>
-      </>
+        <button
+          onClick={() => setAlertDialog(null)}
+          className="py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium"
+        >{t('alertOk')}</button>
+      </Modal>
     )}
 
     </>

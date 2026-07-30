@@ -193,7 +193,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
     }
 
     if (p.currentTool === 'path') {
-      const isPathEditable = (el: any) => el.type === 'chain';
+      const isPathEditable = (el: any) => el.type === 'chain' || el.type === 'line';
       if (p.selectedIds.length === 1) {
         const selected = p.elementById.get(p.selectedIds[0]);
         if (selected && isPathEditable(selected)) {
@@ -383,7 +383,11 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       return;
     }
 
-    if (p.currentTool === 'line' && p.draggedHandleRef.current) {
+    // Free (unconstrained) bezier handle drag for lines — no stitch-count-based
+    // length clamp, unlike the chain drag below. Shared entry point for both the
+    // line tool and the path-edit tool, since a line's own handles behave the
+    // same regardless of which tool grabbed them.
+    if ((p.currentTool === 'line' || p.currentTool === 'path') && p.draggedHandleRef.current) {
       const handleInfo = p.draggedHandleRef.current;
       p.setElements(prev => prev.map(el => {
         if (el.id !== handleInfo.elementId || el.type !== 'line' || !el.paths?.length) return el;
