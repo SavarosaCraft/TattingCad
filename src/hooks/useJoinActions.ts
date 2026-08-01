@@ -9,6 +9,128 @@ import { generateId } from '../utils/id';
 const isEndpointPicotId = (id: string) =>
   id === '__start__' || id === '__end__' || id === '__anchor__';
 
+// Resolves a selected picot to a per-element "slot" key that's portable across
+// every ghost instance of the same source element: a numeric array index for
+// real picots (every ghost has the same picots array shape as its source, so
+// the same index always refers to the same picot slot), or the pseudo-picot ID
+// string itself for endpoint picots (__start__/__end__/__anchor__ are fixed and
+// identical on every instance — they're not stored in el.picots at all, so
+// there's no index to resolve; the ID already IS the portable slot identifier).
+// Returns null if a real picot ID can't be found on this element.
+const resolvePicotSlot = (el: any, picotId: string): number | string | null => {
+  if (isEndpointPicotId(picotId)) return picotId;
+  const idx = el.picots?.findIndex((pic: any) => pic.id === picotId) ?? -1;
+  return idx < 0 ? null : idx;
+};
+
+// Resolves a per-element slot key back to a {id} on a specific ghost instance.
+// Numeric slots (real picots) look up that ghost's own picots array; string
+// slots (pseudo-picots) are already the final, instance-independent ID, so no
+// lookup is needed or possible.
+const getPicotAtSlot = (ghostInstance: any, slot: number | string): { id: string } | undefined => {
+  if (typeof slot === 'string') return { id: slot };
+  return ghostInstance.picots?.[slot];
+};
+
+// Builds any picotConnections entries that are missing for one inherited-join
+// record, given the array's CURRENT set of ghosts. Shared by two callers:
+// checkAndStoreInheritedJoin (driven by a live selection, right after the user
+// manually joins two picots) and reapplyInheritedJoins (driven by a stored
+// record, after array regeneration recreates the ghost elements with new IDs).
+// Same connection topology either way — only the source of
+// isSourceElement/sourcePicotIndex/targetPicotIndex differs.
+// materialId is passed in rather than derived here: the live-join caller uses
+// the specific boundary ghost the user selected (preserving exact prior
+// behavior); the replay caller falls back to the source element's, since the
+// originally-selected ghost may no longer exist after regeneration.
+const buildConnectionsForInheritedJoin = (
+  matchingArray: any,
+  currentElements: any[],
+  isSourceElement: boolean,
+  sourcePicotIndex: number | string,
+  targetPicotIndex: number | string,
+  existingConns: any[],
+  materialId: string
+): any[] => {
+  const allGhosts = currentElements.filter(e => matchingArray.ghostIds?.includes(e.id));
+  const sortedGhosts = [...allGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0));
+  if (sortedGhosts.length < 2) return [];
+
+  const newConns: any[] = [];
+  const connExists = (elA: string, picA: string, elB: string, picB: string) => {
+    const matches = (conn: any) =>
+      conn.picots.some((cp: any) => cp.elementId === elA && cp.picotId === picA) &&
+      conn.picots.some((cp: any) => cp.elementId === elB && cp.picotId === picB);
+    return existingConns.some(matches) || newConns.some(matches);
+  };
+
+  if (isSourceElement) {
+    const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
+    if (!sourceEl) return [];
+    const sendPicotSlot = targetPicotIndex;
+    const recvPicotSlot = sourcePicotIndex;
+
+    for (let i = 0; i < sortedGhosts.length - 1; i++) {
+      const ghost = sortedGhosts[i];
+      const nextGhost = sortedGhosts[i + 1];
+      const srcPicot = getPicotAtSlot(ghost, sendPicotSlot);
+      const tgtPicot = getPicotAtSlot(nextGhost, recvPicotSlot);
+      if (!srcPicot || !tgtPicot) continue;
+      if (connExists(ghost.id, srcPicot.id, nextGhost.id, tgtPicot.id)) continue;
+      newConns.push({
+        id: generateId(),
+        picots: [
+          { elementId: ghost.id, picotId: srcPicot.id },
+          { elementId: nextGhost.id, picotId: tgtPicot.id },
+        ],
+        materialId,
+        isInheritedJoin: matchingArray.id,
+      });
+    }
+
+    // Wrap the last ghost back to the source element — closes the loop.
+    // Only correct for polar arrays (circular); linear arrays are a straight
+    // chain and must not link the far end back to the mother.
+    if (matchingArray.type === 'polar') {
+      const lastGhost = sortedGhosts[sortedGhosts.length - 1];
+      const srcPicotLast = getPicotAtSlot(lastGhost, sendPicotSlot);
+      const tgtPicotLast = getPicotAtSlot(sourceEl, recvPicotSlot);
+      if (srcPicotLast && tgtPicotLast && !connExists(lastGhost.id, srcPicotLast.id, sourceEl.id, tgtPicotLast.id)) {
+        newConns.push({
+          id: generateId(),
+          picots: [
+            { elementId: lastGhost.id, picotId: srcPicotLast.id },
+            { elementId: sourceEl.id, picotId: tgtPicotLast.id },
+          ],
+          materialId,
+          isInheritedJoin: matchingArray.id,
+        });
+      }
+    }
+  } else {
+    for (let i = 0; i < sortedGhosts.length; i++) {
+      const ghost = sortedGhosts[i];
+      const prevIndex = (i - 1 + sortedGhosts.length) % sortedGhosts.length;
+      const prevGhost = sortedGhosts[prevIndex];
+      const srcPicot = getPicotAtSlot(ghost, sourcePicotIndex);
+      const tgtPicot = getPicotAtSlot(prevGhost, targetPicotIndex);
+      if (!srcPicot || !tgtPicot) continue;
+      if (connExists(ghost.id, srcPicot.id, prevGhost.id, tgtPicot.id)) continue;
+      newConns.push({
+        id: generateId(),
+        picots: [
+          { elementId: ghost.id, picotId: srcPicot.id },
+          { elementId: prevGhost.id, picotId: tgtPicot.id },
+        ],
+        materialId,
+        isInheritedJoin: matchingArray.id,
+      });
+    }
+  }
+
+  return newConns;
+};
+
 export interface UseJoinActionsParams {
   // Refs
   selectedPicotsRef: React.RefObject<any[]>;
@@ -51,137 +173,118 @@ export function useJoinActions(p: UseJoinActionsParams) {
     const isOtherBoundary = otherEl.type === 'ghost' && otherEl.isBoundary && matchingArray.boundaryIds?.includes(otherEl.id);
     if (!isSourceElement && !isOtherBoundary) return;
 
-    const ghostPicotIdx = ghostEl.picots?.findIndex(p => p.id === selPicots[ghostEl === el1 ? 0 : 1].picotId) ?? -1;
-    const otherPicotIdx = otherEl.picots?.findIndex(p => p.id === selPicots[otherEl === el1 ? 0 : 1].picotId) ?? -1;
-    if (ghostPicotIdx < 0 || otherPicotIdx < 0) return;
+    const ghostPicotSlot = resolvePicotSlot(ghostEl, selPicots[ghostEl === el1 ? 0 : 1].picotId);
+    const otherPicotSlot = resolvePicotSlot(otherEl, selPicots[otherEl === el1 ? 0 : 1].picotId);
+    if (ghostPicotSlot === null || otherPicotSlot === null) return;
 
-    let sourcePicotIndex: number, targetPicotIndex: number;
+    let sourcePicotIndex: number | string, targetPicotIndex: number | string;
     if (isSourceElement) {
-      sourcePicotIndex = ghostPicotIdx;
-      targetPicotIndex = otherPicotIdx;
+      sourcePicotIndex = ghostPicotSlot;
+      targetPicotIndex = otherPicotSlot;
     } else {
       const isGhostEarlier = ghostEl.rotation < otherEl.rotation;
-      sourcePicotIndex = isGhostEarlier ? ghostPicotIdx : otherPicotIdx;
-      targetPicotIndex = isGhostEarlier ? otherPicotIdx : ghostPicotIdx;
+      sourcePicotIndex = isGhostEarlier ? ghostPicotSlot : otherPicotSlot;
+      targetPicotIndex = isGhostEarlier ? otherPicotSlot : ghostPicotSlot;
     }
 
     const alreadyExists = matchingArray.inheritedJoins?.some(
-      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex
+      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex && j.isSourceElement === isSourceElement
     );
     if (alreadyExists) return;
 
-    const allGhosts = currentElements.filter(e => matchingArray.ghostIds?.includes(e.id));
-    const sortedGhosts = [...allGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0));
-    if (sortedGhosts.length < 2) return;
+    // Record the join pattern unconditionally, even if the array currently has
+    // too few ghosts to propagate to right now (buildConnectionsForInheritedJoin
+    // below bails on its own via sortedGhosts.length < 2). Otherwise a join made
+    // while an array only has its minimum 1 ghost (the "copies" floor is 2,
+    // i.e. 1 source + 1 ghost) would never be recorded, and a later regeneration
+    // that grows the array wouldn't have anything to replay onto the new ghosts.
+    p.setGhostArrays(prev => prev.map(a =>
+      a.id === matchingArray.id
+        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex, isSourceElement }] }
+        : a
+    ));
 
-    const newInheritedConns: any[] = [];
-
-    if (isSourceElement) {
-      const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
-      if (!sourceEl) return;
-      const sendPicotIdx = otherPicotIdx;
-      const recvPicotIdx = ghostPicotIdx;
-
-      for (let i = 0; i < sortedGhosts.length - 1; i++) {
-        const ghost = sortedGhosts[i];
-        const nextGhost = sortedGhosts[i + 1];
-        const srcPicot = ghost.picots?.[sendPicotIdx];
-        const tgtPicot = nextGhost.picots?.[recvPicotIdx];
-        if (!srcPicot || !tgtPicot) continue;
-        const exists = p.picotConnectionsRef.current.some(conn =>
-          conn.picots.some(cp => cp.elementId === ghost.id && cp.picotId === srcPicot.id) &&
-          conn.picots.some(cp => cp.elementId === nextGhost.id && cp.picotId === tgtPicot.id)
-        );
-        if (exists) continue;
-        newInheritedConns.push({
-          id: generateId(),
-          picots: [
-            { elementId: ghost.id, picotId: srcPicot.id },
-            { elementId: nextGhost.id, picotId: tgtPicot.id },
-          ],
-          materialId: ghostEl.materialId || 'default',
-          isInheritedJoin: matchingArray.id,
-        });
-      }
-
-      // Wrap the last ghost back to the source element — closes the loop.
-      // Only correct for polar arrays (circular); linear arrays are a straight
-      // chain and must not link the far end back to the mother.
-      if (matchingArray.type === 'polar') {
-        const lastGhost = sortedGhosts[sortedGhosts.length - 1];
-        const srcPicotLast = lastGhost.picots?.[sendPicotIdx];
-        const tgtPicotLast = sourceEl.picots?.[recvPicotIdx];
-        if (srcPicotLast && tgtPicotLast) {
-          const exists = p.picotConnectionsRef.current.some(conn =>
-            conn.picots.some(cp => cp.elementId === lastGhost.id && cp.picotId === srcPicotLast.id) &&
-            conn.picots.some(cp => cp.elementId === sourceEl.id && cp.picotId === tgtPicotLast.id)
-          );
-          if (!exists) {
-            newInheritedConns.push({
-              id: generateId(),
-              picots: [
-                { elementId: lastGhost.id, picotId: srcPicotLast.id },
-                { elementId: sourceEl.id, picotId: tgtPicotLast.id },
-              ],
-              materialId: ghostEl.materialId || 'default',
-              isInheritedJoin: matchingArray.id,
-            });
-          }
-        }
-      }
-    } else {
-      for (let i = 0; i < sortedGhosts.length; i++) {
-        const ghost = sortedGhosts[i];
-        const prevIndex = (i - 1 + sortedGhosts.length) % sortedGhosts.length;
-        const prevGhost = sortedGhosts[prevIndex];
-        const srcPicot = ghost.picots?.[sourcePicotIndex];
-        const tgtPicot = prevGhost.picots?.[targetPicotIndex];
-        if (!srcPicot || !tgtPicot) continue;
-        const exists = p.picotConnectionsRef.current.some(conn =>
-          conn.picots.some(cp => cp.elementId === ghost.id && cp.picotId === srcPicot.id) &&
-          conn.picots.some(cp => cp.elementId === prevGhost.id && cp.picotId === tgtPicot.id)
-        );
-        if (exists) continue;
-        newInheritedConns.push({
-          id: generateId(),
-          picots: [
-            { elementId: ghost.id, picotId: srcPicot.id },
-            { elementId: prevGhost.id, picotId: tgtPicot.id },
-          ],
-          materialId: ghostEl.materialId || 'default',
-          isInheritedJoin: matchingArray.id,
-        });
-      }
-    }
+    const newInheritedConns = buildConnectionsForInheritedJoin(
+      matchingArray, currentElements, isSourceElement, sourcePicotIndex, targetPicotIndex,
+      p.picotConnectionsRef.current, ghostEl.materialId || 'default'
+    );
+    if (newInheritedConns.length === 0) return;
 
     const allNewConns = [...p.picotConnectionsRef.current, ...newInheritedConns];
     p.setPicotConnections(allNewConns);
     p.picotConnectionsRef.current = allNewConns;
 
-    if (newInheritedConns.length > 0) {
-      const inheritedKeys = new Set(
-        newInheritedConns.flatMap(conn =>
-          conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
-        )
+    const inheritedKeys = new Set(
+      newInheritedConns.flatMap(conn =>
+        conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
+      )
+    );
+    const updatedEls = currentElements.map(el => {
+      if (!el.picots) return el;
+      const updated = el.picots.map(pic =>
+        inheritedKeys.has(`${el.id}::${pic.id}`) && !pic.isJoint
+          ? { ...pic, isJoint: true }
+          : pic
       );
-      const updatedEls = currentElements.map(el => {
-        if (!el.picots) return el;
-        const updated = el.picots.map(pic =>
-          inheritedKeys.has(`${el.id}::${pic.id}`) && !pic.isJoint
-            ? { ...pic, isJoint: true }
-            : pic
-        );
-        return updated === el.picots ? el : { ...el, picots: updated };
-      });
-      p.setElements(updatedEls);
-      p.elementsRef.current = updatedEls;
-    }
+      return updated === el.picots ? el : { ...el, picots: updated };
+    });
+    p.setElements(updatedEls);
+    p.elementsRef.current = updatedEls;
+  };
 
-    p.setGhostArrays(prev => prev.map(a =>
-      a.id === matchingArray.id
-        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex }] }
-        : a
-    ));
+  // Replays every recorded inherited-join pattern across ALL ghost arrays
+  // against their CURRENT set of ghosts. Called after array regeneration
+  // (which recreates ghost elements with new IDs) so joins the user made
+  // before a count/param change reapply to the new ghosts too — including
+  // ones added for entirely new slots that didn't exist before regeneration.
+  // Legacy inheritedJoins entries recorded before isSourceElement was tracked
+  // (typeof entry.isSourceElement !== 'boolean') are skipped rather than
+  // guessed — the topology (boundary↔source vs boundary↔boundary) can't be
+  // reliably recovered from the stored index pair alone, and a wrong guess
+  // would create an incorrect connection, which is worse than replaying
+  // nothing for that one pre-existing record.
+  const reapplyInheritedJoins = (currentElements: any[], currentGhostArrays: any[]) => {
+    let workingConns = p.picotConnectionsRef.current;
+    const allNewConns: any[] = [];
+
+    currentGhostArrays.forEach(matchingArray => {
+      const entries = matchingArray.inheritedJoins || [];
+      if (entries.length === 0) return;
+      const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
+      const materialId = sourceEl?.materialId || 'default';
+
+      entries.forEach((entry: any) => {
+        if (typeof entry.isSourceElement !== 'boolean') return;
+        const newConns = buildConnectionsForInheritedJoin(
+          matchingArray, currentElements, entry.isSourceElement, entry.sourcePicotIndex, entry.targetPicotIndex,
+          workingConns, materialId
+        );
+        if (newConns.length > 0) {
+          workingConns = [...workingConns, ...newConns];
+          allNewConns.push(...newConns);
+        }
+      });
+    });
+
+    if (allNewConns.length === 0) return;
+
+    p.setPicotConnections(workingConns);
+    p.picotConnectionsRef.current = workingConns;
+
+    const inheritedKeys = new Set(
+      allNewConns.flatMap(conn => conn.picots.map((cp: any) => `${cp.elementId}::${cp.picotId}`))
+    );
+    const updatedEls = currentElements.map(el => {
+      if (!el.picots) return el;
+      const updated = el.picots.map((pic: any) =>
+        inheritedKeys.has(`${el.id}::${pic.id}`) && !pic.isJoint
+          ? { ...pic, isJoint: true }
+          : pic
+      );
+      return updated === el.picots ? el : { ...el, picots: updated };
+    });
+    p.setElements(updatedEls);
+    p.elementsRef.current = updatedEls;
   };
 
   const removeInheritedJoins = (selPicots: any[], currentElements: any[]) => {
@@ -291,7 +394,11 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.setElements(newEls);
     p.elementsRef.current = newEls;
 
-    if (!sel.some(sp => isEndpointPicotId(sp.picotId))) checkAndStoreInheritedJoin(sel, newEls);
+    // Runs for both real and endpoint pseudo-picots — resolvePicotSlot/getPicotAtSlot
+    // inside checkAndStoreInheritedJoin handle both; the function's own internal
+    // guards (isBoundary, matchingArray, isSourceElement/isOtherBoundary) already
+    // no-op correctly for any non-applicable selection, so no guard is needed here.
+    checkAndStoreInheritedJoin(sel, newEls);
 
     p.setSelectedPicots([]);
     p.skipAutoHistoryRef.current = true;
@@ -333,5 +440,5 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.pushHistoryState(newEls, newConns, p.orderGroupsRef.current);
   }, [p.ghostArrays]);
 
-  return { joinSelectedPicots, breakSelectedPicots };
+  return { joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins };
 }

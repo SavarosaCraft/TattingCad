@@ -80,6 +80,18 @@ import { RwToggleButton } from './components/RwToggleButton';
 import { NotationRotationControls } from './components/NotationRotationControls';
 import { RoundGroupPicker } from './components/RoundGroupPicker';
 import { BeadingModeBar } from './components/BeadingModeBar';
+import { ShapeAndSqueezeControls } from './components/ShapeAndSqueezeControls';
+import { TopMenuBar } from './components/TopMenuBar';
+import { SplitRingNotationInput } from './components/SplitRingNotationInput';
+import { NotationInput } from './components/NotationInput';
+import { TattingOrderModeBar } from './components/TattingOrderModeBar';
+import { MultiSelectSummaryBar } from './components/MultiSelectSummaryBar';
+import { ColorPickerPickerTab } from './components/ColorPickerPickerTab';
+import { ColorPickerSwatchesTab } from './components/ColorPickerSwatchesTab';
+import { ColorPickerGradientsTab } from './components/ColorPickerGradientsTab';
+import { COLORS, BG_COLORS } from './utils/color';
+import { ArrayInput } from './components/ArrayInput';
+import { LineBeadPicker } from './components/LineBeadPicker';
 import { FillPicotsSection } from './components/FillPicotsSection';
 import { CompactPicotsSection } from './components/CompactPicotsSection';
 import {
@@ -132,25 +144,6 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
 
 const GRID_SIZE = 25;
-const COLORS = [
-  // Row 1 — dark shades
-  '#000000', // Black
-  '#999999', // Gray
-  '#8B0000', // Dark Red
-  '#228B22', // Dark Green
-  '#ADD8E6', // Lt Blue
-  '#FFAA33', // Orange
-  '#702963', // Dark Violet
-  // Row 2 — saturated / light
-  '#FFFFFF', // White
-  '#FFFCF4', // Cream
-  '#D1001C', // Red
-  '#93C572', // Pistachio
-  '#0F52BA', // Royal Blue
-  '#FFD700', // Topaz
-  '#CF9FFF', // Violet
-];
-const BG_COLORS = ['#111827', '#4B5563', '#FFFFFF'];
 
 // ============================================================================
 // COLOR CATEGORIZATION - Pure function for performance
@@ -220,46 +213,6 @@ const categorizeColor = (color) => {
   }
   
   return 'neutrals';
-};
-
-// Hex (#rrggbb, with or without '#') -> { h, s, v }, each in [0, 1].
-// Extracted from the color picker, which previously had this same
-// parse-and-compute-hue block inlined 8 times across its grid/slider
-// handlers.
-const hexToHsv = (hex: string): { h: number; s: number; v: number } => {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.substr(0, 2), 16) / 255;
-  const g = parseInt(clean.substr(2, 2), 16) / 255;
-  const b = parseInt(clean.substr(4, 2), 16) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  let h = 0;
-  if (delta !== 0) {
-    if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6;
-    else if (max === g) h = ((b - r) / delta + 2) / 6;
-    else h = ((r - g) / delta + 4) / 6;
-  }
-  const s = max === 0 ? 0 : delta / max;
-  const v = max;
-  return { h, s, v };
-};
-
-// { h, s, v } (each in [0, 1]) -> hex color string ('#rrggbb').
-const hsvToHex = (h: number, s: number, v: number): string => {
-  const c = v * s;
-  const hPrime = h * 6;
-  const x = c * (1 - Math.abs((hPrime % 2) - 1));
-  const m = v - c;
-  let r: number, g: number, b: number;
-  if (hPrime < 1) { r = c; g = x; b = 0; }
-  else if (hPrime < 2) { r = x; g = c; b = 0; }
-  else if (hPrime < 3) { r = 0; g = c; b = x; }
-  else if (hPrime < 4) { r = 0; g = x; b = c; }
-  else if (hPrime < 5) { r = x; g = 0; b = c; }
-  else { r = c; g = 0; b = x; }
-  const toHex = (val: number) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
 // ============================================================================
@@ -379,46 +332,6 @@ const ThreadPropertiesNumInput = ({ label, value, onChange = null, unit = 'mm', 
 // Numeric input that only commits its value on blur or Enter.
 // While focused, the user can type freely without the field fighting them.
 // Quick-pick buttons work correctly because clicking them blurs the input first.
-const ArrayInput = ({
-  value, onChange, min, max, step, integer = false, className,
-}: {
-  value: number; onChange: (v: number) => void;
-  min?: number; max?: number; step?: number;
-  integer?: boolean; className?: string;
-}) => {
-  const [draft, setDraft] = React.useState<string | null>(null);
-
-  const commit = (raw: string) => {
-    const parsed = integer ? parseInt(raw, 10) : parseFloat(raw);
-    let v = isNaN(parsed) ? value : parsed;
-    if (min !== undefined) v = Math.max(min, v);
-    if (max !== undefined) v = Math.min(max, v);
-    onChange(v);
-    setDraft(null);
-  };
-
-  return (
-    <input
-      type="number"
-      min={min} max={max} step={step}
-      value={draft ?? value}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={e => commit(e.target.value)}
-      onKeyDown={e => {
-        if (e.key === 'Enter')  { commit((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).blur(); }
-        if (e.key === 'Escape') { setDraft(null); (e.target as HTMLInputElement).blur(); }
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          const s = step ?? 1;
-          const current = draft !== null ? (integer ? parseInt(draft, 10) : parseFloat(draft)) : value;
-          const next = isNaN(current) ? value : current + (e.key === 'ArrowUp' ? s : -s);
-          e.preventDefault();
-          commit(String(next));
-        }
-      }}
-      className={className}
-    />
-  );
-};
 // Handles backdrop, peek-opacity fade, centering, and click-outside-to-close.
 // Only the inner content differs between dialogs.
 // Thin wrapper around the generalized Modal component (components/Modal.tsx) —
@@ -2618,7 +2531,7 @@ const TattingDesigner = () => {
   };
 
   // Join/break actions delegated to useJoinActions hook
-  const { joinSelectedPicots, breakSelectedPicots } = useJoinActions({
+  const { joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins } = useJoinActions({
     selectedPicotsRef, elementsRef, picotConnectionsRef, orderGroupsRef,
     elementById, ghostArrays,
     setElements, setPicotConnections, setSelectedPicots, setGhostArrays,
@@ -3281,15 +3194,27 @@ const TattingDesigner = () => {
   const applyGhostRegenResult = (result: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> }) => {
     setElements(result.elements);
     setGhostArrays(result.ghostArrays);
+
+    let remappedConns = picotConnectionsRef.current;
     if (result.connectionIdMap.size > 0) {
-      setPicotConnections(prev => prev.map(conn => ({
+      remappedConns = picotConnectionsRef.current.map(conn => ({
         ...conn,
         picots: conn.picots.map(cp => ({
           ...cp,
           elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
         })),
-      })));
+      }));
+      setPicotConnections(remappedConns);
+      picotConnectionsRef.current = remappedConns;
     }
+
+    // Replays any recorded inherited joins onto the freshly-regenerated ghosts.
+    // Covers both slots that already existed (their joins were already carried
+    // forward by the ID remap above, so this is a no-op for them via the
+    // dedupe check inside buildConnectionsForInheritedJoin) and slots that are
+    // entirely new because the array just grew, which the remap above can't
+    // reach since there's no old ghost at that position to map from.
+    reapplyInheritedJoins(result.elements, result.ghostArrays);
   };
 
   // Thin wrapper for standalone use (e.g. the "Update Array" button in the
@@ -6439,177 +6364,36 @@ const TattingDesigner = () => {
       {/* Two-row header — paddingTop pushes content below the Android status bar on edge-to-edge WebViews */}
       <div className="bg-gray-800 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         {/* Row 1: Main Commands */}
-        <div className="top-row-buttons min-h-12 flex flex-wrap items-center px-4 mobile-no-padding gap-1 md:gap-4 border-b border-gray-700 py-1 md:py-2">
-          {/* File operations dropdown menu */}
-          <div className="relative" style={{ overflow: 'visible' }}>
-            <button
-              ref={fileButtonRef}
-              onClick={() => setShowFileMenu(!showFileMenu)}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded"
-              style={{ height: '44px' }}
-              title={t('menuFileTitle')}
-            >
-              <IconMenu size={18} />
-              <span className="text-sm font-semibold hide-label-mobile">{t('menuFile')}</span>
-              <IconChevronDown size={14} />
-            </button>
-          </div>
-          
-          {/* View menu */}
-          <div className="relative" style={{ overflow: 'visible' }}>
-            <button
-              ref={viewButtonRef}
-              onClick={() => setShowViewMenu(!showViewMenu)}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
-              style={{ height: '44px', width: window.innerWidth <= 768 ? '44px' : 'auto' }}
-              title={t('menuViewTitle')}
-            >
-              <IconEyeOn size={18} />
-              <span className="text-sm font-medium hide-label-mobile">{t('menuView')}</span>
-              <IconChevronDown size={14} className="hide-label-mobile" />
-            </button>
-          </div>
-          
-          {/* Divider */}
-          <div className="w-px h-8 bg-gray-600"></div>
-          
-          {/* Undo/Redo/Copy/Paste — centered in remaining space */}
-          <div className="flex-1 flex items-center justify-center gap-1">
-          <button 
-            onClick={undo} 
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnUndo')}
-            disabled={historyIndex === 0 || activeMode === 'beading' || activeMode === 'tattingOrder'}
-          >
-            <IconUndo size={20} />
-          </button>
-          <button 
-            onClick={redo} 
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnRedo')}
-            disabled={historyIndex >= history.length - 1 || activeMode === 'beading' || activeMode === 'tattingOrder'}
-          >
-            <IconRedo size={20} />
-          </button>
-          
-          <button 
-            onClick={() => {
-              if (activeMode === 'beading') copyBEToClipboard();
-              else copySelected();
-            }}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnCopy')}
-            disabled={activeMode === 'picotJoin' || (activeMode === 'beading' ? selectedBEs.length === 0 : selectedIds.length === 0)}
-          >
-            <IconCopy size={20} />
-          </button>
-
-          <button
-            onClick={() => {
-              if (activeMode === 'beading') cutBEToClipboard();
-              else cutSelected();
-            }}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnCut')}
-            disabled={activeMode === 'picotJoin' || (activeMode === 'beading' ? selectedBEs.length === 0 : selectedIds.length === 0)}
-          >
-            <IconCut size={20} />
-          </button>
-          
-          <button 
-            onClick={() => {
-              if (activeMode === 'beading') pasteBeClipboard();
-              else pasteFromClipboard().catch(() => {});
-            }}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnPaste')}
-            disabled={activeMode === 'picotJoin' || (activeMode === 'beading' ? !beClipboard || selectedBEs.length === 0 : clipboard.length === 0)}
-          >
-            <IconPaste size={20} />
-          </button>
-
-          <div className="w-px h-6 bg-gray-600 mx-0.5" />
-
-          <button
-            onClick={sendToBack}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnSendToBack')}
-            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
-          >
-            <IconSendToBack size={20} />
-          </button>
-
-          <button
-            onClick={bringToFront}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnBringToFront')}
-            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
-          >
-            <IconBringToFront size={20} />
-          </button>
-          </div>{/* end centered flex */}
-          
-          <button 
-            onClick={fitAllElements} 
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            style={{ width: '44px', height: '44px' }}
-            title={t('btnFitAll')}
-            disabled={elements.length === 0}
-          >
-            <IconFitView size={20} />
-          </button>
-          
-          {/* Arrange menu (Duplicate + Alignment) */}
-          <button
-            ref={arrangeButtonRef}
-            onClick={() => setShowArrangeMenu(!showArrangeMenu)}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
-            style={{ height: '44px', width: window.innerWidth <= 768 ? '44px' : 'auto' }}
-            title={t('menuArrangeTitle')}
-          >
-            <IconAlignMiddle size={18} />
-            <span className="text-sm font-medium hide-label-mobile">{t('menuArrange')}</span>
-            <IconChevronDown size={14} className="hide-label-mobile" />
-          </button>
-          
-          {/* Divider */}
-          <div className="w-px h-8 bg-gray-600"></div>
-          
-          {/* Options menu (BG, Grid, Snap) */}
-          <button
-            ref={optionsButtonRef}
-            onClick={() => setShowOptionsMenu(!showOptionsMenu)}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
-            style={{ height: '44px', width: window.innerWidth <= 768 ? '44px' : 'auto' }}
-            title={t('menuOptions')}
-          >
-            <IconSettings size={18} />
-            <span className="text-sm font-medium hide-label-mobile">{t('menuOptions')}</span>
-            <IconChevronDown size={14} className="hide-label-mobile" />
-          </button>
-          
-          {/* Divider */}
-          <div className="w-px h-8 bg-gray-600"></div>
-          
-          {/* Help / About dropdown */}
-          <button
-            ref={helpButtonRef}
-            onClick={() => setShowHelpMenu(v => !v)}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1 justify-center"
-            style={{ height: '44px' }}
-            title={t('menuHelpDropdown')}
-          >
-            <IconHelp size={20} />
-            <span className="text-xs">&#9660;</span>
-          </button>
-        </div>
+        <TopMenuBar
+          fileButtonRef={fileButtonRef}
+          viewButtonRef={viewButtonRef}
+          arrangeButtonRef={arrangeButtonRef}
+          optionsButtonRef={optionsButtonRef}
+          helpButtonRef={helpButtonRef}
+          showFileMenu={showFileMenu}
+          showViewMenu={showViewMenu}
+          onToggleFileMenu={() => setShowFileMenu(!showFileMenu)}
+          onToggleViewMenu={() => setShowViewMenu(!showViewMenu)}
+          onToggleArrangeMenu={() => setShowArrangeMenu(!showArrangeMenu)}
+          onToggleOptionsMenu={() => setShowOptionsMenu(!showOptionsMenu)}
+          onToggleHelpMenu={() => setShowHelpMenu(v => !v)}
+          undo={undo}
+          redo={redo}
+          historyIndex={historyIndex}
+          historyLength={history.length}
+          activeMode={activeMode}
+          onCopy={() => { if (activeMode === 'beading') copyBEToClipboard(); else copySelected(); }}
+          onCut={() => { if (activeMode === 'beading') cutBEToClipboard(); else cutSelected(); }}
+          onPaste={() => { if (activeMode === 'beading') pasteBeClipboard(); else pasteFromClipboard().catch(() => {}); }}
+          copyCutDisabled={activeMode === 'picotJoin' || (activeMode === 'beading' ? selectedBEs.length === 0 : selectedIds.length === 0)}
+          pasteDisabled={activeMode === 'picotJoin' || (activeMode === 'beading' ? !beClipboard || selectedBEs.length === 0 : clipboard.length === 0)}
+          sendToBack={sendToBack}
+          bringToFront={bringToFront}
+          arrangeDisabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
+          fitAllElements={fitAllElements}
+          fitAllDisabled={elements.length === 0}
+          t={t}
+        />
         
         {/* Row 2: Properties (always visible) */}
         <div className="top-row-properties flex flex-wrap items-center content-start px-4 mobile-no-padding gap-0.5 md:gap-3 bg-gray-750 py-1 md:py-2 justify-start" style={{
@@ -6641,377 +6425,44 @@ const TattingDesigner = () => {
               onOpenBeadLibrary={() => setShowBeadLibrary(true)}
               t={t}
             />
-          ) : activeMode === 'tattingOrder' ? (() => {
-            // ── Tatting Order mode property bar ──────────────────────────
-            const selectedEl = selectedElement;
-            const numbered = elements.filter(e => e.isRepeat || (e.orderNumber != null && String(e.orderNumber).trim() !== '')).length;
-            const total = elements.length;
-
-            // Active group object (null = Ungrouped scope)
-            const activeGroup = activeOrderGroupId
-              ? orderGroups.find(g => g.id === activeOrderGroupId) ?? null
-              : null;
-            const activeGroupIndex = activeGroup
-              ? orderGroups.findIndex(g => g.id === activeGroup.id)
-              : -1;
-            const [activeBadgeFill] = activeGroup
-              ? ORDER_GROUP_COLORS[activeGroupIndex % ORDER_GROUP_COLORS.length]
-              : ORDER_GROUP_COLORS[0]; // gold for ungrouped
-
-            // Per-group numbered count for the progress chip
-            const numberedInScope = elements.filter(e => {
-              const hasNum = e.isRepeat || (e.orderNumber != null && String(e.orderNumber).trim() !== '');
-              return hasNum && inActiveGroup(e);
-            }).length;
-            const totalInScope = elements.filter(inActiveGroup).length;
-
-            return (
-              <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
-                {/* Row 1: mode banner + group bar + exit */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-emerald-700 border border-emerald-400 flex-shrink-0">
-                    <IconUnnumberedOn size={16} />
-                    <span className="font-bold text-sm text-white tracking-wide">{t('tattingOrderTitle')}</span>
-                  </div>
-
-                  {/* Group dropdown */}
-                  <div className="relative flex-shrink-0">
-                    {/* Trigger button */}
-                    <button
-                      ref={groupDropdownButtonRef}
-                      onClick={() => { setShowGroupDropdown(d => !d); setShowNewGroupInput(false); setRenamingGroupId(null); }}
-                      className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold border border-gray-500 bg-gray-700 hover:bg-gray-600 text-gray-200"
-                      style={ activeGroup ? { borderColor: activeBadgeFill, color: activeBadgeFill } : {} }
-                    >
-                      <span>{activeGroup ? activeGroup.name : t('tattingOrderUngrouped')}</span>
-                      <span style={{ fontSize: '9px', opacity: 0.7 }}>▾</span>
-                    </button>
-
-                    {/* Dropdown panel — fixed position so it escapes the property bar on mobile */}
-                    {showGroupDropdown && (() => {
-                      const rect = groupDropdownButtonRef.current?.getBoundingClientRect();
-                      const dropTop = rect ? rect.bottom + 4 : 60;
-                      const dropLeft = rect ? rect.left : 0;
-                      return (
-                      <>
-                        {/* Click-outside veil */}
-                        <div
-                          className="fixed inset-0"
-                          style={{ zIndex: 9998 }}
-                          onClick={() => { setShowGroupDropdown(false); setRenamingGroupId(null); setShowNewGroupInput(false); }}
-                        />
-                        <div
-                          className="fixed rounded-lg border border-gray-500 shadow-2xl py-1 min-w-36"
-                          style={{ backgroundColor: '#1f2937', zIndex: 9999, top: dropTop, left: dropLeft }}
-                        >
-                          {/* Ungrouped row */}
-                          <button
-                            onClick={() => { setActiveOrderGroupId(null); setShowGroupDropdown(false); setShowNewGroupInput(false); setRenamingGroupId(null); }}
-                            className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${activeOrderGroupId === null ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
-                          >
-                            <span style={{ fontSize: '8px' }}>{activeOrderGroupId === null ? '●' : '○'}</span>
-                            {t('tattingOrderUngrouped')}
-                          </button>
-
-                          {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
-
-                          {/* Group rows */}
-                          {orderGroups.map((grp, gi) => {
-                            const [gpFill] = ORDER_GROUP_COLORS[gi % ORDER_GROUP_COLORS.length];
-                            const isActive = activeOrderGroupId === grp.id;
-                            const isRenaming = renamingGroupId === grp.id;
-
-                            return (
-                              <div key={grp.id} className="flex items-center gap-1 px-1 hover:bg-gray-700 group">
-                                {isRenaming ? (
-                                  <input
-                                    autoFocus
-                                    type="text"
-                                    value={renameGroupInput}
-                                    onChange={e => setRenameGroupInput(e.target.value)}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') {
-                                        const name = renameGroupInput.trim() || grp.name;
-                                        const newGroups = orderGroupsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
-                                        setOrderGroups(newGroups);
-                                        pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
-                                        setRenamingGroupId(null);
-                                      }
-                                      if (e.key === 'Escape') setRenamingGroupId(null);
-                                    }}
-                                    onBlur={() => {
-                                      const name = renameGroupInput.trim() || grp.name;
-                                      const newGroups = orderGroupsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
-                                      setOrderGroups(newGroups);
-                                      pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
-                                      setRenamingGroupId(null);
-                                    }}
-                                    onClick={e => e.stopPropagation()}
-                                    className="flex-1 px-2 py-0.5 bg-gray-600 border rounded text-white text-xs my-0.5"
-                                    style={{ borderColor: gpFill }}
-                                  />
-                                ) : (
-                                  <button
-                                    className="flex-1 text-left px-2 py-1 text-xs flex items-center gap-2"
-                                    style={{ color: isActive ? gpFill : '#d1d5db' }}
-                                    onClick={() => { setActiveOrderGroupId(grp.id); setShowGroupDropdown(false); setShowNewGroupInput(false); }}
-                                  >
-                                    <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
-                                    <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
-                                  </button>
-                                )}
-                                {/* Pencil — only visible on the active row, always shown (not hover-only) */}
-                                {isActive && !isRenaming && (
-                                  <button
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      setRenameGroupInput(grp.name);
-                                      setRenamingGroupId(grp.id);
-                                    }}
-                                    className="px-1 py-0.5 rounded text-gray-400 hover:text-white text-xs flex-shrink-0"
-                                    title={t('tattingOrderGroupRename')}
-                                  >✏️</button>
-                                )}
-                                {/* Delete — hover-reveal on all rows */}
-                                <button
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    setShowGroupDropdown(false);
-                                    setConfirmDialog({
-                                      message: t('tattingOrderGroupDeleteConfirm').replace('{name}', grp.name),
-                                      confirmLabel: t('confirmDelete'),
-                                      onConfirm: () => {
-                                        const newEls = elementsRef.current.map(el =>
-                                          el.orderGroup === grp.id ? { ...el, orderGroup: undefined } : el
-                                        );
-                                        const newGroups = orderGroupsRef.current.filter(g => g.id !== grp.id);
-                                        setElements(newEls);
-                                        setOrderGroups(newGroups);
-                                        if (activeOrderGroupId === grp.id) setActiveOrderGroupId(null);
-                                        pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
-                                      }
-                                    });
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 px-1 py-0.5 rounded text-red-400 hover:text-red-200 text-xs flex-shrink-0"
-                                  title={t('tattingOrderGroupDelete')}
-                                >🗑</button>
-                              </div>
-                            );
-                          })}
-
-                          <div className="my-1 border-t border-gray-600" />
-
-                          {/* + New Group */}
-                          {showNewGroupInput ? (
-                            <div className="flex items-center gap-1 px-2 py-1">
-                              <input
-                                autoFocus
-                                type="text"
-                                value={newGroupNameInput}
-                                onChange={e => setNewGroupNameInput(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') {
-                                    const name = newGroupNameInput.trim() ||
-                                      t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
-                                    const id = crypto.randomUUID();
-                                    const newGroups = [...orderGroupsRef.current, { id, name }];
-                                    setOrderGroups(newGroups);
-                                    setActiveOrderGroupId(id);
-                                    setNewGroupNameInput('');
-                                    setShowNewGroupInput(false);
-                                    setShowGroupDropdown(false);
-                                    pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
-                                  }
-                                  if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupNameInput(''); }
-                                }}
-                                onClick={e => e.stopPropagation()}
-                                placeholder={t('tattingOrderGroupNamePlaceholder')}
-                                className="flex-1 px-2 py-0.5 bg-gray-600 border border-emerald-500 rounded text-white text-xs"
-                              />
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  const name = newGroupNameInput.trim() ||
-                                    t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
-                                  const id = crypto.randomUUID();
-                                  const newGroups = [...orderGroupsRef.current, { id, name }];
-                                  setOrderGroups(newGroups);
-                                  setActiveOrderGroupId(id);
-                                  setNewGroupNameInput('');
-                                  setShowNewGroupInput(false);
-                                  setShowGroupDropdown(false);
-                                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
-                                }}
-                                className="px-1.5 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs border border-emerald-500"
-                              >✓</button>
-                              <button
-                                onClick={e => { e.stopPropagation(); setShowNewGroupInput(false); setNewGroupNameInput(''); }}
-                                className="px-1.5 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs"
-                              >✕</button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                setNewGroupNameInput(t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1)));
-                                setShowNewGroupInput(true);
-                              }}
-                              className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
-                            >
-                              {t('tattingOrderGroupNew')}
-                            </button>
-                          )}
-                        </div>
-                      </>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Progress in current scope */}
-                  <span className="text-xs font-semibold" style={{ color: activeBadgeFill }}>
-                    {t('tattingOrderProgress')
-                      .replace('{numbered}', String(numberedInScope))
-                      .replace('{total}', String(totalInScope))}
-                  </span>
-
-                  {!selectedEl && (
-                    <span className="text-gray-400 text-xs">{t('tattingOrderSub')}</span>
-                  )}
-
-                  <div className="ml-auto flex-shrink-0">
-                    <button
-                      onClick={() => {
-                        const unnumbered = elements.filter(e =>
-                          e.type !== 'line' && !e.isRepeat && (!e.orderNumber || String(e.orderNumber).trim() === '')
-                        ).length;
-                        setActiveMode(null);
-                        setSelectedIds([]);
-                        setShowNewGroupInput(false);
-                        setShowGroupDropdown(false);
-                        if (unnumbered > 0) {
-                          showLoadMsg('error', t('tattingOrderExitWarning').replace('{n}', String(unnumbered)));
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium border border-gray-400"
-                    >
-                      ✕ {t('picotExitBtn')}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Row 2: element controls (only when one element selected) */}
-                {selectedEl && (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-gray-300 text-xs">{t('tattingOrderNumberLabel')}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={tattingOrderInput}
-                      onChange={e => setTattingOrderInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          const n = parseInt(tattingOrderInput, 10);
-                          if (!isNaN(n) && n > 0) assignOrderNumber(selectedEl.id, n);
-                        }
-                      }}
-                      placeholder="—"
-                      className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm text-center"
-                      style={{ touchAction: 'manipulation' }}
-                    />
-                    <button
-                      onClick={() => {
-                        const n = parseInt(tattingOrderInput, 10);
-                        if (!isNaN(n) && n > 0) assignOrderNumber(selectedEl.id, n);
-                      }}
-                      disabled={!tattingOrderInput || isNaN(parseInt(tattingOrderInput, 10))}
-                      className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 disabled:opacity-40 text-white text-sm border border-gray-500"
-                    >
-                      ↵
-                    </button>
-                    <button
-                      onClick={() => {
-                        const next = getNextAvailableNumber();
-                        assignOrderNumber(selectedEl.id, next);
-                      }}
-                      className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold border border-emerald-500"
-                    >
-                      {t('tattingOrderAssignNext')} ({getNextAvailableNumber()})
-                    </button>
-                    {/* Assign to Group */}
-                    <button
-                      onClick={() => {
-                        const hasNumber = selectedEl.orderNumber != null && String(selectedEl.orderNumber).trim() !== '';
-                        if (hasNumber) {
-                          const newEls = elementsRef.current.map(e =>
-                            e.id === selectedEl.id ? { ...e, orderGroup: activeOrderGroupId ?? undefined } : e
-                          );
-                          setElements(newEls);
-                          pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
-                        } else {
-                          const next = getNextAvailableNumber();
-                          const newEls = elementsRef.current.map(e =>
-                            e.id === selectedEl.id ? { ...e, orderGroup: activeOrderGroupId ?? undefined, orderNumber: next } : e
-                          );
-                          setElements(newEls);
-                          setTattingOrderInput('');
-                          pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
-                        }
-                      }}
-                      className="px-3 py-1 rounded text-xs font-semibold border"
-                      style={{
-                        backgroundColor: activeBadgeFill + '33',
-                        borderColor: activeBadgeFill,
-                        color: activeBadgeFill,
-                      }}
-                    >
-                      {t('tattingOrderAssignGroup')}: {activeGroup ? activeGroup.name : t('tattingOrderUngrouped')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const newEls = elementsRef.current.map(e =>
-                          e.id === selectedEl.id ? { ...e, rw: !selectedEl.rw } : e
-                        );
-                        setElements(newEls);
-                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
-                      }}
-                      className={`px-2 py-1 rounded text-xs font-bold border ${selectedEl.rw ? 'bg-amber-600 hover:bg-amber-700 border-amber-500 text-white' : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-300'}`}
-                      title={t('propRWTooltip')}
-                    >
-                      RW
-                    </button>
-                    <button
-                      onClick={() => assignRepeat(selectedEl.id)}
-                      disabled={selectedEl.isRepeat}
-                      className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 disabled:opacity-40 text-gray-300 text-sm border border-gray-500"
-                      title="R"
-                    >
-                      {t('btnAssignRepeat')}
-                    </button>
-                    <button
-                      onClick={() => clearOrderAssignment(selectedEl.id)}
-                      disabled={!selectedEl.orderNumber && !selectedEl.isRepeat}
-                      className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 text-sm border border-gray-600"
-                      title="Delete"
-                    >
-                      {t('tattingOrderClear')}
-                    </button>
-                    {selectedEl.orderNumber && (() => {
-                      const selGi = selectedEl.orderGroup
-                        ? orderGroups.findIndex(g => g.id === selectedEl.orderGroup)
-                        : -1;
-                      const [selFill] = ORDER_GROUP_COLORS[selGi >= 0 ? selGi % ORDER_GROUP_COLORS.length : 0];
-                      const selGroupName = selGi >= 0 ? orderGroups[selGi]?.name : null;
-                      return (
-                        <span className="text-xs font-semibold" style={{ color: selFill }}>
-                          {selGroupName ? `${selGroupName} #` : '#'}{selectedEl.orderNumber}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            );
-          })() : selectedElement ? (
+          ) : activeMode === 'tattingOrder' ? (
+            <TattingOrderModeBar
+              elements={elements}
+              selectedElement={selectedElement}
+              orderGroups={orderGroups}
+              orderGroupsRef={orderGroupsRef}
+              activeOrderGroupId={activeOrderGroupId}
+              setActiveOrderGroupId={setActiveOrderGroupId}
+              groupDropdownButtonRef={groupDropdownButtonRef}
+              showGroupDropdown={showGroupDropdown}
+              setShowGroupDropdown={setShowGroupDropdown}
+              showNewGroupInput={showNewGroupInput}
+              setShowNewGroupInput={setShowNewGroupInput}
+              newGroupNameInput={newGroupNameInput}
+              setNewGroupNameInput={setNewGroupNameInput}
+              renamingGroupId={renamingGroupId}
+              setRenamingGroupId={setRenamingGroupId}
+              renameGroupInput={renameGroupInput}
+              setRenameGroupInput={setRenameGroupInput}
+              setOrderGroups={setOrderGroups}
+              pushHistoryState={pushHistoryState}
+              elementsRef={elementsRef}
+              picotConnectionsRef={picotConnectionsRef}
+              setConfirmDialog={setConfirmDialog}
+              setActiveMode={setActiveMode}
+              setSelectedIds={setSelectedIds}
+              showLoadMsg={showLoadMsg}
+              tattingOrderInput={tattingOrderInput}
+              setTattingOrderInput={setTattingOrderInput}
+              assignOrderNumber={assignOrderNumber}
+              getNextAvailableNumber={getNextAvailableNumber}
+              setElements={setElements}
+              assignRepeat={assignRepeat}
+              clearOrderAssignment={clearOrderAssignment}
+              inActiveGroup={inActiveGroup}
+              t={t}
+            />
+          ) : selectedElement ? (
             <>
               {selectedElement.type === 'line' ? (
                 /* Line properties: order number + optional bead notation */
@@ -7062,153 +6513,18 @@ const TattingDesigner = () => {
                       createNewLabel={t('tattingOrderGroupNew')}
                     />
                     {/* ── Line bead picker ── */}
-                    {(() => {
-                      // Normalise: migrate legacy lineBeadId+lineBeadCount to lineBeadSlots on first render
-                      const rawSlots = selectedElement.lineBeadSlots;
-                      const slots = Array.isArray(rawSlots) ? rawSlots
-                        : selectedElement.lineBeadId
-                          ? Array.from({length: selectedElement.lineBeadCount ?? 1}, () => selectedElement.lineBeadId)
-                          : [];
-                      const count = slots.length;
-                      const expanded = !!selectedElement.lineBeadExpanded;
-
-                      // "all same" = every non-null slot has the same bead id (or all are null)
-                      const nonNull = slots.filter(Boolean);
-                      const allSame = nonNull.length === 0 || nonNull.every(id => id === nonNull[0]);
-                      const sharedId = allSame ? (nonNull[0] ?? null) : null;
-
-                      // Show per-slot pickers when: user explicitly expanded, OR slots differ
-                      const showExpanded = expanded || !allSame;
-
-                      const updateSlots = (newSlots, newExpanded = expanded) =>
-                        setElements(prev => updateElement(prev, selectedElement.id,
-                          {lineBeadSlots: newSlots, lineBeadExpanded: newExpanded, lineBeadId: undefined, lineBeadCount: undefined}
-                        ));
-
-                      const setCount = (n) => {
-                        const next = Array.from({length: n}, (_, i) => slots[i] ?? (sharedId || null));
-                        updateSlots(next, expanded);
-                      };
-
-                      const setSlot = (i, beadId) => {
-                        const next = [...slots];
-                        next[i] = beadId || null;
-                        updateSlots(next, true); // stay expanded after changing a slot
-                      };
-
-                      const setAllSame = (beadId) => {
-                        updateSlots(slots.map(() => beadId || null), false);
-                      };
-
-                      const toggleExpanded = () => {
-                        if (showExpanded) {
-                          // Collapse: harmonise all to first non-null bead, then hide per-slot
-                          setAllSame(nonNull[0] ?? null);
-                        } else {
-                          // Expand: show per-slot pickers
-                          updateSlots(slots, true);
-                        }
-                      };
-
-                      return (
-                        <div className="flex items-center gap-1 flex-wrap ml-2">
-                          <span className="text-xs text-gray-400 hide-label-mobile">{t('modeBeadCore')}:</span>
-
-                          {/* Count spinner */}
-                          <ArrayInput
-                            value={count}
-                            onChange={n => setCount(Math.max(0, n))}
-                            min={0} max={99} integer
-                            className="px-1 py-0.5 bg-gray-700 rounded border border-gray-600 w-10 text-sm text-center text-white"
-                          />
-
-                          {count > 0 && (<>
-                            {/* All-same toggle — blue = collapsed/same, grey = expanded/individual */}
-                            <button
-                              onClick={toggleExpanded}
-                              title={showExpanded ? t('lineBdCollapse') : t('lineBdExpand')}
-                              className={`px-1.5 py-0.5 rounded text-xs border ${!showExpanded ? 'bg-blue-800 border-blue-500 text-blue-200' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'}`}
-                              style={{touchAction:'manipulation'}}
-                            >=</button>
-
-                            {!showExpanded ? (
-                              /* Collapsed: one shared dropdown */
-                              (() => {
-                                const lb = sharedId ? beadLibrary.find(b => b.id === sharedId) : null;
-                                return (
-                                  <div className="flex items-center gap-1">
-                                    {lb && <div className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-500" style={{backgroundColor: lb.color}} />}
-                                    <select
-                                      value={sharedId || ''}
-                                      onChange={e => setAllSame(e.target.value || null)}
-                                      className="bg-gray-700 text-white text-xs rounded px-1 py-0.5 border border-gray-600 max-w-28"
-                                      style={{touchAction:'manipulation'}}
-                                    >
-                                      <option value="">— none —</option>
-                                      {beadLibrary.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                    </select>
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              /* Expanded: one numbered dropdown per slot */
-                              slots.map((slotId, i) => {
-                                const lb = slotId ? beadLibrary.find(b => b.id === slotId) : null;
-                                return (
-                                  <div key={i} className="flex items-center gap-0.5">
-                                    <span className="text-xs text-gray-500">{i+1}:</span>
-                                    {lb && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-gray-500" style={{backgroundColor: lb.color}} />}
-                                    <select
-                                      value={slotId || ''}
-                                      onChange={e => setSlot(i, e.target.value || null)}
-                                      className="bg-gray-700 text-white text-xs rounded px-1 py-0.5 border border-gray-600 max-w-24"
-                                      style={{touchAction:'manipulation'}}
-                                    >
-                                      <option value="">— —</option>
-                                      {beadLibrary.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                    </select>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </>)}
-
-                          {/* Copy / Cut / Paste */}
-                          <div className="flex items-center gap-1 border-l border-gray-600 pl-2 ml-1">
-                            <button
-                              onClick={() => setLineBeadClipboard({ lineBeadSlots: [...slots] })}
-                              title={t('lineBdCopy')}
-                              className="px-1.5 py-0.5 rounded text-xs border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
-                              style={{touchAction:'manipulation'}}
-                            ><IconCopy size={12} /></button>
-                            <button
-                              onClick={() => {
-                                setLineBeadClipboard({ lineBeadSlots: [...slots] });
-                                updateSlots([], false);
-                              }}
-                              title={t('lineBdCut')}
-                              className="px-1.5 py-0.5 rounded text-xs border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
-                              style={{touchAction:'manipulation'}}
-                            ><IconCut size={12} /></button>
-                            {lineBeadClipboard && (
-                              <button
-                                onClick={() => {
-                                  const lineIds = new Set(selectedIds);
-                                  setElements(prev => updateWhere(prev, el => lineIds.has(el.id) && el.type === 'line',
-                                    {lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadExpanded: false, lineBeadId: undefined, lineBeadCount: undefined}
-                                  ));
-                                }}
-                                title={selectedIds.length > 1
-                                  ? t('lineBdPasteAll').replace('{n}', String(selectedIds.filter(id => elements.find(e=>e.id===id)?.type==='line').length))
-                                  : t('lineBdPaste')}
-                                className="px-1.5 py-0.5 rounded text-xs border bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700"
-                                style={{touchAction:'manipulation'}}
-                              ><IconPaste size={12} /></button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    <LineBeadPicker
+                      selectedElement={selectedElement}
+                      selectedIds={selectedIds}
+                      elements={elements}
+                      beadLibrary={beadLibrary}
+                      lineBeadClipboard={lineBeadClipboard}
+                      setLineBeadClipboard={setLineBeadClipboard}
+                      setElements={setElements}
+                      updateElement={updateElement}
+                      updateWhere={updateWhere}
+                      t={t}
+                    />
                   </div>
                 </div>
               ) : (
@@ -7216,100 +6532,72 @@ const TattingDesigner = () => {
               {/* Notation input - dual for split rings */}
               {selectedElement.isSplitRing ? (
                 <div className="flex items-center gap-1 top-toolbar-scalable">
-                  <span className="text-xs text-gray-400">A:</span>
-                  <input
-                    key={`${selectedElement.id}-A`}
-                    type="text"
+                  <SplitRingNotationInput
+                    keySuffix={`${selectedElement.id}-A`}
+                    label="A:"
                     defaultValue={selectedElement.notation.replace(/^sr:\s*/, '')}
-                    onChange={(e) => {
-                      pendingNotationRef.current = { elementId: selectedElement.id, notation: `sr: ${e.target.value.trim()}`, notationB: elementById.get(selectedElement.id)?.notationB };
+                    onChangeRaw={(val) => {
+                      pendingNotationRef.current = { elementId: selectedElement.id, notation: `sr: ${val}`, notationB: elementById.get(selectedElement.id)?.notationB };
                     }}
-                    onBlur={(e) => {
-                      pendingNotationRef.current = null;
-                      if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
-                      const notationA = e.target.value.trim();
+                    onCommit={(val) => {
                       const currentElement = elementById.get(selectedElement.id);
                       if (!currentElement) return;
-                      const parsedA = parseNotation(`sr: ${notationA}`);
+                      const parsedA = parseNotation(`sr: ${val}`);
                       if (parsedA && parsedA.stitchCount > 0) {
-                        updateNotation(`sr: ${notationA}`, currentElement.notationB, currentElement.id);
+                        updateNotation(`sr: ${val}`, currentElement.notationB, currentElement.id);
                       } else {
                         setAlertDialog({ message: 'Invalid notation for section A.' });
                       }
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.target.blur(); }
-                      else if (e.key === 'Escape') {
-                        notationEscapeRef.current = true;
-                        pendingNotationRef.current = null;
-                        const currentElement = elementById.get(selectedElement.id);
-                        if (currentElement) { e.target.value = currentElement.notation.replace(/^sr:\s*/, ''); }
-                        e.target.blur();
-                      }
-                    }}
-                    className="notation-input px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm w-20"
-                    placeholder="5ds"
+                    getRevertValue={() => (elementById.get(selectedElement.id)?.notation || '').replace(/^sr:\s*/, '')}
+                    notationEscapeRef={notationEscapeRef}
+                    pendingNotationRef={pendingNotationRef}
                   />
-                  <span className="text-xs text-gray-400">B:</span>
-                  <input
-                    key={`${selectedElement.id}-B`}
-                    type="text"
+                  <SplitRingNotationInput
+                    keySuffix={`${selectedElement.id}-B`}
+                    label="B:"
                     defaultValue={selectedElement.notationB || '5ds'}
-                    onChange={(e) => {
+                    onChangeRaw={(val) => {
                       const currentEl = elementById.get(selectedElement.id);
-                      pendingNotationRef.current = { elementId: selectedElement.id, notation: currentEl?.notation ?? selectedElement.notation, notationB: e.target.value.trim() };
+                      pendingNotationRef.current = { elementId: selectedElement.id, notation: currentEl?.notation ?? selectedElement.notation, notationB: val };
                     }}
-                    onBlur={(e) => {
-                      pendingNotationRef.current = null;
-                      if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
-                      const notationB = e.target.value.trim();
+                    onCommit={(val) => {
                       const currentElement = elementById.get(selectedElement.id);
                       if (!currentElement) return;
-                      const parsedB = parseNotation(`sr: ${notationB}`);
+                      const parsedB = parseNotation(`sr: ${val}`);
                       if (parsedB && parsedB.stitchCount > 0) {
-                        updateNotation(currentElement.notation, notationB, currentElement.id);
+                        updateNotation(currentElement.notation, val, currentElement.id);
                       } else {
                         setAlertDialog({ message: 'Invalid notation for section B.' });
                       }
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.target.blur(); }
-                      else if (e.key === 'Escape') {
-                        notationEscapeRef.current = true;
-                        pendingNotationRef.current = null;
-                        const currentElement = elementById.get(selectedElement.id);
-                        if (currentElement) { e.target.value = currentElement.notationB || '5ds'; }
-                        e.target.blur();
-                      }
-                    }}
-                    className="notation-input px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm w-20"
-                    placeholder="5ds"
+                    getRevertValue={() => elementById.get(selectedElement.id)?.notationB || '5ds'}
+                    notationEscapeRef={notationEscapeRef}
+                    pendingNotationRef={pendingNotationRef}
                   />
                   <span className="text-xs text-gray-400">({selectedElement.stitchCount})</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
                   {/* Label removed - icon/placeholder is sufficient */}
-                  <input
+                  <NotationInput
                     key={`${selectedElement.id}::${selectedElement.notation}`}
-                    type="text"
                     defaultValue={(draftNotation?.elementId === selectedElement.id && draftNotation) ? draftNotation.value : selectedElement.notation}
-                    onChange={(e) => {
-                      const val = e.target.value.trim();
+                    hasError={!!(draftNotation?.elementId === selectedElement.id && notationError)}
+                    onChangeRaw={(raw) => {
+                      const val = raw.trim();
                       pendingNotationRef.current = { elementId: selectedElement.id, notation: val };
-                      setDraftNotation({ elementId: selectedElement.id, value: e.target.value }); // use raw value to preserve cursor
+                      setDraftNotation({ elementId: selectedElement.id, value: raw }); // use raw value to preserve cursor
                     }}
-                    onBlur={(e) => {
-                      pendingNotationRef.current = null;
-                      if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
-const rawNotation = e.target.value.trim();
-const normalized = normalizeNotationInput(rawNotation);
-const parsed = parseNotation(normalized);
-const currentElement = elementById.get(selectedElement.id);
-if (!currentElement) { return; }
-if (parsed && parsed.stitchCount > 0) {
-  setDraftNotation(null);
-  updateNotation(normalized, null, currentElement.id);
+                    onCommit={(raw) => {
+                      const rawNotation = raw.trim();
+                      const normalized = normalizeNotationInput(rawNotation);
+                      const parsed = parseNotation(normalized);
+                      const currentElement = elementById.get(selectedElement.id);
+                      if (!currentElement) { return; }
+                      if (parsed && parsed.stitchCount > 0) {
+                        setDraftNotation(null);
+                        updateNotation(normalized, null, currentElement.id);
                       } else {
                         if (parsed && parsed.stitchCount === 0) {
                           setAlertDialog({ message: 'Element must have at least 1 stitch.' });
@@ -7319,20 +6607,16 @@ if (parsed && parsed.stitchCount > 0) {
                         // Keep draftNotation so user sees their text on reselect
                       }
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.target.blur();
-                      } else if (e.key === 'Escape') {
-                        notationEscapeRef.current = true;
-                        pendingNotationRef.current = null;
-                        setDraftNotation(null);
-                        setNotationError(null);
-                        const currentElement = elementById.get(selectedElement.id);
-                        if (currentElement) { e.target.value = currentElement.notation; }
-                        e.target.blur();
-                      }
+                    getRevertValue={() => {
+                      const currentElement = elementById.get(selectedElement.id);
+                      return currentElement ? currentElement.notation : null;
                     }}
-                    className={`notation-input px-2 py-1 bg-gray-700 rounded border text-sm ${draftNotation?.elementId === selectedElement.id && notationError ? 'border-red-500' : 'border-gray-600'}`}
+                    onEscape={() => {
+                      setDraftNotation(null);
+                      setNotationError(null);
+                    }}
+                    notationEscapeRef={notationEscapeRef}
+                    pendingNotationRef={pendingNotationRef}
                     placeholder="r: 20ds"
                   />
                   {/* Picot Wizard — add / clear picots directly on the notation */}
@@ -7640,197 +6924,20 @@ if (parsed && parsed.stitchCount > 0) {
               />
 
               {/* Ring-specific properties */}
-              {selectedElement.isClosed && (
-                <>
-                  {/* Shape radio buttons - hide for split rings */}
-                  {!selectedElement.isSplitRing && (
-                    <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propShape')}</label>
-                      <div className="flex rounded overflow-hidden border border-gray-600">
-                        {/* Teardrop */}
-                        <button
-                          onClick={() => {
-                            if (/^jk:/i.test(selectedElement.notation || '')) {
-                              // Was JK — rewrite notation to r: and toggle to teardrop
-                              const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
-                              setElements(prev => prev.map(el => {
-                                if (el.id !== selectedElement.id) return el;
-                                const targetLength = el.stitchCount * dsWidth;
-                                const paths = applyRotationToPathData(el, createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
-                                return { ...el, notation, shapeStyle: 'teardrop', paths };
-                              }));
-                              pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                            } else if (selectedElement.shapeStyle !== 'teardrop') {
-                              toggleShape();
-                            }
-                          }}
-                          className={`px-2 py-1 flex items-center gap-1 text-xs ${
-                            selectedElement.shapeStyle !== 'circle' && !/^jk:/i.test(selectedElement.notation || '')
-                              ? 'bg-blue-700 text-white'
-                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                          }`}
-                          title={t('propShapeTeardrop')}
-                        >
-                          <IconShapeTeardrop size={14} />
-                        </button>
-                        {/* Circle */}
-                        <button
-                          onClick={() => {
-                            if (/^jk:/i.test(selectedElement.notation || '')) {
-                              const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
-                              setElements(prev => prev.map(el => {
-                                if (el.id !== selectedElement.id) return el;
-                                const targetLength = el.stitchCount * dsWidth;
-                                const paths = applyRotationToPathData(el, createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
-                                return { ...el, notation, shapeStyle: 'circle', paths };
-                              }));
-                              pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
-                            } else if (selectedElement.shapeStyle !== 'circle') {
-                              toggleShape();
-                            }
-                          }}
-                          className={`px-2 py-1 flex items-center gap-1 text-xs border-l border-gray-600 ${
-                            selectedElement.shapeStyle === 'circle' && !/^jk:/i.test(selectedElement.notation || '')
-                              ? 'bg-blue-700 text-white'
-                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                          }`}
-                          title={t('propShapeCircle')}
-                        >
-                          <IconShapeCircle size={14} />
-                        </button>
-                        {/* Josephine Knot */}
-                        <button
-                          onClick={convertToJosephineKnot}
-                          className={`px-2 py-1 flex items-center gap-1 text-xs border-l border-gray-600 ${
-                            /^jk:/i.test(selectedElement.notation || '')
-                              ? 'bg-blue-700 text-white'
-                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                          }`}
-                          title={t('jkConvertTitle')}
-                        >
-                          JK
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Squeeze sliders */}
-                  {(() => {
-                    // Shared mouse/touch events for every squeeze slider — extracted
-                    // because: (a) 4 sliders had identical onMouseDown/Up/Touch handlers,
-                    // (b) the handlers must mark isInteractingRef so the canvas doesn't
-                    //     start a drag during squeeze, and (c) the doc-level pointerup
-                    //     safety net catches cases where the slider remounts mid-drag and
-                    //     loses its own onMouseUp.
-                    const squeezeSliderEvents = {
-                      onMouseDown: () => { isInteractingRef.current = true; },
-                      onTouchStart: () => { isInteractingRef.current = true; },
-                      onMouseUp:   () => { isInteractingRef.current = false; needsHistoryPushRef.current = true; },
-                      onTouchEnd:  () => { isInteractingRef.current = false; needsHistoryPushRef.current = true; },
-                    };
-                    return selectedElement.isSplitRing ? (
-                    /* Split ring: Sq=squash, CA=C-shape section A, CB=C-shape section B */
-                    <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable flex-wrap">
-                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueezeSq')}</label>
-                      <input
-                        type="range" min="0" max="1" step="0.05"
-                        value={selectedElement.squeeze ?? 0.25}
-                        {...squeezeSliderEvents}
-                        onChange={(e) => {
-                          const squeeze = parseFloat(e.target.value);
-                          setElements(prev => prev.map(el => {
-                            if (el.id !== selectedElement.id) return el;
-                            return { ...el, squeeze, paths: applyRotationToPathData({ ...el, squeeze }, createSplitRingPathFromEl(el, dsWidth, { squeeze })).paths };
-                          }));
-                        }}
-                        className="w-14"
-                      />
-                      <span className="text-xs text-gray-400 w-6">{(selectedElement.squeeze ?? 0.25).toFixed(2)}</span>
-                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueezeCA')}</label>
-                      <input
-                        type="range" min="0" max="3" step="0.05"
-                        value={selectedElement.squeezeCA ?? 0.75}
-                        {...squeezeSliderEvents}
-                        onChange={(e) => {
-                          const squeezeCA = parseFloat(e.target.value);
-                          setElements(prev => prev.map(el => {
-                            if (el.id !== selectedElement.id) return el;
-                            return { ...el, squeezeCA, paths: applyRotationToPathData({ ...el, squeezeCA }, createSplitRingPathFromEl(el, dsWidth, { squeezeCA })).paths };
-                          }));
-                        }}
-                        className="w-14"
-                      />
-                      <span className="text-xs text-gray-400 w-6">{(selectedElement.squeezeCA ?? 0.75).toFixed(2)}</span>
-                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propsqueezeCB')}</label>
-                      <input
-                        type="range" min="0" max="3" step="0.05"
-                        value={selectedElement.squeezeCB ?? 0.75}
-                        {...squeezeSliderEvents}
-                        onChange={(e) => {
-                          const squeezeCB = parseFloat(e.target.value);
-                          setElements(prev => prev.map(el => {
-                            if (el.id !== selectedElement.id) return el;
-                            return { ...el, squeezeCB, paths: applyRotationToPathData({ ...el, squeezeCB }, createSplitRingPathFromEl(el, dsWidth, { squeezeCB })).paths };
-                          }));
-                        }}
-                        className="w-14"
-                      />
-                      <span className="text-xs text-gray-400 w-6">{(selectedElement.squeezeCB ?? 0.75).toFixed(2)}</span>
-                      <button
-                        onClick={() => {
-                          setElements(prev => prev.map(el => {
-                            if (el.id !== selectedElement.id) return el;
-                            return { ...el, squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0,
-                              ...createSplitRingPathFromEl(el, dsWidth, { squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75 }) };
-                          }));
-                        }}
-                        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                        title={t('propResetSqueeze')}
-                      >{t('propResetBtn')}</button>
-                    </div>
-                  ) : (
-                    /* Regular ring: single squeeze slider */
-                    <div className={`flex items-center gap-0.5 md:gap-2 top-toolbar-scalable${selectedElement.shapeStyle === 'circle' ? ' opacity-40 pointer-events-none' : ''}`}>
-                      <label className="text-xs text-gray-400 hide-label-mobile">{t('propSqueeze')}</label>
-                      <input
-                        type="range" min="-0.5" max="0.5" step="0.1"
-                        value={selectedElement.squeeze || 0}
-                        {...squeezeSliderEvents}
-                        onChange={(e) => {
-                          const squeeze = parseFloat(e.target.value);
-                          setElements(prev => prev.map(el => {
-                            if (el.id !== selectedElement.id) return el;
-                            const targetLength = el.stitchCount * dsWidth;
-                            const newPathData = el.shapeStyle === 'circle'
-                              ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
-                              : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-                            return { ...el, squeeze, paths: applyRotationToPathData({ ...el, squeeze }, newPathData).paths };
-                          }));
-                        }}
-                        className="w-24"
-                        disabled={selectedElement.shapeStyle === 'circle'}
-                      />
-                      <span className="text-xs text-gray-400 w-8">{(selectedElement.squeeze || 0).toFixed(1)}</span>
-                      <button
-                        onClick={() => {
-                          setElements(prev => prev.map(el => {
-                            if (el.id !== selectedElement.id) return el;
-                            const targetLength = el.stitchCount * dsWidth;
-                            const newPathData = el.shapeStyle === 'circle'
-                              ? createCirclePath(el.center.x, el.center.y, targetLength, 0)
-                              : createTeardropPath(el.center.x, el.center.y, targetLength, 0);
-                            return { ...el, squeeze: 0, rotation: 0, ...newPathData };
-                          }));
-                        }}
-                        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                        title={t('propResetSqueeze')}
-                        disabled={selectedElement.shapeStyle === 'circle'}
-                      >{t('propResetBtn')}</button>
-                    </div>
-                  );
-                  })()}
-                </>
-              )}
+              <ShapeAndSqueezeControls
+                selectedElement={selectedElement}
+                dsWidth={dsWidth}
+                setElements={setElements}
+                pushHistoryState={pushHistoryState}
+                elementsRef={elementsRef}
+                picotConnectionsRef={picotConnectionsRef}
+                orderGroupsRef={orderGroupsRef}
+                toggleShape={toggleShape}
+                convertToJosephineKnot={convertToJosephineKnot}
+                isInteractingRef={isInteractingRef}
+                needsHistoryPushRef={needsHistoryPushRef}
+                t={t}
+              />
               </>
               )}
               {/* Material assignment dropdown — end of property bar */}
@@ -7912,524 +7019,45 @@ if (parsed && parsed.stitchCount > 0) {
             </>
           ) : (
             <>
-              {selectedIds.length > 0 && (() => {
-                // Check if a group is selected (multiple elements with same groupId)
-                const firstElement = elementById.get(selectedIds[0]);
-                if (firstElement && firstElement.groupId) {
-                  const groupElements = elements.filter(e => e.groupId === firstElement.groupId);
-                  if (groupElements.length > 1) {
-                    // Group is selected - show group controls
-                    return (
-                    <>
-                      <div className="text-sm text-gray-300 px-2">
-                        Group Selected ({groupElements.length} elements)
-                      </div>
-                      
-                      {/* Group Rotation + Flip — same cluster as single elements */}
-                      <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                        <button
-                          onClick={() => {
-                            const _ppN = getPolarPivot(selectedIds);
-                            const gcx = _ppN ? _ppN.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
-                            const gcy = _ppN ? _ppN.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
-                            const cos = Math.cos(-Math.PI/2), sin = Math.sin(-Math.PI/2);
-                            setElements(prev => prev.map(el => {
-                              if (!selectedIdSet.has(el.id)) return el;
-                              const dx = el.center.x - gcx, dy = el.center.y - gcy;
-                              return { ...el,
-                                center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
-                                paths: rotatePaths(el.paths, gcx, gcy, -90),
-                                rotation: ((el.rotation || 0) - 90) % 360 };
-                            }));
-                            setGroupRotationInput('');
-                          }}
-                          className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                          title={t('propRotateGroupMinus90')}
-                        >
-                          <IconRotateCCW size={16} />
-                        </button>
-                        <input
-                          type="text"
-                          value={groupRotationInput !== '' ? groupRotationInput : String(parseFloat((((groupElements[0]?.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
-                          onChange={(e) => { setGroupRotationInput(e.target.value); }}
-                          onBlur={(e) => {
-                            const currentDeg = ((groupElements[0]?.rotation || 0) % 360 + 360) % 360;
-                            const result = parseRotationExpr(e.target.value, currentDeg);
-                            setGroupRotationInput('');
-                            if (result !== null) applyGroupRotation(result);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              const currentDeg = ((groupElements[0]?.rotation || 0) % 360 + 360) % 360;
-                              const result = parseRotationExpr(e.currentTarget.value, currentDeg);
-                              setGroupRotationInput('');
-                              if (result !== null) applyGroupRotation(result);
-                              e.currentTarget.blur();
-                            }
-                          }}
-                          className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
-                          style={{width:'6.5ch', minWidth:'6.5ch'}}
-                          placeholder="0°"
-                        />
-                        <button
-                          onClick={() => {
-                            const _ppP = getPolarPivot(selectedIds);
-                            const gcx = _ppP ? _ppP.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
-                            const gcy = _ppP ? _ppP.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
-                            const cos = Math.cos(Math.PI/2), sin = Math.sin(Math.PI/2);
-                            setElements(prev => prev.map(el => {
-                              if (!selectedIdSet.has(el.id)) return el;
-                              const dx = el.center.x - gcx, dy = el.center.y - gcy;
-                              return { ...el,
-                                center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
-                                paths: rotatePaths(el.paths, gcx, gcy, 90),
-                                rotation: ((el.rotation || 0) + 90) % 360 };
-                            }));
-                            setGroupRotationInput('');
-                          }}
-                          className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                          title={t('propRotateGroupPlus90')}
-                        >
-                          <IconRotateCW size={16} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            const pfg = getPolarFlipGrid(selectedIds);
-                            const pivX = pfg ? pfg.center.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
-                            const pivY = pfg ? pfg.center.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
-                            flipElements(selectedIds, 90, pivX, pivY);
-                          }}
-                          className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                          title={t('propFlipGroupH')}
-                        >
-                          <IconFlipH size={16} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            const pfg = getPolarFlipGrid(selectedIds);
-                            const pivX = pfg ? pfg.center.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
-                            const pivY = pfg ? pfg.center.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
-                            flipElements(selectedIds, 0, pivX, pivY);
-                          }}
-                          className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-                          title={t('propFlipGroupV')}
-                        >
-                          <IconFlipV size={16} />
-                        </button>
-                      </div>
-
-                      {/* Notation label offset */}
-                      <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
-                        <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
-                        <div className="flex items-center gap-1" title={t('propNotationPos')}>
-                          <IconNotationM size={16} className="text-gray-400 shrink-0" />
-                          <input
-                            type="range"
-                            min="-25"
-                            max="45"
-                            step="1"
-                            value={groupElements[0]?.labelOffset ?? 8}
-                            onChange={e => setLabelOffset(Number(e.target.value))}
-                            className="w-20 accent-blue-500"
-                            title={t('propNotationPos')}
-                          />
-                        </div>
-                        <button
-                          onClick={() => {
-                            const allHidden = groupElements.every(e => e.hideLabel);
-                            setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
-                          }}
-                          className={`px-2 py-1 rounded text-xs ${
-                            groupElements.every(e => e.hideLabel)
-                              ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                              : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                          }`}
-                          title={t('propHideLabel')}
-                        >{groupElements.every(e => e.hideLabel) ? <IconNotationOff size={16} /> : <IconNotationOn size={16} />}</button>
-                        {/* Polar rotation center — group bar */}
-                        {polarGrids.length > 0 && (
-                          <>
-                            <div className="w-px h-5 bg-gray-600 mx-0.5" />
-                            <select
-                              value={groupElements.every(e => e.polarRotationGridId === groupElements[0]?.polarRotationGridId)
-                                ? (groupElements[0]?.polarRotationGridId || '') : ''}
-                              onChange={e => {
-                                const val = e.target.value || null;
-                                setElements(prev => updateSelected(prev, selectedIdSet, { polarRotationGridId: val }));
-                              }}
-                              className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
-                              title={t('propPolarRotation')}
-                              style={{ maxWidth: '110px' }}
-                            >
-                              <option value="">{t('propPolarRotationNone')}</option>
-                              {polarGrids.map(g => (
-                                <option key={g.id} value={g.id}>{g.name}</option>
-                              ))}
-                            </select>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  );
-                }
-              }
-              // ── Free multi-select bar (no groupId) ──────────────────────────
-              if (selectedIds.length > 1) {
-                const selEls = elements.filter(e => selectedIdSet.has(e.id));
-
-                // Classify each element: 'r', 'c', 'sr', 'line', or null
-                const getElType = (el) => {
-                  if (el.type === 'line') return 'line';
-                  if (el.isSplitRing) return 'sr';
-                  if (el.type === 'ring') return 'r';
-                  if (el.type === 'chain') return el.isSplitChain ? 'sc' : 'c';
-                  return null;
-                };
-
-                const nonLines = selEls.filter(e => getElType(e) !== 'line');
-                const types = [...new Set(nonLines.map(getElType).filter(Boolean))];
-                const allSameType = types.length === 1;
-                const sameType = allSameType ? types[0] : null;
-
-                // Check if all share exact same notation (for prefill)
-                const prefillNotation = (() => {
-                  if (!allSameType || nonLines.length === 0) return null;
-                  const first = nonLines[0].notation || '';
-                  return nonLines.every(e => (e.notation || '') === first) ? first : null;
-                })();
-
-                // Centroid of ALL selected (for transforms when no polar grid is linked)
-                const cxAll = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
-                const cyAll = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
-
-                // If all selected elements share a polar grid, use the grid centre + its offset as flip axes.
-                // FlipH = mirror across axis at (angularOffset + 90°) through grid centre.
-                // FlipV = mirror across axis at (angularOffset + 0°)  through grid centre.
-                const polarFlipGrid = getPolarFlipGrid(selectedIds);
-                const flipPivotX = polarFlipGrid ? polarFlipGrid.center.x : cxAll;
-                const flipPivotY = polarFlipGrid ? polarFlipGrid.center.y : cyAll;
-
-                // Axis angles are always 90° (vertical) and 0° (horizontal).
-                // The grid contributes only its center as pivot — its angular offset does NOT tilt the flip axis.
-                const doFlipH = () => flipElements(selectedIds, 90, flipPivotX, flipPivotY);
-                const doFlipV = () => flipElements(selectedIds,  0, flipPivotX, flipPivotY);
-
-                // Type label
-                const typeLabel = sameType === 'r' ? 'Rings' : sameType === 'c' ? 'Chains' : sameType === 'sc' ? 'Split Chains' : sameType === 'sr' ? 'Split Rings' : null;
-
-                return (
-                  <>
-                    {/* Label */}
-                    <div className="text-sm text-gray-300 px-2 flex-shrink-0">
-                      {selEls.length} {typeLabel ?? 'Mixed'} selected
-                    </div>
-
-                    {/* Line bead paste strip — shown when all selected elements are lines */}
-                    {selEls.every(e => e.type === 'line') && (
-                      <div className="flex items-center gap-1 border-l border-gray-600 pl-2 flex-shrink-0 top-toolbar-scalable">
-                        <span className="text-xs text-gray-400 hide-label-mobile">{t('modeBeadCore')}:</span>
-                        {lineBeadClipboard ? (
-                          <>
-                            {(() => {
-                              const cbSlots = lineBeadClipboard.lineBeadSlots || [];
-                              const nonNull = cbSlots.filter(Boolean);
-                              const allSame = nonNull.length === 0 || nonNull.every(id => id === nonNull[0]);
-                              const lb = allSame && nonNull[0] ? beadLibrary.find(b => b.id === nonNull[0]) : null;
-                              return (<>
-                                {lb && <div className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-500" style={{backgroundColor: lb.color}} title={lb.name} />}
-                                <span className="text-xs text-purple-300">
-                                  {cbSlots.length}×{allSame ? (lb?.name ?? 'none') : 'mixed'}
-                                </span>
-                              </>);
-                            })()}
-                            <button
-                              onClick={() => {
-                                setElements(prev => updateWhere(prev, el => selectedIdSet.has(el.id) && el.type === 'line',
-                                  {lineBeadSlots: [...lineBeadClipboard.lineBeadSlots], lineBeadId: undefined, lineBeadCount: undefined}
-                                ));
-                              }}
-                              title={t('lineBdPasteAll').replace('{n}', String(selEls.length))}
-                              className="px-1.5 py-0.5 rounded text-xs border bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700"
-                              style={{touchAction:'manipulation'}}
-                            ><IconPaste size={12} /></button>
-                            <button
-                              onClick={() => setLineBeadClipboard(null)}
-                              title="Clear clipboard"
-                              className="px-1.5 py-0.5 rounded text-xs border bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600"
-                              style={{touchAction:'manipulation'}}
-                            >✕</button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500 italic">{t('lineBdNoClipboard')}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Notation input — only for non-line same-type selections */}
-                    {nonLines.length > 0 && (
-                      <div className="flex items-center gap-1 top-toolbar-scalable">
-                        <input
-                          key={selectedIds.join(',')}
-                          type="text"
-                          defaultValue={prefillNotation ?? ''}
-                          disabled={!allSameType}
-                          placeholder={allSameType ? (sameType === 'r' ? 'r: 5ds-p-5ds' : sameType === 'c' ? 'c: 5ds-p-5ds' : sameType === 'sc' ? 'sc: 5ds-p-5ds' : 'sr: 5ds-p-5ds') : 'Mixed types'}
-                          title={allSameType ? 'Apply notation to all selected' : 'Select same-type elements to edit notation'}
-                          onBlur={(e) => {
-                            if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
-                            if (!allSameType) return;
-                            const notation = e.target.value.trim();
-                            if (!notation) return;
-                            const parsed = parseNotation(notation);
-                            if (!parsed || parsed.stitchCount === 0) { e.target.value = prefillNotation ?? ''; return; }
-                            setElements(prev => prev.map(el => {
-                              if (!selectedIdSet.has(el.id)) return el;
-                              if (getElType(el) === 'line') return el;
-                              if (el.isSplitRing) {
-                                const newParsed = parseNotation(notation);
-                                if (!newParsed) return el;
-                                const splitPos = el.splitPosition ?? 0;
-                                const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
-                                const cx = el.center.x, cy = el.center.y;
-                                const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
-                                  const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-                                  const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
-                                  const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-                                  return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                                });
-                                // Preserve side B picots (stitchesBefore > splitPos) — they belong
-                                // to notationB which is unchanged. Only side A picots are replaced.
-                                const sideBPicots = (el.picots || []).filter(p => p.stitchesBefore > splitPos);
-                                const mergedPicots = restoreBEConfigs(
-                                  [...newParsed.picots, ...sideBPicots],
-                                  extractBEConfigs(el.picots)
-                                );
-                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: mergedPicots, paths: scaledPaths };
-                              }
-                              const newParsed = parseNotation(notation);
-                              if (!newParsed) return el;
-                              if (el.type === 'ring') {
-                                const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
-                                const cx = el.center.x, cy = el.center.y;
-                                const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
-                                  const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-                                  if (path.type === 'cubic') {
-                                    const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
-                                    const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-                                    return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                                  }
-                                  const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
-                                  return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-                                });
-                                return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, extractBEConfigs(el.picots)), paths: scaledPaths };
-                              }
-                              return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, extractBEConfigs(el.picots)), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false };
-                            }));
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.target.value = prefillNotation ?? ''; e.target.blur(); } }}
-                          className={`notation-input px-2 py-1 rounded border text-sm ${allSameType ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'}`}
-                          style={{ width: '140px' }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Rotate + Flip */}
-                    <div className="flex items-center gap-0.5 md:gap-1 top-toolbar-scalable">
-                      <button onClick={() => applyMultiSelectRotationDelta(-90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('propRotateMinus90')}><IconRotateCCW size={16} /></button>
-                      <input
-                        type="text"
-                        value={groupRotationInput}
-                        onChange={(e) => setGroupRotationInput(e.target.value)}
-                        onBlur={(e) => {
-                          const s = e.target.value.trim();
-                          if (s) {
-                            if (!/^[\d\s.+\-*/()]+$/.test(s)) { setGroupRotationInput(''); return; }
-                            try {
-                              // eslint-disable-next-line no-new-func
-                              const v = new Function('"use strict"; return (' + s + ')')();
-                              if (typeof v === 'number' && isFinite(v)) applyMultiSelectRotationDelta(v);
-                            } catch {}
-                          }
-                          setGroupRotationInput('');
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            const s = e.currentTarget.value.trim();
-                            if (s) {
-                              if (/^[\d\s.+\-*/()]+$/.test(s)) {
-                                try {
-                                  // eslint-disable-next-line no-new-func
-                                  const v = new Function('"use strict"; return (' + s + ')')();
-                                  if (typeof v === 'number' && isFinite(v)) applyMultiSelectRotationDelta(v);
-                                } catch {}
-                              }
-                            }
-                            setGroupRotationInput('');
-                            e.currentTarget.blur();
-                          }
-                        }}
-                        className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
-                        style={{ width: '3.4rem' }}
-                        placeholder="Δ°"
-                      />
-                      <button onClick={() => applyMultiSelectRotationDelta(90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('propRotatePlus90')}><IconRotateCW size={16} /></button>
-                      <button onClick={doFlipH} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipH')}><IconFlipH size={16} /></button>
-                      <button onClick={doFlipV} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipV')}><IconFlipV size={16} /></button>
-
-                      {/* Notation label offset */}
-                      <div className="w-px h-6 bg-gray-600 mx-1" />
-                      <div className="flex items-center gap-1" title={t('propNotationPos')}>
-                        <IconNotationM size={16} className="text-gray-400 shrink-0" />
-                        <input
-                          type="range"
-                          min="-25"
-                          max="45"
-                          step="1"
-                          value={selEls[0]?.labelOffset ?? 8}
-                          onChange={e => setLabelOffset(Number(e.target.value))}
-                          className="w-20 accent-blue-500"
-                          title={t('propNotationPos')}
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          const allHidden = selEls.every(e => e.hideLabel);
-                          setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
-                        }}
-                        className={`px-2 py-1 rounded text-xs ${
-                          selEls.every(e => e.hideLabel)
-                            ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                        }`}
-                        title={t('propHideLabel')}
-                      >{selEls.every(e => e.hideLabel) ? <IconNotationOff size={16} /> : <IconNotationOn size={16} />}</button>
-                      {/* Polar rotation center — multi-select bar */}
-                      {polarGrids.length > 0 && (
-                        <>
-                          <div className="w-px h-5 bg-gray-600 mx-0.5" />
-                          <select
-                            value={selEls.every(e => e.polarRotationGridId === selEls[0]?.polarRotationGridId)
-                              ? (selEls[0]?.polarRotationGridId || '') : ''}
-                            onChange={e => {
-                              const val = e.target.value || null;
-                              setElements(prev => updateSelected(prev, selectedIdSet, { polarRotationGridId: val }));
-                            }}
-                            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
-                            title={t('propPolarRotation')}
-                            style={{ maxWidth: '110px' }}
-                          >
-                            <option value="">{t('propPolarRotationNone')}</option>
-                            {polarGrids.map(g => (
-                              <option key={g.id} value={g.id}>{g.name}</option>
-                            ))}
-                          </select>
-                        </>
-                      )}
-                    </div>
-                    <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
-                    <div className="flex items-center gap-1 top-toolbar-scalable">
-                      <label className="text-xs text-gray-400 hide-label-mobile">{t('materialLabel')}</label>
-                      <select
-                        defaultValue="default"
-                        onChange={(e) => {
-                          const matId = e.target.value;
-                          if (matId === '__edit__') { setShowMaterialsPanel(true); return; }
-                          setElements(prev => prev.map(el => {
-                            if (!selectedIdSet.has(el.id)) return el;
-                            // Split rings: set both A and B
-                            if (el.isSplitRing) return { ...el, materialId: matId, materialIdB: matId };
-                            return { ...el, materialId: matId };
-                          }));
-                        }}
-                        className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
-                        style={{ maxWidth: '120px' }}
-                      >
-                        {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        <option disabled>──────</option>
-                        <option value="__edit__">{t('editMaterials')}</option>
-                      </select>
-                    </div>
-                    <div className="w-px h-6 bg-gray-600 mx-1 hide-label-mobile" />
-                    <div className="relative top-toolbar-scalable" style={{ overflow: 'visible' }}>
-                      <button
-                        onClick={() => {
-                          setMultiScalePct(100);
-                          setShowMultiScaleWizard(!showMultiScaleWizard);
-                        }}
-                        className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
-                        title={t('picotWizardScaleSection')}
-                      >
-                        <IconMagicWand size={16} />
-                      </button>
-                      {showMultiScaleWizard && (() => {
-                        // "Dumb" batch scale: one shared factor applied to every selected
-                        // element that Picot Tools can analyze. No per-element tuning, no
-                        // Clear/Add/Fill/Compact here — just Scale, since that's what was
-                        // actually asked for. Split rings, rds/ss stitches, and anything
-                        // with a picot-count mismatch are silently skipped (counted, not
-                        // touched) rather than blocking the whole batch.
-                        const analyzed = nonLines.map(el => ({
-                          el,
-                          analysis: analyzeNotationForWizard(el.notation, el.picots),
-                        }));
-                        const supported = analyzed.filter(a => a.analysis.supported);
-                        const skippedCount = analyzed.length - supported.length;
-                        const totalDsList = supported.map(({ analysis }) => totalRunDs(analysis.segments));
-                        const presets = suggestScalePresetsMulti(totalDsList);
-                        const factor = multiScalePct / 100;
-                        const previews = factor > 0
-                          ? supported.map(({ el }) => scaleNotation(el.notation, el.picots, factor))
-                          : [];
-                        const anyClamped = previews.some(p => p && p.anyClamped);
-
-                        return (
-                          <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowMultiScaleWizard(false)} />
-                            <div className="absolute top-full right-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-3" style={{ width: '240px' }}>
-                              <div className="text-gray-100 font-semibold text-sm mb-2 flex items-center gap-2">
-                                <IconMagicWand size={14} /> {t('picotWizardScaleSection')}
-                              </div>
-                              <div className="text-xs text-gray-400 mb-2">
-                                {t('multiScaleSupportedCount').replace('{n}', String(supported.length)).replace('{m}', String(analyzed.length))}
-                                {skippedCount > 0 ? ` (${t('multiScaleSkipped').replace('{n}', String(skippedCount))})` : ''}
-                              </div>
-                              {supported.length === 0 ? (
-                                <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
-                              ) : (
-                                <ScaleControls
-                                  presets={presets}
-                                  pct={multiScalePct}
-                                  onPctChange={setMultiScalePct}
-                                  clampedWarningText={anyClamped ? t('picotWizardScaleClamped') : null}
-                                  customLabelText={t('picotWizardScaleCustomLabel')}
-                                  applyLabel={t('picotWizardScaleApply')}
-                                  applyDisabled={multiScalePct === 100}
-                                  onApply={() => {
-                                    if (multiScalePct !== 100) {
-                                      const targets = supported.map(({ el }, i) => {
-                                        const preview = previews[i];
-                                        if (!preview) return null;
-                                        const finalNotation = autoCompact(preview.notation, el.picots);
-                                        return { elementId: el.id, notation: finalNotation };
-                                      }).filter(Boolean) as Array<{ elementId: string; notation: string }>;
-                                      updateNotationForMultiple(targets, { preservesExistingPicots: true, picotMatchMode: 'order' });
-                                    }
-                                    setMultiScalePct(100);
-                                    setShowMultiScaleWizard(false);
-                                  }}
-                                />
-                              )}
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </>
-                );
-              }
-
-              return null;
-            })()}
+              <MultiSelectSummaryBar
+                selectedIds={selectedIds}
+                elementById={elementById}
+                elements={elements}
+                selectedIdSet={selectedIdSet}
+                getPolarPivot={getPolarPivot}
+                setElements={setElements}
+                groupRotationInput={groupRotationInput}
+                setGroupRotationInput={setGroupRotationInput}
+                applyGroupRotation={applyGroupRotation}
+                parseRotationExpr={parseRotationExpr}
+                flipElements={flipElements}
+                getPolarFlipGrid={getPolarFlipGrid}
+                setLabelOffset={setLabelOffset}
+                updateSelected={updateSelected}
+                updateWhere={updateWhere}
+                polarGrids={polarGrids}
+                lineBeadClipboard={lineBeadClipboard}
+                beadLibrary={beadLibrary}
+                setLineBeadClipboard={setLineBeadClipboard}
+                notationEscapeRef={notationEscapeRef}
+                parseNotation={parseNotation}
+                restoreBEConfigs={restoreBEConfigs}
+                extractBEConfigs={extractBEConfigs}
+                applyMultiSelectRotationDelta={applyMultiSelectRotationDelta}
+                materials={materials}
+                setShowMaterialsPanel={setShowMaterialsPanel}
+                multiScalePct={multiScalePct}
+                setMultiScalePct={setMultiScalePct}
+                showMultiScaleWizard={showMultiScaleWizard}
+                setShowMultiScaleWizard={setShowMultiScaleWizard}
+                analyzeNotationForWizard={analyzeNotationForWizard}
+                totalRunDs={totalRunDs}
+                suggestScalePresetsMulti={suggestScalePresetsMulti}
+                scaleNotation={scaleNotation}
+                autoCompact={autoCompact}
+                updateNotationForMultiple={updateNotationForMultiple}
+                t={t}
+              />
             
             {/* Empty-state placeholder: keeps bar visually non-blank and stabilises layout */}
             {!selectedElement && selectedIds.length === 0 && currentTool !== 'image' && (
@@ -10529,12 +9157,14 @@ if (parsed && parsed.stitchCount > 0) {
 
 
       {showColorPicker && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style={{zIndex:2147483646}}>
-          <div className="bg-gray-800 rounded-lg flex flex-col" style={{
-            width: '100%',
-            maxWidth: '28rem',
-            height: 'min(92vh, 610px)',
-          }}>
+        <Modal
+          show
+          onClose={() => { setShowColorPicker(false); setColorPickerTab('picker'); setPickerTabsAllowed(null); setPickerCallback(null); }}
+          backdropZIndex={2147483646}
+          wrapperZIndex={2147483646}
+          contentClassName="flex flex-col"
+          contentStyle={{ width: '100%', maxWidth: '28rem', height: 'min(92vh, 610px)' }}
+        >
             {/* ── Header: tabs (flex-shrink-0) ── */}
             <div className="px-6 pt-4 pb-0 flex-shrink-0 border-b border-gray-700">
             <div className="flex gap-2">
@@ -10577,506 +9207,45 @@ if (parsed && parsed.stitchCount > 0) {
 
             {/* ── Body: scrollable tab content (flex-1) ── */}
             <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
-            
-            {/* Color Picker Tab - iOS-style Grid */}
+
             {colorPickerTab === 'picker' && (
-              <>
-                {/* Saturation/Brightness Grid */}
-                <div className="mb-3 relative">
-                  <div 
-                    className="w-full h-36 sm:h-48 rounded-lg cursor-crosshair border-2 border-gray-600"
-                    style={{
-                      background: `
-                        linear-gradient(to top, black, transparent),
-                        linear-gradient(to right, white, hsl(${Math.round(hexToHsv(pickerColor).h * 360)}, 100%, 50%))
-                      `,
-                      touchAction: 'none'
-                    }}
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = (e.clientX - rect.left) / rect.width;
-                      const y = 1 - (e.clientY - rect.top) / rect.height;
-                      const { h } = hexToHsv(pickerColor);
-                      setPickerColor(hsvToHex(h, x, y));
-                    }}
-                    onTouchStart={(e) => {
-                      e.preventDefault(); // prevent scroll/zoom while picking
-                      const touch = e.touches[0];
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      // Clamp to [0,1] so touches outside the element don't sample wrong colors
-                      const x = Math.min(1, Math.max(0, (touch.clientX - rect.left) / rect.width));
-                      const y = Math.min(1, Math.max(0, 1 - (touch.clientY - rect.top) / rect.height));
-                      const { h } = hexToHsv(pickerColor);
-                      setPickerColor(hsvToHex(h, x, y));
-                    }}
-                    onTouchMove={(e) => {
-                      e.preventDefault(); // prevent scroll while dragging
-                      const touch = e.touches[0];
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      // Clamp: dragging outside the box still samples edge color, not random
-                      const x = Math.min(1, Math.max(0, (touch.clientX - rect.left) / rect.width));
-                      const y = Math.min(1, Math.max(0, 1 - (touch.clientY - rect.top) / rect.height));
-                      const { h } = hexToHsv(pickerColor);
-                      setPickerColor(hsvToHex(h, x, y));
-                    }}
-                  >
-                    {/* Color indicator dot */}
-                    {(() => {
-                      const { s, v } = hexToHsv(pickerColor);
-                      return (
-                        <div 
-                          className="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg pointer-events-none"
-                          style={{
-                            left: `${s * 100}%`,
-                            top: `${(1 - v) * 100}%`,
-                            transform: 'translate(-50%, -50%)',
-                            boxShadow: '0 0 0 1px black, 0 2px 4px rgba(0,0,0,0.3)'
-                          }}
-                        />
-                      );
-                    })()}
-                  </div>
-                </div>
-                
-                {/* Hue Slider */}
-                <div className="mb-3 relative">
-                  <style>{`
-                    .hue-slider::-webkit-slider-thumb {
-                      appearance: none;
-                      width: 24px;
-                      height: 24px;
-                      border-radius: 50%;
-                      background: white;
-                      border: 3px solid white;
-                      box-shadow: 0 0 0 1px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.2);
-                      cursor: pointer;
-                    }
-                    .hue-slider::-moz-range-thumb {
-                      width: 24px;
-                      height: 24px;
-                      border-radius: 50%;
-                      background: white;
-                      border: 3px solid white;
-                      box-shadow: 0 0 0 1px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.2);
-                      cursor: pointer;
-                    }
-                  `}</style>
-                  <input
-                    type="range"
-                    min="0"
-                    max="360"
-                    className="hue-slider w-full h-4 sm:h-8 rounded-lg cursor-pointer"
-                    value={Math.round(hexToHsv(pickerColor).h * 360)}
-                    onChange={(e) => {
-                      const h = parseInt(e.target.value) / 360;
-                      const { s, v } = hexToHsv(pickerColor);
-                      setPickerColor(hsvToHex(h, s, v));
-                    }}
-                    onInput={(e) => {
-                      // Same logic as onChange - ensures touch events work
-                      const h = parseInt(e.target.value) / 360;
-                      const { s, v } = hexToHsv(pickerColor);
-                      setPickerColor(hsvToHex(h, s, v));
-                    }}
-                    style={{
-                      background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)',
-                      touchAction: 'manipulation'
-                    }}
-                  />
-                </div>
-                
-                {/* Base color swatches */}
-                <div className="grid grid-cols-7 gap-1 mb-3">
-                  {[...COLORS, ...customColors].map((color, i) => (
-                    <div
-                      key={i}
-                      onClick={() => setPickerColor(color)}
-                      className="rounded cursor-pointer border-2 border-gray-600 hover:border-white"
-                      style={{ backgroundColor: color, width: '100%', paddingBottom: '100%', position: 'relative' }}
-                      title={color}
-                    />
-                  ))}
-                </div>
-
-                {/* Hex Input */}
-                <input 
-                  type="text" 
-                  value={pickerColor} 
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
-                      setPickerColor(val);
-                    }
-                  }} 
-                  className="px-3 py-2 bg-gray-700 text-white rounded w-full mb-2 uppercase font-mono text-center" 
-                  placeholder="#FFFFFF"
-                  maxLength={7}
-                />
-              </>
+              <ColorPickerPickerTab
+                pickerColor={pickerColor}
+                setPickerColor={setPickerColor}
+                customColors={customColors}
+              />
             )}
-            
-            {/* Swatches Tab - DMC Colors */}
             {colorPickerTab === 'swatches' && (
-              <div>
-                {dmcColors.length === 0 ? (
-                  <div className="bg-gray-700 rounded p-6 text-center">
-                    <p className="text-gray-400">{t('loadingDmcColors')}</p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Search field */}
-                    <div className="mb-3">
-                      <input
-                        type="text"
-                        placeholder={t('colorSearchPlaceholder')}
-                        value={dmcSearchTerm}
-                        onChange={(e) => {
-                          setDmcSearchTerm(e.target.value);
-                          setDmcPage(0); // Reset to first page on search
-                        }}
-                        className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
-                      />
-                    </div>
-                    
-                    {/* Category tabs - derived dynamically from loaded JSON groups */}
-                    {(() => {
-                      const solidColors = dmcColors.filter(c => c.type !== 'gradient');
-                      const groups = ['all', ...Array.from(new Set(solidColors.map(c => c.group).filter(Boolean))).sort()];
-                      return (
-                        <div className="mb-3 flex flex-wrap gap-1">
-                          {groups.map(cat => (
-                            <button
-                              key={cat}
-                              onClick={() => {
-                                setDmcCategory(cat);
-                                setDmcPage(0);
-                                setDmcSearchTerm('');
-                              }}
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                dmcCategory === cat
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                              }`}
-                            >
-                              {cat === 'all' ? 'All' : cat}
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                    
-                    {(() => {
-                      // Filter colors with category support
-                      const filteredColors = dmcColors.filter(color => {
-                        // NEVER show gradients in the solid color picker
-                        if (color.type === 'gradient') return false;
-                        
-                        // Search filter
-                        if (dmcSearchTerm) {
-                          const search = dmcSearchTerm.toLowerCase();
-                          if (!color.id.toLowerCase().includes(search) && 
-                              !color.name.toLowerCase().includes(search)) {
-                            return false;
-                          }
-                        }
-                        
-                        // Category filter - use group field directly, fall back to categorizeColor
-                        if (dmcCategory !== 'all') {
-                          const colorGroup = color.group || categorizeColor(color);
-                          return colorGroup === dmcCategory;
-                        }
-                        
-                        return true;
-                      });
-                      
-                      // Pagination
-                      const colorsPerPage = 18;
-                      const totalPages = Math.ceil(filteredColors.length / colorsPerPage);
-                      const startIdx = dmcPage * colorsPerPage;
-                      const endIdx = startIdx + colorsPerPage;
-                      const pageColors = filteredColors.slice(startIdx, endIdx);
-                      
-                      return (
-                        <>
-                          {/* Color grid - fixed height, swatches maintain size */}
-                          <div className="grid grid-cols-6 gap-2 p-2 bg-gray-700 rounded mb-3" style={{ height: '164px', alignContent: 'start' }}>
-                            {pageColors.map((color) => (
-                              <div
-                                key={color.id}
-                                onClick={() => {
-                                  setSelectedDmcColor(color);
-                                  // For gradients, extract first color
-                                  if (color.type === 'gradient' && color.stops) {
-                                    if (typeof color.stops === 'string') {
-                                      const firstStop = color.stops.split(',')[0];
-                                      const firstColor = firstStop.split(':')[1];
-                                      setPickerColor(firstColor);
-                                    } else if (Array.isArray(color.stops) && color.stops.length > 0) {
-                                      setPickerColor(color.stops[0].color);
-                                    }
-                                  } else {
-                                    setPickerColor(color.hex);
-                                  }
-                                }}
-                                className={`cursor-pointer rounded overflow-hidden transition-all h-11 ${
-                                  selectedDmcColor?.id === color.id
-                                    ? 'ring-4 ring-blue-500'
-                                    : 'hover:ring-2 hover:ring-gray-400'
-                                }`}
-                                title={color.name}
-                                style={{ touchAction: 'manipulation' }}
-                              >
-                                <div
-                                  className="w-full h-full flex items-center justify-center border-2 border-black relative"
-                                  style={{ 
-                                    background: color.type === 'gradient' 
-                                      ? 'transparent'
-                                      : color.hex 
-                                  }}
-                                >
-                                  {color.type === 'gradient' && (
-                                    <>
-                                      <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} preserveAspectRatio="none">
-                                        <defs>
-                                          <linearGradient id={`swatch-gradient-${color.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                            {(() => {
-                                              let stops = color.stops;
-                                              if (typeof color.stops === 'string') {
-                                                stops = color.stops.split(',').map(stop => {
-                                                  const [offset, colorHex] = stop.split(':');
-                                                  return { offset: `${offset}%`, color: colorHex };
-                                                });
-                                              }
-                                              return stops.map((stop, i) => (
-                                                <stop key={i} offset={stop.offset} stopColor={stop.color} />
-                                              ));
-                                            })()}
-                                          </linearGradient>
-                                        </defs>
-                                        <rect x="0" y="0" width="100%" height="100%" fill={`url(#swatch-gradient-${color.id})`} />
-                                      </svg>
-                                    </>
-                                  )}
-                                  <span 
-                                    className="text-white font-bold text-xs px-1 py-0.5 rounded"
-                                    style={{ 
-                                      textShadow: '0 0 3px black, 0 0 5px black',
-                                      backgroundColor: 'rgba(0,0,0,0.3)',
-                                      position: 'relative',
-                                      zIndex: 1
-                                    }}
-                                  >
-                                    {color.id}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          
-                          {/* Pagination controls - always visible */}
-                          <div className="flex items-center justify-center gap-2 mb-3">
-                            <button
-                              onClick={() => setDmcPage(Math.max(0, dmcPage - 1))}
-                              disabled={dmcPage === 0}
-                              className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-600 disabled:hover:bg-gray-700"
-                            >
-                              {t('prevBtn')}
-                            </button>
-                            
-                            <span className="text-gray-400 text-sm">
-                              {t('colorPageIndicator').replace('{page}', String(dmcPage + 1)).replace('{total}', String(Math.max(1, totalPages))).replace('{count}', String(filteredColors.length))}
-                            </span>
-                            
-                            <button
-                              onClick={() => setDmcPage(Math.min(totalPages - 1, dmcPage + 1))}
-                              disabled={dmcPage >= totalPages - 1}
-                              className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-600 disabled:hover:bg-gray-700"
-                            >
-                              {t('nextBtn')}
-                            </button>
-                          </div>
-                          
-                          {/* Color preview section - under the grid */}
-                          <div className="bg-gray-700 rounded p-3 border-2 border-gray-600">
-                            <div className="flex items-center gap-3 h-16">
-                              <div
-                                className="w-16 h-16 rounded border-2 border-black flex-shrink-0 relative overflow-hidden"
-                                style={{ backgroundColor: selectedDmcColor ? (selectedDmcColor.type === 'gradient' ? 'transparent' : selectedDmcColor.hex) : '#374151' }}
-                              >
-                                {selectedDmcColor?.type === 'gradient' && (
-                                  <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none">
-                                    <defs>
-                                      <linearGradient id={`preview-gradient-${selectedDmcColor.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                        {(() => {
-                                          let stops = selectedDmcColor.stops;
-                                          if (typeof selectedDmcColor.stops === 'string') {
-                                            stops = selectedDmcColor.stops.split(',').map(stop => {
-                                              const [offset, colorHex] = stop.split(':');
-                                              return { offset: `${offset}%`, color: colorHex };
-                                            });
-                                          }
-                                          return stops.map((stop, i) => (
-                                            <stop key={i} offset={stop.offset} stopColor={stop.color} />
-                                          ));
-                                        })()}
-                                      </linearGradient>
-                                    </defs>
-                                    <rect x="0" y="0" width="100%" height="100%" fill={`url(#preview-gradient-${selectedDmcColor.id})`} />
-                                  </svg>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                {selectedDmcColor ? (
-                                  <>
-                                    <p className="text-white font-bold text-base mb-1">
-                                      {selectedDmcColor.name}
-                                    </p>
-                                    <p className="text-gray-300 font-mono text-xs">
-                                      ID: {selectedDmcColor.id} · {selectedDmcColor.type === 'gradient' ? 'Variegated' : selectedDmcColor.hex}
-                                    </p>
-
-                                  </>
-                                ) : (
-                                  <p className="text-gray-400 text-sm">
-                                    {t('clickColorPreview')}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </>
-                )}
-              </div>
+              <ColorPickerSwatchesTab
+                dmcColors={dmcColors}
+                dmcSearchTerm={dmcSearchTerm}
+                setDmcSearchTerm={setDmcSearchTerm}
+                dmcPage={dmcPage}
+                setDmcPage={setDmcPage}
+                dmcCategory={dmcCategory}
+                setDmcCategory={setDmcCategory}
+                selectedDmcColor={selectedDmcColor}
+                setSelectedDmcColor={setSelectedDmcColor}
+                setPickerColor={setPickerColor}
+                categorizeColor={categorizeColor}
+                t={t}
+              />
             )}
-
             {colorPickerTab === 'gradients' && (
-              <div>
-                {/* Search bar */}
-                <input
-                  type="text"
-                  placeholder={t('colorSearchPlaceholder')}
-                  value={gradientSearchTerm}
-                  onChange={(e) => { setGradientSearchTerm(e.target.value); setGradientPage(0); }}
-                  className="w-full px-3 py-2 bg-gray-700 text-white rounded mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-                {/* Thread line filter */}
-                {(() => {
-                  const allGradients = dmcColors.filter(c => c.type === 'gradient');
-                  const threadLines = ['all', ...Array.from(new Set(allGradients.map(c => c.group).filter(Boolean)))];
-                  return (
-                    <div className="flex gap-2 mb-3 flex-wrap">
-                      {threadLines.map(line => (
-                        <PresetChip
-                          key={line}
-                          onClick={() => { setGradientCategory(line); setGradientPage(0); }}
-                          selected={gradientCategory === line}
-                          className="px-3 py-1"
-                        >
-                          {line === 'all' ? 'All' : line}
-                        </PresetChip>
-                      ))}
-                    </div>
-                  );
-                })()}
-                {/* Grid + pagination */}
-                {(() => {
-                  const allGradients = dmcColors.filter(c => c.type === 'gradient');
-                  const filtered = allGradients.filter(color => {
-                    if (gradientSearchTerm) {
-                      const s = gradientSearchTerm.toLowerCase();
-                      if (!color.id.toLowerCase().includes(s) && !color.name.toLowerCase().includes(s)) return false;
-                    }
-                    if (gradientCategory !== 'all') return color.group === gradientCategory;
-                    return true;
-                  });
-                  const perPage = 24;
-                  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-                  const pageItems = filtered.slice(gradientPage * perPage, (gradientPage + 1) * perPage);
-                  return (
-                    <>
-                      <div className="grid grid-cols-6 gap-2 p-2 bg-gray-700 rounded mb-2" style={{ height: '216px', alignContent: 'start' }}>
-                        {pageItems.map((color) => (
-                          <div
-                            key={color.id}
-                            onClick={() => setSelectedGradient(color)}
-                            className={`cursor-pointer rounded overflow-hidden transition-all h-11 ${selectedGradient?.id === color.id ? 'ring-4 ring-blue-500' : 'hover:ring-2 hover:ring-gray-400'}`}
-                            title={color.name}
-                          >
-                            <div className="w-full h-full relative border-2 border-black">
-                              <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} preserveAspectRatio="none">
-                                <defs>
-                                  <linearGradient id={`cpicker-gradient-${color.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                    {(() => {
-                                      let stops = color.stops;
-                                      if (typeof color.stops === 'string') {
-                                        stops = color.stops.split(',').map(stop => {
-                                          const [offset, colorHex] = stop.split(':');
-                                          return { offset: `${offset}%`, color: colorHex };
-                                        });
-                                      }
-                                      return stops.map((stop, i) => <stop key={i} offset={stop.offset} stopColor={stop.color} />);
-                                    })()}
-                                  </linearGradient>
-                                </defs>
-                                <rect x="0" y="0" width="100%" height="100%" fill={`url(#cpicker-gradient-${color.id})`} />
-                              </svg>
-                              <span className="text-white font-bold text-xs px-1 py-0.5 rounded" style={{ textShadow: '0 0 3px black', backgroundColor: 'rgba(0,0,0,0.3)', position: 'relative', zIndex: 1 }}>
-                                {color.id}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-center gap-2 mb-3" style={{ height: '2rem' }}>
-                        <button onClick={() => setGradientPage(p => Math.max(0, p - 1))} disabled={gradientPage === 0} className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 hover:bg-gray-600">{t('prevBtn')}</button>
-                        <span className="text-gray-400 text-sm">{t('colorPageIndicator').replace('{page}', String(gradientPage + 1)).replace('{total}', String(totalPages)).replace('{count}', String(filtered.length))}</span>
-                        <button onClick={() => setGradientPage(p => Math.min(totalPages - 1, p + 1))} disabled={gradientPage >= totalPages - 1} className="px-3 py-1 bg-gray-700 text-white rounded text-sm disabled:opacity-30 hover:bg-gray-600">{t('nextBtn')}</button>
-                      </div>
-                      {/* Preview */}
-                      <div className="bg-gray-700 rounded p-3 border-2 border-gray-600">
-                        <div className="flex items-center gap-3 h-16">
-                          <div className="w-16 h-16 rounded border-2 border-black flex-shrink-0 relative overflow-hidden" style={{ backgroundColor: selectedGradient ? 'transparent' : '#374151' }}>
-                            {selectedGradient && (
-                              <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none">
-                                <defs>
-                                  <linearGradient id={`cpicker-preview-${selectedGradient.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                    {(() => {
-                                      let stops = selectedGradient.stops;
-                                      if (typeof selectedGradient.stops === 'string') {
-                                        stops = selectedGradient.stops.split(',').map(stop => {
-                                          const [offset, colorHex] = stop.split(':');
-                                          return { offset: `${offset}%`, color: colorHex };
-                                        });
-                                      }
-                                      return stops.map((stop, i) => <stop key={i} offset={stop.offset} stopColor={stop.color} />);
-                                    })()}
-                                  </linearGradient>
-                                </defs>
-                                <rect x="0" y="0" width="100%" height="100%" fill={`url(#cpicker-preview-${selectedGradient.id})`} />
-                              </svg>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            {selectedGradient ? (
-                              <>
-                                <p className="text-white font-bold text-base mb-1">{selectedGradient.name}</p>
-                                <p className="text-gray-300 font-mono text-xs mb-2">ID: {selectedGradient.id} · {selectedGradient.group || 'Gradient'}</p>
-                              </>
-                            ) : (
-                              <p className="text-gray-400 text-sm">{t('clickGradientPreview')}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
+              <ColorPickerGradientsTab
+                dmcColors={dmcColors}
+                gradientSearchTerm={gradientSearchTerm}
+                setGradientSearchTerm={setGradientSearchTerm}
+                gradientPage={gradientPage}
+                setGradientPage={setGradientPage}
+                gradientCategory={gradientCategory}
+                setGradientCategory={setGradientCategory}
+                selectedGradient={selectedGradient}
+                setSelectedGradient={setSelectedGradient}
+                t={t}
+              />
             )}
-            
+
             </div>{/* end body */}
 
             {/* ── Footer: OK/Cancel (flex-shrink-0) ── */}
@@ -11128,8 +9297,7 @@ if (parsed && parsed.stitchCount > 0) {
               </button>
             </div>
             </div>{/* end footer */}
-          </div>
-        </div>
+        </Modal>
       )}
       
 
