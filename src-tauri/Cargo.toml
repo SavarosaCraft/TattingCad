@@ -1,6 +1,6 @@
 [package]
 name = "tattingcad"
-version = "1.2.0-beta"
+version = "1.2.0"
 description = "Tatting pattern designer"
 authors = ["SavarosaCraft.com"]
 license = "MIT"

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TattingCAD",
-  "version": "1.2.0-beta",
+  "version": "1.2.0",
   "identifier": "com.savarosa.tattingcad",
   "build": {
     "frontendDist": "../dist",
