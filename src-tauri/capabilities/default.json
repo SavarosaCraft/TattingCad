@@ -46,6 +46,13 @@
     },
 
     {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "**" }
+      ]
+    },
+
+    {
       "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://**" }

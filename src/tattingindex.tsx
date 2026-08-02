@@ -10,6 +10,7 @@ import {
   getRecents,
   thumbSrcFor,
   thumbPathFor,
+  checkFileExists,
 } from './tauri/file';
 import { generateId } from './utils/id';
 import {
@@ -440,6 +441,14 @@ const TattingDesigner = () => {
     uiGuideUrlReady, setUiGuideUrlReady,
   } = useUIState();
 
+  // Tracks which Recent Projects entries' underlying files have been checked
+  // and found missing on disk (moved/deleted) — populated by an effect below
+  // that fires when the dialog opens. Kept local rather than added to
+  // useUIState since it's derived/transient (re-checked fresh each time the
+  // dialog opens) rather than persistent UI state; candidate to fold in if
+  // useUIState is revisited.
+  const [missingRecentPaths, setMissingRecentPaths] = useState<Set<string>>(new Set());
+
   // Toast helper — sets the load/save message and auto-dismisses it.
   const showLoadMsg = useCallback((type: 'success' | 'error', text: string) => {
     setLoadMsg({ type, text });
@@ -550,7 +559,7 @@ const TattingDesigner = () => {
   // Linear array state
 
   // Spiral array state
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.2.0-beta';
 
 
   // Update reminder: only after 90 days since install — evaluated once, stored here for the splash to read.
@@ -694,6 +703,26 @@ const TattingDesigner = () => {
     if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
     pushHistoryState(elements, picotConnections, orderGroupsRef.current, polarGrids);
   }, [elements, picotConnections, polarGrids]); // Depend on elements, connections, and polarGrids
+
+  // Check Recent Projects entries' actual files for existence when the
+  // dialog opens. The thumbnail already degrades gracefully on its own
+  // (native <img onError>) when its .png is missing, but the project .json
+  // itself previously had no equivalent check — an entry with a stored
+  // filename looked fully loadable even if that file had been moved or
+  // deleted, and the user would only find out after clicking Load.
+  useEffect(() => {
+    if (!showRecentProjectsDialog) return;
+    let cancelled = false;
+    const entries = getRecents().filter(e => e.filename);
+    Promise.all(entries.map(async e => ({
+      filename: e.filename,
+      exists: await checkFileExists(e.filename),
+    }))).then(results => {
+      if (cancelled) return;
+      setMissingRecentPaths(new Set(results.filter(r => !r.exists).map(r => r.filename)));
+    });
+    return () => { cancelled = true; };
+  }, [showRecentProjectsDialog]);
 
   // Auto-save to localStorage every 30 seconds
   // PERFORMANCE: Use refs to avoid recreating interval on every state change
@@ -2503,8 +2532,16 @@ const TattingDesigner = () => {
     return null;
   };
 
+  // Geometry only — every ghost (boundary or not) has valid endpoint
+  // positions, since the shape is identical across all instances. This is
+  // used both for interactive tip dots (which the caller restricts to
+  // boundary ghosts — see the picotJoin-mode render block) and for looking
+  // up positions of ALREADY-CREATED connections, which routinely land on
+  // interior (non-boundary) ghosts via inherited-join propagation. Gating
+  // on isBoundary here used to silently break rendering of inherited tip
+  // joins past the first ghost in the chain, even though the connection
+  // itself was created correctly.
   const getEndpointPseudoPicots = (el: any): Array<{ id: string; x: number; y: number }> => {
-    if (el.type === 'ghost' && !el.isBoundary) return [];
     if (!el.paths?.length) return [];
     // Ghost copies always have el.type === 'ghost' — the real shape (ring/chain)
     // lives on the source element, so boundary ghosts must resolve through it.
@@ -8847,8 +8884,14 @@ const TattingDesigner = () => {
                   });
               })()}
 
-              {/* Endpoint pseudo-picot dots in picotJoin mode */}
+              {/* Endpoint pseudo-picot dots in picotJoin mode. Only boundary
+                  ghosts (and real elements) get clickable tip dots — interior
+                  ghosts are managed by inherited-join propagation, not direct
+                  click. This is a UI-interaction restriction, not a geometry
+                  one — see getEndpointPseudoPicots for why the position
+                  lookup itself stays unrestricted. */}
               {activeMode === 'picotJoin' && showEditingArtifacts && renderMode !== 'realistic' && elements.map(el => {
+                if (el.type === 'ghost' && !el.isBoundary) return null;
                 const eps = getEndpointPseudoPicots(el);
                 if (!eps.length) return null;
                 return eps.map(ep => {
@@ -9418,7 +9461,7 @@ const TattingDesigner = () => {
                 ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                     {recents.map(entry => {
-                      const pathMissing = !entry.filename;
+                      const pathMissing = !entry.filename || missingRecentPaths.has(entry.filename);
                       return (
                         <div key={entry.id}
                           className={`bg-gray-700 rounded-lg overflow-hidden border transition-colors group ${pathMissing ? 'border-gray-700 opacity-50 cursor-not-allowed' : 'border-gray-600 hover:border-purple-500 cursor-pointer'}`}
@@ -9483,10 +9526,10 @@ const TattingDesigner = () => {
               <div className="flex justify-between items-center px-5 py-4 border-t border-gray-600 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="text-gray-500 text-xs">{recents.length > 0 ? `${recents.length} / 20` : ''}</div>
-                  {recents.some(e => !e.filename) && (
+                  {recents.some(e => !e.filename || missingRecentPaths.has(e.filename)) && (
                     <button
                       onClick={() => {
-                        const cleaned = recents.filter(e => !!e.filename);
+                        const cleaned = recents.filter(e => e.filename && !missingRecentPaths.has(e.filename));
                         localStorage.setItem('tcad_recent_projects', JSON.stringify(cleaned));
                         setShowRecentProjectsDialog(false);
                         setTimeout(() => setShowRecentProjectsDialog(true), 0);
@@ -10098,7 +10141,11 @@ const TattingDesigner = () => {
                           // Save state BEFORE deletion
                           const oldGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === sourceEl.id);
                           const oldGhostById = new Map(oldGhosts.map(g => [g.id, g]));
-                          const oldGhostIdsSorted = [...oldGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0)).map(g => g.id);
+                          // Use array.ghostIds' existing creation order directly, not a
+                          // rotation-based re-sort — rotation can wrap inconsistently when
+                          // sourceEl has nonzero rotation (see the note in architecture.md,
+                          // and the same fix in useJoinActions.ts's buildConnectionsForInheritedJoin).
+                          const oldGhostIdsSorted = (array.ghostIds || []).filter((id: string) => oldGhostById.has(id));
 
                           // Save picotConnections involving these ghosts
                           const savedConnections = picotConnectionsRef.current.filter(conn =>
@@ -10120,7 +10167,18 @@ const TattingDesigner = () => {
                             // After recreation, remap connections: old ghost[i] → new ghost[i] by sorted order
                             setTimeout(() => {
                               const newGhosts = elementsRef.current.filter(e => e.type === 'ghost' && e.sourceId === sourceEl.id);
-                              const newGhostIdsSorted = [...newGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0)).map(g => g.id);
+                              // Sort by rotation RELATIVE to sourceEl's own rotation, not raw
+                              // rotation % 360 — raw rotation can wrap inconsistently across
+                              // ghosts when sourceEl has nonzero rotation (createPolarInstance
+                              // computes ghost.rotation = (sourceEl.rotation + angleDeg) % 360),
+                              // silently scrambling creation order. Subtracting sourceEl's own
+                              // rotation before the modulo recovers the original, always-monotonic
+                              // angleDeg ordering regardless of sourceEl's rotation. Same root
+                              // cause as the fix in useJoinActions.ts's
+                              // buildConnectionsForInheritedJoin — see architecture.md.
+                              const sourceRotation = sourceEl.rotation || 0;
+                              const relativeAngle = (el: any) => (((el.rotation || 0) - sourceRotation) % 360 + 360) % 360;
+                              const newGhostIdsSorted = [...newGhosts].sort((a, b) => relativeAngle(a) - relativeAngle(b)).map(g => g.id);
 
                               if (savedConnections.length > 0 && newGhostIdsSorted.length > 0) {
                                 const oldToNew = new Map<string, string>();

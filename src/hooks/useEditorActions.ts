@@ -70,8 +70,9 @@ export interface UseEditorActionsParams {
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
   setGroupRotationInput: (val: string) => void;
+  setPolarGrids: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
-  pushHistoryState: (elements: any[], picotConnections: any[], orderGroups: any[]) => void;
+  pushHistoryState: (elements: any[], picotConnections: any[], orderGroups?: any[], polarGrids?: any[]) => void;
 }
 
 export function useEditorActions(p: UseEditorActionsParams) {
@@ -334,6 +335,32 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
   // ── History ───────────────────────────────────────────────────────────────
 
+  // ghostArrays (and therefore inheritedJoins bookkeeping) is never part of a
+  // history snapshot — pushHistoryState only captures {elements, connections,
+  // orderGroups} (see useHistoryActions.ts). So after undo/redo restores those
+  // three, a ghost array's inheritedJoins entries can point to join patterns
+  // whose actual connections no longer exist in the just-restored connections
+  // list. Left alone, checkAndStoreInheritedJoin's alreadyExists dedupe check
+  // would treat a re-join as already done and silently create nothing —
+  // exactly the "recreate the joint and inheriting never happens again"
+  // symptom. Coarse per-array reconciliation: if literally no connection
+  // tagged isInheritedJoin === array.id survives the restore, that array's
+  // inheritedJoins entries are stale — clear them.
+  // Known limitation: if an array has multiple distinct inheritedJoins
+  // records and undo lands at a point where only some of them are gone, this
+  // won't distinguish between them — it keeps all records as long as at
+  // least one tagged connection survives. Fixing that precisely would need
+  // per-record reconciliation using buildConnectionsForInheritedJoin from
+  // useJoinActions.ts, which isn't available here without new cross-hook
+  // coupling; out of scope for this fix.
+  const reconcileGhostArraysAfterHistoryRestore = (restoredConns: any[]) => {
+    p.setGhostArrays(prev => prev.map(a => {
+      if (!a.inheritedJoins || a.inheritedJoins.length === 0) return a;
+      const stillHasAny = restoredConns.some((c: any) => c.isInheritedJoin === a.id);
+      return stillHasAny ? a : { ...a, inheritedJoins: [] };
+    }));
+  };
+
   const undo = useCallback(() => {
     const idx = p.historyIndexRef.current;
     const history = p.historyRef.current;
@@ -343,8 +370,11 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const state = history[newIdx];
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
-      p.setPicotConnections(JSON.parse(JSON.stringify(state.connections)));
+      const restoredConns = JSON.parse(JSON.stringify(state.connections));
+      p.setPicotConnections(restoredConns);
       if (state.orderGroups) p.setOrderGroups(JSON.parse(JSON.stringify(state.orderGroups)));
+      if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
+      reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
     }
   }, []); // reads via refs
@@ -358,8 +388,11 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const state = history[newIdx];
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
-      p.setPicotConnections(JSON.parse(JSON.stringify(state.connections)));
+      const restoredConns = JSON.parse(JSON.stringify(state.connections));
+      p.setPicotConnections(restoredConns);
       if (state.orderGroups) p.setOrderGroups(JSON.parse(JSON.stringify(state.orderGroups)));
+      if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
+      reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
     }
   }, []); // reads via refs

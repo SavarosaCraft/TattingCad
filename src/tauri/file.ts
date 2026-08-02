@@ -12,7 +12,7 @@
 // When ready to extract: everything from "── Thumbnail" onward is self-contained.
 
 import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
-import { writeFile, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+import { writeFile, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 
@@ -63,6 +63,24 @@ export const writeTextToFile = async (filePath: string, text: string): Promise<v
 export const readProjectFile = async (filePath: string): Promise<any> => {
   const text = await readTextFile(filePath);
   return JSON.parse(text);
+};
+
+// Checks whether a file still exists on disk. Used by the Recent Projects
+// dialog to flag entries whose project file has been moved or deleted,
+// before the user clicks Load and hits a "file not found" error — mirrors
+// the existing thumbnail <img onError> fallback, but for the project file
+// itself rather than just its preview image. Returns false on any error
+// (permission issues, malformed path, etc.) rather than throwing, since a
+// failed existence check should be treated the same as "can't confirm this
+// file is there" for UI purposes.
+export const checkFileExists = async (filePath: string): Promise<boolean> => {
+  if (!filePath) return false;
+  try {
+    return await exists(filePath);
+  } catch (err) {
+    console.warn('[checkFileExists] failed for', filePath, err);
+    return false;
+  }
 };
 
 // ── Recent projects (localStorage) ────────────────────────────────────────

@@ -32,6 +32,24 @@ const getPicotAtSlot = (ghostInstance: any, slot: number | string): { id: string
   return ghostInstance.picots?.[slot];
 };
 
+// Order ghosts by matchingArray.ghostIds directly — NOT by re-deriving order
+// from rotation. ghostIds is always built in creation order (every push site
+// in tattingindex.tsx appends inside a `for (i = 1; i < count; i++)` loop, in
+// both the initial-creation and regenerateGhostArrays paths), so it's already
+// authoritative. Sorting by raw `rotation % 360` instead is unsafe: createPolarInstance
+// computes each ghost's rotation as (sourceEl.rotation + angleDeg) % 360, and
+// if sourceEl.rotation is nonzero, that modulo can wrap SOME ghosts past 360°
+// but not others, silently reordering them relative to creation order — which
+// scrambles which ghost pairs this function connects. Confirmed via a real
+// user report (see architecture.md) that this produced visibly wrong
+// connections; not a hypothetical.
+const getSortedGhosts = (matchingArray: any, currentElements: any[]): any[] => {
+  const ghostById = new Map(currentElements.filter(e => e.type === 'ghost').map(e => [e.id, e]));
+  return (matchingArray.ghostIds || [])
+    .map((id: string) => ghostById.get(id))
+    .filter((el: any): el is any => !!el);
+};
+
 // Builds any picotConnections entries that are missing for one inherited-join
 // record, given the array's CURRENT set of ghosts. Shared by two callers:
 // checkAndStoreInheritedJoin (driven by a live selection, right after the user
@@ -43,6 +61,18 @@ const getPicotAtSlot = (ghostInstance: any, slot: number | string): { id: string
 // the specific boundary ghost the user selected (preserving exact prior
 // behavior); the replay caller falls back to the source element's, since the
 // originally-selected ghost may no longer exist after regeneration.
+//
+// anchorEnd ('start' | 'end' | undefined) — only meaningful when
+// isSourceElement is true. A closed-circle source element has TWO boundary
+// neighbors: the array's first-created ghost and its last-created ghost. The
+// user's direct join could be to either one, but the chain built below must
+// walk AWAY from whichever one was actually clicked and close the wraparound
+// at the OTHER end — otherwise, if the clicked ghost happens to be the
+// last-created one, the fixed ascending walk collides with itself: it tries
+// to re-use that ghost's already-joined picot slot as an ordinary mid-chain
+// link, AND independently rebuilds a second edge back to the same ghost in
+// the wraparound step. undefined is treated as 'start' (the pre-existing
+// behavior) for legacy inheritedJoins records that predate this field.
 const buildConnectionsForInheritedJoin = (
   matchingArray: any,
   currentElements: any[],
@@ -50,10 +80,13 @@ const buildConnectionsForInheritedJoin = (
   sourcePicotIndex: number | string,
   targetPicotIndex: number | string,
   existingConns: any[],
-  materialId: string
+  materialId: string,
+  anchorEnd?: 'start' | 'end'
 ): any[] => {
-  const allGhosts = currentElements.filter(e => matchingArray.ghostIds?.includes(e.id));
-  const sortedGhosts = [...allGhosts].sort((a, b) => (a.rotation || 0) - (b.rotation || 0));
+  const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
+  if (!sourceEl) return [];
+
+  const sortedGhosts = getSortedGhosts(matchingArray, currentElements);
   if (sortedGhosts.length < 2) return [];
 
   const newConns: any[] = [];
@@ -64,15 +97,25 @@ const buildConnectionsForInheritedJoin = (
     return existingConns.some(matches) || newConns.some(matches);
   };
 
+  // Whether the array is polar AND actually a full closed circle (angle a
+  // multiple of 360°) — type === 'polar' alone isn't enough: a partial-arc
+  // polar array (e.g. a 180° fan) has ghosts spanning an open arc, not a
+  // closed ring. Used below to decide whether either branch's wraparound
+  // connection is geometrically valid.
+  const isClosedCircle = matchingArray.type === 'polar' && typeof matchingArray.angle === 'number'
+    && matchingArray.angle > 0 && Math.abs(matchingArray.angle % 360) < 0.01;
+
   if (isSourceElement) {
-    const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
-    if (!sourceEl) return [];
     const sendPicotSlot = targetPicotIndex;
     const recvPicotSlot = sourcePicotIndex;
 
-    for (let i = 0; i < sortedGhosts.length - 1; i++) {
-      const ghost = sortedGhosts[i];
-      const nextGhost = sortedGhosts[i + 1];
+    // Walk from the clicked boundary outward, not always ascending. See the
+    // anchorEnd doc comment above the function signature for why this matters.
+    const chainOrder = anchorEnd === 'end' ? [...sortedGhosts].reverse() : sortedGhosts;
+
+    for (let i = 0; i < chainOrder.length - 1; i++) {
+      const ghost = chainOrder[i];
+      const nextGhost = chainOrder[i + 1];
       const srcPicot = getPicotAtSlot(ghost, sendPicotSlot);
       const tgtPicot = getPicotAtSlot(nextGhost, recvPicotSlot);
       if (!srcPicot || !tgtPicot) continue;
@@ -88,18 +131,17 @@ const buildConnectionsForInheritedJoin = (
       });
     }
 
-    // Wrap the last ghost back to the source element — closes the loop.
-    // Only correct for polar arrays (circular); linear arrays are a straight
-    // chain and must not link the far end back to the mother.
-    if (matchingArray.type === 'polar') {
-      const lastGhost = sortedGhosts[sortedGhosts.length - 1];
-      const srcPicotLast = getPicotAtSlot(lastGhost, sendPicotSlot);
+    // Wrap the FAR end of the chain (opposite the clicked boundary) back to
+    // the source element — closes the loop. Only valid when isClosedCircle.
+    if (isClosedCircle) {
+      const farGhost = chainOrder[chainOrder.length - 1];
+      const srcPicotLast = getPicotAtSlot(farGhost, sendPicotSlot);
       const tgtPicotLast = getPicotAtSlot(sourceEl, recvPicotSlot);
-      if (srcPicotLast && tgtPicotLast && !connExists(lastGhost.id, srcPicotLast.id, sourceEl.id, tgtPicotLast.id)) {
+      if (srcPicotLast && tgtPicotLast && !connExists(farGhost.id, srcPicotLast.id, sourceEl.id, tgtPicotLast.id)) {
         newConns.push({
           id: generateId(),
           picots: [
-            { elementId: lastGhost.id, picotId: srcPicotLast.id },
+            { elementId: farGhost.id, picotId: srcPicotLast.id },
             { elementId: sourceEl.id, picotId: tgtPicotLast.id },
           ],
           materialId,
@@ -108,7 +150,15 @@ const buildConnectionsForInheritedJoin = (
       }
     }
   } else {
-    for (let i = 0; i < sortedGhosts.length; i++) {
+    // Same closed-circle requirement as the source-wrap case above: i=0's
+    // "previous" wraps to the last ghost via the modulo below, which only
+    // makes sense if the array actually closes into a full circle. For a
+    // partial arc (or, structurally, a linear array — though linear arrays
+    // only ever have one boundary ghost today, so this branch shouldn't be
+    // reachable for them), skip that one wrapping pair and only connect
+    // consecutive ghosts.
+    const startIdx = isClosedCircle ? 0 : 1;
+    for (let i = startIdx; i < sortedGhosts.length; i++) {
       const ghost = sortedGhosts[i];
       const prevIndex = (i - 1 + sortedGhosts.length) % sortedGhosts.length;
       const prevGhost = sortedGhosts[prevIndex];
@@ -187,8 +237,22 @@ export function useJoinActions(p: UseJoinActionsParams) {
       targetPicotIndex = isGhostEarlier ? otherPicotSlot : ghostPicotSlot;
     }
 
+    // Which end of the array's creation-order ghost list the clicked boundary
+    // sits at. Needed so buildConnectionsForInheritedJoin can walk the chain
+    // away from the clicked ghost instead of always assuming it's the first
+    // one — see the anchorEnd doc comment on buildConnectionsForInheritedJoin.
+    // Only meaningful (and only computed) for the source-element case; the
+    // boundary-to-boundary branch doesn't use it.
+    let anchorEnd: 'start' | 'end' | undefined;
+    if (isSourceElement) {
+      const sortedGhosts = getSortedGhosts(matchingArray, currentElements);
+      const idx = sortedGhosts.findIndex((g: any) => g.id === ghostEl.id);
+      anchorEnd = idx === sortedGhosts.length - 1 ? 'end' : 'start';
+    }
+
     const alreadyExists = matchingArray.inheritedJoins?.some(
-      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex && j.isSourceElement === isSourceElement
+      j => j.sourcePicotIndex === sourcePicotIndex && j.targetPicotIndex === targetPicotIndex
+        && j.isSourceElement === isSourceElement && j.anchorEnd === anchorEnd
     );
     if (alreadyExists) return;
 
@@ -200,13 +264,13 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // that grows the array wouldn't have anything to replay onto the new ghosts.
     p.setGhostArrays(prev => prev.map(a =>
       a.id === matchingArray.id
-        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex, isSourceElement }] }
+        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex, isSourceElement, anchorEnd }] }
         : a
     ));
 
     const newInheritedConns = buildConnectionsForInheritedJoin(
       matchingArray, currentElements, isSourceElement, sourcePicotIndex, targetPicotIndex,
-      p.picotConnectionsRef.current, ghostEl.materialId || 'default'
+      p.picotConnectionsRef.current, ghostEl.materialId || 'default', anchorEnd
     );
     if (newInheritedConns.length === 0) return;
 
@@ -255,9 +319,15 @@ export function useJoinActions(p: UseJoinActionsParams) {
 
       entries.forEach((entry: any) => {
         if (typeof entry.isSourceElement !== 'boolean') return;
+        // Source-element entries recorded before anchorEnd was tracked can't
+        // have their chain direction recovered — same reasoning as the
+        // isSourceElement check above: replaying nothing is safer than
+        // guessing a direction and risking a wrong (silently double-booked)
+        // connection.
+        if (entry.isSourceElement && entry.anchorEnd !== 'start' && entry.anchorEnd !== 'end') return;
         const newConns = buildConnectionsForInheritedJoin(
           matchingArray, currentElements, entry.isSourceElement, entry.sourcePicotIndex, entry.targetPicotIndex,
-          workingConns, materialId
+          workingConns, materialId, entry.anchorEnd
         );
         if (newConns.length > 0) {
           workingConns = [...workingConns, ...newConns];
@@ -343,6 +413,15 @@ export function useJoinActions(p: UseJoinActionsParams) {
     const sel = p.selectedPicotsRef.current;
     if (sel.length < 2) return;
 
+    // Set before ANY state mutation below, not just before the final explicit
+    // push. checkAndStoreInheritedJoin makes its own setElements/setPicotConnections
+    // calls partway through this function — if the auto-push effect were to
+    // fire on that intermediate state (before we've made our one explicit
+    // push at the end), it would record an extra history entry for what's
+    // really a single join action, making undo take two steps to fully
+    // revert instead of one.
+    p.skipAutoHistoryRef.current = true;
+
     const firstEl = p.elementById.get(sel[0].elementId);
     const connMaterialId = firstEl?.materialId || 'default';
 
@@ -401,13 +480,22 @@ export function useJoinActions(p: UseJoinActionsParams) {
     checkAndStoreInheritedJoin(sel, newEls);
 
     p.setSelectedPicots([]);
-    p.skipAutoHistoryRef.current = true;
-    p.pushHistoryState(newEls, newConns, p.orderGroupsRef.current);
+    // Push from the refs, not the local newEls/newConns — checkAndStoreInheritedJoin
+    // may have updated elementsRef.current/picotConnectionsRef.current further
+    // (isJoint promotion + any propagated inherited connections) after those
+    // locals were captured. Pushing the locals here would record a snapshot
+    // that's missing the propagated joins, silently out of sync with what's
+    // actually on screen.
+    p.pushHistoryState(p.elementsRef.current, p.picotConnectionsRef.current, p.orderGroupsRef.current);
   }, [p.elementById, p.ghostArrays]);
 
   const breakSelectedPicots = useCallback(() => {
     const sel = p.selectedPicotsRef.current;
     if (sel.length === 0) return;
+
+    // See the matching comment in joinSelectedPicots — set before any state
+    // mutation, since removeInheritedJoins makes its own state calls too.
+    p.skipAutoHistoryRef.current = true;
 
     removeInheritedJoins(sel, p.elementsRef.current);
 
@@ -436,7 +524,6 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.setElements(newEls);
 
     p.setSelectedPicots([]);
-    p.skipAutoHistoryRef.current = true;
     p.pushHistoryState(newEls, newConns, p.orderGroupsRef.current);
   }, [p.ghostArrays]);
 

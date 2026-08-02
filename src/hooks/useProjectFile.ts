@@ -17,6 +17,28 @@ const DEFAULT_MATERIALS = [
   { id: 'default', name: 'Default Thread', color: '#FFFFFF', type: 'solid' },
 ];
 
+// Tauri's fs/dialog plugins don't guarantee Error instances on rejection —
+// they can reject with a plain string, or an object shaped differently than
+// the DOM Error interface. Reading `.message` off a non-Error value silently
+// yields undefined, and String.prototype.replace('{msg}', undefined) coerces
+// that into the literal text "undefined" being shown to the user instead of
+// any actual detail. This normalizes any thrown value into a real string.
+const getErrorMessage = (error: any): string => {
+  if (typeof error === 'string') return error;
+  if (error?.message && typeof error.message === 'string') return error.message;
+  try { return JSON.stringify(error); } catch { return String(error); }
+};
+
+// Same reasoning applies to "is this a not-found error" detection — it also
+// read error.message, so it silently failed (never matched) for any error
+// that wasn't a proper Error instance, meaning a moved/deleted file would
+// skip the friendly "file not found" message and fall through to the (until
+// just now, broken) generic one instead.
+const isFileNotFoundError = (error: any): boolean => {
+  const msg = getErrorMessage(error).toLowerCase();
+  return msg.includes('not found') || msg.includes('no such file') || error?.code === 'NOT_FOUND';
+};
+
 export interface UseProjectFileParams {
   // State values
   elements: any[];
@@ -145,19 +167,40 @@ export function useProjectFile(p: UseProjectFileParams) {
   }, [performSave]);
 
   const applyProjectData = useCallback(async (projectData: any, filePath: string) => {
+    console.log('[load] applyProjectData starting for', filePath);
+    console.log('[load] top-level keys:', Object.keys(projectData || {}));
+
     if (!projectData.elements || !Array.isArray(projectData.elements)) {
+      console.log('[load] REJECTED: projectData.elements missing or not an array. Got:', projectData.elements);
       p.showLoadMsg('error', p.t('loadErrMissingElements'));
       return;
     }
+    console.log('[load] elements count:', projectData.elements.length,
+      '— types present:', [...new Set(projectData.elements.map((el: any) => el?.type))]);
 
+    // 'ghost' elements are a valid saved element type (ghost-array instances)
+    // — they were missing from this whitelist, which meant any project using
+    // the ghost-array feature at all would fail to load in its entirety.
+    const VALID_TYPES = new Set(['ring', 'chain', 'line', 'ghost']);
     const invalidElements = projectData.elements.filter((el: any) =>
       !el.id || !el.type || !el.paths || !Array.isArray(el.paths) ||
-      (el.type !== 'ring' && el.type !== 'chain' && el.type !== 'line')
+      !VALID_TYPES.has(el.type)
     );
     if (invalidElements.length > 0) {
+      console.log('[load] REJECTED:', invalidElements.length, 'invalid element(s). Details:');
+      invalidElements.forEach((el: any, i: number) => {
+        const reasons: string[] = [];
+        if (!el.id) reasons.push('missing id');
+        if (!el.type) reasons.push('missing type');
+        if (!el.paths) reasons.push('missing paths');
+        else if (!Array.isArray(el.paths)) reasons.push('paths is not an array (got ' + typeof el.paths + ')');
+        if (el.type && !VALID_TYPES.has(el.type)) reasons.push(`type "${el.type}" not in whitelist`);
+        console.log(`  [${i}] id=${el.id ?? '(none)'} type=${el.type ?? '(none)'} — ${reasons.join(', ')}`);
+      });
       p.showLoadMsg('error', p.t('loadErrInvalidElements').replace('{n}', String(invalidElements.length)));
       return;
     }
+    console.log('[load] all elements passed validation');
 
     if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
       projectData.camera = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
@@ -244,15 +287,14 @@ export function useProjectFile(p: UseProjectFileParams) {
     }
     try {
       const projectData = await readProjectFile(filePath);
+      console.log('[load] readProjectFile succeeded for', filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
-      const isNotFound = error.message?.toLowerCase().includes('not found') ||
-                         error.message?.toLowerCase().includes('no such file') ||
-                         error.code === 'NOT_FOUND';
-      if (isNotFound) {
+      console.log('[load] readProjectFile/applyProjectData threw:', error);
+      if (isFileNotFoundError(error)) {
         p.showLoadMsg('error', p.t('loadErrFileNotFound'));
       } else {
-        p.showLoadMsg('error', p.t('loadErrGeneric').replace('{msg}', error.message));
+        p.showLoadMsg('error', p.t('loadErrGeneric').replace('{msg}', getErrorMessage(error)));
       }
     }
   }, [applyProjectData, p.t]);
@@ -262,9 +304,15 @@ export function useProjectFile(p: UseProjectFileParams) {
     if (!filePath) return;
     try {
       const projectData = await readProjectFile(filePath);
+      console.log('[load] readProjectFile succeeded for', filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
-      p.showLoadMsg('error', p.t('loadErrGeneric').replace('{msg}', error.message));
+      console.log('[load] readProjectFile/applyProjectData threw:', error);
+      if (isFileNotFoundError(error)) {
+        p.showLoadMsg('error', p.t('loadErrFileNotFound'));
+      } else {
+        p.showLoadMsg('error', p.t('loadErrGeneric').replace('{msg}', getErrorMessage(error)));
+      }
     }
   }, [applyProjectData, p.t]);
 

@@ -1,7 +1,7 @@
 {
   "name": "TattingCAD",
   "type": "module",
-  "version": "1.04.0",
+  "version": "1.2.0-beta",
   "private": true,
   "dependencies": {
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",

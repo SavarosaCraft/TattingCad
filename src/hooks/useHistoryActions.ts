@@ -19,18 +19,25 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     els: any[],
     conns: any[],
     groups?: any[],
+    grids?: any[],
   ) => {
     const currentHistory = p.historyRef.current;
     const currentIndex = p.historyIndexRef.current;
     const currentState = currentHistory[currentIndex];
 
     const normalGroups = groups ?? [];
-    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: normalGroups });
+    // Carry forward the previous entry's polarGrids when omitted, same as the
+    // ~23 explicit pushHistoryState call sites across the codebase that never
+    // touch grids and only pass (els, conns, groups). Only the primary
+    // auto-push effect in tattingindex.tsx passes a real 4th argument.
+    const normalGrids = grids ?? (currentState?.polarGrids ?? []);
+    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: normalGroups, polarGrids: normalGrids });
     const oldStateStr = currentState
       ? JSON.stringify({
           elements: currentState.elements,
           connections: currentState.connections,
           orderGroups: currentState.orderGroups ?? [],
+          polarGrids: currentState.polarGrids ?? [],
         })
       : null;
     if (oldStateStr === newStateStr) return;
@@ -39,6 +46,7 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
       elements:    JSON.parse(JSON.stringify(els)),
       connections: JSON.parse(JSON.stringify(conns)),
       orderGroups: JSON.parse(JSON.stringify(normalGroups)),
+      polarGrids:  JSON.parse(JSON.stringify(normalGrids)),
     };
 
     const newHistory = currentHistory.slice(0, currentIndex + 1);
