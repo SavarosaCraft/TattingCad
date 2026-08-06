@@ -52,7 +52,7 @@ export interface UseEditorActionsParams {
   elementsRef: React.RefObject<any[]>;
   selectedIdsRef: React.RefObject<string[]>;
   picotConnectionsRef: React.RefObject<any[]>;
-  orderGroupsRef: React.RefObject<any[]>;
+  roundsRef: React.RefObject<any[]>;
   clipboardRef: React.RefObject<any[]>;
   historyRef: React.RefObject<any[]>;
   historyIndexRef: React.RefObject<number>;
@@ -65,14 +65,14 @@ export interface UseEditorActionsParams {
   setElements: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setSelectedIds: (ids: string[]) => void;
   setPicotConnections: (fn: ((prev: any[]) => any[]) | any[]) => void;
-  setOrderGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
+  setRounds: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setClipboard: (items: any[]) => void;
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
   setGroupRotationInput: (val: string) => void;
   setPolarGrids: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
-  pushHistoryState: (elements: any[], picotConnections: any[], orderGroups?: any[], polarGrids?: any[]) => void;
+  pushHistoryState: (elements: any[], picotConnections: any[], rounds?: any[], polarGrids?: any[]) => void;
 }
 
 export function useEditorActions(p: UseEditorActionsParams) {
@@ -208,7 +208,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
     p.skipAutoHistoryRef.current = true;
     p.setElements(newElements);
     p.setSelectedIds([newEl.id]);
-    p.pushHistoryState(newElements, p.picotConnectionsRef.current, p.orderGroupsRef.current);
+    p.pushHistoryState(newElements, p.picotConnectionsRef.current, p.roundsRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.dsWidth, p.camera, p.zoom]);
 
@@ -234,7 +234,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
     p.skipAutoHistoryRef.current = true;
     p.setElements(newElements);
     p.setSelectedIds([newEl.id]);
-    p.pushHistoryState(newElements, p.picotConnectionsRef.current, p.orderGroupsRef.current);
+    p.pushHistoryState(newElements, p.picotConnectionsRef.current, p.roundsRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.dsWidth, p.camera, p.zoom]);
 
@@ -264,7 +264,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
     p.skipAutoHistoryRef.current = true;
     p.setElements(newElements);
     p.setSelectedIds([newEl.id]);
-    p.pushHistoryState(newElements, p.picotConnectionsRef.current, p.orderGroupsRef.current);
+    p.pushHistoryState(newElements, p.picotConnectionsRef.current, p.roundsRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.dsWidth, p.camera, p.zoom]);
 
@@ -337,7 +337,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
   // ghostArrays (and therefore inheritedJoins bookkeeping) is never part of a
   // history snapshot — pushHistoryState only captures {elements, connections,
-  // orderGroups} (see useHistoryActions.ts). So after undo/redo restores those
+  // rounds} (see useHistoryActions.ts). So after undo/redo restores those
   // three, a ghost array's inheritedJoins entries can point to join patterns
   // whose actual connections no longer exist in the just-restored connections
   // list. Left alone, checkAndStoreInheritedJoin's alreadyExists dedupe check
@@ -372,7 +372,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
       p.setPicotConnections(restoredConns);
-      if (state.orderGroups) p.setOrderGroups(JSON.parse(JSON.stringify(state.orderGroups)));
+      if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
       if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
@@ -390,7 +390,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
       p.setPicotConnections(restoredConns);
-      if (state.orderGroups) p.setOrderGroups(JSON.parse(JSON.stringify(state.orderGroups)));
+      if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
       if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);

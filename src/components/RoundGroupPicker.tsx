@@ -12,14 +12,14 @@
 import React from 'react';
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
 
-interface OrderGroup { id: string; name: string; }
+interface Round { id: string; name: string; }
 
 interface RoundGroupPickerProps {
   buttonRef: React.RefObject<HTMLButtonElement>;
   isOpen: boolean;
   onToggle: () => void;
   currentGroupId: string | null | undefined;
-  orderGroups: OrderGroup[];
+  rounds: Round[];
   onSelectUngrouped: () => void;
   onSelectGroup: (groupId: string) => void;
   onCreateNew: () => void;
@@ -34,7 +34,7 @@ export const RoundGroupPicker: React.FC<RoundGroupPickerProps> = ({
   isOpen,
   onToggle,
   currentGroupId,
-  orderGroups,
+  rounds,
   onSelectUngrouped,
   onSelectGroup,
   onCreateNew,
@@ -43,8 +43,8 @@ export const RoundGroupPicker: React.FC<RoundGroupPickerProps> = ({
   triggerTitle,
   wrapperClassName = 'relative flex-shrink-0',
 }) => {
-  const currentGroup = currentGroupId ? orderGroups.find(g => g.id === currentGroupId) : null;
-  const currentGroupIdx = currentGroup ? orderGroups.findIndex(g => g.id === currentGroup.id) : -1;
+  const currentGroup = currentGroupId ? rounds.find(g => g.id === currentGroupId) : null;
+  const currentGroupIdx = currentGroup ? rounds.findIndex(g => g.id === currentGroup.id) : -1;
   const [triggerColor] = currentGroupIdx >= 0 ? ORDER_GROUP_COLORS[(currentGroupIdx + 1) % ORDER_GROUP_COLORS.length] : [null];
 
   return (
@@ -75,8 +75,8 @@ export const RoundGroupPicker: React.FC<RoundGroupPickerProps> = ({
                 <span style={{ fontSize: '8px' }}>{!currentGroupId ? '●' : '○'}</span>
                 {ungroupedLabel}
               </button>
-              {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
-              {orderGroups.map((grp, gi) => {
+              {rounds.length > 0 && <div className="my-1 border-t border-gray-600" />}
+              {rounds.map((grp, gi) => {
                 const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
                 const isActive = currentGroupId === grp.id;
                 return (

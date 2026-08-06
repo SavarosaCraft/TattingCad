@@ -31,12 +31,12 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     // touch grids and only pass (els, conns, groups). Only the primary
     // auto-push effect in tattingindex.tsx passes a real 4th argument.
     const normalGrids = grids ?? (currentState?.polarGrids ?? []);
-    const newStateStr = JSON.stringify({ elements: els, connections: conns, orderGroups: normalGroups, polarGrids: normalGrids });
+    const newStateStr = JSON.stringify({ elements: els, connections: conns, rounds: normalGroups, polarGrids: normalGrids });
     const oldStateStr = currentState
       ? JSON.stringify({
           elements: currentState.elements,
           connections: currentState.connections,
-          orderGroups: currentState.orderGroups ?? [],
+          rounds: currentState.rounds ?? [],
           polarGrids: currentState.polarGrids ?? [],
         })
       : null;
@@ -45,7 +45,7 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     const cloned = {
       elements:    JSON.parse(JSON.stringify(els)),
       connections: JSON.parse(JSON.stringify(conns)),
-      orderGroups: JSON.parse(JSON.stringify(normalGroups)),
+      rounds:      JSON.parse(JSON.stringify(normalGroups)),
       polarGrids:  JSON.parse(JSON.stringify(normalGrids)),
     };
 

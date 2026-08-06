@@ -1,11 +1,11 @@
 // useTattingOrder.ts — Tatting order mode state
-// Covers order groups, active group, conflict resolution, input, and group dropdown UI.
+// Covers rounds, active round, conflict resolution, input, and group dropdown UI.
 
 import { useState } from 'react';
 
 export function useTattingOrder() {
-  const [orderGroups, setOrderGroups] = useState<{ id: string; name: string }[]>([]);
-  const [activeOrderGroupId, setActiveOrderGroupId] = useState<string | null>(null);
+  const [rounds, setRounds] = useState<{ id: string; name: string }[]>([]);
+  const [activeRoundId, setActiveRoundId] = useState<string | null>(null);
   const [tattingOrderConflict, setTattingOrderConflict] = useState<{
     newNum: number;
     existingElId: string;
@@ -23,8 +23,8 @@ export function useTattingOrder() {
   const [propBarOrderDraft, setPropBarOrderDraft] = useState<string | null>(null);
 
   return {
-    orderGroups, setOrderGroups,
-    activeOrderGroupId, setActiveOrderGroupId,
+    rounds, setRounds,
+    activeRoundId, setActiveRoundId,
     tattingOrderConflict, setTattingOrderConflict,
     tattingOrderInput, setTattingOrderInput,
     newGroupNameInput, setNewGroupNameInput,

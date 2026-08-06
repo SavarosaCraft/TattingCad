@@ -186,7 +186,7 @@ export interface UseJoinActionsParams {
   selectedPicotsRef: React.RefObject<any[]>;
   elementsRef: React.RefObject<any[]>;
   picotConnectionsRef: React.RefObject<any[]>;
-  orderGroupsRef: React.RefObject<any[]>;
+  roundsRef: React.RefObject<any[]>;
   // State values
   elementById: Map<string, any>;
   ghostArrays: any[];
@@ -486,7 +486,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // locals were captured. Pushing the locals here would record a snapshot
     // that's missing the propagated joins, silently out of sync with what's
     // actually on screen.
-    p.pushHistoryState(p.elementsRef.current, p.picotConnectionsRef.current, p.orderGroupsRef.current);
+    p.pushHistoryState(p.elementsRef.current, p.picotConnectionsRef.current, p.roundsRef.current);
   }, [p.elementById, p.ghostArrays]);
 
   const breakSelectedPicots = useCallback(() => {
@@ -524,7 +524,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.setElements(newEls);
 
     p.setSelectedPicots([]);
-    p.pushHistoryState(newEls, newConns, p.orderGroupsRef.current);
+    p.pushHistoryState(newEls, newConns, p.roundsRef.current);
   }, [p.ghostArrays]);
 
   return { joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins };

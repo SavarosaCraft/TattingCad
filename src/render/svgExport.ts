@@ -40,7 +40,7 @@ export interface ExportBounds {
 export interface PrepareSvgParams {
   bounds: ExportBounds;
   elements: any[];
-  orderGroups: any[];
+  rounds: any[];
   patternNotes: string;
   dsWidth: number;
 }
@@ -52,7 +52,12 @@ export function prepareSvgForExport(
   clonedSvg: SVGSVGElement,
   params: PrepareSvgParams,
 ): string {
-  const { bounds, elements, orderGroups, patternNotes, dsWidth } = params;
+  const { bounds, elements, rounds, patternNotes, dsWidth } = params;
+
+  // Legacy-read shim (session 43 naming-collision fix): elements may still carry the
+  // old `orderGroup` field if this function is ever called with data that bypassed the
+  // app's normal load path. Reads go through this helper.
+  const getRoundId = (el: any) => el?.roundId ?? el?.orderGroup;
 
   // ── Step 1: Strip all UI-only elements ───────────────────────────────────
   clonedSvg.querySelectorAll('[fill="url(#grid)"]').forEach(n => n.remove());
@@ -169,8 +174,8 @@ export function prepareSvgForExport(
   if (numberedEls.length > 0 && layerOrder.childNodes.length === 0) {
     const fontSize = Math.max(8, Math.round(width / 60));
     numberedEls.forEach(el => {
-      const groupIndex = el.orderGroup
-        ? orderGroups.findIndex(g => g.id === el.orderGroup)
+      const groupIndex = getRoundId(el)
+        ? rounds.findIndex(g => g.id === getRoundId(el))
         : -1;
       const [fillColor, strokeColor] = ORDER_GROUP_COLORS[
         groupIndex >= 0 ? (groupIndex + 1) % ORDER_GROUP_COLORS.length : 0

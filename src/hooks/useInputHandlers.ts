@@ -40,7 +40,7 @@ export interface UseInputHandlersParams {
   selectedBEs: any[];
   selectedPicots: any[];
   chainPresetSymmetric: boolean;
-  orderGroups: any[];
+  rounds: any[];
 
   // Interaction refs (legitimately mutable — not React state)
   pathDragStartRef: React.MutableRefObject<any>;
@@ -746,7 +746,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
     }
 
     if (p.isInteractingRef.current && p.needsHistoryPushRef.current)
-      p.pushHistoryState(p.elements, p.picotConnections, p.orderGroups);
+      p.pushHistoryState(p.elements, p.picotConnections, p.rounds);
     p.isInteractingRef.current = false;
     p.needsHistoryPushRef.current = false;
     p.setIsDragging(false);

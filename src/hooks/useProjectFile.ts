@@ -54,7 +54,7 @@ export interface UseProjectFileParams {
   renderMode: string;
   patternNotes: string;
   materials: any[];
-  orderGroups: any[];
+  rounds: any[];
   beadLibrary: any[];
   polarGrids: any[];
   selectedPolarGridId: string | null;
@@ -80,8 +80,8 @@ export interface UseProjectFileParams {
   setRenderMode: (v: string) => void;
   setPatternNotes: (v: string) => void;
   setMaterials: (v: any[]) => void;
-  setOrderGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
-  setActiveOrderGroupId: (v: string | null) => void;
+  setRounds: (fn: ((prev: any[]) => any[]) | any[]) => void;
+  setActiveRoundId: (v: string | null) => void;
   setPolarGrids: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setSelectedPolarGridId: (v: string | null) => void;
   setThreadPresets: (fn: ((prev: any[]) => any[]) | any[]) => void;
@@ -116,7 +116,7 @@ export function useProjectFile(p: UseProjectFileParams) {
       renderMode: p.renderMode,
       patternNotes: p.patternNotes,
       materials: p.materials,
-      orderGroups: p.orderGroups,
+      orderGroups: p.rounds,
       beadLibrary: p.beadLibrary,
       polarGrids: p.polarGrids,
       selectedPolarGridId: p.selectedPolarGridId,
@@ -125,7 +125,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     }),
     [p.elements, p.picotConnections, p.camera, p.zoom, p.dsWidth, p.bgColor,
      p.gridEnabled, p.customColors, p.referenceImage, p.refImageProps,
-     p.renderMode, p.patternNotes, p.materials, p.orderGroups, p.beadLibrary,
+     p.renderMode, p.patternNotes, p.materials, p.rounds, p.beadLibrary,
      p.polarGrids, p.selectedPolarGridId, p.threadPresets, p.activePresetId]
   );
 
@@ -222,6 +222,12 @@ export function useProjectFile(p: UseProjectFileParams) {
       let migrated = 'labelsInside' in el && !('labelOffset' in el)
         ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
         : el;
+      // Legacy field rename (session 43 naming-collision fix): orderGroup -> roundId.
+      // Old saves carry `orderGroup`; convert on load so the rest of the app only
+      // ever sees the new field name.
+      migrated = 'orderGroup' in migrated && !('roundId' in migrated)
+        ? (({ orderGroup, ...rest }) => ({ ...rest, roundId: orderGroup }))(migrated)
+        : migrated;
       if (migrated.picots?.some((pic: any) => pic.isJoint && !connectedPicotKeys.has(`${migrated.id}::${pic.id}`))) {
         migrated = {
           ...migrated,
@@ -247,8 +253,8 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setRenderMode(projectData.renderMode || 'schematic');
     p.setPatternNotes(projectData.patternNotes || '');
     p.setMaterials(projectData.materials || DEFAULT_MATERIALS);
-    p.setOrderGroups(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
-    p.setActiveOrderGroupId(null);
+    p.setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
+    p.setActiveRoundId(null);
     if (Array.isArray(projectData.polarGrids)) {
       p.setPolarGrids(prev => {
         const existing = new Set(prev.map((g: any) => g.id));
@@ -345,7 +351,7 @@ export function useProjectFile(p: UseProjectFileParams) {
 
     const svgString = prepareSvgForExport(clonedSvg, {
       bounds: { minX, minY, maxX, maxY },
-      elements: p.elements, orderGroups: p.orderGroups,
+      elements: p.elements, rounds: p.rounds,
       patternNotes: p.patternNotes, dsWidth: p.dsWidth,
     });
 
@@ -356,7 +362,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     } catch (err) {
       console.error('SVG export failed:', err);
     }
-  }, [p.elements, p.projectName, p.patternNotes, p.orderGroups, p.dsWidth]);
+  }, [p.elements, p.projectName, p.patternNotes, p.rounds, p.dsWidth]);
 
   return {
     buildProjectData,

@@ -16,15 +16,15 @@ import React from 'react';
 import { IconUnnumberedOn } from './icons';
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
 
-interface OrderGroup { id: string; name: string; }
+interface Round { id: string; name: string; }
 
 interface TattingOrderModeBarProps {
   elements: any[];
   selectedElement: any;
-  orderGroups: OrderGroup[];
-  orderGroupsRef: React.RefObject<OrderGroup[]>;
-  activeOrderGroupId: string | null;
-  setActiveOrderGroupId: (id: string | null) => void;
+  rounds: Round[];
+  roundsRef: React.RefObject<Round[]>;
+  activeRoundId: string | null;
+  setActiveRoundId: (id: string | null) => void;
   groupDropdownButtonRef: React.RefObject<HTMLButtonElement>;
   showGroupDropdown: boolean;
   setShowGroupDropdown: (fn: ((prev: boolean) => boolean) | boolean) => void;
@@ -36,7 +36,7 @@ interface TattingOrderModeBarProps {
   setRenamingGroupId: (id: string | null) => void;
   renameGroupInput: string;
   setRenameGroupInput: (v: string) => void;
-  setOrderGroups: (groups: OrderGroup[]) => void;
+  setRounds: (groups: Round[]) => void;
   pushHistoryState: (els: any[], conns: any[], groups?: any[]) => void;
   elementsRef: React.RefObject<any[]>;
   picotConnectionsRef: React.RefObject<any[]>;
@@ -51,17 +51,17 @@ interface TattingOrderModeBarProps {
   setElements: (fn: (prev: any[]) => any[]) => void;
   assignRepeat: (id: string) => void;
   clearOrderAssignment: (id: string) => void;
-  inActiveGroup: (el: any) => boolean;
+  inActiveRound: (el: any) => boolean;
   t: (key: string) => string;
 }
 
 export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
   elements,
   selectedElement,
-  orderGroups,
-  orderGroupsRef,
-  activeOrderGroupId,
-  setActiveOrderGroupId,
+  rounds,
+  roundsRef,
+  activeRoundId,
+  setActiveRoundId,
   groupDropdownButtonRef,
   showGroupDropdown,
   setShowGroupDropdown,
@@ -73,7 +73,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
   setRenamingGroupId,
   renameGroupInput,
   setRenameGroupInput,
-  setOrderGroups,
+  setRounds,
   pushHistoryState,
   elementsRef,
   picotConnectionsRef,
@@ -88,28 +88,34 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
   setElements,
   assignRepeat,
   clearOrderAssignment,
-  inActiveGroup,
+  inActiveRound,
   t,
 }) => {
   const selectedEl = selectedElement;
 
+  // Legacy-read shim (session 43 naming-collision fix): elements loaded via an
+  // older save may still carry the old `orderGroup` field until touched. Reads
+  // go through this helper; writes below set `roundId` and scrub `orderGroup`
+  // (all known consumers are confirmed migrated — see tattingindex.tsx for the list).
+  const getRoundId = (el: any) => el?.roundId ?? el?.orderGroup;
+
   // Active group object (null = Ungrouped scope)
-  const activeGroup = activeOrderGroupId
-    ? orderGroups.find(g => g.id === activeOrderGroupId) ?? null
+  const activeGroup = activeRoundId
+    ? rounds.find(g => g.id === activeRoundId) ?? null
     : null;
   const activeGroupIndex = activeGroup
-    ? orderGroups.findIndex(g => g.id === activeGroup.id)
+    ? rounds.findIndex(g => g.id === activeGroup.id)
     : -1;
   const [activeBadgeFill] = activeGroup
-    ? ORDER_GROUP_COLORS[activeGroupIndex % ORDER_GROUP_COLORS.length]
+    ? ORDER_GROUP_COLORS[(activeGroupIndex + 1) % ORDER_GROUP_COLORS.length]
     : ORDER_GROUP_COLORS[0]; // gold for ungrouped
 
   // Per-group numbered count for the progress chip
   const numberedInScope = elements.filter(e => {
     const hasNum = e.isRepeat || (e.orderNumber != null && String(e.orderNumber).trim() !== '');
-    return hasNum && inActiveGroup(e);
+    return hasNum && inActiveRound(e);
   }).length;
-  const totalInScope = elements.filter(inActiveGroup).length;
+  const totalInScope = elements.filter(inActiveRound).length;
 
   return (
     <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
@@ -152,19 +158,19 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
               >
                 {/* Ungrouped row */}
                 <button
-                  onClick={() => { setActiveOrderGroupId(null); setShowGroupDropdown(false); setShowNewGroupInput(false); setRenamingGroupId(null); }}
-                  className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${activeOrderGroupId === null ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
+                  onClick={() => { setActiveRoundId(null); setShowGroupDropdown(false); setShowNewGroupInput(false); setRenamingGroupId(null); }}
+                  className={`w-full text-left px-3 py-1 text-xs flex items-center gap-2 hover:bg-gray-700 ${activeRoundId === null ? 'text-yellow-400 font-semibold' : 'text-gray-300'}`}
                 >
-                  <span style={{ fontSize: '8px' }}>{activeOrderGroupId === null ? '●' : '○'}</span>
+                  <span style={{ fontSize: '8px' }}>{activeRoundId === null ? '●' : '○'}</span>
                   {t('tattingOrderUngrouped')}
                 </button>
 
-                {orderGroups.length > 0 && <div className="my-1 border-t border-gray-600" />}
+                {rounds.length > 0 && <div className="my-1 border-t border-gray-600" />}
 
                 {/* Group rows */}
-                {orderGroups.map((grp, gi) => {
-                  const [gpFill] = ORDER_GROUP_COLORS[gi % ORDER_GROUP_COLORS.length];
-                  const isActive = activeOrderGroupId === grp.id;
+                {rounds.map((grp, gi) => {
+                  const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
+                  const isActive = activeRoundId === grp.id;
                   const isRenaming = renamingGroupId === grp.id;
 
                   return (
@@ -178,8 +184,8 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                           onKeyDown={e => {
                             if (e.key === 'Enter') {
                               const name = renameGroupInput.trim() || grp.name;
-                              const newGroups = orderGroupsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
-                              setOrderGroups(newGroups);
+                              const newGroups = roundsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
+                              setRounds(newGroups);
                               pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
                               setRenamingGroupId(null);
                             }
@@ -187,8 +193,8 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                           }}
                           onBlur={() => {
                             const name = renameGroupInput.trim() || grp.name;
-                            const newGroups = orderGroupsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
-                            setOrderGroups(newGroups);
+                            const newGroups = roundsRef.current.map(g => g.id === grp.id ? { ...g, name } : g);
+                            setRounds(newGroups);
                             pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
                             setRenamingGroupId(null);
                           }}
@@ -200,7 +206,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                         <button
                           className="flex-1 text-left px-2 py-1 text-xs flex items-center gap-2"
                           style={{ color: isActive ? gpFill : '#d1d5db' }}
-                          onClick={() => { setActiveOrderGroupId(grp.id); setShowGroupDropdown(false); setShowNewGroupInput(false); }}
+                          onClick={() => { setActiveRoundId(grp.id); setShowGroupDropdown(false); setShowNewGroupInput(false); }}
                         >
                           <span style={{ fontSize: '8px' }}>{isActive ? '●' : '○'}</span>
                           <span style={{ fontWeight: isActive ? 700 : 400 }}>{grp.name}</span>
@@ -215,7 +221,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                             setRenamingGroupId(grp.id);
                           }}
                           className="px-1 py-0.5 rounded text-gray-400 hover:text-white text-xs flex-shrink-0"
-                          title={t('tattingOrderGroupRename')}
+                          title={t('tattingOrderRoundRename')}
                         >✏️</button>
                       )}
                       {/* Delete — hover-reveal on all rows */}
@@ -224,22 +230,22 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                           e.stopPropagation();
                           setShowGroupDropdown(false);
                           setConfirmDialog({
-                            message: t('tattingOrderGroupDeleteConfirm').replace('{name}', grp.name),
+                            message: t('tattingOrderRoundDeleteConfirm').replace('{name}', grp.name),
                             confirmLabel: t('confirmDelete'),
                             onConfirm: () => {
                               const newEls = elementsRef.current.map(el =>
-                                el.orderGroup === grp.id ? { ...el, orderGroup: undefined } : el
+                                getRoundId(el) === grp.id ? { ...el, roundId: undefined, orderGroup: undefined } : el
                               );
-                              const newGroups = orderGroupsRef.current.filter(g => g.id !== grp.id);
+                              const newGroups = roundsRef.current.filter(g => g.id !== grp.id);
                               setElements(newEls);
-                              setOrderGroups(newGroups);
-                              if (activeOrderGroupId === grp.id) setActiveOrderGroupId(null);
+                              setRounds(newGroups);
+                              if (activeRoundId === grp.id) setActiveRoundId(null);
                               pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
                             }
                           });
                         }}
                         className="opacity-0 group-hover:opacity-100 px-1 py-0.5 rounded text-red-400 hover:text-red-200 text-xs flex-shrink-0"
-                        title={t('tattingOrderGroupDelete')}
+                        title={t('tattingOrderRoundDelete')}
                       >🗑</button>
                     </div>
                   );
@@ -258,11 +264,11 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
                           const name = newGroupNameInput.trim() ||
-                            t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                            t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1));
                           const id = crypto.randomUUID();
-                          const newGroups = [...orderGroupsRef.current, { id, name }];
-                          setOrderGroups(newGroups);
-                          setActiveOrderGroupId(id);
+                          const newGroups = [...roundsRef.current, { id, name }];
+                          setRounds(newGroups);
+                          setActiveRoundId(id);
                           setNewGroupNameInput('');
                           setShowNewGroupInput(false);
                           setShowGroupDropdown(false);
@@ -271,18 +277,18 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                         if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupNameInput(''); }
                       }}
                       onClick={e => e.stopPropagation()}
-                      placeholder={t('tattingOrderGroupNamePlaceholder')}
+                      placeholder={t('tattingOrderRoundNamePlaceholder')}
                       className="flex-1 px-2 py-0.5 bg-gray-600 border border-emerald-500 rounded text-white text-xs"
                     />
                     <button
                       onClick={e => {
                         e.stopPropagation();
                         const name = newGroupNameInput.trim() ||
-                          t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                          t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1));
                         const id = crypto.randomUUID();
-                        const newGroups = [...orderGroupsRef.current, { id, name }];
-                        setOrderGroups(newGroups);
-                        setActiveOrderGroupId(id);
+                        const newGroups = [...roundsRef.current, { id, name }];
+                        setRounds(newGroups);
+                        setActiveRoundId(id);
                         setNewGroupNameInput('');
                         setShowNewGroupInput(false);
                         setShowGroupDropdown(false);
@@ -299,12 +305,12 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                   <button
                     onClick={e => {
                       e.stopPropagation();
-                      setNewGroupNameInput(t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1)));
+                      setNewGroupNameInput(t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1)));
                       setShowNewGroupInput(true);
                     }}
                     className="w-full text-left px-3 py-1 text-xs text-emerald-400 hover:bg-gray-700 hover:text-emerald-300"
                   >
-                    {t('tattingOrderGroupNew')}
+                    {t('tattingOrderRoundNew')}
                   </button>
                 )}
               </div>
@@ -389,18 +395,18 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
               const hasNumber = selectedEl.orderNumber != null && String(selectedEl.orderNumber).trim() !== '';
               if (hasNumber) {
                 const newEls = elementsRef.current.map(e =>
-                  e.id === selectedEl.id ? { ...e, orderGroup: activeOrderGroupId ?? undefined } : e
+                  e.id === selectedEl.id ? { ...e, roundId: activeRoundId ?? undefined, orderGroup: undefined } : e
                 );
                 setElements(newEls);
-                pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
               } else {
                 const next = getNextAvailableNumber();
                 const newEls = elementsRef.current.map(e =>
-                  e.id === selectedEl.id ? { ...e, orderGroup: activeOrderGroupId ?? undefined, orderNumber: next } : e
+                  e.id === selectedEl.id ? { ...e, roundId: activeRoundId ?? undefined, orderGroup: undefined, orderNumber: next, isRepeat: false } : e
                 );
                 setElements(newEls);
                 setTattingOrderInput('');
-                pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
               }
             }}
             className="px-3 py-1 rounded text-xs font-semibold border"
@@ -410,7 +416,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
               color: activeBadgeFill,
             }}
           >
-            {t('tattingOrderAssignGroup')}: {activeGroup ? activeGroup.name : t('tattingOrderUngrouped')}
+            {t('tattingOrderAssignRound')}: {activeGroup ? activeGroup.name : t('tattingOrderUngrouped')}
           </button>
           <button
             onClick={() => {
@@ -418,7 +424,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
                 e.id === selectedEl.id ? { ...e, rw: !selectedEl.rw } : e
               );
               setElements(newEls);
-              pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+              pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
             }}
             className={`px-2 py-1 rounded text-xs font-bold border ${selectedEl.rw ? 'bg-amber-600 hover:bg-amber-700 border-amber-500 text-white' : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-300'}`}
             title={t('propRWTooltip')}
@@ -442,11 +448,12 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
             {t('tattingOrderClear')}
           </button>
           {selectedEl.orderNumber && (() => {
-            const selGi = selectedEl.orderGroup
-              ? orderGroups.findIndex(g => g.id === selectedEl.orderGroup)
+            const selRoundId = getRoundId(selectedEl);
+            const selGi = selRoundId
+              ? rounds.findIndex(g => g.id === selRoundId)
               : -1;
-            const [selFill] = ORDER_GROUP_COLORS[selGi >= 0 ? selGi % ORDER_GROUP_COLORS.length : 0];
-            const selGroupName = selGi >= 0 ? orderGroups[selGi]?.name : null;
+            const [selFill] = ORDER_GROUP_COLORS[selGi >= 0 ? (selGi + 1) % ORDER_GROUP_COLORS.length : 0];
+            const selGroupName = selGi >= 0 ? rounds[selGi]?.name : null;
             return (
               <span className="text-xs font-semibold" style={{ color: selFill }}>
                 {selGroupName ? `${selGroupName} #` : '#'}{selectedEl.orderNumber}

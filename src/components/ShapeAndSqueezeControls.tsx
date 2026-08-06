@@ -23,7 +23,7 @@ interface ShapeAndSqueezeControlsProps {
   pushHistoryState: (els: any[], conns: any[], groups?: any[]) => void;
   elementsRef: React.RefObject<any[]>;
   picotConnectionsRef: React.RefObject<any[]>;
-  orderGroupsRef: React.RefObject<any[]>;
+  roundsRef: React.RefObject<any[]>;
   toggleShape: () => void;
   convertToJosephineKnot: () => void;
   isInteractingRef: React.RefObject<boolean>;
@@ -38,7 +38,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
   pushHistoryState,
   elementsRef,
   picotConnectionsRef,
-  orderGroupsRef,
+  roundsRef,
   toggleShape,
   convertToJosephineKnot,
   isInteractingRef,
@@ -79,7 +79,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
                     const paths = applyRotationToPathData(el, createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
                     return { ...el, notation, shapeStyle: 'teardrop', paths };
                   }));
-                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
                 } else if (selectedElement.shapeStyle !== 'teardrop') {
                   toggleShape();
                 }
@@ -104,7 +104,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
                     const paths = applyRotationToPathData(el, createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
                     return { ...el, notation, shapeStyle: 'circle', paths };
                   }));
-                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
                 } else if (selectedElement.shapeStyle !== 'circle') {
                   toggleShape();
                 }

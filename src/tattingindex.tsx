@@ -482,8 +482,8 @@ const TattingDesigner = () => {
 
   // ── Tatting order state ──────────────────────────────────────────────────
   const {
-    orderGroups, setOrderGroups,
-    activeOrderGroupId, setActiveOrderGroupId,
+    rounds, setRounds,
+    activeRoundId, setActiveRoundId,
     tattingOrderConflict, setTattingOrderConflict,
     tattingOrderInput, setTattingOrderInput,
     newGroupNameInput, setNewGroupNameInput,
@@ -701,7 +701,7 @@ const APP_VERSION = '1.2.0-beta';
       return;
     }
     if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
-    pushHistoryState(elements, picotConnections, orderGroupsRef.current, polarGrids);
+    pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids);
   }, [elements, picotConnections, polarGrids]); // Depend on elements, connections, and polarGrids
 
   // Check Recent Projects entries' actual files for existence when the
@@ -737,8 +737,8 @@ const APP_VERSION = '1.2.0-beta';
   const selectedBEsRef = useRef(selectedBEs);
   const selectedPicotsRef = useRef([]);
   const beClipboardRef = useRef(beClipboard);
-  const orderGroupsRef = useRef(orderGroups);
-  const activeOrderGroupIdRef = useRef(activeOrderGroupId);
+  const roundsRef = useRef(rounds);
+  const activeRoundIdRef = useRef(activeRoundId);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
   const pivotOffsetRef = useRef({ x: 0, y: 0 });  // always-current mirror of pivotOffset state
   const pivotDragStartRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 }); // world pos + offset at drag start
@@ -765,8 +765,8 @@ const APP_VERSION = '1.2.0-beta';
     activeModeRef.current = activeMode;
     selectedBEsRef.current = selectedBEs;
     beClipboardRef.current = beClipboard;
-    orderGroupsRef.current = orderGroups;
-    activeOrderGroupIdRef.current = activeOrderGroupId;
+    roundsRef.current = rounds;
+    activeRoundIdRef.current = activeRoundId;
     selectedPicotsRef.current = selectedPicots;
     pivotOffsetRef.current = pivotOffset;
     movingPivotRef.current = movingPivot;
@@ -836,7 +836,7 @@ const APP_VERSION = '1.2.0-beta';
       setRenderMode(projectData.renderMode || 'schematic');
       setPatternNotes(projectData.patternNotes || '');
       if (projectData.materials) setMaterials(projectData.materials);
-      setOrderGroups(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
+      setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
       if (projectData.activeThreadPreset) {
         const preset = projectData.activeThreadPreset;
         setThreadPresets(prev => {
@@ -1788,10 +1788,10 @@ const APP_VERSION = '1.2.0-beta';
     elements, selectedIds, dsWidth, camera, zoom, polarGrids,
     elementById, selectedIdSet,
     beadLibrary, picotConnections,
-    canvasRef, elementsRef, selectedIdsRef, picotConnectionsRef, orderGroupsRef,
+    canvasRef, elementsRef, selectedIdsRef, picotConnectionsRef, roundsRef,
     clipboardRef, historyRef, historyIndexRef,
     isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef,
-    setElements, setSelectedIds, setPicotConnections, setOrderGroups,
+    setElements, setSelectedIds, setPicotConnections, setRounds,
     setClipboard, setGhostArrays, setHistoryIndex,
     setGroupRotationInput, setPolarGrids,
     pushHistoryState,
@@ -2333,25 +2333,35 @@ const APP_VERSION = '1.2.0-beta';
 
   // ── Tatting Order helpers ─────────────────────────────────────────────────
 
-  // Returns [fillColor, strokeColor] for an element's order badge based on its group.
-  // Ungrouped elements use index 0 (gold) — legacy single-color behavior.
-  // Grouped elements start from index 1 so Round 1 is visually distinct from ungrouped.
-  const getGroupBadgeColor = (el): [string, string] => {
-    if (!el.orderGroup) return ORDER_GROUP_COLORS[0];
-    const idx = orderGroups.findIndex(g => g.id === el.orderGroup);
+  // Legacy-read shim: elements loaded via applyProjectData (useProjectFile.ts, not
+  // renamed this session) still come back with the old `orderGroup` field. New/edited
+  // elements get the new `roundId` field. Read through this helper everywhere so both
+  // co-exist safely; every write below sets `roundId` and scrubs `orderGroup` on the
+  // touched element, so the legacy field self-heals away as elements get edited.
+  // (session 43: all known consumers — patternOutput.ts, svgExport.ts, useTattingOrder.ts,
+  // useHistoryActions.ts, ShapeAndSqueezeControls.tsx — are confirmed migrated or unaffected.)
+  const getRoundId = (el: any) => el?.roundId ?? el?.orderGroup;
+
+  // Returns [fillColor, strokeColor] for an element's order badge based on its round.
+  // Unassigned elements use index 0 (gold) — legacy single-color behavior.
+  // Assigned elements start from index 1 so Round 1 is visually distinct from unassigned.
+  const getRoundBadgeColor = (el): [string, string] => {
+    const roundId = getRoundId(el);
+    if (!roundId) return ORDER_GROUP_COLORS[0];
+    const idx = rounds.findIndex(g => g.id === roundId);
     return ORDER_GROUP_COLORS[idx >= 0 ? (idx + 1) % ORDER_GROUP_COLORS.length : 1];
   };
 
-  // Predicate: does element e belong to the currently active order scope?
-  // Ungrouped scope (activeOrderGroupId === null) → elements with no orderGroup.
-  // Group scope → elements whose orderGroup matches the active group id.
-  const inActiveGroup = (e: any) =>
-    activeOrderGroupId === null ? !e.orderGroup : e.orderGroup === activeOrderGroupId;
+  // Predicate: does element e belong to the currently active round scope?
+  // Unassigned scope (activeRoundId === null) → elements with no round.
+  // Round scope → elements whose round matches the active round id.
+  const inActiveRound = (e: any) =>
+    activeRoundId === null ? !getRoundId(e) : getRoundId(e) === activeRoundId;
 
   const getNextAvailableNumber = (): number => {
     const used = new Set(
       elements
-        .filter(inActiveGroup)
+        .filter(inActiveRound)
         .map(e => e.orderNumber)
         .filter(n => n !== null && n !== undefined && String(n).trim() !== '')
         .map(n => parseInt(String(n), 10))
@@ -2366,7 +2376,7 @@ const APP_VERSION = '1.2.0-beta';
     const existingEl = elements.find(
       e => e.id !== targetElId &&
         parseInt(String(e.orderNumber), 10) === num &&
-        inActiveGroup(e)
+        inActiveRound(e)
     );
     if (existingEl) {
       setTattingOrderConflict({ newNum: num, existingElId: existingEl.id, targetElId });
@@ -2374,32 +2384,32 @@ const APP_VERSION = '1.2.0-beta';
     }
     const newEls = elements.map(e =>
       e.id === targetElId
-        ? { ...e, orderNumber: num, orderGroup: activeOrderGroupId ?? undefined }
+        ? { ...e, orderNumber: num, isRepeat: false, roundId: activeRoundId ?? undefined, orderGroup: undefined }
         : e
     );
     setElements(newEls);
     setTattingOrderInput('');
-    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+    pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
   };
 
   const assignRepeat = (targetElId: string) => {
     const newEls = elements.map(e =>
       e.id === targetElId
-        ? { ...e, isRepeat: true, orderNumber: null, orderGroup: activeOrderGroupId ?? undefined }
+        ? { ...e, isRepeat: true, orderNumber: null, roundId: activeRoundId ?? undefined, orderGroup: undefined }
         : e
     );
     setElements(newEls);
     setTattingOrderInput('');
-    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+    pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
   };
 
   const clearOrderAssignment = (targetElId: string) => {
     const newEls = elementsRef.current.map(e =>
-      e.id === targetElId ? { ...e, orderNumber: null, orderGroup: undefined, isRepeat: false } : e
+      e.id === targetElId ? { ...e, orderNumber: null, roundId: undefined, orderGroup: undefined, isRepeat: false } : e
     );
     setElements(newEls);
     setTattingOrderInput('');
-    pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+    pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
   };
 
   const resolveTattingOrderConflict = (action: 'swap' | 'shift' | 'cancel') => {
@@ -2410,16 +2420,16 @@ const APP_VERSION = '1.2.0-beta';
       const targetEl = elementById.get(targetElId);
       const oldNum = targetEl?.orderNumber ?? null;
       newEls = elements.map(e => {
-        if (e.id === targetElId) return { ...e, orderNumber: newNum };
+        if (e.id === targetElId) return { ...e, orderNumber: newNum, isRepeat: false };
         if (e.id === existingElId) return { ...e, orderNumber: oldNum };
         return e;
       });
       setElements(newEls);
     } else if (action === 'shift') {
       newEls = elements.map(e => {
-        if (e.id === targetElId) return { ...e, orderNumber: newNum, orderGroup: activeOrderGroupId ?? undefined };
+        if (e.id === targetElId) return { ...e, orderNumber: newNum, isRepeat: false, roundId: activeRoundId ?? undefined, orderGroup: undefined };
         const n = parseInt(String(e.orderNumber), 10);
-        if (inActiveGroup(e) && !isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
+        if (inActiveRound(e) && !isNaN(n) && n >= newNum) return { ...e, orderNumber: n + 1 };
         return e;
       });
       setElements(newEls);
@@ -2427,7 +2437,7 @@ const APP_VERSION = '1.2.0-beta';
     setTattingOrderConflict(null);
     setTattingOrderInput('');
     if (action !== 'cancel') {
-      pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+      pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
     }
   };
   // Convenience: push a history snapshot after any tatting-order mutation.
@@ -2435,7 +2445,7 @@ const APP_VERSION = '1.2.0-beta';
   // we pass current ref values directly, this captures the pre-setState snapshot which
   // is fine for undo (React batches the update anyway).
   const pushOrderHistory = () => {
-    pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+    pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
   };
 
   // Shared commit logic for the order-number input (used in two prop-bar render sites).
@@ -2479,8 +2489,8 @@ const APP_VERSION = '1.2.0-beta';
     // Hide (don't delete) all polar grids — user can re-enable in the Polar Grid panel
     setPolarGrids(prev => prev.map(g => ({ ...g, visible: false })));
     setCurrentFilePath(null);
-    setOrderGroups([]);
-    setActiveOrderGroupId(null);
+    setRounds([]);
+    setActiveRoundId(null);
   };
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
@@ -2515,7 +2525,7 @@ const APP_VERSION = '1.2.0-beta';
 
   const generatePattern = useCallback(() => {
     const result = generatePatternText({
-      elements, picotConnections, orderGroups, materials, beadLibrary,
+      elements, picotConnections, rounds, materials, beadLibrary,
       threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
     });
     const notesBlock = patternNotes?.trim() ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
@@ -2524,7 +2534,7 @@ const APP_VERSION = '1.2.0-beta';
       () => { setLoadMsg({ type: 'success', text: t('notationCopied') }); setTimeout(() => setLoadMsg(null), 3000); },
       () => { setLoadMsg({ type: 'error', text: t('notationCopyFailed') }); setTimeout(() => setLoadMsg(null), 4000); }
     );
-  }, [elements, picotConnections, orderGroups, materials, beadLibrary,
+  }, [elements, picotConnections, rounds, materials, beadLibrary,
       threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
   // Export as PNG
 
@@ -2579,7 +2589,7 @@ const APP_VERSION = '1.2.0-beta';
 
   // Join/break actions delegated to useJoinActions hook
   const { joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins } = useJoinActions({
-    selectedPicotsRef, elementsRef, picotConnectionsRef, orderGroupsRef,
+    selectedPicotsRef, elementsRef, picotConnectionsRef, roundsRef,
     elementById, ghostArrays,
     setElements, setPicotConnections, setSelectedPicots, setGhostArrays,
     pushHistoryState, skipAutoHistoryRef,
@@ -2991,14 +3001,14 @@ const APP_VERSION = '1.2.0-beta';
   } = useProjectFile({
     elements, picotConnections, camera, zoom, dsWidth,
     bgColor, gridEnabled, customColors, referenceImage, refImageProps,
-    renderMode, patternNotes, materials, orderGroups, beadLibrary,
+    renderMode, patternNotes, materials, rounds, beadLibrary,
     polarGrids, selectedPolarGridId, threadPresets, activePresetId,
     projectName, currentFilePath,
     historyIndexRef, canvasRef,
     setElements, setPicotConnections, setCamera, setZoom, setDsWidth,
     setBgColor, setGridEnabled, setCustomColors, setReferenceImage, setRefImageProps,
     setProjectName, setRenderMode, setPatternNotes, setMaterials,
-    setOrderGroups, setActiveOrderGroupId, setPolarGrids, setSelectedPolarGridId,
+    setRounds, setActiveRoundId, setPolarGrids, setSelectedPolarGridId,
     setThreadPresets, setActivePresetId,
     setSelectedIds, setSelectedPicots,
     setHistory, setHistoryIndex, setCurrentFilePath, setLastSavedHistoryIndex,
@@ -3279,7 +3289,7 @@ const APP_VERSION = '1.2.0-beta';
   const commitSinglePathUpdate = (elId: string, newPath: any) => {
     const updated = elementsRef.current.map(e => e.id === elId ? { ...e, paths: [newPath] } : e);
     setElements(updated);
-    pushHistoryState(updated, picotConnectionsRef.current, orderGroupsRef.current);
+    pushHistoryState(updated, picotConnectionsRef.current, roundsRef.current);
   };
 
 
@@ -3290,7 +3300,7 @@ const APP_VERSION = '1.2.0-beta';
     movingPivot, rotationHandle, pivotOffset, rulerPoints,
     snapEnabled, snapRadius, orthoLock, isShiftHeld, showRotationHandles,
     polarGrids, picotConnections, selectedBEs, selectedPicots,
-    chainPresetSymmetric, orderGroups,
+    chainPresetSymmetric, rounds,
     pathDragStartRef, lastMousePosRef, isInteractingRef, draggedHandleRef,
     rotationDragStartRef, dragOffsetRef, pivotDragStartRef, pivotOffsetRef,
     rafIdRef, pendingMouseEventRef, handleMouseMoveInternalRef,
@@ -3550,45 +3560,45 @@ const APP_VERSION = '1.2.0-beta';
         } else if (e.key === 'PageUp') {
           // PgUp — move to next group (higher round number), create one if at the end
           e.preventDefault();
-          const groups = orderGroupsRef.current;
-          if (activeOrderGroupIdRef.current === null) {
+          const groups = roundsRef.current;
+          if (activeRoundIdRef.current === null) {
             // Ungrouped → first group
             if (groups.length > 0) {
-              setActiveOrderGroupId(groups[0].id);
+              setActiveRoundId(groups[0].id);
             } else {
               // No groups yet — create the first one
-              const name = t('tattingOrderGroupDefault').replace('{n}', '1');
+              const name = t('tattingOrderRoundDefault').replace('{n}', '1');
               const id = crypto.randomUUID();
               const newGroups = [{ id, name }];
-              setOrderGroups(newGroups);
-              setActiveOrderGroupId(id);
+              setRounds(newGroups);
+              setActiveRoundId(id);
               pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
             }
           } else {
-            const idx = groups.findIndex(g => g.id === activeOrderGroupIdRef.current);
+            const idx = groups.findIndex(g => g.id === activeRoundIdRef.current);
             if (idx < groups.length - 1) {
               // Move to next group
-              setActiveOrderGroupId(groups[idx + 1].id);
+              setActiveRoundId(groups[idx + 1].id);
             } else {
               // At last group — create a new one
-              const name = t('tattingOrderGroupDefault').replace('{n}', String(groups.length + 1));
+              const name = t('tattingOrderRoundDefault').replace('{n}', String(groups.length + 1));
               const id = crypto.randomUUID();
               const newGroups = [...groups, { id, name }];
-              setOrderGroups(newGroups);
-              setActiveOrderGroupId(id);
+              setRounds(newGroups);
+              setActiveRoundId(id);
               pushHistoryState(elementsRef.current, picotConnectionsRef.current, newGroups);
             }
           }
         } else if (e.key === 'PageDown') {
           // PgDn — move to previous group (lower round number), back to ungrouped if at first
           e.preventDefault();
-          const groups = orderGroupsRef.current;
-          if (activeOrderGroupIdRef.current !== null) {
-            const idx = groups.findIndex(g => g.id === activeOrderGroupIdRef.current);
+          const groups = roundsRef.current;
+          if (activeRoundIdRef.current !== null) {
+            const idx = groups.findIndex(g => g.id === activeRoundIdRef.current);
             if (idx === 0) {
-              setActiveOrderGroupId(null); // back to ungrouped
+              setActiveRoundId(null); // back to ungrouped
             } else if (idx > 0) {
-              setActiveOrderGroupId(groups[idx - 1].id);
+              setActiveRoundId(groups[idx - 1].id);
             }
           }
           // Already ungrouped — PgDn is a no-op (nothing lower to go to)
@@ -3962,7 +3972,7 @@ const APP_VERSION = '1.2.0-beta';
     });
 
     setElements(updated);
-    pushHistoryState(updated, picotConnectionsRef.current, orderGroupsRef.current);
+    pushHistoryState(updated, picotConnectionsRef.current, roundsRef.current);
   };
 
   // Update ghosts when mother element changes (notation, rotation, shape, etc.)
@@ -4076,7 +4086,7 @@ const APP_VERSION = '1.2.0-beta';
           setElements(finalElements);
         }
 
-        pushHistoryState(finalElements, newConns, orderGroupsRef.current);
+        pushHistoryState(finalElements, newConns, roundsRef.current);
       },
     });
   };
@@ -5930,7 +5940,7 @@ const APP_VERSION = '1.2.0-beta';
         onMouseUp={() => {
           if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
           if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
           }
           nudgeActiveRef.current = false;
           nudgeAccumulatedDeltaRef.current = 0;
@@ -5938,7 +5948,7 @@ const APP_VERSION = '1.2.0-beta';
         onMouseLeave={() => {
           if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
           if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
           }
           nudgeActiveRef.current = false;
           nudgeAccumulatedDeltaRef.current = 0;
@@ -5960,7 +5970,7 @@ const APP_VERSION = '1.2.0-beta';
         onMouseUp={() => {
           if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
           if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
           }
           nudgeActiveRef.current = false;
           nudgeAccumulatedDeltaRef.current = 0;
@@ -5968,7 +5978,7 @@ const APP_VERSION = '1.2.0-beta';
         onMouseLeave={() => {
           if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
           if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, orderGroupsRef.current);
+            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
           }
           nudgeActiveRef.current = false;
           nudgeAccumulatedDeltaRef.current = 0;
@@ -6482,10 +6492,10 @@ const APP_VERSION = '1.2.0-beta';
             <TattingOrderModeBar
               elements={elements}
               selectedElement={selectedElement}
-              orderGroups={orderGroups}
-              orderGroupsRef={orderGroupsRef}
-              activeOrderGroupId={activeOrderGroupId}
-              setActiveOrderGroupId={setActiveOrderGroupId}
+              rounds={rounds}
+              roundsRef={roundsRef}
+              activeRoundId={activeRoundId}
+              setActiveRoundId={setActiveRoundId}
               groupDropdownButtonRef={groupDropdownButtonRef}
               showGroupDropdown={showGroupDropdown}
               setShowGroupDropdown={setShowGroupDropdown}
@@ -6497,7 +6507,7 @@ const APP_VERSION = '1.2.0-beta';
               setRenamingGroupId={setRenamingGroupId}
               renameGroupInput={renameGroupInput}
               setRenameGroupInput={setRenameGroupInput}
-              setOrderGroups={setOrderGroups}
+              setRounds={setRounds}
               pushHistoryState={pushHistoryState}
               elementsRef={elementsRef}
               picotConnectionsRef={picotConnectionsRef}
@@ -6512,7 +6522,7 @@ const APP_VERSION = '1.2.0-beta';
               setElements={setElements}
               assignRepeat={assignRepeat}
               clearOrderAssignment={clearOrderAssignment}
-              inActiveGroup={inActiveGroup}
+              inActiveRound={inActiveRound}
               t={t}
             />
           ) : selectedElement ? (
@@ -6538,32 +6548,32 @@ const APP_VERSION = '1.2.0-beta';
                       buttonRef={propBarGroupButtonRef}
                       isOpen={showPropBarGroupDropdown}
                       onToggle={() => setShowPropBarGroupDropdown(d => !d)}
-                      currentGroupId={selectedElement?.orderGroup}
-                      orderGroups={orderGroups}
+                      currentGroupId={getRoundId(selectedElement)}
+                      rounds={rounds}
                       onSelectUngrouped={() => {
-                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: undefined } : el);
+                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, roundId: undefined, orderGroup: undefined } : el);
                         setElements(newEls);
                         setShowPropBarGroupDropdown(false);
-                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                        pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
                       }}
                       onSelectGroup={(groupId) => {
-                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: groupId } : el);
+                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, roundId: groupId, orderGroup: undefined } : el);
                         setElements(newEls);
                         setShowPropBarGroupDropdown(false);
-                        pushHistoryState(newEls, picotConnectionsRef.current, orderGroupsRef.current);
+                        pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
                       }}
                       onCreateNew={() => {
-                        const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                        const name = t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1));
                         const id = crypto.randomUUID();
-                        const newGroups = [...orderGroupsRef.current, { id, name }];
-                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, orderGroup: id } : el);
-                        setOrderGroups(newGroups);
+                        const newGroups = [...roundsRef.current, { id, name }];
+                        const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, roundId: id, orderGroup: undefined } : el);
+                        setRounds(newGroups);
                         setElements(newEls);
                         setShowPropBarGroupDropdown(false);
                         pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
                       }}
                       ungroupedLabel={t('tattingOrderUngrouped')}
-                      createNewLabel={t('tattingOrderGroupNew')}
+                      createNewLabel={t('tattingOrderRoundNew')}
                     />
                     {/* ── Line bead picker ── */}
                     <LineBeadPicker
@@ -6941,28 +6951,28 @@ const APP_VERSION = '1.2.0-beta';
                 buttonRef={propBarGroupButtonRef}
                 isOpen={showPropBarGroupDropdown}
                 onToggle={() => setShowPropBarGroupDropdown(d => !d)}
-                currentGroupId={selectedElement?.orderGroup}
-                orderGroups={orderGroups}
+                currentGroupId={getRoundId(selectedElement)}
+                rounds={rounds}
                 onSelectUngrouped={() => {
-                  setElements(prev => updateElement(prev, selectedElement.id, { orderGroup: undefined }));
+                  setElements(prev => updateElement(prev, selectedElement.id, { roundId: undefined, orderGroup: undefined }));
                   setShowPropBarGroupDropdown(false);
                   pushOrderHistory();
                 }}
                 onSelectGroup={(groupId) => {
-                  setElements(prev => updateElement(prev, selectedElement.id, { orderGroup: groupId }));
+                  setElements(prev => updateElement(prev, selectedElement.id, { roundId: groupId, orderGroup: undefined }));
                   setShowPropBarGroupDropdown(false);
                   pushOrderHistory();
                 }}
                 onCreateNew={() => {
-                  const name = t('tattingOrderGroupDefault').replace('{n}', String(orderGroups.length + 1));
+                  const name = t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1));
                   const id = crypto.randomUUID();
-                  setOrderGroups(prev => [...prev, { id, name }]);
-                  setElements(prev => updateElement(prev, selectedElement.id, { orderGroup: id }));
+                  setRounds(prev => [...prev, { id, name }]);
+                  setElements(prev => updateElement(prev, selectedElement.id, { roundId: id, orderGroup: undefined }));
                   setShowPropBarGroupDropdown(false);
                   setTimeout(() => pushOrderHistory(), 0);
                 }}
                 ungroupedLabel={t('tattingOrderUngrouped')}
-                createNewLabel={t('tattingOrderGroupNew')}
+                createNewLabel={t('tattingOrderRoundNew')}
                 triggerTitle={t('tattingOrderGroupTitle') || 'Assign to round'}
                 wrapperClassName="relative flex-shrink-0 top-toolbar-scalable"
               />
@@ -6984,7 +6994,7 @@ const APP_VERSION = '1.2.0-beta';
                 pushHistoryState={pushHistoryState}
                 elementsRef={elementsRef}
                 picotConnectionsRef={picotConnectionsRef}
-                orderGroupsRef={orderGroupsRef}
+                roundsRef={roundsRef}
                 toggleShape={toggleShape}
                 convertToJosephineKnot={convertToJosephineKnot}
                 isInteractingRef={isInteractingRef}
@@ -8270,7 +8280,7 @@ const APP_VERSION = '1.2.0-beta';
                       )}
                       <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                        const [_fill, _stroke] = getGroupBadgeColor(el);
+                        const [_fill, _stroke] = getRoundBadgeColor(el);
                         return (
                           <text
                             data-layer="order"
@@ -8408,7 +8418,7 @@ const APP_VERSION = '1.2.0-beta';
                             if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
                             acc += seg;
                           }
-                          const [_f3, _s3] = getGroupBadgeColor(el);
+                          const [_f3, _s3] = getRoundBadgeColor(el);
                           return <text data-layer="order" x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                         {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && el.paths?.length > 0 && (
@@ -8625,7 +8635,7 @@ const APP_VERSION = '1.2.0-beta';
                               acc += seg;
                             }
                           }
-                          const [_f5, _s5] = getGroupBadgeColor(el);
+                          const [_f5, _s5] = getRoundBadgeColor(el);
                           return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
                         {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (

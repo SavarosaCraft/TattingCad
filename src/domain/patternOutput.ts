@@ -20,7 +20,7 @@ const DEFAULT_THREAD_PRESET = {
 export interface GeneratePatternParams {
   elements: any[];
   picotConnections: any[];
-  orderGroups: any[];
+  rounds: any[];
   materials: any[];
   beadLibrary: any[];
   threadPresets: any[];
@@ -41,9 +41,14 @@ export interface GeneratePatternResult {
 // Otherwise returns { text, elementCount } and the caller copies text to clipboard.
 export function generatePatternText(params: GeneratePatternParams): GeneratePatternResult | null {
   const {
-    elements, picotConnections, orderGroups, materials, beadLibrary,
+    elements, picotConnections, rounds, materials, beadLibrary,
     threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
   } = params;
+
+  // Legacy-read shim (session 43 naming-collision fix): elements may still carry the
+  // old `orderGroup` field if this function is ever called with data that bypassed the
+  // app's normal load path. Reads go through this helper everywhere.
+  const getRoundId = (el: any) => el?.roundId ?? el?.orderGroup;
 
   // O(1) element lookup — built here rather than passed in
   const elementById = new Map(elements.map(e => [e.id, e]));
@@ -66,7 +71,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     if (!num) return `${typeLabel}#?`;
     const samNumEls = elements.filter(e => e.orderNumber?.toString().trim() === num);
     if (samNumEls.length > 1) {
-      const grp = el.orderGroup ? orderGroups.find(g => g.id === el.orderGroup) : null;
+      const grp = getRoundId(el) ? rounds.find(g => g.id === getRoundId(el)) : null;
       const qualifier = grp ? `/${grp.name.replace(/\s+/g, '')}` : '/ungrouped';
       return `${typeLabel}#${num}${qualifier}`;
     }
@@ -223,7 +228,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   {
     const groupNumCount: Record<string, number> = {};
     orderedElements.forEach(item => {
-      const gKey = (item.element.orderGroup ?? '') + '|' + item.rawOrder;
+      const gKey = (getRoundId(item.element) ?? '') + '|' + item.rawOrder;
       groupNumCount[gKey] = (groupNumCount[gKey] || 0) + 1;
     });
     Object.entries(groupNumCount).forEach(([k, count]) => {
@@ -252,9 +257,9 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   // ── Element line renderer ──────────────────────────────────────────────
   const renderElementLine = (item: any): string => {
     const el = item.element;
-    const gKey = (el.orderGroup ?? '') + '|' + item.rawOrder;
+    const gKey = (getRoundId(el) ?? '') + '|' + item.rawOrder;
     const isDup = orderedElements.filter(x =>
-      (x.element.orderGroup ?? '') + '|' + x.rawOrder === gKey
+      (getRoundId(x.element) ?? '') + '|' + x.rawOrder === gKey
     ).length > 1;
     const dupWarning = isDup ? ' ⚠DUPLICATE#' : '';
     if (el.type === 'line') return `${item.rawOrder}${dupWarning}. [Line]`;
@@ -264,19 +269,19 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   };
 
   // ── Pattern body — grouped or flat ────────────────────────────────────
-  const hasAnyGroup = orderedElements.some(item => item.element.orderGroup);
+  const hasAnyGroup = orderedElements.some(item => getRoundId(item.element));
   let patternBody: string;
 
   if (hasAnyGroup) {
     const sections: string[] = [];
-    for (const group of orderGroups) {
-      const groupItems = orderedElements.filter(item => item.element.orderGroup === group.id);
+    for (const group of rounds) {
+      const groupItems = orderedElements.filter(item => getRoundId(item.element) === group.id);
       if (groupItems.length === 0) continue;
       sections.push(`=== ${group.name} ===\n` + groupItems.map(renderElementLine).join('\n'));
     }
-    const knownGroupIds = new Set(orderGroups.map(g => g.id));
+    const knownGroupIds = new Set(rounds.map(g => g.id));
     const ungroupedItems = orderedElements.filter(item =>
-      !item.element.orderGroup || !knownGroupIds.has(item.element.orderGroup)
+      !getRoundId(item.element) || !knownGroupIds.has(getRoundId(item.element))
     );
     if (ungroupedItems.length > 0) {
       sections.push(`=== Ungrouped ===\n` + ungroupedItems.map(renderElementLine).join('\n'));
