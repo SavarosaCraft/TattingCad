@@ -20,6 +20,7 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     conns: any[],
     groups?: any[],
     grids?: any[],
+    spatialGroups?: any[],
   ) => {
     const currentHistory = p.historyRef.current;
     const currentIndex = p.historyIndexRef.current;
@@ -31,22 +32,32 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     // touch grids and only pass (els, conns, groups). Only the primary
     // auto-push effect in tattingindex.tsx passes a real 4th argument.
     const normalGrids = grids ?? (currentState?.polarGrids ?? []);
-    const newStateStr = JSON.stringify({ elements: els, connections: conns, rounds: normalGroups, polarGrids: normalGrids });
+    // Named/colored spatial-group registry (Design Discussion #2/#3, distinct
+    // from the `groups` param above — that one is actually the `rounds`
+    // registry; naming collision predates this addition). Same carry-forward
+    // policy as polarGrids, for the same reason: most call sites only ever
+    // pass (els, conns, rounds) and shouldn't wipe this on every push.
+    // groupSelected/ungroupSelected (useEditorActions.ts) pass it explicitly
+    // when the registry itself changes.
+    const normalSpatialGroups = spatialGroups ?? (currentState?.spatialGroups ?? []);
+    const newStateStr = JSON.stringify({ elements: els, connections: conns, rounds: normalGroups, polarGrids: normalGrids, spatialGroups: normalSpatialGroups });
     const oldStateStr = currentState
       ? JSON.stringify({
           elements: currentState.elements,
           connections: currentState.connections,
           rounds: currentState.rounds ?? [],
           polarGrids: currentState.polarGrids ?? [],
+          spatialGroups: currentState.spatialGroups ?? [],
         })
       : null;
     if (oldStateStr === newStateStr) return;
 
     const cloned = {
-      elements:    JSON.parse(JSON.stringify(els)),
-      connections: JSON.parse(JSON.stringify(conns)),
-      rounds:      JSON.parse(JSON.stringify(normalGroups)),
-      polarGrids:  JSON.parse(JSON.stringify(normalGrids)),
+      elements:      JSON.parse(JSON.stringify(els)),
+      connections:   JSON.parse(JSON.stringify(conns)),
+      rounds:        JSON.parse(JSON.stringify(normalGroups)),
+      polarGrids:    JSON.parse(JSON.stringify(normalGrids)),
+      spatialGroups: JSON.parse(JSON.stringify(normalSpatialGroups)),
     };
 
     const newHistory = currentHistory.slice(0, currentIndex + 1);

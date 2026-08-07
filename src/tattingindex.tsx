@@ -449,6 +449,17 @@ const TattingDesigner = () => {
   // useUIState is revisited.
   const [missingRecentPaths, setMissingRecentPaths] = useState<Set<string>>(new Set());
 
+  // Named/colored spatial-group registry — { id, name, color }[], mirrors the
+  // `rounds` registry shape (see useTattingOrder). Kept as local state here
+  // rather than folded into a dedicated hook (no such hook exists/was
+  // uploaded this session) — candidate to extract later, same as
+  // missingRecentPaths above. Entries are created lazily: groupSelected()
+  // (useEditorActions.ts) appends a default entry when a new groupId is
+  // assigned; the property bar (MultiSelectSummaryBar) upserts on rename/recolor.
+  // Wired into undo/redo via pushHistoryState's `spatialGroups` param
+  // (useHistoryActions.ts) — restored in undo()/redo() alongside rounds/grids.
+  const [groups, setGroups] = useState<{id: string; name: string; color: string}[]>([]);
+
   // Toast helper — sets the load/save message and auto-dismisses it.
   const showLoadMsg = useCallback((type: 'success' | 'error', text: string) => {
     setLoadMsg({ type, text });
@@ -701,7 +712,7 @@ const APP_VERSION = '1.2.0-beta';
       return;
     }
     if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
-    pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids);
+    pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids, groupsRef.current);
   }, [elements, picotConnections, polarGrids]); // Depend on elements, connections, and polarGrids
 
   // Check Recent Projects entries' actual files for existence when the
@@ -738,6 +749,7 @@ const APP_VERSION = '1.2.0-beta';
   const selectedPicotsRef = useRef([]);
   const beClipboardRef = useRef(beClipboard);
   const roundsRef = useRef(rounds);
+  const groupsRef = useRef(groups); // mirrors roundsRef — see `groups` state declaration above
   const activeRoundIdRef = useRef(activeRoundId);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
   const pivotOffsetRef = useRef({ x: 0, y: 0 });  // always-current mirror of pivotOffset state
@@ -766,6 +778,7 @@ const APP_VERSION = '1.2.0-beta';
     selectedBEsRef.current = selectedBEs;
     beClipboardRef.current = beClipboard;
     roundsRef.current = rounds;
+    groupsRef.current = groups;
     activeRoundIdRef.current = activeRoundId;
     selectedPicotsRef.current = selectedPicots;
     pivotOffsetRef.current = pivotOffset;
@@ -1789,11 +1802,15 @@ const APP_VERSION = '1.2.0-beta';
     elementById, selectedIdSet,
     beadLibrary, picotConnections,
     canvasRef, elementsRef, selectedIdsRef, picotConnectionsRef, roundsRef,
+    groupsRef,
     clipboardRef, historyRef, historyIndexRef,
     isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef,
     setElements, setSelectedIds, setPicotConnections, setRounds,
+    setGroups,
     setClipboard, setGhostArrays, setHistoryIndex,
     setGroupRotationInput, setPolarGrids,
+    setConfirmDialog,
+    t,
     pushHistoryState,
   });
 
@@ -2357,6 +2374,49 @@ const APP_VERSION = '1.2.0-beta';
   // Round scope → elements whose round matches the active round id.
   const inActiveRound = (e: any) =>
     activeRoundId === null ? !getRoundId(e) : getRoundId(e) === activeRoundId;
+
+  // Returns the fill color for a spatial group's overlay box + badge.
+  // Prefers the registry's explicit color (user-set or default assigned at
+  // creation by groupSelected in useEditorActions.ts); falls back to the
+  // same ORDER_GROUP_COLORS palette rounds use (index 1+, so it doesn't
+  // collide with slot 0's "unassigned" gold) for a group with no registry
+  // entry yet — e.g. a legacy save's bare groupId with nothing in `groups`.
+  const getGroupColor = (groupId: string): string => {
+    const entry = groups.find(g => g.id === groupId);
+    if (entry?.color) return entry.color;
+    const idx = groups.findIndex(g => g.id === groupId);
+    return ORDER_GROUP_COLORS[idx >= 0 ? (idx + 1) % ORDER_GROUP_COLORS.length : 1][0];
+  };
+
+  const getGroupName = (groupId: string): string =>
+    groups.find(g => g.id === groupId)?.name ?? t('groupDefaultName');
+
+  // Live-recomputed bounding boxes for every spatial group present in
+  // `elements` — NOT a real element, per Design Discussion #2's agreed
+  // approach (avoids a new pseudo-type every type-branch would need to
+  // handle). Buckets by groupId, reuses the existing getSelectionBoundingBox
+  // helper (already used for alignment ops) rather than a new implementation.
+  const groupBoxes = useMemo(() => {
+    const byGroup = new Map<string, any[]>();
+    elements.forEach(el => {
+      if (!el.groupId) return;
+      if (!byGroup.has(el.groupId)) byGroup.set(el.groupId, []);
+      byGroup.get(el.groupId)!.push(el);
+    });
+    const PAD = 14; // px padding around the tight element bounds, in world units
+    return Array.from(byGroup.entries())
+      .filter(([, els]) => els.length > 1) // a "group" of 1 (partial ungroup remainder) draws no box
+      .map(([groupId, els]) => {
+        const b = getSelectionBoundingBox(els);
+        return {
+          groupId,
+          name: getGroupName(groupId),
+          color: getGroupColor(groupId),
+          minX: b.minX - PAD, minY: b.minY - PAD,
+          maxX: b.maxX + PAD, maxY: b.maxY + PAD,
+        };
+      });
+  }, [elements, groups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getNextAvailableNumber = (): number => {
     const used = new Set(
@@ -7119,6 +7179,11 @@ const APP_VERSION = '1.2.0-beta';
                 scaleNotation={scaleNotation}
                 autoCompact={autoCompact}
                 updateNotationForMultiple={updateNotationForMultiple}
+                groups={groups}
+                setGroups={setGroups}
+                picotConnections={picotConnections}
+                rounds={rounds}
+                pushHistoryState={pushHistoryState}
                 t={t}
               />
             
@@ -8264,20 +8329,9 @@ const APP_VERSION = '1.2.0-beta';
                           strokeDasharray="5,5"
                         />
                       )}
-                      {el.groupId && (
-                        <text
-                          data-layer="groups"
-                          x={el.center.x}
-                          y={el.center.y + radius + 20}
-                          fill="#10B981"
-                          fontSize={notationFS}
-                          fontWeight="bold"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                        >
-                          G
-                        </text>
-                      )}
+                      {/* Per-element "G" badge removed — superseded by the
+                          dashed-box group overlay + corner badge rendered
+                          once per group (see groupBoxes render pass). */}
                       <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
                         const [_fill, _stroke] = getRoundBadgeColor(el);
@@ -8641,20 +8695,8 @@ const APP_VERSION = '1.2.0-beta';
                         {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (
                           <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
                         )}
-                        {el.groupId && (
-                          <text
-                            data-layer="groups"
-                            x={el.center.x}
-                            y={el.center.y + 60}
-                            fill="#10B981"
-                            fontSize={notationFS}
-                            fontWeight="bold"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            G
-                          </text>
-                        )}
+                        {/* Per-element "G" badge removed — superseded by the
+                            dashed-box group overlay + corner badge. */}
                       </>
                     )}
                     </>
@@ -8938,6 +8980,39 @@ const APP_VERSION = '1.2.0-beta';
                   );
                 });
               })}
+
+              {/* ── Spatial group overlay: dashed box + corner name badge ─────────
+                  Design Discussion #2. One pass over groupBoxes (already bucketed/
+                  bounded via getSelectionBoundingBox), not per-element — replaces
+                  the old per-element unlabeled "G" text badge. Same visibility
+                  rule the old badge had (schematic modes only; not realistic-mode
+                  bakedRealisticSVG render, which has no per-element pass to hang
+                  this off of anyway). Cosmetic note: an axis-aligned box around
+                  rotated group content will visibly grow/shrink as the group
+                  rotates — expected, agreed in design discussion, not a bug. */}
+              {renderMode !== 'realistic' && groupBoxes.map(box => (
+                <g key={`group-box-${box.groupId}`} data-ui="1" data-layer="groups">
+                  <rect
+                    x={box.minX} y={box.minY}
+                    width={box.maxX - box.minX} height={box.maxY - box.minY}
+                    fill="none"
+                    stroke={box.color}
+                    strokeWidth={2 / zoom}
+                    strokeDasharray={`${6 / zoom},${4 / zoom}`}
+                  />
+                  <text
+                    x={box.minX}
+                    y={box.maxY + (16 / zoom)}
+                    fill={box.color}
+                    fontSize={notationFS}
+                    fontWeight="bold"
+                    textAnchor="start"
+                    dominantBaseline="hanging"
+                  >
+                    {box.name}
+                  </text>
+                </g>
+              ))}
 
               {/* ── Ruler tool overlay ─────────────────────────────────────────── */}
               {currentTool === 'ruler' && (() => {

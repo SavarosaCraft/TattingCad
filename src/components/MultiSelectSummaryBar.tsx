@@ -71,6 +71,11 @@ interface MultiSelectSummaryBarProps {
   scaleNotation: (notation: string, picots: any[], factor: number) => any;
   autoCompact: (notation: string, resultZeroWidth: any[]) => string;
   updateNotationForMultiple: (targets: Array<{ elementId: string; notation: string }>, opts: any) => void;
+  groups: Array<{ id: string; name: string; color: string }>;
+  setGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
+  picotConnections: any[];
+  rounds: any[];
+  pushHistoryState: (elements: any[], picotConnections: any[], rounds?: any[], polarGrids?: any[], spatialGroups?: any[]) => void;
   t: (key: string) => string;
 }
 
@@ -111,6 +116,11 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   scaleNotation,
   autoCompact,
   updateNotationForMultiple,
+  groups,
+  setGroups,
+  picotConnections,
+  rounds,
+  pushHistoryState,
   t,
 }) => {
   if (selectedIds.length === 0) return null;
@@ -123,8 +133,54 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
       // Group is selected - show group controls
       return (
       <>
-        <div className="text-sm text-gray-300 px-2">
-          Group Selected ({groupElements.length} elements)
+        {/* Row: group name + color (Design Discussion #2), with the
+            "Group Selected (N)" status label folded in after the color
+            swatch (moved off its own line per follow-up request). `w-full` +
+            `basis-full` force this onto its own line in the property bar's
+            flex-wrap container, matching every other cluster in this bar.
+            Name/color upsert into the `groups` registry — creates the entry
+            on first edit if groupSelected's default (useEditorActions.ts)
+            hasn't run yet, e.g. a legacy save with a bare groupId and no
+            registry entry. */}
+        <div className="flex items-center gap-2 w-full basis-full px-2 top-toolbar-scalable">
+          <input
+            type="text"
+            key={firstElement.groupId}
+            defaultValue={groups.find(g => g.id === firstElement.groupId)?.name ?? ''}
+            placeholder={t('groupNamePlaceholder')}
+            onBlur={(e) => {
+              const name = e.target.value.trim();
+              if (!name) return;
+              const gid = firstElement.groupId;
+              const nextGroups = groups.some(g => g.id === gid)
+                ? groups.map(g => g.id === gid ? { ...g, name } : g)
+                : [...groups, { id: gid, name, color: '#10B981' }];
+              setGroups(nextGroups);
+              pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+            className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white flex-1 min-w-0"
+            style={{ maxWidth: '180px' }}
+            title={t('groupNamePlaceholder')}
+          />
+          <input
+            type="color"
+            value={groups.find(g => g.id === firstElement.groupId)?.color ?? '#10B981'}
+            onChange={(e) => {
+              const color = e.target.value;
+              const gid = firstElement.groupId;
+              const nextGroups = groups.some(g => g.id === gid)
+                ? groups.map(g => g.id === gid ? { ...g, color } : g)
+                : [...groups, { id: gid, name: `Group`, color }];
+              setGroups(nextGroups);
+              pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
+            }}
+            title={t('groupColorLabel')}
+            className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer flex-shrink-0"
+          />
+          <div className="text-sm text-gray-300 whitespace-nowrap">
+            Group Selected ({groupElements.length} elements)
+          </div>
         </div>
 
         {/* Group Rotation + Flip — same cluster as single elements */}

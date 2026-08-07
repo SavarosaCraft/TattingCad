@@ -25,6 +25,7 @@ import {
   rotatePaths,
 } from '../geometry/paths';
 import { writeText as tauriWrite, readText as tauriRead } from '@tauri-apps/plugin-clipboard-manager';
+import { ORDER_GROUP_COLORS } from '../render/svgExport';
 
 // Use Tauri native clipboard when available (avoids browser permission prompts).
 // Falls back to navigator.clipboard when running in browser dev server.
@@ -53,6 +54,7 @@ export interface UseEditorActionsParams {
   selectedIdsRef: React.RefObject<string[]>;
   picotConnectionsRef: React.RefObject<any[]>;
   roundsRef: React.RefObject<any[]>;
+  groupsRef: React.RefObject<any[]>; // spatial-group registry {id,name,color}[] — see Design Discussion #2
   clipboardRef: React.RefObject<any[]>;
   historyRef: React.RefObject<any[]>;
   historyIndexRef: React.RefObject<number>;
@@ -66,13 +68,16 @@ export interface UseEditorActionsParams {
   setSelectedIds: (ids: string[]) => void;
   setPicotConnections: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setRounds: (fn: ((prev: any[]) => any[]) | any[]) => void;
+  setGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
+  setConfirmDialog: (dialog: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void } | null) => void;
+  t: (key: string) => string;
   setClipboard: (items: any[]) => void;
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
   setGroupRotationInput: (val: string) => void;
   setPolarGrids: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
-  pushHistoryState: (elements: any[], picotConnections: any[], rounds?: any[], polarGrids?: any[]) => void;
+  pushHistoryState: (elements: any[], picotConnections: any[], rounds?: any[], polarGrids?: any[], spatialGroups?: any[]) => void;
 }
 
 export function useEditorActions(p: UseEditorActionsParams) {
@@ -374,6 +379,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       p.setPicotConnections(restoredConns);
       if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
       if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
+      if (state.spatialGroups) p.setGroups(JSON.parse(JSON.stringify(state.spatialGroups)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
     }
@@ -392,6 +398,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       p.setPicotConnections(restoredConns);
       if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
       if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
+      if (state.spatialGroups) p.setGroups(JSON.parse(JSON.stringify(state.spatialGroups)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
     }
@@ -573,18 +580,112 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const groupSelected = useCallback(() => {
     const ids = p.selectedIdsRef.current;
     if (ids.length < 2) return;
-    const groupId = generateId();
-    p.setElements(prev => prev.map(el => ids.includes(el.id) ? { ...el, groupId } : el));
+
+    const currentElements = p.elementsRef.current;
+    const selectedEls = currentElements.filter(el => ids.includes(el.id));
+    const touchedGroupIds = new Set(selectedEls.map(el => el.groupId).filter(Boolean));
+
+    // True no-op (Design Discussion #3): selection is exactly one pre-existing
+    // group's full membership and Group is hit again — nothing would change.
+    // Skip silently: no popup, no new id, no registry churn.
+    if (touchedGroupIds.size === 1) {
+      const [onlyGroupId] = touchedGroupIds;
+      const fullMembers = currentElements.filter(el => el.groupId === onlyGroupId);
+      const isExactRehit = fullMembers.length === selectedEls.length
+        && fullMembers.every(el => ids.includes(el.id));
+      if (isExactRehit) return;
+    }
+
+    const commit = () => {
+      const groupId = generateId();
+      const nextElements = currentElements.map(el => ids.includes(el.id) ? { ...el, groupId } : el);
+      // Always discard any absorbed groups' name/color (agreed direction) —
+      // every merge produces a fresh untitled group, never a preserved
+      // identity. Prune the absorbed groups' registry entries too, rather
+      // than leaving orphans behind — nothing points at them after this.
+      const existing = p.groupsRef.current || [];
+      const kept = existing.filter(g => !touchedGroupIds.has(g.id));
+      const [color] = ORDER_GROUP_COLORS[(kept.length + 1) % ORDER_GROUP_COLORS.length];
+      const nextGroups = [...kept, { id: groupId, name: `Group ${kept.length + 1}`, color }];
+
+      // Explicit history push with the fresh elements+groups (mirrors the
+      // addRing/addChain pattern) rather than relying on the auto-history
+      // effect: that effect fires off `elements`/`connections` changes and
+      // reads `groupsRef.current`, which isn't guaranteed to reflect this
+      // same setGroups call yet on the same commit (the ref-sync effect that
+      // updates groupsRef runs after it, source-order-wise). Setting
+      // skipAutoHistoryRef avoids a redundant/stale second push.
+      p.skipAutoHistoryRef.current = true;
+      p.setElements(nextElements);
+      p.setGroups(nextGroups);
+      p.pushHistoryState(nextElements, p.picotConnectionsRef.current, p.roundsRef.current, undefined, nextGroups);
+    };
+
+    if (touchedGroupIds.size > 0) {
+      // Absorbing one or more pre-existing groups — confirm first (Design
+      // Discussion #3, agreed direction). Same generic message regardless
+      // of whether this merges one existing group or several (agreed: no
+      // distinct multi-group wording).
+      p.setConfirmDialog({
+        title: p.t('groupMergeTitle'),
+        message: p.t('groupMergeBody'),
+        confirmLabel: p.t('groupMergeConfirm'),
+        onConfirm: commit,
+      });
+    } else {
+      commit();
+    }
   }, []);
 
   const ungroupSelected = useCallback(() => {
     const ids = p.selectedIdsRef.current;
     if (ids.length === 0) return;
-    p.setElements(prev => prev.map(el => {
+
+    const currentElements = p.elementsRef.current;
+    const touchedGroupIds = new Set(
+      currentElements.filter(el => ids.includes(el.id) && el.groupId).map(el => el.groupId)
+    );
+
+    let nextElements = currentElements.map(el => {
       if (!ids.includes(el.id)) return el;
       const { groupId: _, ...rest } = el;
       return rest;
-    }));
+    });
+
+    // Mirror-bug fix (Design Discussion #3): a partial ungroup can leave a
+    // "remainder" of exactly one (or zero) elements still tagged with the
+    // old groupId — a meaningless group of 1 that draws nothing (groupBoxes
+    // already filters members.length <= 1) but lingers invisibly and
+    // corrupts the NEXT groupSelected() call: reselecting that lone leftover
+    // together with new elements would register as "merging an existing
+    // group" and wrongly trigger the confirm popup for what the user
+    // experiences as a brand-new grouping. Strip the stale groupId from any
+    // remainder that drops below 2 members, and prune its now-empty/singleton
+    // registry entry.
+    const orphanedGroupIds = new Set<string>();
+    touchedGroupIds.forEach(gid => {
+      const remainder = nextElements.filter(el => el.groupId === gid);
+      if (remainder.length < 2) orphanedGroupIds.add(gid);
+    });
+    let nextGroups = p.groupsRef.current || [];
+    if (orphanedGroupIds.size > 0) {
+      nextElements = nextElements.map(el => {
+        if (el.groupId && orphanedGroupIds.has(el.groupId)) {
+          const { groupId: _, ...rest } = el;
+          return rest;
+        }
+        return el;
+      });
+      nextGroups = nextGroups.filter(g => !orphanedGroupIds.has(g.id));
+    }
+
+    // Explicit history push (mirrors groupSelected/addRing) rather than the
+    // auto-history effect, for the same groupsRef-staleness reason: only
+    // needed as a real push when the registry itself actually changed.
+    p.skipAutoHistoryRef.current = true;
+    p.setElements(nextElements);
+    if (orphanedGroupIds.size > 0) p.setGroups(nextGroups);
+    p.pushHistoryState(nextElements, p.picotConnectionsRef.current, p.roundsRef.current, undefined, nextGroups);
   }, []);
 
   // ── Alignment ─────────────────────────────────────────────────────────────
