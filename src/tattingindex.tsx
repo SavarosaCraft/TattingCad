@@ -146,6 +146,17 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 
 const GRID_SIZE = 25;
 
+// ── Zoom step sizes ──────────────────────────────────────────────────────
+// One place to tune "how much does zoom move per input event" instead of
+// the value being duplicated at each call site (keyboard, toolbar buttons ×2
+// modes, wheel). Button in/out are intentionally different values (Zoom Out
+// has always moved faster than Zoom In here) — kept as-is rather than
+// silently made symmetric; flag if you'd rather they match.
+const ZOOM_STEP_KEYBOARD = 0.2;      // +/- keys
+const ZOOM_STEP_BUTTON_IN = 0.2;     // toolbar Zoom In button (both modes)
+const ZOOM_STEP_BUTTON_OUT = 0.4;    // toolbar Zoom Out button (both modes)
+const ZOOM_STEP_WHEEL = 0.16;        // Shift+wheel, per wheel event
+
 // ============================================================================
 // COLOR CATEGORIZATION - Pure function for performance
 // ============================================================================
@@ -905,7 +916,7 @@ const APP_VERSION = '1.2.0-beta';
         e.preventDefault();
         const currentZoom = zoomRef.current;
         const currentCamera = cameraRef.current;
-        const delta = e.deltaY > 0 ? -0.08 : 0.08;
+        const delta = e.deltaY > 0 ? -ZOOM_STEP_WHEEL : ZOOM_STEP_WHEEL;
         const newZoom = Math.max(0.1, Math.min(3, currentZoom + delta));
         if (!canvasRef.current) { zoomRef.current = newZoom; setZoom(newZoom); return; }
         const rect = canvasRef.current.getBoundingClientRect();
@@ -3444,12 +3455,12 @@ const APP_VERSION = '1.2.0-beta';
       // Zoom in/out: + / - (no modifier needed)
       if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(0.2);
+        zoomToCenter(ZOOM_STEP_KEYBOARD);
         return;
       }
       if (e.key === '-' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        zoomToCenter(-0.2);
+        zoomToCenter(-ZOOM_STEP_KEYBOARD);
         return;
       }
       
@@ -6162,15 +6173,31 @@ const APP_VERSION = '1.2.0-beta';
         }
         
         @media (max-width: 768px) {
-          /* Scale Row 1 buttons aggressively on mobile */
-          .top-row-buttons button,
-          .top-row-buttons .relative {
-            transform: scale(0.85) !important;
-            padding: 0.15rem 0.3rem !important;
-          }
+          /* Real reflow for Row 1 buttons, not transform: scale() — same fix
+             as Row 1's ui-large case, applied to the shrink direction too.
+             transform doesn't shrink the layout box, only the paint, so the
+             flex gap was being measured against the original 44px box even
+             though buttons looked smaller — that's the "gap looks too big"
+             symptom. Icon size is also forced uniform here: the source icons
+             are 18px/20px/14px depending on which one (see TopMenuBar.tsx),
+             which is barely noticeable at full size but stands out once
+             everything else shrinks. */
           .top-row-buttons {
             flex-wrap: nowrap !important;
             overflow-x: auto !important;
+            gap: 0.2rem !important;
+          }
+          .top-row-buttons button {
+            height: 38px !important;
+            min-width: 38px !important;
+            padding: 0 0.35rem !important;
+          }
+          .top-row-buttons svg {
+            width: 18px !important;
+            height: 18px !important;
+          }
+          .top-row-buttons .flex-1 {
+            gap: 0.15rem !important;
           }
           /* Hide dividers on mobile */
           .top-row-buttons .w-px {
@@ -6190,116 +6217,7 @@ const APP_VERSION = '1.2.0-beta';
             top: 0.25rem !important;
             padding: 0.25rem !important;
           }
-          
-          /* Row 2: Properties bar - NO GAP OVERRIDES, just sizing */
-          .top-row-properties {
-            flex-wrap: wrap !important;
-            overflow-x: hidden !important;
-            justify-content: flex-start !important;
-            padding: 0.25rem 0.5rem !important;
-            row-gap: 0.2rem !important;
-          }
-          
-          .top-row-properties > div,
-          .top-row-properties .flex {
-            flex-shrink: 0 !important;
-          }
-          
-          /* Disable scaling for properties on mobile WIDTH (we handle sizing manually) */
-          .top-row-properties .top-toolbar-scalable {
-            transform: none !important;
-          }
-          
-          /* Remove spinner arrows from ALL number inputs - reclaims ~16px width */
-          input[type="number"]::-webkit-inner-spin-button,
-          input[type="number"]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-          }
-          input[type="number"] {
-            -moz-appearance: textfield;
-          }
 
-          .top-row-properties input[type="text"],
-          .top-row-properties input[type="number"] {
-            padding: 0.2rem 0.3rem !important;
-            font-size: 0.7rem !important;
-            min-width: 0 !important;
-            flex-shrink: 0 !important;
-          }
-          
-          .top-row-properties input.notation-input {
-            width: 105px !important; /* 70px * 1.5 = 105px */
-          }
-          
-          .top-row-properties input[type="number"] {
-            width: 44px !important;
-          }
-          
-          .top-row-properties input[type="range"] {
-            width: 40px !important;
-          }
-          
-          .top-row-properties .w-16 {
-            width: 2.5rem !important;
-          }
-          
-          .top-row-properties .w-24 {
-            width: 2.5rem !important;
-          }
-          
-          .top-row-properties button {
-            padding: 0 0.35rem !important;
-            height: 1.6rem !important;
-            font-size: 0.7rem !important;
-            min-width: 0 !important;
-            flex-shrink: 0 !important;
-            white-space: nowrap !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-          }
-          .top-row-properties input[type="text"],
-          .top-row-properties input[type="number"] {
-            height: 1.6rem !important;
-          }
-          
-          .top-row-properties .text-xs {
-            font-size: 0.65rem !important;
-          }
-          
-          .top-row-properties label.text-xs {
-            display: none !important;
-          }
-          
-          .top-row-properties .w-8 {
-            width: 1.5rem !important;
-          }
-          
-          .top-row-properties svg {
-            width: 14px !important;
-            height: 14px !important;
-          }
-        }
-        
-        /* Even more aggressive for very narrow screens */
-        @media (max-width: 480px) {
-          .top-row-buttons button,
-          .top-row-buttons .relative {
-            transform: scale(0.75) !important;
-            padding: 0.1rem 0.2rem !important;
-          }
-        }
-        
-        @media (max-width: 380px) {
-          .top-row-buttons button,
-          .top-row-buttons .relative {
-            transform: scale(0.7) !important;
-            padding: 0.1rem 0.15rem !important;
-          }
-        }
-        
-        @media (max-width: 768px) {
           .mobile-toolbar-compact-right {
             right: 1.5rem !important; /* Was 0.25rem - moved away from unclickable edge */
             top: 0.25rem !important;
@@ -6312,21 +6230,141 @@ const APP_VERSION = '1.2.0-beta';
           .hide-label-mobile {
             display: none !important;
           }
-          /* Make properties panel inputs smaller on mobile to fit 2 lines */
-          .top-toolbar-scalable input[type="text"],
-          .top-toolbar-scalable input[type="number"] {
-            font-size: 0.75rem !important;
+        }
+
+        /* ── Row 2 (property bar) responsive shrink ──────────────────────
+           Real reflow, not transform: scale() — font-size/padding/height
+           shrink applied to generic element types (input, select, button,
+           svg, label/.text-xs) rather than a hand-maintained allowlist of
+           width classes, so anything added to the bar later (e.g. the group
+           name/color row) is covered automatically. No overflow clamp: the
+           bar wraps to more rows under space pressure instead of shrinking
+           uniformly or scrolling — matches how the bottom status bar
+           already behaves correctly.
+        ── */
+        @media (max-width: 600px) {
+          .top-row-properties {
+            flex-wrap: wrap !important;
+            overflow: visible !important;
+            justify-content: flex-start !important;
             padding: 0.25rem 0.5rem !important;
+            row-gap: 0.2rem !important;
           }
-          .top-toolbar-scalable button {
-            padding: 0.25rem !important;
+
+          .top-row-properties > div,
+          .top-row-properties .flex {
+            flex-shrink: 0 !important;
           }
-          .top-toolbar-scalable .text-xs {
+
+          /* Remove spinner arrows from ALL number inputs - reclaims ~16px width */
+          input[type="number"]::-webkit-inner-spin-button,
+          input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          input[type="number"] {
+            -moz-appearance: textfield;
+          }
+
+          /* Generic element targeting instead of a class allowlist */
+          .top-row-properties input[type="text"],
+          .top-row-properties input[type="number"],
+          .top-row-properties select {
+            padding: 0.2rem 0.3rem !important;
+            font-size: 0.7rem !important;
+            height: 1.6rem !important;
+            min-width: 0 !important;
+            max-width: 6rem !important;
+            flex-shrink: 1 !important;
+          }
+
+          .top-row-properties input.notation-input {
+            width: 105px !important; /* 70px * 1.5 = 105px */
+            max-width: 105px !important;
+          }
+
+          .top-row-properties input[type="number"] {
+            width: 44px !important;
+          }
+
+          .top-row-properties input[type="range"] {
+            width: 40px !important;
+          }
+
+          .top-row-properties button {
+            padding: 0 0.35rem !important;
+            height: 1.6rem !important;
+            font-size: 0.7rem !important;
+            min-width: 0 !important;
+            flex-shrink: 0 !important;
+            white-space: nowrap !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+
+          .top-row-properties .text-xs,
+          .top-row-properties label {
             font-size: 0.65rem !important;
+          }
+
+          .top-row-properties label.text-xs {
+            display: none !important;
+          }
+
+          .top-row-properties svg {
+            width: 14px !important;
+            height: 14px !important;
+          }
+        }
+
+        /* Even more aggressive for very narrow screens */
+        @media (max-width: 420px) {
+          .top-row-buttons {
+            gap: 0.15rem !important;
+          }
+          .top-row-buttons button {
+            height: 34px !important;
+            min-width: 34px !important;
+            padding: 0 0.25rem !important;
+          }
+          .top-row-buttons svg {
+            width: 16px !important;
+            height: 16px !important;
+          }
+          .top-row-buttons .flex-1 {
+            gap: 0.1rem !important;
+          }
+
+          .top-row-properties input[type="text"],
+          .top-row-properties input[type="number"],
+          .top-row-properties select {
+            font-size: 0.65rem !important;
+            max-width: 5rem !important;
+          }
+          .top-row-properties button {
+            font-size: 0.65rem !important;
+            padding: 0 0.25rem !important;
+          }
+        }
+
+        @media (max-width: 340px) {
+          .top-row-buttons {
+            gap: 0.1rem !important;
+          }
+          .top-row-buttons button {
+            height: 30px !important;
+            min-width: 30px !important;
+            padding: 0 0.2rem !important;
+          }
+          .top-row-buttons svg {
+            width: 14px !important;
+            height: 14px !important;
           }
         }
         
-        /* Scale down side toolbars on narrow screens (mobile width) */
+        /* Scale down side toolbars on narrow screens (mobile width) — left/right
+           panels are queued separately, unchanged here */
         @media (max-width: 768px) {
           .toolbar-scalable-left {
             transform: scale(0.75) !important;
@@ -6360,12 +6398,24 @@ const APP_VERSION = '1.2.0-beta';
           }
         }
         
-        /* Scale down ALL toolbars when not enough vertical space */
-        @media (max-height: 700px) {
-          .top-row-buttons button,
-          .top-row-buttons .relative {
-            transform: scale(0.85) !important;
-            padding: 0.15rem 0.3rem !important;
+        /* Scale down side toolbars + Row 1 when not enough vertical space
+           (unchanged, out of scope). Row 2 gets real reflow instead of
+           transform: scale() here too — see comment above. */
+        @media (max-height: 500px) {
+          .top-row-buttons {
+            gap: 0.2rem !important;
+          }
+          .top-row-buttons button {
+            height: 38px !important;
+            min-width: 38px !important;
+            padding: 0 0.35rem !important;
+          }
+          .top-row-buttons svg {
+            width: 18px !important;
+            height: 18px !important;
+          }
+          .top-row-buttons .flex-1 {
+            gap: 0.15rem !important;
           }
           
           .toolbar-scalable {
@@ -6383,20 +6433,39 @@ const APP_VERSION = '1.2.0-beta';
             transform: translateX(-50%) scale(0.68) !important;
             transform-origin: bottom center !important;
           }
-          .top-toolbar-scalable {
-            transform: scale(0.68) !important;
-            transform-origin: left center !important;
+
+          .top-row-properties button,
+          .top-row-properties input[type="text"],
+          .top-row-properties input[type="number"],
+          .top-row-properties select {
+            font-size: 0.7rem !important;
+            height: 1.6rem !important;
+            padding: 0.15rem 0.3rem !important;
+          }
+          .top-row-properties svg {
+            width: 13px !important;
+            height: 13px !important;
           }
           /* Hide text labels when scaled */
           .hide-label-scaled {
             display: none !important;
           }
         }
-        @media (max-height: 600px) {
-          .top-row-buttons button,
-          .top-row-buttons .relative {
-            transform: scale(0.75) !important;
-            padding: 0.1rem 0.2rem !important;
+        @media (max-height: 420px) {
+          .top-row-buttons {
+            gap: 0.15rem !important;
+          }
+          .top-row-buttons button {
+            height: 34px !important;
+            min-width: 34px !important;
+            padding: 0 0.25rem !important;
+          }
+          .top-row-buttons svg {
+            width: 16px !important;
+            height: 16px !important;
+          }
+          .top-row-buttons .flex-1 {
+            gap: 0.1rem !important;
           }
           
           .toolbar-scalable {
@@ -6414,19 +6483,35 @@ const APP_VERSION = '1.2.0-beta';
             transform: translateX(-50%) scale(0.6) !important;
             transform-origin: bottom center !important;
           }
-          .top-toolbar-scalable {
-            transform: scale(0.6) !important;
-            transform-origin: left center !important;
+
+          .top-row-properties button,
+          .top-row-properties input[type="text"],
+          .top-row-properties input[type="number"],
+          .top-row-properties select {
+            font-size: 0.65rem !important;
+            height: 1.4rem !important;
+            padding: 0.1rem 0.25rem !important;
+          }
+          .top-row-properties svg {
+            width: 12px !important;
+            height: 12px !important;
           }
           .hide-label-scaled {
             display: none !important;
           }
         }
-        @media (max-height: 500px) {
-          .top-row-buttons button,
-          .top-row-buttons .relative {
-            transform: scale(0.7) !important;
-            padding: 0.1rem 0.15rem !important;
+        @media (max-height: 360px) {
+          .top-row-buttons {
+            gap: 0.1rem !important;
+          }
+          .top-row-buttons button {
+            height: 30px !important;
+            min-width: 30px !important;
+            padding: 0 0.2rem !important;
+          }
+          .top-row-buttons svg {
+            width: 14px !important;
+            height: 14px !important;
           }
           
           .toolbar-scalable {
@@ -6444,9 +6529,14 @@ const APP_VERSION = '1.2.0-beta';
             transform: translateX(-50%) scale(0.5) !important;
             transform-origin: bottom center !important;
           }
-          .top-toolbar-scalable {
-            transform: scale(0.5) !important;
-            transform-origin: left center !important;
+
+          .top-row-properties button,
+          .top-row-properties input[type="text"],
+          .top-row-properties input[type="number"],
+          .top-row-properties select {
+            font-size: 0.6rem !important;
+            height: 1.3rem !important;
+            padding: 0.05rem 0.2rem !important;
           }
           .hide-label-scaled {
             display: none !important;
@@ -6459,27 +6549,89 @@ const APP_VERSION = '1.2.0-beta';
         }
 
         /* ── Large UI Scale ───────────────────────────────────────────
-           Boosts all toolbars by 1.25×. The media-query scale-downs still
-           apply on top of this (they use !important), so small screens
-           still shrink to fit — they just start from a larger base.
+           Boosts left/right side toolbars by 1.25× via transform (out of
+           scope for this pass, unchanged). Row 2 (.top-toolbar-scalable)
+           used to ALSO get a transform: scale(1.25) stacked on top of the
+           root font-size boost below — that second, non-reflowing scale
+           is what caused controls to overlap (e.g. the Squeeze "Reset"
+           button colliding with the "Material:" label in
+           ShapeAndSqueezeControls). Removed for Row 2: the root font-size
+           boost is rem-based, so Tailwind's text-xs/sm/base etc. already
+           grow in a way the layout engine reserves space for — no separate
+           transform is needed there. Net effect: Row 2 under ui-large is
+           now smaller than before (loses the extra 1.25× on top of the
+           ~1.1× font boost) but no longer overlaps. If Row 2 should look
+           bigger under ui-large, that's a follow-up sizing decision, not
+           a bug fix — flagging rather than deciding it here.
         ── */
         .ui-large { font-size: 17.6px; } /* 16px default → ~1.1×; rem-based Tailwind classes (text-xs/sm/base…) scale with this */
         .ui-large .toolbar-scalable-left  { transform: scale(1.25) !important; transform-origin: top left   !important; }
         .ui-large .toolbar-scalable-right { transform: scale(1.25) !important; transform-origin: top right  !important; }
-        .ui-large .top-toolbar-scalable   { transform: scale(1.25) !important; transform-origin: left center !important; }
-        .ui-large .top-row-buttons button,
-        .ui-large .top-row-buttons .relative { transform: scale(1.25) !important; }
+        /* Row 1 real growth under ui-large — box-model sizing (not transform),
+           same fix as Row 2. Row 1's button dimensions are set as fixed px
+           via inline style in TopMenuBar.tsx (squareBtn/wideBtn = 44px), so
+           they don't participate in the root font-size cascade at all; the
+           old transform: scale(1.25) grew them visually without reserving
+           space, causing the same overlap as Row 2 had. min-width (not
+           width) is used so wideBtn's auto-width File/View/Arrange/Options
+           buttons aren't forced square — min-width only raises the floor,
+           it doesn't override a larger natural width. !important is needed
+           to beat the inline px styles. */
+        .ui-large .top-row-buttons button {
+          height: 56px !important;
+          min-width: 56px !important;
+          padding: 0 0.6rem !important;
+          font-size: 0.95rem !important;
+        }
+        .ui-large .top-row-buttons svg {
+          width: 22px !important;
+          height: 22px !important;
+        }
+
+        /* Row 2 real growth under ui-large — box-model sizing (not transform),
+           so it actually reserves the extra space and fills the bar instead
+           of sitting small with room to spare. No !important: the width/
+           height shrink media queries above use !important and still win
+           on narrow/short viewports, so this recedes gracefully there. */
+        .ui-large .top-row-properties button {
+          height: 2.5rem;
+          padding: 0 0.75rem;
+          font-size: 0.95rem;
+        }
+        .ui-large .top-row-properties input[type="text"],
+        .ui-large .top-row-properties input[type="number"] {
+          height: 2.5rem;
+          font-size: 0.95rem;
+          padding: 0 0.6rem;
+        }
+        .ui-large .top-row-properties select {
+          height: 2.5rem;
+          font-size: 0.95rem;
+          padding: 0 0.6rem;
+        }
+        .ui-large .top-row-properties input[type="range"] {
+          height: 2.5rem;
+        }
+        .ui-large .top-row-properties svg {
+          width: 20px;
+          height: 20px;
+        }
+        .ui-large .top-row-properties .text-xs,
+        .ui-large .top-row-properties label {
+          font-size: 0.85rem;
+        }
+        .ui-large .top-row-properties {
+          gap: 0.75rem;
+        }
 
         /* On narrow screens, reduce the large-scale factor so toolbars still fit */
         @media (max-width: 768px) {
           .ui-large .toolbar-scalable-left  { transform: scale(0.95) !important; }
           .ui-large .toolbar-scalable-right { transform: scale(0.95) !important; }
-          .ui-large .top-toolbar-scalable   { transform: scale(0.95) !important; }
         }
-        @media (max-height: 700px) {
+        @media (max-height: 500px) {
           .ui-large .toolbar-scalable-left  { transform: scale(0.85) !important; }
           .ui-large .toolbar-scalable-right { transform: scale(0.85) !important; }
-          .ui-large .top-toolbar-scalable   { transform: scale(0.85) !important; }
         }
         @keyframes tattingBakeSpin { to { transform: rotate(360deg); } }
       `}</style>
@@ -7520,9 +7672,25 @@ const APP_VERSION = '1.2.0-beta';
         <div className="absolute left-4 top-4 mobile-toolbar-compact toolbar-scalable-left bg-gray-800 text-white p-2 rounded z-10 grid grid-cols-2 gap-1 pointer-events-none" style={{ width: '100px', touchAction: 'none' }}>
           {renderMode === 'realistic' && (
             <>
-              {/* Realistic mode: Pan only — editing disabled */}
+              {/* Realistic mode: Pan only — editing disabled. Zoom/Fit are
+                  safe to keep active here: they only touch camera/zoom
+                  state and don't change currentTool away from 'pan'. Zoom
+                  Rect was tried here too but pulled — it does change
+                  currentTool away from 'pan', which conflicts with the
+                  mode's pan-only design even though pointer-events: none
+                  on the elements group kept it from being able to select/
+                  edit anything. */}
               <button onClick={() => setCurrentTool('pan')} className="p-2 rounded col-span-2 pointer-events-auto bg-blue-600" style={{ touchAction: 'manipulation' }} title={t('toolPanRealistic')}>
                 <IconPan size={20} />
+              </button>
+              <button onClick={() => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)} className="p-2 rounded pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('toolZoomOut')}>
+                <IconZoomOut size={20} />
+              </button>
+              <button onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} className="p-2 rounded pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('toolZoomIn')}>
+                <IconZoomIn size={20} />
+              </button>
+              <button onClick={fitAllElements} className="p-2 rounded col-span-2 pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title="Fit All (F)">
+                <IconFitView size={20} />
               </button>
               <div className="col-span-2 text-center text-gray-400 text-xs leading-tight px-1 py-0.5">
                 {t('toolPanRealisticSub')}<br/>{t('toolPanRealisticSub2')}
@@ -7634,10 +7802,10 @@ const APP_VERSION = '1.2.0-beta';
           >
             <IconUngroup size={20} />
           </ToolbarButton>
-          <ToolbarButton onClick={() => zoomToCenter(-0.2)} title={t('toolZoomOut')}>
+          <ToolbarButton onClick={() => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)} title={t('toolZoomOut')}>
             <IconZoomOut size={20} />
           </ToolbarButton>
-          <ToolbarButton onClick={() => zoomToCenter(0.1)} title={t('toolZoomIn')}>
+          <ToolbarButton onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} title={t('toolZoomIn')}>
             <IconZoomIn size={20} />
           </ToolbarButton>
           <ToolbarButton onClick={fitAllElements} title="Fit All (F)">
