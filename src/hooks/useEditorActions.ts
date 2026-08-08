@@ -77,7 +77,7 @@ export interface UseEditorActionsParams {
   setGroupRotationInput: (val: string) => void;
   setPolarGrids: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
-  pushHistoryState: (elements: any[], picotConnections: any[], rounds?: any[], polarGrids?: any[], spatialGroups?: any[]) => void;
+  pushHistoryState: (elements: any[], picotConnections: any[], rounds?: any[], polarGrids?: any[], spatialGroups?: any[], ghostArrays?: any[]) => void;
 }
 
 export function useEditorActions(p: UseEditorActionsParams) {
@@ -340,17 +340,25 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
   // ── History ───────────────────────────────────────────────────────────────
 
-  // ghostArrays (and therefore inheritedJoins bookkeeping) is never part of a
-  // history snapshot — pushHistoryState only captures {elements, connections,
-  // rounds} (see useHistoryActions.ts). So after undo/redo restores those
-  // three, a ghost array's inheritedJoins entries can point to join patterns
-  // whose actual connections no longer exist in the just-restored connections
-  // list. Left alone, checkAndStoreInheritedJoin's alreadyExists dedupe check
-  // would treat a re-join as already done and silently create nothing —
-  // exactly the "recreate the joint and inheriting never happens again"
+  // ghostArrays is now part of every history snapshot (session 46 fix —
+  // pushHistoryState/useHistoryActions.ts captures {elements, connections,
+  // rounds, polarGrids, spatialGroups, ghostArrays} together, and undo/redo
+  // above restores state.ghostArrays before this function runs). For history
+  // entries created after that fix, ghostArrays (including inheritedJoins)
+  // and connections are captured atomically in the same snapshot, so a
+  // restore should already leave them consistent with each other.
+  // This function remains as a defensive safety net for entries that predate
+  // the fix (e.g. history built up earlier in a long-running session, or a
+  // project reloaded from a save made before ghostArrays was wired into
+  // history) — in those cases inheritedJoins can still point to join
+  // patterns whose actual connections don't exist in the just-restored
+  // connections list. Left alone, checkAndStoreInheritedJoin's alreadyExists
+  // dedupe check would treat a re-join as already done and silently create
+  // nothing — the "recreate the joint and inheriting never happens again"
   // symptom. Coarse per-array reconciliation: if literally no connection
   // tagged isInheritedJoin === array.id survives the restore, that array's
-  // inheritedJoins entries are stale — clear them.
+  // inheritedJoins entries are stale — clear them. Idempotent / a no-op on
+  // already-consistent snapshots, so safe to leave running unconditionally.
   // Known limitation: if an array has multiple distinct inheritedJoins
   // records and undo lands at a point where only some of them are gone, this
   // won't distinguish between them — it keeps all records as long as at
@@ -366,6 +374,10 @@ export function useEditorActions(p: UseEditorActionsParams) {
     }));
   };
 
+  // ghostArrays is now part of every history snapshot (session 46 — see
+  // useHistoryActions.ts). Restored here before reconcile runs, so the
+  // reconcile step operates on the correct restored registry instead of
+  // whatever was left over from before the undo/redo.
   const undo = useCallback(() => {
     const idx = p.historyIndexRef.current;
     const history = p.historyRef.current;
@@ -380,6 +392,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
       if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
       if (state.spatialGroups) p.setGroups(JSON.parse(JSON.stringify(state.spatialGroups)));
+      if (state.ghostArrays) p.setGhostArrays(JSON.parse(JSON.stringify(state.ghostArrays)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
     }
@@ -399,6 +412,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
       if (state.polarGrids) p.setPolarGrids(JSON.parse(JSON.stringify(state.polarGrids)));
       if (state.spatialGroups) p.setGroups(JSON.parse(JSON.stringify(state.spatialGroups)));
+      if (state.ghostArrays) p.setGhostArrays(JSON.parse(JSON.stringify(state.ghostArrays)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
     }

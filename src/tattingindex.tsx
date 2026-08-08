@@ -723,8 +723,16 @@ const APP_VERSION = '1.2.0-beta';
       return;
     }
     if (nudgeActiveRef.current) return; // Nudge hold will push history once on mouseUp
-    pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids, groupsRef.current);
-  }, [elements, picotConnections, polarGrids]); // Depend on elements, connections, and polarGrids
+    // ghostArrays passed as live state, not groupsRef-style ref: every
+    // ghostArrays mutation site changes `elements` in the same synchronous
+    // batch and relies on this effect to capture both together. A ref would
+    // read one render stale here, since the "keep refs up to date" effect
+    // that syncs it runs after this one in source order (see groupsRef,
+    // which has the same latent issue but never hits it in practice because
+    // every path that changes `groups` bypasses this effect entirely via
+    // skipAutoHistoryRef + an explicit push with fresh values instead).
+    pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids, groupsRef.current, ghostArrays);
+  }, [elements, picotConnections, polarGrids, ghostArrays]); // Depend on elements, connections, polarGrids, and ghostArrays
 
   // Check Recent Projects entries' actual files for existence when the
   // dialog opens. The thumbnail already degrades gracefully on its own
@@ -6218,11 +6226,6 @@ const APP_VERSION = '1.2.0-beta';
             padding: 0.25rem !important;
           }
 
-          .mobile-toolbar-compact-right {
-            right: 1.5rem !important; /* Was 0.25rem - moved away from unclickable edge */
-            top: 0.25rem !important;
-            padding: 0.25rem !important;
-          }
           .mobile-gap-small {
             gap: 0.25rem !important;
           }
@@ -6363,16 +6366,11 @@ const APP_VERSION = '1.2.0-beta';
           }
         }
         
-        /* Scale down side toolbars on narrow screens (mobile width) — left/right
-           panels are queued separately, unchanged here */
+        /* Scale down the left floating toolbar on narrow screens (mobile width) */
         @media (max-width: 768px) {
           .toolbar-scalable-left {
             transform: scale(0.75) !important;
             transform-origin: top left !important;
-          }
-          .toolbar-scalable-right {
-            transform: scale(0.75) !important;
-            transform-origin: top right !important;
           }
         }
         
@@ -6381,10 +6379,6 @@ const APP_VERSION = '1.2.0-beta';
             transform: scale(0.65) !important;
             transform-origin: top left !important;
           }
-          .toolbar-scalable-right {
-            transform: scale(0.65) !important;
-            transform-origin: top right !important;
-          }
         }
         
         @media (max-width: 380px) {
@@ -6392,13 +6386,9 @@ const APP_VERSION = '1.2.0-beta';
             transform: scale(0.55) !important;
             transform-origin: top left !important;
           }
-          .toolbar-scalable-right {
-            transform: scale(0.55) !important;
-            transform-origin: top right !important;
-          }
         }
         
-        /* Scale down side toolbars + Row 1 when not enough vertical space
+        /* Scale down the left toolbar + Row 1 when not enough vertical space
            (unchanged, out of scope). Row 2 gets real reflow instead of
            transform: scale() here too — see comment above. */
         @media (max-height: 500px) {
@@ -6418,20 +6408,9 @@ const APP_VERSION = '1.2.0-beta';
             gap: 0.15rem !important;
           }
           
-          .toolbar-scalable {
-            transform: scale(0.68) !important;
-          }
           .toolbar-scalable-left {
             transform: scale(0.68) !important;
             transform-origin: top left !important;
-          }
-          .toolbar-scalable-right {
-            transform: scale(0.68) !important;
-            transform-origin: top right !important;
-          }
-          .toolbar-scalable-bottom {
-            transform: translateX(-50%) scale(0.68) !important;
-            transform-origin: bottom center !important;
           }
 
           .top-row-properties button,
@@ -6468,20 +6447,9 @@ const APP_VERSION = '1.2.0-beta';
             gap: 0.1rem !important;
           }
           
-          .toolbar-scalable {
-            transform: scale(0.6) !important;
-          }
           .toolbar-scalable-left {
             transform: scale(0.6) !important;
             transform-origin: top left !important;
-          }
-          .toolbar-scalable-right {
-            transform: scale(0.6) !important;
-            transform-origin: top right !important;
-          }
-          .toolbar-scalable-bottom {
-            transform: translateX(-50%) scale(0.6) !important;
-            transform-origin: bottom center !important;
           }
 
           .top-row-properties button,
@@ -6514,20 +6482,9 @@ const APP_VERSION = '1.2.0-beta';
             height: 14px !important;
           }
           
-          .toolbar-scalable {
-            transform: scale(0.5) !important;
-          }
           .toolbar-scalable-left {
             transform: scale(0.5) !important;
             transform-origin: top left !important;
-          }
-          .toolbar-scalable-right {
-            transform: scale(0.5) !important;
-            transform-origin: top right !important;
-          }
-          .toolbar-scalable-bottom {
-            transform: translateX(-50%) scale(0.5) !important;
-            transform-origin: bottom center !important;
           }
 
           .top-row-properties button,
@@ -6549,7 +6506,7 @@ const APP_VERSION = '1.2.0-beta';
         }
 
         /* ── Large UI Scale ───────────────────────────────────────────
-           Boosts left/right side toolbars by 1.25× via transform (out of
+           Boosts the left floating toolbar by 1.25× via transform (out of
            scope for this pass, unchanged). Row 2 (.top-toolbar-scalable)
            used to ALSO get a transform: scale(1.25) stacked on top of the
            root font-size boost below — that second, non-reflowing scale
@@ -6566,7 +6523,6 @@ const APP_VERSION = '1.2.0-beta';
         ── */
         .ui-large { font-size: 17.6px; } /* 16px default → ~1.1×; rem-based Tailwind classes (text-xs/sm/base…) scale with this */
         .ui-large .toolbar-scalable-left  { transform: scale(1.25) !important; transform-origin: top left   !important; }
-        .ui-large .toolbar-scalable-right { transform: scale(1.25) !important; transform-origin: top right  !important; }
         /* Row 1 real growth under ui-large — box-model sizing (not transform),
            same fix as Row 2. Row 1's button dimensions are set as fixed px
            via inline style in TopMenuBar.tsx (squareBtn/wideBtn = 44px), so
@@ -6627,11 +6583,9 @@ const APP_VERSION = '1.2.0-beta';
         /* On narrow screens, reduce the large-scale factor so toolbars still fit */
         @media (max-width: 768px) {
           .ui-large .toolbar-scalable-left  { transform: scale(0.95) !important; }
-          .ui-large .toolbar-scalable-right { transform: scale(0.95) !important; }
         }
         @media (max-height: 500px) {
           .ui-large .toolbar-scalable-left  { transform: scale(0.85) !important; }
-          .ui-large .toolbar-scalable-right { transform: scale(0.85) !important; }
         }
         @keyframes tattingBakeSpin { to { transform: rotate(360deg); } }
       `}</style>

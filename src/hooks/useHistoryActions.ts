@@ -18,29 +18,39 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
   const pushHistoryState = useCallback((
     els: any[],
     conns: any[],
-    groups?: any[],
+    rounds?: any[],
     grids?: any[],
     spatialGroups?: any[],
+    ghostArrays?: any[],
   ) => {
     const currentHistory = p.historyRef.current;
     const currentIndex = p.historyIndexRef.current;
     const currentState = currentHistory[currentIndex];
 
-    const normalGroups = groups ?? [];
+    const normalRounds = rounds ?? [];
     // Carry forward the previous entry's polarGrids when omitted, same as the
     // ~23 explicit pushHistoryState call sites across the codebase that never
-    // touch grids and only pass (els, conns, groups). Only the primary
+    // touch grids and only pass (els, conns, rounds). Only the primary
     // auto-push effect in tattingindex.tsx passes a real 4th argument.
     const normalGrids = grids ?? (currentState?.polarGrids ?? []);
     // Named/colored spatial-group registry (Design Discussion #2/#3, distinct
-    // from the `groups` param above — that one is actually the `rounds`
-    // registry; naming collision predates this addition). Same carry-forward
-    // policy as polarGrids, for the same reason: most call sites only ever
-    // pass (els, conns, rounds) and shouldn't wipe this on every push.
+    // from the `rounds` param above). Same carry-forward policy as
+    // polarGrids, for the same reason: most call sites only ever pass
+    // (els, conns, rounds) and shouldn't wipe this on every push.
     // groupSelected/ungroupSelected (useEditorActions.ts) pass it explicitly
     // when the registry itself changes.
     const normalSpatialGroups = spatialGroups ?? (currentState?.spatialGroups ?? []);
-    const newStateStr = JSON.stringify({ elements: els, connections: conns, rounds: normalGroups, polarGrids: normalGrids, spatialGroups: normalSpatialGroups });
+    // Ghost-array registry (session 46: was never part of history at all,
+    // which desynced it from `elements` on every undo/redo — see
+    // reconcileGhostArraysAfterHistoryRestore in useEditorActions.ts for the
+    // narrower symptom this caused). Same carry-forward policy as the other
+    // optional fields. The primary auto-push effect in tattingindex.tsx now
+    // passes this directly from state (not a ref) since every ghostArrays
+    // mutation site changes `elements` in the same synchronous batch and
+    // relies on this effect firing — a ref would read one render stale here
+    // (see the comment at that call site).
+    const normalGhostArrays = ghostArrays ?? (currentState?.ghostArrays ?? []);
+    const newStateStr = JSON.stringify({ elements: els, connections: conns, rounds: normalRounds, polarGrids: normalGrids, spatialGroups: normalSpatialGroups, ghostArrays: normalGhostArrays });
     const oldStateStr = currentState
       ? JSON.stringify({
           elements: currentState.elements,
@@ -48,6 +58,7 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
           rounds: currentState.rounds ?? [],
           polarGrids: currentState.polarGrids ?? [],
           spatialGroups: currentState.spatialGroups ?? [],
+          ghostArrays: currentState.ghostArrays ?? [],
         })
       : null;
     if (oldStateStr === newStateStr) return;
@@ -55,9 +66,10 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     const cloned = {
       elements:      JSON.parse(JSON.stringify(els)),
       connections:   JSON.parse(JSON.stringify(conns)),
-      rounds:        JSON.parse(JSON.stringify(normalGroups)),
+      rounds:        JSON.parse(JSON.stringify(normalRounds)),
       polarGrids:    JSON.parse(JSON.stringify(normalGrids)),
       spatialGroups: JSON.parse(JSON.stringify(normalSpatialGroups)),
+      ghostArrays:   JSON.parse(JSON.stringify(normalGhostArrays)),
     };
 
     const newHistory = currentHistory.slice(0, currentIndex + 1);

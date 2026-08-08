@@ -33,6 +33,20 @@ import {
 } from './icons';
 import { ScaleControls } from './ScaleControls';
 import { rotatePaths } from '../geometry/paths';
+import { ORDER_GROUP_COLORS } from '../render/svgExport';
+
+// Single source of truth for "what color does a group get when it has no
+// registry entry yet" — mirrors getGroupColor's fallback in tattingindex.tsx
+// and groupSelected's creation-time assignment in useEditorActions.ts, all
+// three of which previously computed their own default independently (two
+// derived from ORDER_GROUP_COLORS with slightly different index math, one a
+// flat hardcoded '#10B981' here). Index 1+ so it doesn't collide with slot
+// 0's "unassigned round" gold; falls back to index 1 for a brand-new group
+// not yet in the registry.
+const fallbackGroupColor = (existingGroups: Array<{ id: string }>, groupId: string): string => {
+  const idx = existingGroups.findIndex(g => g.id === groupId);
+  return ORDER_GROUP_COLORS[idx >= 0 ? (idx + 1) % ORDER_GROUP_COLORS.length : 1][0];
+};
 
 interface MultiSelectSummaryBarProps {
   selectedIds: string[];
@@ -125,62 +139,78 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
 }) => {
   if (selectedIds.length === 0) return null;
 
-  // Check if a group is selected (multiple elements with same groupId)
-  const firstElement = elementById.get(selectedIds[0]);
-  if (firstElement && firstElement.groupId) {
-    const groupElements = elements.filter(e => e.groupId === firstElement.groupId);
+  // Check if a group is selected (one or more elements with a groupId).
+  // touchedGroupIds covers every distinct group represented in the
+  // selection — previously this only ever looked at selectedIds[0]'s group,
+  // so selecting elements spanning two groups silently dropped the second
+  // group from the name/color editor, the centroid used for rotate/flip
+  // pivots, and the "N elements" count (Design Discussion #2 follow-up).
+  const selEls = elements.filter(e => selectedIdSet.has(e.id));
+  const touchedGroupIds = [...new Set(selEls.map(e => e.groupId).filter(Boolean))];
+  if (touchedGroupIds.length > 0) {
+    const groupElements = selEls.filter(e => e.groupId);
     if (groupElements.length > 1) {
+      const isMultiGroup = touchedGroupIds.length > 1;
       // Group is selected - show group controls
       return (
       <>
-        {/* Row: group name + color (Design Discussion #2), with the
-            "Group Selected (N)" status label folded in after the color
-            swatch (moved off its own line per follow-up request). `w-full` +
-            `basis-full` force this onto its own line in the property bar's
+        {/* Row(s): group name + color (Design Discussion #2), with the
+            "Group(s) Selected (N)" status label folded in after the color
+            swatch(es) (moved off its own line per follow-up request). `w-full`
+            + `basis-full` force this onto its own line in the property bar's
             flex-wrap container, matching every other cluster in this bar.
             Name/color upsert into the `groups` registry — creates the entry
             on first edit if groupSelected's default (useEditorActions.ts)
             hasn't run yet, e.g. a legacy save with a bare groupId and no
-            registry entry. */}
-        <div className="flex items-center gap-2 w-full basis-full px-2 top-toolbar-scalable">
-          <input
-            type="text"
-            key={firstElement.groupId}
-            defaultValue={groups.find(g => g.id === firstElement.groupId)?.name ?? ''}
-            placeholder={t('groupNamePlaceholder')}
-            onBlur={(e) => {
-              const name = e.target.value.trim();
-              if (!name) return;
-              const gid = firstElement.groupId;
-              const nextGroups = groups.some(g => g.id === gid)
-                ? groups.map(g => g.id === gid ? { ...g, name } : g)
-                : [...groups, { id: gid, name, color: '#10B981' }];
-              setGroups(nextGroups);
-              pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
-            }}
-            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-            className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white flex-1 min-w-0"
-            style={{ maxWidth: '180px' }}
-            title={t('groupNamePlaceholder')}
-          />
-          <input
-            type="color"
-            value={groups.find(g => g.id === firstElement.groupId)?.color ?? '#10B981'}
-            onChange={(e) => {
-              const color = e.target.value;
-              const gid = firstElement.groupId;
-              const nextGroups = groups.some(g => g.id === gid)
-                ? groups.map(g => g.id === gid ? { ...g, color } : g)
-                : [...groups, { id: gid, name: `Group`, color }];
-              setGroups(nextGroups);
-              pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
-            }}
-            title={t('groupColorLabel')}
-            className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer flex-shrink-0"
-          />
-          <div className="text-sm text-gray-300 whitespace-nowrap">
-            Group Selected ({groupElements.length} elements)
-          </div>
+            registry entry. Stacks one row per touched group when the
+            selection spans more than one. */}
+        <div className="flex flex-col gap-1 w-full basis-full px-2 top-toolbar-scalable">
+          {touchedGroupIds.map(gid => (
+            <div key={gid} className="flex items-center gap-2">
+              <input
+                type="text"
+                defaultValue={groups.find(g => g.id === gid)?.name ?? ''}
+                placeholder={t('groupNamePlaceholder')}
+                onBlur={(e) => {
+                  const name = e.target.value.trim();
+                  if (!name) return;
+                  const nextGroups = groups.some(g => g.id === gid)
+                    ? groups.map(g => g.id === gid ? { ...g, name } : g)
+                    : [...groups, { id: gid, name, color: fallbackGroupColor(groups, gid) }];
+                  setGroups(nextGroups);
+                  pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white flex-1 min-w-0"
+                style={{ maxWidth: '180px' }}
+                title={t('groupNamePlaceholder')}
+              />
+              <input
+                type="color"
+                value={groups.find(g => g.id === gid)?.color ?? fallbackGroupColor(groups, gid)}
+                onChange={(e) => {
+                  const color = e.target.value;
+                  const nextGroups = groups.some(g => g.id === gid)
+                    ? groups.map(g => g.id === gid ? { ...g, color } : g)
+                    : [...groups, { id: gid, name: `Group`, color }];
+                  setGroups(nextGroups);
+                  pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
+                }}
+                title={t('groupColorLabel')}
+                className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer flex-shrink-0"
+              />
+              {!isMultiGroup && (
+                <div className="text-sm text-gray-300 whitespace-nowrap">
+                  Group Selected ({groupElements.length} elements)
+                </div>
+              )}
+            </div>
+          ))}
+          {isMultiGroup && (
+            <div className="text-sm text-gray-300 whitespace-nowrap">
+              {touchedGroupIds.length} Groups Selected ({groupElements.length} elements)
+            </div>
+          )}
         </div>
 
         {/* Group Rotation + Flip — same cluster as single elements */}
@@ -332,9 +362,9 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
     }
   }
   // ── Free multi-select bar (no groupId) ──────────────────────────
+  // selEls already computed above (covers this branch too — no elements
+  // here have a groupId, otherwise the block above would have returned).
   if (selectedIds.length > 1) {
-    const selEls = elements.filter(e => selectedIdSet.has(e.id));
-
     // Classify each element: 'r', 'c', 'sr', 'line', or null
     const getElType = (el) => {
       if (el.type === 'line') return 'line';
