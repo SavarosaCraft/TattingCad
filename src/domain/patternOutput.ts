@@ -81,8 +81,16 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   // ── Picot connection map ───────────────────────────────────────────────
   // key: "elementId:picotId" → list of connected element refs
   const picotConnectionMap: Record<string, string[]> = {};
+  // key: "elementId:picotId" — every picot that's the endpoint of a fold
+  // connection (connectionType === 'fold'). Folds are always exactly one
+  // picot to one picot (see useJoinActions.ts — exclusive, no stacking), so
+  // membership alone is enough; no need to track which partner.
+  const foldedPicotKeys = new Set<string>();
   picotConnections.forEach(conn => {
     if (conn.picots.length < 2) return;
+    if (conn.connectionType === 'fold') {
+      conn.picots.forEach(p => foldedPicotKeys.add(`${p.elementId}:${p.picotId}`));
+    }
     conn.picots.forEach(p => {
       const key = `${p.elementId}:${p.picotId}`;
       if (!picotConnectionMap[key]) picotConnectionMap[key] = [];
@@ -105,6 +113,9 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   // Picot tokens:
   //   jp with connections  → jp//r3//r5//  (sorted lex)
   //   jp with no refs      → jp(?)
+  //   fp (folded picot)    → fp//r3//  (session 47 — plain-picot-only fold;
+  //                           always has exactly one ref since a fold
+  //                           connection is exclusive to one partner)
   //   bead-jp              → bjp//r3//
   //   regular medium       → p
   //   regular small        → sp
@@ -146,6 +157,11 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
         if (picot.beadType)              token = 'bjp';
         else if (picot.isCoreJoin && picot.hasPicotArm) token = 'cjp';
         else if (picot.isCoreJoin)       token = 'cj';
+        // fp (folded picot) — only reachable here since fold connections are
+        // plain-picot-only by construction (useJoinActions.ts rejects any
+        // picot with beadType or isCoreJoin as a fold candidate), so this
+        // check only ever needs to sit in the plain-jp fallback branch.
+        else if (foldedPicotKeys.has(key)) token = 'fp';
         else                             token = 'jp';
 
         if (refs.length === 0) {
@@ -378,7 +394,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       const n = parseInt(m[1]);
       const t = (m[2] || 'ds').toLowerCase();
       if (t === 'ds')  result.ds += n;
-      else if (t === 'rds') result.ds += n * 2;
+      else if (t === 'rds') result.ds += n * 1.5;
       else if (t === 'ss')  result.ss += n;
       else if (t === 'p')   result.regular += n;
       else if (t === 'lp')  result.long += n;

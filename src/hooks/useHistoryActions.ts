@@ -50,6 +50,13 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     // relies on this effect firing — a ref would read one render stale here
     // (see the comment at that call site).
     const normalGhostArrays = ghostArrays ?? (currentState?.ghostArrays ?? []);
+    // Note (session 47, folded picots): picotConnections entries now carry an
+    // optional connectionType: 'fold' plus fold properties (totalLength,
+    // foldRatio, bendOuter, bendInner, innerGap). No changes needed here —
+    // `conns` below is the whole picotConnections array, cloned wholesale via
+    // JSON.parse(JSON.stringify(...)) same as always, so the fold fields
+    // round-trip through undo/redo automatically along with everything else
+    // on a connection object.
     const newStateStr = JSON.stringify({ elements: els, connections: conns, rounds: normalRounds, polarGrids: normalGrids, spatialGroups: normalSpatialGroups, ghostArrays: normalGhostArrays });
     const oldStateStr = currentState
       ? JSON.stringify({

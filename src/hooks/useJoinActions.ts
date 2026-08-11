@@ -9,6 +9,97 @@ import { generateId } from '../utils/id';
 const isEndpointPicotId = (id: string) =>
   id === '__start__' || id === '__end__' || id === '__anchor__';
 
+// Default fold properties applied to every new fold connection. Placeholder
+// values — tune once the bezier rendering pass (still undesigned) gives a
+// sense of what looks right. Units follow the same convention as other
+// picot-length values in this codebase (mm-relative), except foldRatio/
+// bendOuter/bendInner which are 0.0-1.0 proportions per the design brief.
+// totalLength default raised session 47 after live in-app feedback: the
+// original 16 (against the old 4-40 slider range) produced visually flat
+// arcs against typical picot-to-picot spacing — range widened to 4-200,
+// default raised to roughly the middle of that so a freshly-created fold
+// starts out visible rather than needing an immediate slider push.
+export const DEFAULT_FOLD_PROPS = {
+  totalLength: 70,
+  foldRatio: 0.5,
+  bendOuter: 0.5,
+  bendInner: 0.5,
+  innerGap: 2,
+};
+
+// A picot is eligible to become one end of a NEW fold when: it's a real
+// picot (not an endpoint pseudo-picot — folding requires an actual loop,
+// which endpoints don't have), it's plain (no beadType, no isCoreJoin — fold
+// is a plain-picot-only feature per design), and it isn't already part of
+// ANY connection (fold or regular) — a folded picot is fully exclusive, and
+// a to-be-folded picot can't already be mid-regular-join either. Exported
+// standalone (not part of the hook's returned object) so UI code — e.g. to
+// disable the Fold button — can call it without needing the whole hook
+// instance wired up.
+export const isPicotFoldEligible = (
+  elementId: string,
+  picotId: string,
+  elements: any[],
+  picotConnections: any[],
+): boolean => {
+  if (isEndpointPicotId(picotId)) return false;
+  const el = elements.find(e => e.id === elementId);
+  const picot = el?.picots?.find((pic: any) => pic.id === picotId);
+  if (!picot) return false;
+  if (picot.beadType || picot.isCoreJoin) return false;
+  const alreadyConnected = picotConnections.some(conn =>
+    conn.picots.some((cp: any) => cp.elementId === elementId && cp.picotId === picotId)
+  );
+  if (alreadyConnected) return false;
+  return true;
+};
+
+// Whether a full 2-picot selection is eligible to be folded together.
+// Exported standalone for the same reason as isPicotFoldEligible — UI needs
+// this to gate the Fold button without a hook instance.
+export const canFoldSelection = (
+  sel: any[],
+  elements: any[],
+  picotConnections: any[],
+): boolean => {
+  if (sel.length !== 2) return false;
+  return sel.every(sp => isPicotFoldEligible(sp.elementId, sp.picotId, elements, picotConnections));
+};
+
+// Given a picot that's already part of a fold connection, returns its
+// fold partner's {elementId, picotId} — or null if this picot isn't
+// currently folded. Used by the click-to-select handler (useInputHandlers.ts)
+// to auto-select the partner and surface the fold's sliders on a single
+// click, per design decision. Also usable to look up the fold connection
+// itself: find it in picotConnections by matching both picots.
+export const getFoldPartner = (
+  picotConnections: any[],
+  elementId: string,
+  picotId: string,
+): { elementId: string; picotId: string } | null => {
+  const conn = picotConnections.find(c =>
+    c.connectionType === 'fold' &&
+    c.picots.some((cp: any) => cp.elementId === elementId && cp.picotId === picotId)
+  );
+  if (!conn) return null;
+  const partner = conn.picots.find((cp: any) => !(cp.elementId === elementId && cp.picotId === picotId));
+  return partner ? { elementId: partner.elementId, picotId: partner.picotId } : null;
+};
+
+// Finds the fold connection (if any) that a given picot belongs to. Small
+// wrapper around the same lookup getFoldPartner does, for callers (the
+// property-bar slider UI) that want the connection object itself — id and
+// current property values — rather than just the partner identity.
+export const getFoldConnection = (
+  picotConnections: any[],
+  elementId: string,
+  picotId: string,
+): any | null =>
+  picotConnections.find(c =>
+    c.connectionType === 'fold' &&
+    c.picots.some((cp: any) => cp.elementId === elementId && cp.picotId === picotId)
+  ) ?? null;
+
 // Resolves a selected picot to a per-element "slot" key that's portable across
 // every ghost instance of the same source element: a numeric array index for
 // real picots (every ghost has the same picots array shape as its source, so
@@ -81,7 +172,17 @@ const buildConnectionsForInheritedJoin = (
   targetPicotIndex: number | string,
   existingConns: any[],
   materialId: string,
-  anchorEnd?: 'start' | 'end'
+  anchorEnd?: 'start' | 'end',
+  // Extra fields to spread onto every connection this call creates — e.g.
+  // { connectionType: 'fold', ...DEFAULT_FOLD_PROPS } when the original
+  // manually-made join being propagated was a fold. undefined for a regular
+  // join (the pre-existing behavior). Each propagated ghost-array instance
+  // of a fold gets its own independent copy of the fold properties — they
+  // aren't linked, so adjusting one instance's sliders doesn't move the
+  // others'. That matches how every other per-connection property in this
+  // codebase already works (materialId, etc.) and avoids a new kind of
+  // "linked across ghosts" concept that nothing else here has.
+  connExtra?: Record<string, any>
 ): any[] => {
   const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
   if (!sourceEl) return [];
@@ -128,6 +229,7 @@ const buildConnectionsForInheritedJoin = (
         ],
         materialId,
         isInheritedJoin: matchingArray.id,
+        ...(connExtra ? { ...connExtra } : {}),
       });
     }
 
@@ -146,6 +248,7 @@ const buildConnectionsForInheritedJoin = (
           ],
           materialId,
           isInheritedJoin: matchingArray.id,
+          ...(connExtra ? { ...connExtra } : {}),
         });
       }
     }
@@ -174,6 +277,7 @@ const buildConnectionsForInheritedJoin = (
         ],
         materialId,
         isInheritedJoin: matchingArray.id,
+        ...(connExtra ? { ...connExtra } : {}),
       });
     }
   }
@@ -204,7 +308,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
 
   // ── Inherited join helpers ────────────────────────────────────────────────
 
-  const checkAndStoreInheritedJoin = (selPicots: any[], currentElements: any[]) => {
+  const checkAndStoreInheritedJoin = (selPicots: any[], currentElements: any[], connExtra?: Record<string, any>) => {
     if (selPicots.length < 2) return;
 
     const el1 = currentElements.find(e => e.id === selPicots[0].elementId);
@@ -264,13 +368,13 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // that grows the array wouldn't have anything to replay onto the new ghosts.
     p.setGhostArrays(prev => prev.map(a =>
       a.id === matchingArray.id
-        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex, isSourceElement, anchorEnd }] }
+        ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex, isSourceElement, anchorEnd, connExtra }] }
         : a
     ));
 
     const newInheritedConns = buildConnectionsForInheritedJoin(
       matchingArray, currentElements, isSourceElement, sourcePicotIndex, targetPicotIndex,
-      p.picotConnectionsRef.current, ghostEl.materialId || 'default', anchorEnd
+      p.picotConnectionsRef.current, ghostEl.materialId || 'default', anchorEnd, connExtra
     );
     if (newInheritedConns.length === 0) return;
 
@@ -325,9 +429,14 @@ export function useJoinActions(p: UseJoinActionsParams) {
         // guessing a direction and risking a wrong (silently double-booked)
         // connection.
         if (entry.isSourceElement && entry.anchorEnd !== 'start' && entry.anchorEnd !== 'end') return;
+        // entry.connExtra (e.g. { connectionType: 'fold', ...fold props })
+        // is undefined for legacy inheritedJoins records and for ordinary
+        // joins — buildConnectionsForInheritedJoin already treats undefined
+        // as "regular connection, no extra fields," so no legacy shim
+        // needed here beyond the isSourceElement/anchorEnd guards above.
         const newConns = buildConnectionsForInheritedJoin(
           matchingArray, currentElements, entry.isSourceElement, entry.sourcePicotIndex, entry.targetPicotIndex,
-          workingConns, materialId, entry.anchorEnd
+          workingConns, materialId, entry.anchorEnd, entry.connExtra
         );
         if (newConns.length > 0) {
           workingConns = [...workingConns, ...newConns];
@@ -409,10 +518,14 @@ export function useJoinActions(p: UseJoinActionsParams) {
 
   // ── Public actions ────────────────────────────────────────────────────────
 
-  const joinSelectedPicots = useCallback(() => {
-    const sel = p.selectedPicotsRef.current;
-    if (sel.length < 2) return;
-
+  // Shared by joinSelectedPicots and foldSelectedPicots — everything about
+  // making a connection (isJoint promotion, boundary-ghost mirroring,
+  // inherited-join propagation, the one history push) is identical between
+  // a regular join and a fold; the only difference is what extra fields ride
+  // along on the connection object. connExtra is spread onto the connection
+  // as-is — undefined for a regular join (unchanged prior behavior),
+  // { connectionType: 'fold', ...DEFAULT_FOLD_PROPS } for a fold.
+  const performJoin = (sel: any[], connExtra?: Record<string, any>) => {
     // Set before ANY state mutation below, not just before the final explicit
     // push. checkAndStoreInheritedJoin makes its own setElements/setPicotConnections
     // calls partway through this function — if the auto-push effect were to
@@ -425,7 +538,12 @@ export function useJoinActions(p: UseJoinActionsParams) {
     const firstEl = p.elementById.get(sel[0].elementId);
     const connMaterialId = firstEl?.materialId || 'default';
 
-    const connection = { id: generateId(), picots: [...sel], materialId: connMaterialId };
+    const connection = {
+      id: generateId(),
+      picots: [...sel],
+      materialId: connMaterialId,
+      ...(connExtra ? { ...connExtra } : {}),
+    };
     const newConns = [...p.picotConnectionsRef.current, connection];
     p.setPicotConnections(newConns);
     p.picotConnectionsRef.current = newConns;
@@ -477,9 +595,18 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // inside checkAndStoreInheritedJoin handle both; the function's own internal
     // guards (isBoundary, matchingArray, isSourceElement/isOtherBoundary) already
     // no-op correctly for any non-applicable selection, so no guard is needed here.
-    checkAndStoreInheritedJoin(sel, newEls);
+    checkAndStoreInheritedJoin(sel, newEls, connExtra);
 
-    p.setSelectedPicots([]);
+    // Regular join: clear selection so the user can start a fresh pick,
+    // same as always. Fold: deliberately KEEP the selection — design intent
+    // is that after folding, the pair stays selected and its property
+    // sliders appear immediately. tattingindex.tsx derives activeFold from
+    // selectedPicots via getFoldConnection, the same lookup used when the
+    // user clicks an already-folded picot to edit it later — one code path
+    // for both "just created" and "selected to edit."
+    if (connExtra?.connectionType !== 'fold') {
+      p.setSelectedPicots([]);
+    }
     // Push from the refs, not the local newEls/newConns — checkAndStoreInheritedJoin
     // may have updated elementsRef.current/picotConnectionsRef.current further
     // (isJoint promotion + any propagated inherited connections) after those
@@ -487,7 +614,46 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // that's missing the propagated joins, silently out of sync with what's
     // actually on screen.
     p.pushHistoryState(p.elementsRef.current, p.picotConnectionsRef.current, p.roundsRef.current);
+  };
+
+  const joinSelectedPicots = useCallback(() => {
+    const sel = p.selectedPicotsRef.current;
+    if (sel.length < 2) return;
+    performJoin(sel);
   }, [p.elementById, p.ghostArrays]);
+
+  // Fold is deliberately narrower than a regular join: exactly two picots
+  // (a fold has one partner, never more — see design notes), and both must
+  // pass isPicotFoldEligible (plain picot, not already connected to
+  // anything). The property-bar Fold button is expected to already be
+  // disabled when canFoldSelection(sel, ...) is false, so this guard is a
+  // defensive no-op in the normal path, not the primary gate — same pattern
+  // as every other "should already be disabled in the UI" guard in this
+  // codebase (see e.g. the length checks in joinSelectedPicots/
+  // breakSelectedPicots above).
+  const foldSelectedPicots = useCallback(() => {
+    const sel = p.selectedPicotsRef.current;
+    if (!canFoldSelection(sel, p.elementsRef.current, p.picotConnectionsRef.current)) return;
+    performJoin(sel, { connectionType: 'fold', ...DEFAULT_FOLD_PROPS });
+  }, [p.elementById, p.ghostArrays]);
+
+  // Updates one or more fold properties (totalLength, foldRatio, bendOuter,
+  // bendInner, innerGap) on an existing fold connection — the slider-drag
+  // handler in PicotJoinModeBar calls this on every change. Deliberately
+  // does NOT go through performJoin/checkAndStoreInheritedJoin — editing a
+  // fold's drape is a property tweak, not a new topological join, so ghost-
+  // array propagation doesn't apply (each propagated fold instance already
+  // has its own independent copy of these properties — see the connExtra
+  // doc comment on buildConnectionsForInheritedJoin — and this only touches
+  // the one connection the user is actually looking at).
+  const updateFoldConnection = useCallback((connectionId: string, patch: Record<string, any>) => {
+    const newConns = p.picotConnectionsRef.current.map(conn =>
+      conn.id === connectionId ? { ...conn, ...patch } : conn
+    );
+    p.setPicotConnections(newConns);
+    p.picotConnectionsRef.current = newConns;
+    p.pushHistoryState(p.elementsRef.current, newConns, p.roundsRef.current);
+  }, []);
 
   const breakSelectedPicots = useCallback(() => {
     const sel = p.selectedPicotsRef.current;
@@ -527,5 +693,5 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.pushHistoryState(newEls, newConns, p.roundsRef.current);
   }, [p.ghostArrays]);
 
-  return { joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins };
+  return { joinSelectedPicots, foldSelectedPicots, updateFoldConnection, breakSelectedPicots, reapplyInheritedJoins };
 }

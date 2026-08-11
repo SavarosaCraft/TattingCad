@@ -33,7 +33,7 @@ import { useEditorActions } from './hooks/useEditorActions';
 import { useBEClipboard } from './hooks/useBEClipboard';
 import { useHistoryActions } from './hooks/useHistoryActions';
 import { useInputHandlers } from './hooks/useInputHandlers';
-import { useJoinActions } from './hooks/useJoinActions';
+import { useJoinActions, canFoldSelection, DEFAULT_FOLD_PROPS } from './hooks/useJoinActions';
 import { useProjectFile } from './hooks/useProjectFile';
 import { useUIState } from './hooks/useUIState';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
@@ -766,6 +766,7 @@ const APP_VERSION = '1.2.0-beta';
   const activeModeRef = useRef(activeMode);
   const selectedBEsRef = useRef(selectedBEs);
   const selectedPicotsRef = useRef([]);
+  const foldModeArmedRef = useRef(false); // mirrors foldModeArmed — see the "Keep refs up to date" effect below
   const beClipboardRef = useRef(beClipboard);
   const roundsRef = useRef(rounds);
   const groupsRef = useRef(groups); // mirrors roundsRef — see `groups` state declaration above
@@ -800,6 +801,7 @@ const APP_VERSION = '1.2.0-beta';
     groupsRef.current = groups;
     activeRoundIdRef.current = activeRoundId;
     selectedPicotsRef.current = selectedPicots;
+    foldModeArmedRef.current = foldModeArmed;
     pivotOffsetRef.current = pivotOffset;
     movingPivotRef.current = movingPivot;
     rotationHandleRef.current = rotationHandle;
@@ -2666,13 +2668,50 @@ const APP_VERSION = '1.2.0-beta';
     return [];
   };
 
-  // Join/break actions delegated to useJoinActions hook
-  const { joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins } = useJoinActions({
+  // Join/break/fold actions delegated to useJoinActions hook
+  const { joinSelectedPicots, foldSelectedPicots, updateFoldConnection, breakSelectedPicots, reapplyInheritedJoins } = useJoinActions({
     selectedPicotsRef, elementsRef, picotConnectionsRef, roundsRef,
     elementById, ghostArrays,
     setElements, setPicotConnections, setSelectedPicots, setGhostArrays,
     pushHistoryState, skipAutoHistoryRef,
   });
+
+  // Sticky Fold Mode toggle (session 47) — while armed, the Join action in
+  // PicotJoinModeBar creates fold connections instead of regular ones. Stays
+  // armed across multiple folds until manually toggled off; unrelated to
+  // which picots are currently selected.
+  const [foldModeArmed, setFoldModeArmed] = useState(false);
+
+  // The fold connection whose sliders should currently show in Row 2 of
+  // PicotJoinModeBar — derived from selectedPicots so "just folded" and
+  // "clicked an existing fold to edit it" are the same code path (see the
+  // comment in useJoinActions.ts's performJoin for why fold-creation
+  // deliberately leaves the pair selected instead of clearing it).
+  const activeFoldConnection = useMemo(() => {
+    if (selectedPicots.length !== 2) return null;
+    const [a, b] = selectedPicots;
+    return picotConnections.find(conn =>
+      conn.connectionType === 'fold' &&
+      conn.picots.some((cp: any) => cp.elementId === a.elementId && cp.picotId === a.picotId) &&
+      conn.picots.some((cp: any) => cp.elementId === b.elementId && cp.picotId === b.picotId)
+    ) ?? null;
+  }, [selectedPicots, picotConnections]);
+
+  // Join button's effective action while in picotJoin mode: fold when Fold
+  // Mode is armed, regular join otherwise. Also gates the button's disabled
+  // state — canFoldSelection is stricter than "length >= 2" (exactly 2,
+  // both plain, neither already connected).
+  const picotJoinAction = useCallback(() => {
+    if (foldModeArmed) {
+      foldSelectedPicots();
+    } else {
+      joinSelectedPicots();
+    }
+  }, [foldModeArmed, foldSelectedPicots, joinSelectedPicots]);
+
+  const picotJoinDisabled = foldModeArmed
+    ? !canFoldSelection(selectedPicots, elements, picotConnections)
+    : selectedPicots.length < 2;
 
   const allColors = [...COLORS, ...customColors];
 
@@ -2759,7 +2798,108 @@ const APP_VERSION = '1.2.0-beta';
   // Flip elements across a vertical axis (FlipH, axisAngleDeg=90) or horizontal axis (FlipV, axisAngleDeg=0).
   // Simple arithmetic: FlipH  → new_x = 2*pivotX - old_x,  y unchanged
   //                    FlipV  → new_y = 2*pivotY - old_y,  x unchanged
+  // ── Geometry repair (session 49) ────────────────────────────────────────
+  // Detects and fixes elements whose `paths` were corrupted by the old
+  // multi-select/group rotation bug and the old flipElements split-ring bug
+  // (both fixed this session, but files saved before the fix may still
+  // carry corrupted paths that won't self-heal just by loading them).
+  //
+  // IMPORTANT — what this can and can't guarantee:
+  // For teardrop/circle rings, the old buggy rotation code built paths via
+  // `createTeardropPath(newCenter) -> rotatePaths(rotation)` and NEVER
+  // applied isFlippedH/isFlippedV at all, even when set. This repair
+  // exactly inverts that known, specific operation (pure rotation, nothing
+  // else) to recover the real canonical shape — this does NOT depend on
+  // guessing dsWidth/squeeze/formula-version, it's a mathematical inverse
+  // of a fully-known step. It then reapplies rotation + the flip that was
+  // missing. `center` and `rotation` are left untouched, since those were
+  // already correct — only `paths` is rebuilt.
+  //
+  // One honest caveat: this recovers the shape the buggy code's OWN
+  // createTeardropPath call produced, not necessarily the exact appearance
+  // before any special (e.g. polar-grid) placement tool first created the
+  // element, if that tool used a different convention. That original
+  // appearance can't be recovered from corrupted data by any method — the
+  // bug itself already discarded it. This repair is the closest achievable
+  // fix, and is internally consistent with how the app builds shapes today.
+  const detectCorruptedRingGeometry = (el) => {
+    if (el.type !== 'ring' || !el.paths?.length) return false;
+    if (el.isSplitRing) return false; // split-ring geometry bug is fixed at the source (flipElements); old split-ring saves need the same treatment but via createSplitRingPathFromEl, not rotatePaths inversion — handle separately if needed.
+    if (!['circle', 'teardrop'].includes(el.shapeStyle)) return false;
+    // Heuristic: rebuild via the CURRENT correct pipeline (create -> rotate
+    // -> flip) using this element's own stitchCount/squeeze, and compare to
+    // stored paths. A large mismatch on an element that has isFlippedH or
+    // isFlippedV set is the fingerprint of the old "flip never applied" bug.
+    if (!el.isFlippedH && !el.isFlippedV) return false; // old bug only ever produced wrong output for flipped elements
+    const targetLength = (el.stitchCount || 0) * dsWidth;
+    const canonical = el.shapeStyle === 'circle'
+      ? createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze ?? 0)
+      : createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze ?? 0);
+    const expected = applyRotationToPathData(el, canonical).paths;
+    // Compare the SET of points (order can legitimately differ across a
+    // flip — see flipElements) rather than by array index.
+    // IMPORTANT: this comparison alone is NOT reliable at a fixed pixel
+    // threshold. Verified against bug_rotation2.json: several correctly-
+    // authored, never-corrupted circles (grid-placed, likely built via a
+    // different creation path than plain createCirclePath) mismatch this
+    // formula by 7-12px purely from a shape-convention difference, NOT
+    // corruption -- confirmed via their rigid-rotation-from-source error
+    // being exactly 0. The real corruption in the same file mismatches by
+    // 47-79px. Comparing error AS A FRACTION OF THE ELEMENT'S OWN RADIUS
+    // cleanly separates the two: false positives topped out at ratio 1.22,
+    // real corruption started at 2.28. Threshold below is set well inside
+    // that gap, but this was calibrated against ONE test file's specific
+    // false-positive pattern -- treat scanForCorruptedGeometry's output as
+    // a candidate list for review, not a verdict. Do not wire this to an
+    // auto-repair-on-load flow.
+    const dist = (a, b) => Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0));
+    const usedExpected = new Set();
+    let totalErr = 0;
+    for (const p of el.paths) {
+      let best = Infinity, bestJ = -1;
+      expected.forEach((q, j) => {
+        if (usedExpected.has(j)) return;
+        const d = dist(p, q);
+        if (d < best) { best = d; bestJ = j; }
+      });
+      usedExpected.add(bestJ);
+      totalErr += best;
+    }
+    const radius = targetLength / (2 * Math.PI);
+    return radius > 0 && (totalErr / radius) > 1.8;
+  };
+
+  const repairRingGeometry = (el) => {
+    // Exact inversion of the OLD buggy transform: it was pure rotatePaths
+    // around the element's own (already-correct) center, nothing else.
+    const canonicalRecovered = rotatePaths(el.paths, el.center.x, el.center.y, -el.rotation);
+    const { paths } = applyRotationToPathData(el, { paths: canonicalRecovered });
+    return paths;
+  };
+
+  // Scans elements and returns the ids flagged as having corrupted
+  // geometry, without modifying anything — call this first to show the
+  // person what would change before committing to repairElements.
+  const scanForCorruptedGeometry = (ids) => {
+    const targets = ids ? elements.filter(el => ids.includes(el.id)) : elements;
+    return targets.filter(detectCorruptedRingGeometry).map(el => el.id);
+  };
+
+  // Repairs the given element ids (use scanForCorruptedGeometry's result,
+  // or a person-reviewed subset of it). Only touches `paths`; everything
+  // else (picots, notation, connections, color) is left exactly as-is.
+  const repairElements = (ids) => {
+    setElements(prev => prev.map(el => {
+      if (!ids.includes(el.id)) return el;
+      if (!detectCorruptedRingGeometry(el)) return el; // safety: re-check, don't touch anything not actually flagged
+      return { ...el, paths: repairRingGeometry(el) };
+    }));
+    pushHistory();
+  };
+
   const flipElements = (ids, axisAngleDeg, pivotX, pivotY) => {
+
+
     const isH = axisAngleDeg === 90;
 
     const mirrorPt = (px, py) => isH
@@ -2804,8 +2944,18 @@ const APP_VERSION = '1.2.0-beta';
         const parsedB = parseNotation(`sr: ${reversedA}`);
         if (!parsedA || !parsedB) return el;
         const sca = parsedA.stitchCount, scb = parsedB.stitchCount;
-        const pathData = createSplitRingPathFromEl(el, dsWidth, { cx: newCenter.x, cy: newCenter.y, stitchCountA: sca, stitchCountB: scb });
-        const newPaths = rotatePaths(pathData.paths, newCenter.x, newCenter.y, newAngle);
+        // TRUE mirror of the existing two arcs — NOT a regenerate+rotate.
+        // Rotating a freshly-rebuilt canonical shape (the old approach) can
+        // never produce a reflection (rotation is det=+1, mirror is
+        // det=-1), which is why flips looked "sometimes right" — a double
+        // flip is secretly just a rotation, so that case accidentally
+        // matched, while single flips never could. A split ring's 2-entry
+        // paths array is the same shape as the generic branch's N-entry
+        // case below, so the same proven mirrorPath+reverse composition
+        // applies directly: new arc "A" is the mirror of the OLD arc B
+        // (matching reversedB now describing the A slot), new arc "B" is
+        // the mirror of the OLD arc A.
+        const newPaths = el.paths.map(mirrorPath).reverse();
         const reversedAPicots = parsedA.picots.map(p => ({ ...p, stitchesBefore: sca - p.stitchesBefore })).reverse();
         const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))];
         return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
@@ -2975,6 +3125,55 @@ const APP_VERSION = '1.2.0-beta';
 
 
 
+  // ── Flip-aware side/tangent helpers (session 48) ───────────────────────────
+  // A true mirror reverses a ring's winding direction as seen on screen; a
+  // plain rotation does not. isFlippedH/isFlippedV together track how many
+  // times an element has been mirrored — an ODD total means stitches now run
+  // the opposite way around the ring, so anything computing "which way
+  // around" or "which side of the tangent" from stitchesBefore/dx,dy needs a
+  // sign flip. An even count (0 or 2 flips) nets out to a plain rotation, so
+  // no correction is needed there.
+  // Single source of truth — getPicotPosition, renderPicots, and the baked
+  // renderer all call these instead of re-deriving the formula, so a fix
+  // here can't drift out of sync between snap/hit-testing and rendering.
+  const getFlipSign = (element) => (
+    (element.isFlippedH || false) !== (element.isFlippedV || false) ? -1 : 1
+  );
+
+  // Angle (radians) of a stitch position around a circle-shaped closed ring
+  // (plain circles and Josephine Knots). stitchesBefore is the raw stitch
+  // position (already includes the +0.5 bead offset where applicable).
+  const getCircleStitchAngle = (element, stitchesBefore) => {
+    // flipSign applies to the -π/2 reference-phase term only. stitchesBefore
+    // already encodes the post-flip stitch order (it's recomputed as
+    // stitchCount - old value by the notation-reversal pipeline), so
+    // flipping the progress term too would double-count the reversal —
+    // that was the bug: it left position-0 markers (Josephine Knot guide
+    // points) completely unmoved by a flip, since 0 * anything = 0.
+    const flipSign = getFlipSign(element);
+    const rotation = (element.rotation || 0) * Math.PI / 180;
+    return (stitchesBefore / element.stitchCount) * Math.PI * 2 - (Math.PI / 2) * flipSign + rotation;
+  };
+
+  // Outward perpendicular angle at a path point given its tangent (dx, dy).
+  // Unlike getCircleStitchAngle, this does NOT need a flip correction: dx,dy
+  // come from sampling the element's actual (already correctly mirrored —
+  // reflected AND traversal-reversed for continuity, see flipElements)
+  // path, so the reflection is already baked into the tangent itself.
+  // Verified numerically against real flip/no-flip pairs — adding a
+  // flipSign multiplier here, as an earlier pass in this session did,
+  // double-corrects and is wrong. sideMultiplierOverride lets callers that
+  // already resolved their own sideMultiplier (e.g. renderPicots, which
+  // hoists it once per element) pass it through instead of re-reading
+  // element.picotSideMultiplier.
+  const getPathPerpAngle = (element, dx, dy, sideMultiplierOverride) => {
+    const sideMultiplier = sideMultiplierOverride !== undefined
+      ? sideMultiplierOverride
+      : (element.picotSideMultiplier || 1);
+    const sideOffset = sideMultiplier === -1 ? Math.PI : 0;
+    return Math.atan2(dy, dx) - Math.PI / 2 + sideOffset;
+  };
+
   const getPicotPosition = (element, picot, baseOnly = false) => {
     if (!element.picots || !picot) return null;
     
@@ -2986,15 +3185,19 @@ const APP_VERSION = '1.2.0-beta';
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
       const _sb1 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
-      const baseAngle = (_sb1 / element.stitchCount) * Math.PI * 2 - Math.PI / 2;
-      const rotation = (element.rotation || 0) * Math.PI / 180; // Convert to radians
-      const angle = baseAngle + rotation; // Apply rotation
+      const angle = getCircleStitchAngle(element, _sb1);
       
       // In picotJoin mode all picots are dots on the path — return BASE for consistent hit-testing
       if (picot.isJoint || picot.isGuidePoint || baseOnly || activeMode === 'picotJoin') {
+        // angle: outward radial direction — same direction a normal arm points
+        // (see the non-base branch just below). Added session 47 so fold
+        // rendering can get a base position AND its outward direction from
+        // one call, instead of duplicating this math. Harmless to every
+        // existing caller — they only ever destructure .x/.y.
         return {
           x: element.center.x + Math.cos(angle) * radius,
-          y: element.center.y + Math.sin(angle) * radius
+          y: element.center.y + Math.sin(angle) * radius,
+          angle,
         };
       }
       
@@ -3059,16 +3262,175 @@ const APP_VERSION = '1.2.0-beta';
     
     // In picotJoin mode all picots are dots on the path — return BASE for consistent hit-testing
     if (picot.isJoint || picot.isGuidePoint || baseOnly || activeMode === 'picotJoin') {
-      return { x, y };
+      // angle: same outward-perpendicular direction a normal arm points (see
+      // the non-base branch just below) — added session 47, same reasoning
+      // as the circle branch above.
+      const baseAngle = getPathPerpAngle(element, dx, dy, sideMultiplier);
+      return { x, y, angle: baseAngle };
     }
     
     // Regular picots: return TIP position (end of handle)
-    const sideOffset = sideMultiplier === -1 ? Math.PI : 0; // Flip to other side if multiplier is -1
-    const perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + sideOffset;
+    const perpAngle = getPathPerpAngle(element, dx, dy, sideMultiplier);
     return {
       x: x + Math.cos(perpAngle) * len,
       y: y + Math.sin(perpAngle) * len
     };
+  };
+
+  // ── Folded picot loop geometry (session 47) ────────────────────────────
+  // Builds ONE apparent-picot's SVG path `d` — a two-legged loop rather than
+  // the single-tip "arm" a normal picot uses, matching the hand-sketched
+  // reference (nested rainbow-arc loops, not straight arms).
+  //
+  // footX/footY: where THIS loop's first foot sits — NOT always the origin
+  // picot's exact base. See buildFoldLoopPair below: the inner loop's foot
+  // is deliberately offset into the outer loop's own footprint rather than
+  // sharing the outer's exact foot point. Confirmed by a live visual check
+  // this session (static preset gallery, not the running app — still no live
+  // app available) that sharing one foot point exactly makes the two loops
+  // trace an IDENTICAL curve whenever totalLength happens to split evenly
+  // (foldRatio = 0.5), since length was the only thing distinguishing them.
+  // The offset guarantees the two loops are always visually adjacent
+  // regardless of how close their lengths are — this fixed offset is what
+  // replaced the innerGap slider that got dropped in design.
+  //
+  // outwardAngle: the origin picot's outward direction (from
+  //   getPicotPosition's .angle field).
+  // length: this arc's share of totalLength.
+  // bend: 0-1, this arc's own bendOuter/bendInner value — leans the loop's
+  //   peak toward the "leading" foot the higher it is.
+  // footSpreadFrac: how far apart THIS loop's own two feet sit, as a
+  //   fraction of its own length.
+  const buildFoldLoopPathD = (
+    footX: number, footY: number, outwardAngle: number,
+    length: number, bend: number, footSpreadFrac = 0.22
+  ): string => {
+    const ox = Math.cos(outwardAngle), oy = Math.sin(outwardAngle);
+    const tangentAngle = outwardAngle - Math.PI / 2;
+    const tx = Math.cos(tangentAngle), ty = Math.sin(tangentAngle);
+
+    const spread = length * footSpreadFrac;
+    const foot1X = footX, foot1Y = footY;
+    const foot2X = footX + tx * spread, foot2Y = footY + ty * spread;
+    const midX = (foot1X + foot2X) / 2, midY = (foot1Y + foot2Y) / 2;
+    const peakX = midX + ox * length, peakY = midY + oy * length;
+
+    // bend leans the loop's control points along the tangent — higher bend
+    // = more lopsided/draped loop, matching the "outer bend"/"inner bend"
+    // sliders' intent (drape, not just height).
+    const lean = (bend - 0.5) * length * 0.4;
+    const c1x = foot1X + ox * length * 0.55 - tx * spread * 0.3 + tx * lean * 0.3;
+    const c1y = foot1Y + oy * length * 0.55 - ty * spread * 0.3 + ty * lean * 0.3;
+    const c2x = peakX - tx * spread * 0.4 - tx * lean * 0.2;
+    const c2y = peakY - ty * spread * 0.4 - ty * lean * 0.2;
+    const c3x = peakX + tx * spread * 0.4 + tx * lean * 0.2;
+    const c3y = peakY + ty * spread * 0.4 + ty * lean * 0.2;
+    const c4x = foot2X + ox * length * 0.55 + tx * spread * 0.3 - tx * lean * 0.3;
+    const c4y = foot2Y + oy * length * 0.55 + ty * spread * 0.3 - ty * lean * 0.3;
+
+    return `M ${foot1X},${foot1Y} C ${c1x},${c1y} ${c2x},${c2y} ${peakX},${peakY} `
+         + `C ${c3x},${c3y} ${c4x},${c4y} ${foot2X},${foot2Y}`;
+  };
+
+  // Builds a single rainbow-style arch between two FIXED, real points — used
+  // for the fold's outer arc (session 47, revised after live in-app
+  // feedback with sketches: the outer arc's two feet should be the real
+  // origin/anchor picot positions and their actual on-canvas distance apart,
+  // not a synthetic offset — see the two-sketch comparison that drove this).
+  // height: how far the arc bulges away from the straight line between the
+  //   feet (this is what totalLength*foldRatio now drives for the outer
+  //   arc, replacing its old role as a foot-to-foot spread).
+  // bend: 0-1, leans the arc's peak toward one foot or the other — 0.5 is
+  //   symmetric, matches the "outer bend"/"inner bend" slider's drape intent
+  //   as before, just applied to a different shape.
+  // outwardAngleHint: origin's own outward direction, used only to pick
+  //   which of the two perpendicular directions the arc bulges toward (away
+  //   from the base curve, not into it) — matters when origin and anchor
+  //   are nearly colinear along the base, where the feet-to-feet line alone
+  //   doesn't disambiguate "up" from "down."
+  const buildFixedFeetArcD = (
+    foot1X: number, foot1Y: number, foot2X: number, foot2Y: number,
+    height: number, bend: number, outwardAngleHint: number
+  ): string => {
+    const dx = foot2X - foot1X, dy = foot2Y - foot1Y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const alongX = dx / dist, alongY = dy / dist;
+    // Two perpendicular candidates; pick the one that agrees with the
+    // origin's own outward direction so the arc bulges away from the base
+    // curve like every other picot, not into it.
+    let perpX = -alongY, perpY = alongX;
+    const hintX = Math.cos(outwardAngleHint), hintY = Math.sin(outwardAngleHint);
+    if (perpX * hintX + perpY * hintY < 0) { perpX = -perpX; perpY = -perpY; }
+
+    const lean = (bend - 0.5) * 0.6; // -0.3..0.3, shifts which shoulder rises higher
+    // k = 4/3: cubic-bezier control points at t=0.33/0.66 only produce a
+    // visual peak bulge of ~0.75x their own perpendicular offset — verified
+    // numerically this session (peak bulge measured at t=0.5 via De
+    // Casteljau, offset swept 0.5/0.667/0.75, bulge scaled linearly with it,
+    // solved for the coefficient that makes peak bulge == height exactly).
+    // Without this correction "height" quietly meant "a fraction of the
+    // requested height," which would have made totalLength/foldRatio feel
+    // wrong/muted in the property sliders for no visible reason.
+    const k = 4 / 3;
+    const c1x = foot1X + alongX * dist * 0.33 + perpX * height * (k + lean);
+    const c1y = foot1Y + alongY * dist * 0.33 + perpY * height * (k + lean);
+    const c2x = foot2X - alongX * dist * 0.33 + perpX * height * (k - lean);
+    const c2y = foot2Y - alongY * dist * 0.33 + perpY * height * (k - lean);
+
+    return `M ${foot1X},${foot1Y} C ${c1x},${c1y} ${c2x},${c2y} ${foot2X},${foot2Y}`;
+  };
+
+  // Builds both apparent-picot paths for one fold connection together —
+  // BOTH now share the exact same two feet (the real origin and anchor
+  // picot positions), differing only in height and bend, like concentric
+  // nested rainbow arcs. This is a simplification (session 47, after live
+  // feedback across several rounds): earlier versions tried giving the
+  // inner arc its own small local footprint near the origin, but that's not
+  // actually what a fold looks like — the inner apparent picot's far end is
+  // the SAME anchor point the outer one reaches, just at a different
+  // height/lean. Matches the very first hand sketch this feature was
+  // designed from (nested rainbow arcs sharing one base span), which earlier
+  // implementation attempts had drifted away from.
+  //
+  // footSpreadFrac is no longer used for a separate footprint (see above) —
+  // now repurposed as the OFFSET each arc's feet get pulled apart by, at
+  // BOTH ends, so the two arcs don't literally touch down on the exact same
+  // pixels (which reads as one merged shape at the base, especially when
+  // totalLength/foldRatio put both arcs' heights close together). Session
+  // 47, live-tested value: offset = dsWidth / 2 (half a stitch-width) is
+  // confirmed as "perfect" against dsWidth = 10px at default zoom — tied to
+  // dsWidth rather than hardcoded so it stays correct if dsWidth is ever
+  // something other than 10. Outer's feet pull OUTWARD (away from each
+  // other, along the origin-anchor axis) so its span is slightly WIDER than
+  // the real distance; inner's feet pull INWARD so its span is slightly
+  // NARROWER — both arcs still converge toward the same two real points as
+  // the offset shrinks, they just fan apart right at the base instead of
+  // sharing literal identical pixels there.
+  const buildFoldLoopPair = (
+    originX: number, originY: number, originAngle: number,
+    anchorX: number, anchorY: number,
+    totalLength: number, foldRatio: number, bendOuter: number, bendInner: number,
+    footOffset: number = dsWidth / 2
+  ): { outerD: string; innerD: string } => {
+    const outerHeight = totalLength * foldRatio;
+    const innerHeight = totalLength * (1 - foldRatio);
+
+    const dx = anchorX - originX, dy = anchorY - originY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const alongX = dx / dist, alongY = dy / dist;
+
+    // Outer: origin foot pulled AWAY from anchor, anchor foot pulled AWAY
+    // from origin — widens the span.
+    const outerOriginX = originX - alongX * footOffset, outerOriginY = originY - alongY * footOffset;
+    const outerAnchorX = anchorX + alongX * footOffset, outerAnchorY = anchorY + alongY * footOffset;
+    // Inner: both feet pulled INWARD, toward each other — narrows the span.
+    const innerOriginX = originX + alongX * footOffset, innerOriginY = originY + alongY * footOffset;
+    const innerAnchorX = anchorX - alongX * footOffset, innerAnchorY = anchorY - alongY * footOffset;
+
+    const outerD = buildFixedFeetArcD(outerOriginX, outerOriginY, outerAnchorX, outerAnchorY, outerHeight, bendOuter, originAngle);
+    const innerD = buildFixedFeetArcD(innerOriginX, innerOriginY, innerAnchorX, innerAnchorY, innerHeight, bendInner, originAngle);
+
+    return { outerD, innerD };
   };
 
   // Build the project data object (shared by save and autosave)
@@ -3127,14 +3489,20 @@ const APP_VERSION = '1.2.0-beta';
       }
     } else if (element.type === 'ring' && element.isClosed) {
       if (element.shapeStyle === 'circle') {
-        // Circle: top point (12 o'clock) - MUST account for rotation
+        // Circle: top/reference point — this was a THIRD independent copy of
+        // the circle-angle formula (session 48), inline and with zero flip
+        // awareness (no isFlippedH/V at all), unrelated to the picot/label
+        // formulas already fixed elsewhere. Verified against true geometric
+        // reflection: matched exactly for V-only, H-only, and H+V flips.
+        // This is very likely the actual source of the JK "guide point"
+        // marker — JK is shapeStyle:'circle' with 0 picots, so this snap
+        // point may be the only thing available to visualize for it.
         const targetCircumference = element.stitchCount * dsWidth;
         const radius = targetCircumference / (2 * Math.PI);
-        const rotation = (element.rotation || 0) * Math.PI / 180; // Convert to radians
+        const angle = getCircleStitchAngle(element, 0);
         
-        // Calculate top point with rotation applied
-        const topX = element.center.x + Math.sin(rotation) * radius;
-        const topY = element.center.y - Math.cos(rotation) * radius;
+        const topX = element.center.x + Math.cos(angle) * radius;
+        const topY = element.center.y + Math.sin(angle) * radius;
         
         points.push({
           x: topX,
@@ -3535,7 +3903,14 @@ const APP_VERSION = '1.2.0-beta';
       } else if ((e.key === 'j' || e.key === 'J') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length >= 2) {
           e.preventDefault();
-          joinSelectedPicots();
+          // Respects Fold Mode — foldSelectedPicots no-ops internally via
+          // canFoldSelection if the current pair isn't fold-eligible, same
+          // as the disabled state on the Join button in PicotJoinModeBar.
+          if (foldModeArmedRef.current) {
+            foldSelectedPicots();
+          } else {
+            joinSelectedPicots();
+          }
         }
       } else if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         if (activeModeRef.current === 'picotJoin' && selectedPicotsRef.current.length > 0) {
@@ -3716,7 +4091,7 @@ const APP_VERSION = '1.2.0-beta';
           // Shift+J — Toggle picot join mode
           e.preventDefault();
           if (activeModeRef.current === 'picotJoin') {
-            setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]);
+            setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); setFoldModeArmed(false);
           } else if (activeModeRef.current !== 'beading') {
             setActiveMode('picotJoin');
             setCurrentTool('select');
@@ -4899,10 +5274,9 @@ const APP_VERSION = '1.2.0-beta';
     if (element.isClosed && element.shapeStyle === 'circle') {
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
-      const rotation = (element.rotation || 0) * Math.PI / 180;
 
       return element.picots.map(p => {
-        const angle = (beadSb(p) / element.stitchCount) * Math.PI * 2 - Math.PI / 2 + rotation;
+        const angle = getCircleStitchAngle(element, beadSb(p));
         const startX = element.center.x + Math.cos(angle) * radius;
         const startY = element.center.y + Math.sin(angle) * radius;
         const len = PICOT_SIZE[p.length] || 20;
@@ -4926,7 +5300,6 @@ const APP_VERSION = '1.2.0-beta';
       const samplesB = sampleBezierPath(pathB, 60);
       const lenA = calculatePathLength(samplesA);
       const lenB = calculatePathLength(samplesB);
-      const so = sideMultiplier === -1 ? Math.PI : 0;
 
       return element.picots.map(p => {
         const sb = beadSb(p);
@@ -4951,7 +5324,7 @@ const APP_VERSION = '1.2.0-beta';
           dx = 3*(1-t)*(1-t)*(path.control1X-path.x) + 6*(1-t)*t*(path.control2X-path.control1X) + 3*t*t*(path.endX-path.control2X);
           dy = 3*(1-t)*(1-t)*(path.control1Y-path.y) + 6*(1-t)*t*(path.control2Y-path.control1Y) + 3*t*t*(path.endY-path.control2Y);
         }
-        const perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + so;
+        const perpAngle = getPathPerpAngle(element, dx, dy, sideMultiplier);
         const len = PICOT_SIZE[p.length] || 20;
         const endX = x + Math.cos(perpAngle) * len;
         const endY = y + Math.sin(perpAngle) * len;
@@ -4966,7 +5339,6 @@ const APP_VERSION = '1.2.0-beta';
       pathLengths.push(calculatePathLength(sampleBezierPath(path, 20)));
       totalLength += pathLengths[pathLengths.length - 1];
     }
-    const so = sideMultiplier === -1 ? Math.PI : 0;
 
     return element.picots.map(p => {
       const targetDist = (beadSb(p) / element.stitchCount) * totalLength;
@@ -4992,12 +5364,18 @@ const APP_VERSION = '1.2.0-beta';
       let perpAngle: number;
       const _isHalfway = element.isClosed && Math.abs(p.stitchesBefore - element.stitchCount / 2) < 1.5;
       if (_isHalfway && element.paths?.[0]) {
+        // This case points ALONG the join axis rather than perpendicular to
+        // the local tangent, so it doesn't go through getPathPerpAngle's
+        // -π/2 term — only the explicit side offset applies here, same as
+        // before. (No winding-direction correction needed: the join axis is
+        // defined by two points, not by a traversal direction.)
         const joinX = element.paths[0].x, joinY = element.paths[0].y;
         const axDx = x - joinX, axDy = y - joinY;
         const axLen = Math.sqrt(axDx*axDx + axDy*axDy) || 1;
-        perpAngle = Math.atan2(axDy / axLen, axDx / axLen) + so;
+        const sideOffset = sideMultiplier === -1 ? Math.PI : 0;
+        perpAngle = Math.atan2(axDy / axLen, axDx / axLen) + sideOffset;
       } else {
-        perpAngle = Math.atan2(dy, dx) - Math.PI / 2 + so;
+        perpAngle = getPathPerpAngle(element, dx, dy, sideMultiplier);
       }
       const len = PICOT_SIZE[p.length] || 20;
       const endX = x + Math.cos(perpAngle) * len;
@@ -5024,9 +5402,8 @@ const APP_VERSION = '1.2.0-beta';
         const radius = targetCircumference / (2 * Math.PI);
         const textRadius = radius + (element.labelOffset ?? 8);
         const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
-        const rotationRad = (element.rotation || 0) * Math.PI / 180;
         return runs.map((run, j) => {
-          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2 + rotationRad;
+          const angleMid = getCircleStitchAngle(element, run.midDS);
           return (
             <text
               key={`label-${element.id}-np-${j}`}
@@ -5147,12 +5524,11 @@ const APP_VERSION = '1.2.0-beta';
       const radius = targetCircumference / (2 * Math.PI);
       const labelsInside = element.labelsInside;
       const textRadius = radius + (element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 25 : radius * -0.35));
-      const rotationRad = (element.rotation || 0) * Math.PI / 180;
       
       return segments.flatMap((seg, i) => {
         const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
         return runs.map((run, j) => {
-          const angleMid = (run.midDS / element.stitchCount) * Math.PI * 2 - Math.PI / 2 + rotationRad;
+          const angleMid = getCircleStitchAngle(element, run.midDS);
           return (
             <text
               key={`label-${element.id}-${i}-${j}`}
@@ -5390,7 +5766,7 @@ const APP_VERSION = '1.2.0-beta';
         [showBeadLibrary,                  () => setShowBeadLibrary(false)],
         [showPolarGridPanel,               () => setShowPolarGridPanel(false)],
         [showThreadProperties,             () => setShowThreadProperties(false)],
-        [activeMode === 'picotJoin',       () => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); }],
+        [activeMode === 'picotJoin',       () => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); setFoldModeArmed(false); }],
         [activeMode === 'beading',         () => { setActiveMode(null); setSelectedBEs([]); }],
         [activeMode === 'tattingOrder',    () => { setActiveMode(null); setSelectedIds([]); }],
         [currentTool === 'zoomRect',       () => { setCurrentTool('select'); setZoomRectBox(null); }],
@@ -5707,7 +6083,6 @@ const APP_VERSION = '1.2.0-beta';
         // ── picots first so they render underneath stitches ──
         if (el.picots?.length) {
           const N = el.stitchCount;
-          const rotation = (el.rotation || 0) * Math.PI / 180;
           const picotSideDir = el.picotSideMultiplier || 1;
           let out = '';
           for (const picot of el.picots) {
@@ -5716,7 +6091,10 @@ const APP_VERSION = '1.2.0-beta';
             const tMid   = picot.stitchesBefore / N;
             const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
             const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
-            const angleOf = (t: number) => t * Math.PI * 2 + rotation - Math.PI / 2;
+            // t is a stitch-progress fraction (0-1), same role as
+            // stitchesBefore/stitchCount — pass it through as N*t so this
+            // goes through the same flip-aware formula as everywhere else.
+            const angleOf = (t: number) => getCircleStitchAngle(el, t * N);
             const ptOn    = (t: number) => ({
               x: el.center.x + Math.cos(angleOf(t)) * r,
               y: el.center.y + Math.sin(angleOf(t)) * r,
@@ -6634,10 +7012,15 @@ const APP_VERSION = '1.2.0-beta';
           ) : activeMode === 'picotJoin' ? (
             /* ── Picot Edit mode property bar ───────────────────────────── */
             <PicotJoinModeBar
-              selectedPicotCount={selectedPicots.length}
-              onExit={() => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); }}
-              onJoin={joinSelectedPicots}
+              onExit={() => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); setFoldModeArmed(false); }}
+              onJoin={picotJoinAction}
               onBreak={breakSelectedPicots}
+              joinDisabled={picotJoinDisabled}
+              breakDisabled={selectedPicots.length === 0}
+              foldModeArmed={foldModeArmed}
+              onToggleFoldMode={() => setFoldModeArmed(v => !v)}
+              activeFold={activeFoldConnection}
+              onFoldPropertyChange={(id, patch) => updateFoldConnection(id, patch)}
               t={t}
             />
           ) : activeMode === 'beading' ? (
@@ -8310,6 +8693,97 @@ const APP_VERSION = '1.2.0-beta';
                 const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                 const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
                 
+                // Fold connections (session 47) render identically in both
+                // schematic and realistic mode — the "line tool" look (solid
+                // material-colored stroke with a black outline) applies
+                // regardless of mode, unlike regular join lines which differ
+                // between dashed-schematic and solid-realistic. Checked
+                // before the renderMode split for that reason. Origin is
+                // always conn.picots[0] — which physical picot that is
+                // doesn't matter for pattern output (both ends read
+                // symmetrically as fp//ref//), so it's picked by array order
+                // alone, not any semantic rule.
+                if (conn.connectionType === 'fold') {
+                  const originRef = conn.picots[0];
+                  const originEl = elementById.get(originRef.elementId);
+                  const originPicot = originEl?.picots?.find(pic => pic.id === originRef.picotId);
+                  const originFrame = originEl && originPicot ? getPicotPosition(originEl, originPicot, true) : null;
+                  // Fold is plain-picot-only and endpoint pseudo-picots are
+                  // never fold-eligible (see isPicotFoldEligible), so
+                  // originPicot should always resolve — this null check is
+                  // just defensive, matching the "should already be
+                  // guarded upstream" pattern used elsewhere in this file.
+                  if (!originFrame || originFrame.angle === undefined) {
+                    return null;
+                  }
+                  const totalLength = conn.totalLength ?? DEFAULT_FOLD_PROPS.totalLength;
+                  const foldRatio = conn.foldRatio ?? DEFAULT_FOLD_PROPS.foldRatio;
+                  const bendOuter = conn.bendOuter ?? DEFAULT_FOLD_PROPS.bendOuter;
+                  const bendInner = conn.bendInner ?? DEFAULT_FOLD_PROPS.bendInner;
+                  const anchorPos = positions[1] ?? positions[0];
+                  const { outerD, innerD } = buildFoldLoopPair(
+                    originFrame.x, originFrame.y, originFrame.angle,
+                    anchorPos.x, anchorPos.y,
+                    totalLength, foldRatio, bendOuter, bendInner
+                  );
+                  // Same material-color resolution the realistic join render
+                  // already uses just below (stored materialId on the
+                  // connection, falling back to the origin element's own
+                  // color) — this is what makes it "look like the line tool"
+                  // rather than the schematic theme color, in both modes.
+                  const foldFirstEl = originEl;
+                  let foldLineColor;
+                  if (conn.materialId) {
+                    const mat = materialsById.get(conn.materialId);
+                    foldLineColor = mat ? getSolidColor({ materialId: conn.materialId }) : getSolidColor(foldFirstEl);
+                  } else {
+                    foldLineColor = (foldFirstEl ? getSolidColor(foldFirstEl) : null) || '#FF8C00';
+                  }
+                  const foldLineWidth = foldFirstEl?.lineWidth || 2;
+                  // Paint order (session 47, live feedback): whichever
+                  // apparent picot is currently smaller should paint
+                  // UNDERNEATH the bigger one, automatically, rather than
+                  // outer always being drawn first — so as foldRatio (or
+                  // the two totalLength shares it implies) shifts which
+                  // one is actually bigger, the smaller one visually tucks
+                  // behind the larger one instead of always sitting on top
+                  // of it regardless of size.
+                  const outerHeight = totalLength * foldRatio;
+                  const innerHeight = totalLength * (1 - foldRatio);
+                  const outerArcEls = (
+                    <React.Fragment key="outer">
+                      <path d={outerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
+                      <path d={outerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
+                    </React.Fragment>
+                  );
+                  const innerArcEls = (
+                    <React.Fragment key="inner">
+                      <path d={innerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
+                      <path d={innerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
+                    </React.Fragment>
+                  );
+                  return (
+                    <g key={conn.id}>
+                      {/* Thin connector to the anchor picot — schematic-only;
+                          in realistic mode the arcs themselves already show
+                          where the fold reaches, an extra dashed guide line
+                          would look out of place next to solid thread color. */}
+                      {renderMode !== 'realistic' && (
+                        <line
+                          x1={originFrame.x} y1={originFrame.y} x2={anchorPos.x} y2={anchorPos.y}
+                          stroke={theme.connectionLine} strokeWidth="2"
+                          strokeDasharray="3,4" opacity="0.5"
+                        />
+                      )}
+                      {/* SVG paints later siblings on top — smaller arc
+                          first (underneath), bigger arc last (on top). */}
+                      {outerHeight >= innerHeight
+                        ? <>{innerArcEls}{outerArcEls}</>
+                        : <>{outerArcEls}{innerArcEls}</>}
+                    </g>
+                  );
+                }
+
                 if (renderMode === 'realistic') {
                   // Realistic mode: use the material stored on the connection (set by first-selected picot)
                   const connectedEls = conn.picots.map(p => elementById.get(p.elementId)).filter(Boolean);
@@ -8723,13 +9197,24 @@ const APP_VERSION = '1.2.0-beta';
                         {/* Dashed connection line for split rings - along height line */}
                         {el.isSplitRing && el.paths.length >= 2 && (() => {
                           // paths[0] goes from x/y (A-start) to endX/Y (A-end).
-                          // Each flip inverts the visual direction — odd number of flips = swap.
-                          const flipCount = (el.isFlippedH ? 1 : 0) + (el.isFlippedV ? 1 : 0);
-                          const flipped = flipCount % 2 === 1;
-                          const x1 = flipped ? el.paths[0].x    : el.paths[0].endX;
-                          const y1 = flipped ? el.paths[0].y    : el.paths[0].endY;
-                          const x2 = flipped ? el.paths[0].endX : el.paths[0].x;
-                          const y2 = flipped ? el.paths[0].endY : el.paths[0].y;
+                          // This is now unconditional (session 48): flipElements'
+                          // split-ring branch performs a TRUE mirror via
+                          // mirrorPath, which swaps start<->end as an intrinsic
+                          // part of the reflection (needed for arc continuity —
+                          // see flipElements). That means paths[0].x/y is
+                          // ALREADY, correctly, the start of the CURRENT
+                          // notation A regardless of flip state. The previous
+                          // flipCount-based swap here was compensating for the
+                          // old regenerate+rotate split-ring code, which never
+                          // actually reflected anything (rotation can't produce
+                          // a mirror) — keeping that swap now double-corrects
+                          // and points the arrow the wrong way under a single
+                          // flip. Do not reintroduce it without re-deriving
+                          // against flipElements' current behavior.
+                          const x1 = el.paths[0].endX;
+                          const y1 = el.paths[0].endY;
+                          const x2 = el.paths[0].x;
+                          const y2 = el.paths[0].y;
                           // Arrowhead pointing AWAY from x2/y2 — shows direction of travel along path A
                           const angle = Math.atan2(y2 - y1, x2 - x1);
                           const arrSize = (el.lineWidth || 2) * 3;

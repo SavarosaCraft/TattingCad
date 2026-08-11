@@ -8,6 +8,7 @@
 import { generateId } from '../utils/id';
 import { sampleBezierPath, calculatePathLength } from '../geometry/bezier';
 import { rotatePaths, createSplitRingPathFromEl } from '../geometry/paths';
+import { getFoldPartner } from './useJoinActions';
 
 export interface UseInputHandlersParams {
   // State values
@@ -722,6 +723,16 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           p.setSelectedPicots(already ? p.selectedPicots.filter((sp:any) => !(sp.elementId===cp.elementId && sp.picotId===cp.picotId)) : [...p.selectedPicots, cp]);
         } else if (!isClick && hasMod) {
           p.setSelectedPicots([...p.selectedPicots, ...selPicots.filter(sp => !p.selectedPicots.some((ex:any) => ex.elementId===sp.elementId && ex.picotId===sp.picotId))]);
+        } else if (isClick && !hasMod && selPicots.length === 1) {
+          // Plain click on a single picot (session 47, folded picots): if
+          // it's already the endpoint of a fold connection, auto-select its
+          // partner too and land both in selectedPicots — that's what drives
+          // activeFoldConnection in tattingindex.tsx to show the fold's
+          // property sliders. An ordinary unfolded picot just selects itself,
+          // same as before this change.
+          const cp = selPicots[0];
+          const foldPartner = getFoldPartner(p.picotConnections, cp.elementId, cp.picotId);
+          p.setSelectedPicots(foldPartner ? [cp, foldPartner] : [cp]);
         } else { p.setSelectedPicots(selPicots); }
 
       } else {
