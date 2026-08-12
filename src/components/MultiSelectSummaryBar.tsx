@@ -164,53 +164,56 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             hasn't run yet, e.g. a legacy save with a bare groupId and no
             registry entry. Stacks one row per touched group when the
             selection spans more than one. */}
-        <div className="flex flex-col gap-1 w-full basis-full px-2 top-toolbar-scalable">
-          {touchedGroupIds.map(gid => (
-            <div key={gid} className="flex items-center gap-2">
-              <input
-                type="text"
-                defaultValue={groups.find(g => g.id === gid)?.name ?? ''}
-                placeholder={t('groupNamePlaceholder')}
-                onBlur={(e) => {
-                  const name = e.target.value.trim();
-                  if (!name) return;
-                  const nextGroups = groups.some(g => g.id === gid)
-                    ? groups.map(g => g.id === gid ? { ...g, name } : g)
-                    : [...groups, { id: gid, name, color: fallbackGroupColor(groups, gid) }];
-                  setGroups(nextGroups);
-                  pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white flex-1 min-w-0"
-                style={{ maxWidth: '180px' }}
-                title={t('groupNamePlaceholder')}
-              />
-              <input
-                type="color"
-                value={groups.find(g => g.id === gid)?.color ?? fallbackGroupColor(groups, gid)}
-                onChange={(e) => {
-                  const color = e.target.value;
-                  const nextGroups = groups.some(g => g.id === gid)
-                    ? groups.map(g => g.id === gid ? { ...g, color } : g)
-                    : [...groups, { id: gid, name: `Group`, color }];
-                  setGroups(nextGroups);
-                  pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
-                }}
-                title={t('groupColorLabel')}
-                className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer flex-shrink-0"
-              />
-              {!isMultiGroup && (
-                <div className="text-sm text-gray-300 whitespace-nowrap">
-                  Group Selected ({groupElements.length} elements)
-                </div>
-              )}
-            </div>
-          ))}
-          {isMultiGroup && (
-            <div className="text-sm text-gray-300 whitespace-nowrap">
-              {touchedGroupIds.length} Groups Selected ({groupElements.length} elements)
-            </div>
-          )}
+        <div className="flex flex-row flex-nowrap items-center gap-2 w-full basis-full px-2 top-toolbar-scalable overflow-x-auto">
+          {(() => {
+            // Shrink each group's name field as more groups are selected so
+            // a handful of groups (6-7+) still fit on one row instead of
+            // each one wrapping onto its own line.
+            const nameMaxWidth =
+              touchedGroupIds.length <= 3 ? 180 :
+              touchedGroupIds.length <= 5 ? 110 : 70;
+            return touchedGroupIds.map(gid => (
+              <div key={gid} className="flex items-center gap-1 flex-shrink-0 min-w-0">
+                <input
+                  type="text"
+                  defaultValue={groups.find(g => g.id === gid)?.name ?? ''}
+                  placeholder={t('groupNamePlaceholder')}
+                  onBlur={(e) => {
+                    const name = e.target.value.trim();
+                    if (!name) return;
+                    const nextGroups = groups.some(g => g.id === gid)
+                      ? groups.map(g => g.id === gid ? { ...g, name } : g)
+                      : [...groups, { id: gid, name, color: fallbackGroupColor(groups, gid) }];
+                    setGroups(nextGroups);
+                    pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white flex-1 min-w-0"
+                  style={{ maxWidth: `${nameMaxWidth}px` }}
+                  title={t('groupNamePlaceholder')}
+                />
+                <input
+                  type="color"
+                  value={groups.find(g => g.id === gid)?.color ?? fallbackGroupColor(groups, gid)}
+                  onChange={(e) => {
+                    const color = e.target.value;
+                    const nextGroups = groups.some(g => g.id === gid)
+                      ? groups.map(g => g.id === gid ? { ...g, color } : g)
+                      : [...groups, { id: gid, name: `Group`, color }];
+                    setGroups(nextGroups);
+                    pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
+                  }}
+                  title={t('groupColorLabel')}
+                  className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer flex-shrink-0"
+                />
+              </div>
+            ));
+          })()}
+          <div className="text-sm text-gray-300 whitespace-nowrap flex-shrink-0">
+            {isMultiGroup
+              ? `${touchedGroupIds.length} Groups Selected (${groupElements.length} elements)`
+              : `Group Selected (${groupElements.length} elements)`}
+          </div>
         </div>
 
         {/* Group Rotation + Flip — same cluster as single elements */}
@@ -238,7 +241,13 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
           </button>
           <input
             type="text"
-            value={groupRotationInput !== '' ? groupRotationInput : String(parseFloat((((groupElements[0]?.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
+            value={groupRotationInput}
+            onFocus={(e) => {
+              if (groupRotationInput === '') {
+                setGroupRotationInput(String(parseFloat((((groupElements[0]?.rotation || 0) % 360 + 360) % 360).toFixed(1))));
+                e.target.select();
+              }
+            }}
             onChange={(e) => { setGroupRotationInput(e.target.value); }}
             onBlur={(e) => {
               const currentDeg = ((groupElements[0]?.rotation || 0) % 360 + 360) % 360;

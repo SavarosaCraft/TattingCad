@@ -2049,8 +2049,11 @@ const APP_VERSION = '1.2.0-beta';
     const polarGridId = (pivotId && pivotId !== 'selection') ? pivotId : undefined;
 
     // Start from copy #1 (original stays as-is), generate copies 1..count-1
+    const perInstanceIdMap = new Map<number, Map<string, string>>();
     for (let i = 1; i < count; i++) {
       const isBoundary = (i === 1 || i === count - 1);
+      const idMap = new Map<string, string>();
+      perInstanceIdMap.set(i, idMap);
 
       selectedEls.forEach(el => {
         const newEl = createPolarInstance(el, i, pivotX, pivotY, count, fillAngle, {
@@ -2062,11 +2065,42 @@ const APP_VERSION = '1.2.0-beta';
         });
 
         newElements.push(newEl);
+        idMap.set(el.id, newEl.id);
         if (createGhosts) {
           newGhostIds.push(newEl.id);
           if (isBoundary) boundaryGhostIds.push(newEl.id);
         }
       });
+    }
+
+    // Any picotConnections entry that's wholly between two elements in the
+    // selection itself (e.g. joining two rings, then selecting both and
+    // arraying them as a pair) needs the SAME replication every other
+    // duplicated element already gets — otherwise only the original pair
+    // keeps its connection while every copy's picots still show isJoint:
+    // true (cloned verbatim from the source) with nothing actually joining
+    // them. Picot ids are stable across instances (createPolarInstance
+    // clones them verbatim), so the same picotId carries over — only the
+    // elementId needs remapping per instance.
+    const internalConns = picotConnectionsRef.current.filter(conn =>
+      conn.picots.every((cp: any) => currentSelectedIds.includes(cp.elementId))
+    );
+    if (internalConns.length > 0) {
+      const replicatedConns: any[] = [];
+      for (let i = 1; i < count; i++) {
+        const idMap = perInstanceIdMap.get(i)!;
+        internalConns.forEach(conn => {
+          const mappedPicots = conn.picots.map((cp: any) => ({ elementId: idMap.get(cp.elementId), picotId: cp.picotId }));
+          if (mappedPicots.every((mp: any) => mp.elementId)) {
+            replicatedConns.push({ ...conn, id: generateId(), picots: mappedPicots });
+          }
+        });
+      }
+      if (replicatedConns.length > 0) {
+        const allConns = [...picotConnectionsRef.current, ...replicatedConns];
+        setPicotConnections(allConns);
+        picotConnectionsRef.current = allConns;
+      }
     }
 
     // Also link originals to the chosen grid if a grid was selected
@@ -2240,8 +2274,11 @@ const APP_VERSION = '1.2.0-beta';
     const groupIdMap = new Map<string, string>();
     selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
 
+    const perInstanceIdMap = new Map<number, Map<string, string>>();
     for (let i = 1; i < count; i++) {
       const isBoundary = (i === 1); // Ghost closest to the mother is the boundary for linear
+      const idMap = new Map<string, string>();
+      perInstanceIdMap.set(i, idMap);
 
       selectedEls.forEach(el => {
         const newEl = createLinearInstance(el, i, dx, dy, rotStep, {
@@ -2252,12 +2289,37 @@ const APP_VERSION = '1.2.0-beta';
         });
 
         newElements.push(newEl);
+        idMap.set(el.id, newEl.id);
         if (createGhosts) {
           newGhostIds.push(newEl.id);
           if (isBoundary) boundaryGhostIds.push(newEl.id);
         }
       });
     }
+
+    // See the matching comment in executePolarArray — replicate any
+    // connection that's wholly internal to the selection onto every copy.
+    const internalConns = picotConnectionsRef.current.filter(conn =>
+      conn.picots.every((cp: any) => currentSelectedIds.includes(cp.elementId))
+    );
+    if (internalConns.length > 0) {
+      const replicatedConns: any[] = [];
+      for (let i = 1; i < count; i++) {
+        const idMap = perInstanceIdMap.get(i)!;
+        internalConns.forEach(conn => {
+          const mappedPicots = conn.picots.map((cp: any) => ({ elementId: idMap.get(cp.elementId), picotId: cp.picotId }));
+          if (mappedPicots.every((mp: any) => mp.elementId)) {
+            replicatedConns.push({ ...conn, id: generateId(), picots: mappedPicots });
+          }
+        });
+      }
+      if (replicatedConns.length > 0) {
+        const allConns = [...picotConnectionsRef.current, ...replicatedConns];
+        setPicotConnections(allConns);
+        picotConnectionsRef.current = allConns;
+      }
+    }
+
     setElements(prev => [...prev, ...newElements]);
     // After ghost creation, only select the mother element(s) — ghosts are non-interactive
     setSelectedIds([...currentSelectedIds]);
@@ -2324,6 +2386,7 @@ const APP_VERSION = '1.2.0-beta';
     const groupIdMap = new Map<string, string>();
     selectedEls.forEach(el => { if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId()); });
 
+    const perInstanceIdMap = new Map<number, Map<string, string>>();
     for (let i = 1; i < count; i++) {
       const pos = spiralPos(i);
       // Offset moves the centroid to pos; each element keeps its relative position within the group
@@ -2332,11 +2395,15 @@ const APP_VERSION = '1.2.0-beta';
       // Rotation delta relative to original angle — how much the spiral has turned
       // offsetX/Y moves each element's centroid to the new spiral position
 
+      const idMap = new Map<string, string>();
+      perInstanceIdMap.set(i, idMap);
+
       selectedEls.forEach(el => {
         const newEl = JSON.parse(JSON.stringify(el));
         newEl.id = generateId();
         delete newEl.orderNumber;
         if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
+        idMap.set(el.id, newEl.id);
 
         const newCx = el.center.x + offsetX;
         const newCy = el.center.y + offsetY;
@@ -2365,6 +2432,30 @@ const APP_VERSION = '1.2.0-beta';
         newElements.push(newEl);
       });
     }
+
+    // See the matching comment in executePolarArray — replicate any
+    // connection that's wholly internal to the selection onto every copy.
+    const internalConns = picotConnectionsRef.current.filter(conn =>
+      conn.picots.every((cp: any) => currentSelectedIds.includes(cp.elementId))
+    );
+    if (internalConns.length > 0) {
+      const replicatedConns: any[] = [];
+      for (let i = 1; i < count; i++) {
+        const idMap = perInstanceIdMap.get(i)!;
+        internalConns.forEach(conn => {
+          const mappedPicots = conn.picots.map((cp: any) => ({ elementId: idMap.get(cp.elementId), picotId: cp.picotId }));
+          if (mappedPicots.every((mp: any) => mp.elementId)) {
+            replicatedConns.push({ ...conn, id: generateId(), picots: mappedPicots });
+          }
+        });
+      }
+      if (replicatedConns.length > 0) {
+        const allConns = [...picotConnectionsRef.current, ...replicatedConns];
+        setPicotConnections(allConns);
+        picotConnectionsRef.current = allConns;
+      }
+    }
+
     setElements(prev => [...prev, ...newElements]);
     setSelectedIds([...currentSelectedIds, ...newElements.map(e => e.id)]);
   };
@@ -3572,6 +3663,11 @@ const APP_VERSION = '1.2.0-beta';
     let nearestDist = result ? Math.hypot(result.x - worldX, result.y - worldY) : effectiveSnapRadius;
     for (const grid of polarGrids) {
       if (!grid.visible) continue;
+      const centerDist0 = Math.hypot(grid.center.x - worldX, grid.center.y - worldY);
+      if (centerDist0 < nearestDist) {
+        nearestDist = centerDist0;
+        result = { x: grid.center.x, y: grid.center.y };
+      }
       for (const ring of grid.rings) {
         if (!ring.snap || !ring.visible) continue;
         // Pre-filter: ring center too far even for max radius
@@ -4127,21 +4223,84 @@ const APP_VERSION = '1.2.0-beta';
     picotMatchMode?: 'stitchesBefore' | 'order';
   }
 
+  // A picot's "kind" — everything about it except position (stitchesBefore),
+  // identity (id), and current join state (isJoint). Two picot lists with
+  // an identical kind-sequence describe the same picots in the same order;
+  // only the ds/rds runs around them changed length. That's a mechanical
+  // proof, not a guess — unlike matching by stitchesBefore alone, which
+  // breaks the moment an earlier run's length shifts everything after it,
+  // this can't be fooled by a length-only edit.
+  const picotKind = (p: any): string => JSON.stringify([
+    p.length, !!p.isGuide, !!p.isGuidePoint, p.beadType ?? null,
+    !!p.isCoreJoin, !!p.hasPicotArm, p.beadSeq ?? null, p.beadSize ?? null,
+    p.coreSize ?? null, p.beStructure ?? null,
+  ]);
+
+  // Single source of truth for merging old picots (ids + join state) onto
+  // a freshly-parsed picot list, used by both notation-edit branches below
+  // (previously each had its own inline stitchesBefore-only version).
+  //
+  // Matches by index ("order") when it's provably safe: either the caller
+  // explicitly requests it (Picot Wizard operations that can prove they
+  // never add/remove/reorder picots), or the old/new lists have identical
+  // length AND identical kind-sequence — which proves the same thing for
+  // free, for edits that only reshuffle run lengths around unchanged
+  // picots. Falls back to matching by stitchesBefore otherwise, same as
+  // before. Returns which of the old joined-and-connected picot ids did
+  // NOT survive the merge, so the caller can decide whether to warn/confirm
+  // and prune exactly those connections instead of wiping everything.
+  const mergePicotsPreservingJoins = (
+    oldPicots: any[], newPicots: any[], elementId: string,
+    survivingConnKeys: Set<string>, requestedMode: 'stitchesBefore' | 'order'
+  ): { picots: any[]; droppedJoinIds: string[] } => {
+    const canUseOrder =
+      requestedMode === 'order' ||
+      (oldPicots.length === newPicots.length &&
+        oldPicots.every((op, idx) => picotKind(op) === picotKind(newPicots[idx])));
+
+    let merged;
+    if (canUseOrder) {
+      merged = newPicots.map((p, idx) => {
+        const old = oldPicots[idx];
+        if (!old) return p;
+        const isStillJoint = old.isJoint && survivingConnKeys.has(`${elementId}::${old.id}`);
+        return { ...p, id: old.id, isJoint: isStillJoint };
+      });
+    } else {
+      const oldBySb: Record<number, any> = {};
+      oldPicots.forEach(p => { oldBySb[p.stitchesBefore] = p; });
+      merged = newPicots.map(p => {
+        const old = oldBySb[p.stitchesBefore];
+        if (!old) return p;
+        const isStillJoint = old.isJoint && survivingConnKeys.has(`${elementId}::${old.id}`);
+        return { ...p, id: old.id, isJoint: isStillJoint };
+      });
+    }
+
+    const survivedIds = new Set(merged.filter(p => p.isJoint).map(p => p.id));
+    const droppedJoinIds = oldPicots
+      .filter(p => p.isJoint && survivingConnKeys.has(`${elementId}::${p.id}`) && !survivedIds.has(p.id))
+      .map(p => p.id);
+
+    return { picots: merged, droppedJoinIds };
+  };
+
   // Computes the updated element object for a notation edit — handles both
   // split-ring (dual A/B) and plain (ring/chain) notation, path rescaling
   // (radial for closed rings, bezier re-bend for open chains), and picot
-  // merging (by stitchesBefore position or by sequence order, per
-  // picotMatchMode). Returns null if the notation doesn't parse. Doesn't
-  // touch React state at all — pure per-element transform, safe to call once
-  // per target from either the single-element path (updateNotation) or the
-  // batch path (updateNotationForMultiple) below.
+  // merging via mergePicotsPreservingJoins. Returns null if the notation
+  // doesn't parse, otherwise the updated element plus any old joined picot
+  // ids that couldn't be safely carried over. Doesn't touch React state at
+  // all — pure per-element transform, safe to call once per target from
+  // either the single-element path (updateNotation) or the batch path
+  // (updateNotationForMultiple) below.
   const computeElementAfterNotationEdit = (
     el: any,
     notation: string,
     notationB: string | null,
     picotMatchMode: 'stitchesBefore' | 'order',
     survivingConnKeys: Set<string>
-  ): any | null => {
+  ): { element: any; droppedJoinIds: string[] } | null => {
     if (el.isSplitRing) {
       const notationAText = notation.replace(/^sr:\s*/, '');
       const notationBText = notationB || el.notationB || '5ds';
@@ -4155,17 +4314,25 @@ const APP_VERSION = '1.2.0-beta';
       const totalStitches = stitchCountA + stitchCountB;
 
       const oldTotal = el.stitchCount;
-      const cx = el.center.x, cy = el.center.y;
       let finalPaths = el.paths;
       if (Math.abs(totalStitches - oldTotal) > 0.01 && oldTotal > 0) {
-        const scaleFactor = totalStitches / oldTotal;
-        finalPaths = el.paths.map(path => {
-          const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-          const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
-          const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-          return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y,
-            control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        });
+        // Regenerate the two arcs from the element's own center/rotation/
+        // squeeze at the new per-side stitch counts, instead of uniformly
+        // scaling the whole ring from its center — a uniform scale grows
+        // BOTH arcs together even when only one side's notation actually
+        // changed length, which reads as "the whole ring got bigger"
+        // instead of "this side bulged out". createSplitRingPathFromEl is
+        // the function the squeeze sliders already use for this (hence it
+        // correctly bulges), and is exactly what the geometry-repair
+        // tooling's own comments point to for split-ring geometry — it was
+        // imported but never actually called anywhere in this file.
+        const candidateEl = { ...el, stitchCount: totalStitches, splitPosition: stitchCountA };
+        const regenerated = createSplitRingPathFromEl(candidateEl, dsWidth, { cx: el.center.x, cy: el.center.y });
+        if (Array.isArray(regenerated?.paths)) {
+          finalPaths = regenerated.paths;
+        } else {
+          console.error('[TATCAD] createSplitRingPathFromEl returned an unexpected shape; keeping prior paths', regenerated);
+        }
       }
 
       const reversedAPicots = parsedA.picots.map(p => ({
@@ -4173,17 +4340,17 @@ const APP_VERSION = '1.2.0-beta';
         stitchesBefore: stitchCountA - p.stitchesBefore,
       })).reverse();
 
-      const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({
+      const newPicotsRaw = [...reversedAPicots, ...parsedB.picots.map(p => ({
         ...p, stitchesBefore: p.stitchesBefore + stitchCountA
-      }))].map(p => {
-        const old = (el.picots || []).find(op => op.stitchesBefore === p.stitchesBefore && (op.isJoint || survivingConnKeys.has(`${el.id}::${op.id}`)));
-        return old ? { ...p, id: old.id, isJoint: survivingConnKeys.has(`${el.id}::${old.id}`) ? old.isJoint : false } : p;
-      });
+      }))];
+      const { picots: allPicots, droppedJoinIds } = mergePicotsPreservingJoins(
+        el.picots || [], newPicotsRaw, el.id, survivingConnKeys, picotMatchMode
+      );
 
-      return { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
+      return { element: { ...el, notation: `sr: ${notationAText}`, notationB: notationBText,
         stitchCount: totalStitches,
         picots: restoreBEConfigs(allPicots, extractBEConfigs(el.picots)),
-        paths: finalPaths, splitPosition: stitchCountA };
+        paths: finalPaths, splitPosition: stitchCountA }, droppedJoinIds };
     }
 
     const parsed = parseNotation(notation);
@@ -4263,33 +4430,18 @@ const APP_VERSION = '1.2.0-beta';
       }
     }
 
-    let mergedPicots;
-    if (picotMatchMode === 'order') {
-      const oldList = el.picots || [];
-      mergedPicots = parsed.picots.map((p, idx) => {
-        const old = oldList[idx];
-        if (!old) return p;
-        const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
-        return { ...p, id: old.id, isJoint: isStillJoint };
-      });
-    } else {
-      const oldPicotBySb2: Record<number, any> = {};
-      (el.picots || []).forEach(p => { oldPicotBySb2[p.stitchesBefore] = p; });
-      mergedPicots = parsed.picots.map(p => {
-        const old = oldPicotBySb2[p.stitchesBefore];
-        if (old) {
-          const isStillJoint = old.isJoint && survivingConnKeys.has(`${el.id}::${old.id}`);
-          return { ...p, id: old.id, isJoint: isStillJoint };
-        }
-        return p;
-      });
-    }
+    const { picots: mergedPicots, droppedJoinIds } = mergePicotsPreservingJoins(
+      el.picots || [], parsed.picots, el.id, survivingConnKeys, picotMatchMode
+    );
 
     return {
-      ...el, notation, stitchCount: parsed.stitchCount,
-      picots: restoreBEConfigs(mergedPicots, extractBEConfigs(el.picots)),
-      isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
-      ...(Object.keys(newPathData).length > 0 ? newPathData : {})
+      element: {
+        ...el, notation, stitchCount: parsed.stitchCount,
+        picots: restoreBEConfigs(mergedPicots, extractBEConfigs(el.picots)),
+        isSplitChain: parsed.isSplitChain ?? el.isSplitChain ?? false,
+        ...(Object.keys(newPathData).length > 0 ? newPathData : {})
+      },
+      droppedJoinIds,
     };
   };
 
@@ -4314,79 +4466,72 @@ const APP_VERSION = '1.2.0-beta';
     );
     const isTargetOrGhost = (elId: string) => elId === targetId || ghostIdsOfMother.has(elId);
 
-    const hasExistingJoins =
-      !preservesExistingPicots && (
-        picotConnectionsRef.current.some(conn => conn.picots.some(cp => isTargetOrGhost(cp.elementId))) ||
-        (currentElement.picots || []).some(p => p.isJoint)
-      );
+    // Compute the merge against the CURRENT (untouched) connections — no
+    // more wiping everything up front and hoping the merge doesn't need it.
+    // mergePicotsPreservingJoins proves, per-edit, whether the same picots
+    // survived (matching by kind-sequence, not just position), so most
+    // edits that only change run lengths around unchanged picots now keep
+    // every join automatically, connections untouched. Only picots that
+    // genuinely couldn't be matched (something actually added/removed/
+    // reordered) come back in droppedJoinIds.
+    const survivingConnKeys = new Set(
+      picotConnectionsRef.current.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
+    );
 
-    // Trying to surgically preserve connections/IDs across a notation edit (matching
-    // by stitchesBefore position, across the mother AND every ghost sharing its picot
-    // IDs) is fragile and led to visible drift (picot shows "joined" yellow after the
-    // connection was actually dropped). Simpler and more predictable: if anything is
-    // joined, wipe all of it and let the person redo the joins after editing.
-    //
-    // preservesExistingPicots is the deliberate, narrow exception: it's for callers
-    // (Picot Wizard: clear/add/fill/compact) that can *prove* they never change the
-    // cumulative ds-count anywhere in the notation — they only ever insert or remove
-    // zero-width picot tokens inside a run that's already picot-free, or re-serialize
-    // existing tokens into repeat-group syntax. Every already-existing picot's
-    // stitchesBefore is provably identical before and after, so the ordinary
-    // stitchesBefore-based merge below can safely re-attach isJoint on its own —
-    // no wipe, no confirm dialog needed.
     const applyNotationChange = () => {
-      let survivingConnKeys: Set<string>;
-      if (hasExistingJoins) {
-        const newConns = picotConnectionsRef.current.filter(conn =>
-          !conn.picots.some(cp => isTargetOrGhost(cp.elementId))
-        );
-        setPicotConnections(newConns);
-        picotConnectionsRef.current = newConns;
-        survivingConnKeys = new Set(
-          newConns.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
-        );
-      } else {
-        survivingConnKeys = new Set(
-          picotConnectionsRef.current.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
-        );
-      }
+      const computed = computeElementAfterNotationEdit(currentElement, notation, notationB, picotMatchMode, survivingConnKeys);
+      if (!computed) return;
+      const { element: nextEl, droppedJoinIds } = computed;
 
-      // Read elementsRef.current directly rather than via a setElements
-      // updater — regenerateGhostArrays calls generateId() per ghost, and
-      // React can invoke functional updaters more than once (e.g. Strict
-      // Mode's double-invoke check for impure updaters), which would desync
-      // the ghost IDs actually committed from the ones used to rewire
-      // picotConnections. Computing everything as a plain value up front and
-      // committing once with setElements(value) avoids that entirely.
-      const updated = elementsRef.current.map(el => {
-        if (el.id !== targetId) return el;
-        const next = computeElementAfterNotationEdit(el, notation, notationB, picotMatchMode, survivingConnKeys);
-        return next || el;
-      });
+      // preservesExistingPicots callers (Picot Wizard) have already proven
+      // they never change picot identity — trust that guarantee and skip
+      // both the confirm dialog and any pruning.
+      const doWarn = !preservesExistingPicots && droppedJoinIds.length > 0;
 
-      // Compose ghost regeneration with the notation edit when the edited
-      // element is a ghost mother, so the whole thing commits as one
-      // render/history step instead of two — was previously deferred via
-      // pendingGhostUpdateRef + a separate effect, which caused a visible
-      // two-step undo and a brief desynced frame between mother and ghosts.
-      const motherEl = updated.find(e => e.id === targetId);
-      if (motherEl?.isGhostMother) {
-        applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, [targetId]));
+      const commit = () => {
+        if (droppedJoinIds.length > 0 && !preservesExistingPicots) {
+          const droppedSet = new Set(droppedJoinIds);
+          const newConns = picotConnectionsRef.current.filter(conn =>
+            !conn.picots.some(cp => isTargetOrGhost(cp.elementId) && droppedSet.has(cp.picotId))
+          );
+          setPicotConnections(newConns);
+          picotConnectionsRef.current = newConns;
+        }
+
+        // Read elementsRef.current directly rather than via a setElements
+        // updater — regenerateGhostArrays calls generateId() per ghost, and
+        // React can invoke functional updaters more than once (e.g. Strict
+        // Mode's double-invoke check for impure updaters), which would desync
+        // the ghost IDs actually committed from the ones used to rewire
+        // picotConnections. Computing everything as a plain value up front and
+        // committing once with setElements(value) avoids that entirely.
+        const updated = elementsRef.current.map(el => el.id === targetId ? nextEl : el);
+
+        // Compose ghost regeneration with the notation edit when the edited
+        // element is a ghost mother, so the whole thing commits as one
+        // render/history step instead of two — was previously deferred via
+        // pendingGhostUpdateRef + a separate effect, which caused a visible
+        // two-step undo and a brief desynced frame between mother and ghosts.
+        if (nextEl.isGhostMother) {
+          applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, [targetId]));
+        } else {
+          setElements(updated);
+        }
+      };
+
+      if (doWarn) {
+        setConfirmDialog({
+          title: t('notationChangeConfirmTitle'),
+          message: t('notationChangeConfirmMessage'),
+          confirmLabel: t('notationChangeConfirmBtn'),
+          onConfirm: commit,
+        });
       } else {
-        setElements(updated);
+        commit();
       }
     };
 
-    if (hasExistingJoins) {
-      setConfirmDialog({
-        title: t('notationChangeConfirmTitle'),
-        message: t('notationChangeConfirmMessage'),
-        confirmLabel: t('notationChangeConfirmBtn'),
-        onConfirm: applyNotationChange,
-      });
-    } else {
-      applyNotationChange();
-    }
+    applyNotationChange();
   };
 
   // Batch version of updateNotation for operations that touch several
@@ -4422,7 +4567,7 @@ const APP_VERSION = '1.2.0-beta';
       const notation = targetMap.get(el.id);
       if (notation === undefined || el.isGhostMother) return el;
       const next = computeElementAfterNotationEdit(el, notation, null, picotMatchMode, survivingConnKeys);
-      return next || el;
+      return next ? next.element : el;
     });
 
     setElements(updated);
@@ -5206,8 +5351,25 @@ const APP_VERSION = '1.2.0-beta';
       // jp/jpg: fall through to dot (picotJoin) or arm (normal) below
     }
 
-    // ── guide point ── no visual, pure snap target
-    if (p.isGuidePoint) return null;
+    // ── guide point ── pure snap target, no physical thread — draw a small
+    // diamond marker (theme.gpDiamond) so it's visible/selectable. It's a
+    // construction aid, not a stitch, so it's suppressed in realistic mode
+    // and when editing artifacts are hidden, same as other non-physical
+    // markers above.
+    if (p.isGuidePoint) {
+      if (renderMode === 'realistic') return null;
+      if (!showEditingArtifacts) return null;
+      const gpR = isSelected ? 5 / zoom : 3.5 / zoom;
+      return (
+        <g key={key} className="guide-picot">
+          <rect
+            x={x - gpR} y={y - gpR} width={gpR * 2} height={gpR * 2}
+            transform={`rotate(45 ${x} ${y})`}
+            fill={armColor} stroke="#000" strokeWidth={1.5 / zoom}
+          />
+        </g>
+      );
+    }
 
     // ── bead types ──
     // In realistic mode the overlay pass (beadAndJointOnly=true) renders beads on top of baked stitches.
@@ -6353,7 +6515,13 @@ const APP_VERSION = '1.2.0-beta';
       </button>
       <input
         type="text"
-        value={singleRotationInput !== '' ? singleRotationInput : String(parseFloat((((selectedElement.rotation || 0) % 360 + 360) % 360).toFixed(1)))}
+        value={singleRotationInput}
+        onFocus={(e) => {
+          if (singleRotationInput === '') {
+            setSingleRotationInput(String(parseFloat((((selectedElement.rotation || 0) % 360 + 360) % 360).toFixed(1))));
+            e.target.select();
+          }
+        }}
         onChange={(e) => setSingleRotationInput(e.target.value)}
         onBlur={(e) => {
           const currentDeg = ((selectedElement.rotation || 0) % 360 + 360) % 360;
@@ -7471,7 +7639,7 @@ const APP_VERSION = '1.2.0-beta';
                   const allHidden = elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel);
                   setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
                 }}
-                polarGrids={polarGrids}
+                polarGrids={polarGrids.filter(g => g.visible)}
                 selectedPolarRotationGridId={selectedElement.polarRotationGridId}
                 onPolarRotationGridChange={(val) => {
                   setElements(prev => updateSelected(prev, selectedIdSet, { polarRotationGridId: val }));

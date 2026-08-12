@@ -34,6 +34,15 @@ export interface ActiveFoldConnection extends FoldProps {
   id: string;
 }
 
+// Module-level, not component state: the "last copied fold settings"
+// clipboard should survive the bar unmounting when the user exits picotJoin
+// mode and re-enters it later in the same session — same reasoning as
+// clipboardRef for element copy/paste elsewhere in this codebase. A plain
+// module variable is enough since only one PicotJoinModeBar instance is
+// ever mounted at a time; each component instance's own useState below just
+// mirrors it for re-renders.
+let lastCopiedFoldProps: FoldProps | null = null;
+
 interface PicotJoinModeBarProps {
   onExit: () => void;
   onJoin: () => void;
@@ -98,7 +107,23 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
   activeFold,
   onFoldPropertyChange,
   t,
-}) => (
+}) => {
+  const [copiedFoldProps, setCopiedFoldProps] = useState<FoldProps | null>(() => lastCopiedFoldProps);
+
+  const handleCopyFold = () => {
+    if (!activeFold) return;
+    const { totalLength, foldRatio, bendOuter, bendInner, innerGap } = activeFold;
+    const props = { totalLength, foldRatio, bendOuter, bendInner, innerGap };
+    lastCopiedFoldProps = props;
+    setCopiedFoldProps(props);
+  };
+
+  const handlePasteFold = () => {
+    if (!activeFold || !copiedFoldProps) return;
+    onFoldPropertyChange(activeFold.id, copiedFoldProps);
+  };
+
+  return (
   <div className="flex flex-col gap-1 w-full py-1 top-toolbar-scalable">
     {/* Row 1: banner + hint + Join/Cut/Fold + exit — consolidated into one
         row (session 47) so row 2 is free to be the always-reserved fold-
@@ -191,8 +216,26 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
             min={0} max={10} step={0.1}
             onCommit={v => onFoldPropertyChange(activeFold.id, { innerGap: v })}
           />
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={handleCopyFold}
+              className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-medium border border-gray-500"
+              title={t('picotFoldCopySettings')}
+            >
+              {t('picotFoldCopyBtn')}
+            </button>
+            <button
+              onClick={handlePasteFold}
+              disabled={!copiedFoldProps}
+              className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 text-xs font-medium border border-gray-500"
+              title={t('picotFoldPasteSettings')}
+            >
+              {t('picotFoldPasteBtn')}
+            </button>
+          </div>
         </>
       )}
     </div>
   </div>
-);
+  );
+};

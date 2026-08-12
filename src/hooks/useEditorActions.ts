@@ -471,10 +471,14 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const cutSelected = () => {
     if (p.selectedIds.length === 0) return;
     const copied = JSON.parse(JSON.stringify(p.elements.filter(el => p.selectedIdSet.has(el.id))));
+    const relevantConnections = p.picotConnections.filter(conn =>
+      conn.picots.every(pt => p.selectedIdSet.has(pt.elementId))
+    );
     p.setClipboard(copied);
-    const payload = TATCAD_PREFIX + JSON.stringify({ elements: inlineBeadData(copied), connections: [] });
+    const payload = TATCAD_PREFIX + JSON.stringify({ elements: inlineBeadData(copied), connections: relevantConnections });
     writeClipboardText(payload).catch(err => console.error('[TATCAD] Clipboard write failed:', err));
     p.setElements(prev => prev.filter(e => !p.selectedIdSet.has(e.id)));
+    p.setPicotConnections(prev => prev.filter(conn => !conn.picots.some(pt => p.selectedIdSet.has(pt.elementId))));
     p.setSelectedIds([]);
   };
 
@@ -550,6 +554,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
     if (ids.length === 0) return;
 
     const groupIdMap = new Map<string, string>();
+    const elementIdMap = new Map<string, string>();
     const selectedEls = current.filter(e => ids.includes(e.id));
     selectedEls.forEach(el => {
       if (el.groupId && !groupIdMap.has(el.groupId)) groupIdMap.set(el.groupId, generateId());
@@ -557,13 +562,24 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
     const newElements = selectedEls.map(el => {
       const newEl = JSON.parse(JSON.stringify(el));
-      newEl.id = generateId();
+      const newId = generateId();
+      elementIdMap.set(el.id, newId);
+      newEl.id = newId;
       if (el.groupId) newEl.groupId = groupIdMap.get(el.groupId);
       delete newEl.orderNumber;
       return newEl;
     });
 
+    const selectedIdSet = new Set(ids);
+    const newConnections = p.picotConnectionsRef.current
+      .filter(conn => conn.picots.every((pt: any) => selectedIdSet.has(pt.elementId)))
+      .map((conn: any) => ({
+        id: generateId(),
+        picots: conn.picots.map((pt: any) => ({ elementId: elementIdMap.get(pt.elementId), picotId: pt.picotId })),
+      }));
+
     p.setElements(prev => [...prev, ...newElements]);
+    if (newConnections.length > 0) p.setPicotConnections(prev => [...prev, ...newConnections]);
     p.setSelectedIds(newElements.map(el => el.id));
   };
 
@@ -837,18 +853,6 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const newCenterX = centerX + dx * cos - dy * sin;
       const newCenterY = centerY + dx * sin + dy * cos;
       const newRotation = ((el.rotation || 0) + delta) % 360;
-      if (el.isSplitRing && el.splitPosition) {
-        const pathData = createSplitRingPathFromEl(el, p.dsWidth, { cx: newCenterX, cy: newCenterY });
-        return { ...el, center: { x: newCenterX, y: newCenterY },
-          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
-          rotation: ((newRotation % 360) + 360) % 360 };
-      }
-      if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || (el.squeeze !== undefined && el.squeeze > 0))) {
-        const pathData = createTeardropPath(newCenterX, newCenterY, el.stitchCount * p.dsWidth, el.squeeze ?? 0);
-        return { ...el, center: { x: newCenterX, y: newCenterY },
-          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
-          rotation: ((newRotation % 360) + 360) % 360 };
-      }
       return { ...el, center: { x: newCenterX, y: newCenterY },
         paths: rotatePaths(el.paths, centerX, centerY, delta),
         rotation: ((newRotation % 360) + 360) % 360 };
@@ -875,14 +879,6 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const newCenterX = groupCenterX + dx * cos - dy * sin;
       const newCenterY = groupCenterY + dx * sin + dy * cos;
       const newRotation = ((el.rotation || 0) + delta) % 360;
-      if (el.type === 'ring' && (el.shapeStyle === 'teardrop' || el.shapeStyle === 'split-ring' || (el.squeeze !== undefined && el.squeeze > 0))) {
-        const pathData = el.isSplitRing && el.splitPosition
-          ? createSplitRingPathFromEl(el, p.dsWidth, { cx: newCenterX, cy: newCenterY })
-          : createTeardropPath(newCenterX, newCenterY, el.stitchCount * p.dsWidth, el.squeeze ?? 0);
-        return { ...el, center: { x: newCenterX, y: newCenterY },
-          paths: rotatePaths(pathData.paths, newCenterX, newCenterY, newRotation),
-          rotation: newRotation };
-      }
       return { ...el, center: { x: newCenterX, y: newCenterY },
         paths: rotatePaths(el.paths, groupCenterX, groupCenterY, delta),
         rotation: newRotation };

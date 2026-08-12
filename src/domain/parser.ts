@@ -6,11 +6,49 @@
 import { generateId } from '../utils/id';
 
 // ── Token helpers ──────────────────────────────────────────────────────────
+
+// Parens are only meaningful as repeat groups ("2x(...)" / "(...)x2"). A
+// paren pair with no adjacent x/* multiplier is just visual grouping (e.g.
+// "2ds-(p-2ds)" written for clarity) and should behave exactly as if the
+// parens weren't there. Every parser below only knew the multiplier form,
+// so bare grouping parens fell through as an "Unknown element" token and
+// got the whole notation rejected. This walks the pattern once, keeps
+// parens that have a real multiplier attached (recursing into their
+// content so nested bare parens still get unwrapped), and deletes the
+// parens themselves everywhere else.
+const stripBareGroupingParens = (pat: string): string => {
+  let result = '';
+  let i = 0;
+  while (i < pat.length) {
+    if (pat[i] === '(') {
+      let depth = 1, j = i + 1;
+      while (j < pat.length && depth > 0) {
+        if (pat[j] === '(') depth++;
+        else if (pat[j] === ')') depth--;
+        j++;
+      }
+      const closeIdx = j - 1; // index of the matching ')'
+      const before = pat.slice(0, i);
+      const after = pat.slice(closeIdx + 1);
+      const hasMultiplier = /(\d+)[x*]$/i.test(before) || /^[x*](\d+)/i.test(after);
+      const inner = stripBareGroupingParens(pat.slice(i + 1, closeIdx));
+      result += hasMultiplier ? `(${inner})` : inner;
+      i = closeIdx + 1;
+    } else {
+      result += pat[i];
+      i++;
+    }
+  }
+  return result;
+};
+
 const normalizePattern = (pat: string): string =>
-  pat.trim()
-    .replace(/\bspaces?\b/gi, '-')
-    .replace(/(\d)d(?=[^s]|$)/g, '$1ds')
-.replace(/[\s.\-]+/g, '-');
+  stripBareGroupingParens(
+    pat.trim()
+      .replace(/\bspaces?\b/gi, '-')
+      .replace(/(\d)d(?=[^s]|$)/g, '$1ds')
+      .replace(/[\s.\-]+/g, '-')
+  );
 
 
 export const expandTokens = (pat: string): string[] => {
@@ -50,7 +88,7 @@ export const isZeroWidth = (token: string): boolean => {
 
 export const isNotationValid = (notation: string): boolean => {
   try {
-    const match = notation.match(/^(r|c|sc|sr):\s*(.+)$/i);
+    const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
     if (!match) return false;
     const pattern = match[2];
     const tokens = expandTokens(pattern);
@@ -108,8 +146,8 @@ export const parseNotation = (
     }
     const type = match[1].toLowerCase();
     const isSplitChain = type === 'sc';
-    const effectiveType = isSplitChain ? 'c' : type;
-    const pattern = match[2];
+    const effectiveType = isSplitChain ? 'c' : (type === 'fr' ? 'r' : type);
+    const pattern = stripBareGroupingParens(match[2]);
     let totalDS = 0;
     const picots: ParsedPicot[] = [];
     let hasInvalidToken = false;
@@ -207,7 +245,7 @@ export const parseNotation = (
         return pos + beads.length;
       }
 
-      const tokenMatch = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|sp|cp|p|lp|jp|jpg|cj|cjp|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|Cj|Cjp|cJ|cJp|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS|P)$/i);
+      const tokenMatch = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|sp|cp|p|lp|jp|jpg|cj|cjp|gp|bp|bp1|bp2|bp3|bp4|bp5|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|Cj|Cjp|cJ|cJp|GP|Gp|gP|BP|Bp|bP|BP1|BP2|BP3|BP4|BP5|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS|P)$/i);
       if (!tokenMatch) {
         if (!silent) onError?.('Unknown element: ' + token);
         hasInvalidToken = true;
@@ -217,7 +255,7 @@ export const parseNotation = (
       const num = parseInt(tokenMatch[1]) || 1;
       const el = tokenMatch[2].toLowerCase();
       if (el === 'ds') return pos + num;
-      if (el === 'rds') return pos + num * 2;
+      if (el === 'rds' || el === 'bds') return pos + num * 1.5;
       if (el === 'ss' || el === 'lss' || el === 'rss') return pos + num * 0.5;
 
       let size: 'small' | 'medium' | 'large' = 'medium';
@@ -340,11 +378,11 @@ export const buildSegmentLabel = (notation: string, startDS: number, endDS: numb
         }
         dsPosition += n; return;
       }
-      const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
       if (!match) return;
       const num = parseInt(match[1]) || 1;
       const type = match[2].toLowerCase();
-      const advance = type === 'rds' ? 2 : type === 'ds' ? 1 : 0.5;
+      const advance = (type === 'rds' || type === 'bds') ? 1.5 : type === 'ds' ? 1 : 0.5;
       for (let i = 0; i < num; i++) {
         const stitchStart = dsPosition, stitchEnd = dsPosition + advance;
         if (stitchEnd > startDS && stitchStart < endDS) addRun(type, 1);
@@ -353,7 +391,7 @@ export const buildSegmentLabel = (notation: string, startDS: number, endDS: numb
     };
     for (let part of parts) processToken(part);
     if (runs.length === 0) return '';
-    const allBasic = runs.every(r => r.type === 'ds' || r.type === 'rds');
+    const allBasic = runs.every(r => r.type === 'ds' || r.type === 'rds' || r.type === 'bds');
     if (allBasic) return String(runs.reduce((s, r) => s + r.count, 0));
     return runs.map(r => {
       if (r.type === 'ds') return String(r.count);
@@ -413,11 +451,11 @@ export const getSegmentRuns = (notation: string, startDS: number, endDS: number)
         }
         dsPosition += n; return;
       }
-      const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
       if (!match) return;
       const num = parseInt(match[1]) || 1;
       const type = match[2].toLowerCase();
-      const advance = type === 'rds' ? 2 : type === 'ds' ? 1 : 0.5;
+      const advance = (type === 'rds' || type === 'bds') ? 1.5 : type === 'ds' ? 1 : 0.5;
       for (let i = 0; i < num; i++) { addStitch(type, dsPosition, dsPosition + advance); dsPosition += advance; }
     };
     for (let part of parts) processToken(part);
@@ -459,7 +497,7 @@ export const countActualStitches = (notation: string): number => {
       if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
       if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
       if (token.match(/^bc:/i) || token.match(/^bcp:/i)) return;
-      const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
       if (match) count += parseInt(match[1]) || 1;
     };
     for (let part of parts) processToken(part);
@@ -505,13 +543,13 @@ export const countStitchesInRange = (notation: string, startDS: number, endDS: n
         }
         dsPosition += n; return;
       }
-      const match = token.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
       if (match) {
         const num = parseInt(match[1]) || 1;
         const type = match[2].toLowerCase();
         for (let i = 0; i < num; i++) {
           const stitchStartDS = dsPosition;
-          const stitchEndDS = dsPosition + (type === 'ds' ? 1 : type === 'rds' ? 2 : 0.5);
+          const stitchEndDS = dsPosition + (type === 'ds' ? 1 : (type === 'rds' || type === 'bds') ? 1.5 : 0.5);
           if (stitchEndDS > startDS && stitchStartDS < endDS) count++;
           dsPosition = stitchEndDS;
         }
@@ -551,12 +589,12 @@ export const getStitchTypes = (
         }
         dsPosition += n; continue;
       }
-      const match = part.match(/^(\d+)?\s*(rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = part.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
       if (match) {
         const count = parseInt(match[1]) || 1;
         const type = match[2].toLowerCase();
         for (let i = 0; i < count; i++) {
-          if (type === 'rds') { stitchMap[dsPosition] = 'rds'; stitchMap[dsPosition + 1] = 'rds-cont'; dsPosition += 2; }
+          if (type === 'rds' || type === 'bds') { stitchMap[dsPosition] = 'rds'; stitchMap[dsPosition + 0.75] = 'rds-cont'; dsPosition += 1.5; }
           else if (type === 'ds') { stitchMap[dsPosition] = 'ds'; dsPosition += 1; }
           else if (type === 'ss') { stitchMap[dsPosition] = ['ss', 'ss']; dsPosition += 0.5; }
           else if (type === 'lss') { stitchMap[dsPosition] = ['lss', 'lss']; dsPosition += 0.5; }
@@ -569,7 +607,7 @@ export const getStitchTypes = (
   return stitchMap;
   };
   export const normalizeNotationInput = (notation: string): string => {
-  const match = notation.match(/^(r|c|sc|sr):\s*/i);
+  const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*/i);
   if (!match) return notation;
   const prefix = match[0];
 let pat = normalizePattern(notation.slice(prefix.length));
