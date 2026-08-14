@@ -5,7 +5,115 @@
 
 import { generateId } from '../utils/id';
 
+// ── Stitch width ────────────────────────────────────────────────────────────
+// Single source of truth for "how many DS-equivalent units wide is this
+// stitch type". Previously redeclared inline (as literal 1.5/0.5 ternaries)
+// in ~5 places in this file and duplicated as 4 separate lookup tables in
+// tattingindex.tsx — a plain width change meant a ten-site hunt, and the
+// copies had already started to drift (see STITCH_X_EXTENTS in
+// tattingindex.tsx). Import this everywhere a stitch's DS-equivalent width
+// is needed instead of redeclaring it.
+export const STITCH_WIDTH_DS: Record<string, number> = {
+  ds: 1,
+  ss: 0.5,
+  lss: 0.5,
+  rss: 0.5,
+  rds: 1.5,
+  bds: 1.5,
+};
+
+// ── Notation type prefix ────────────────────────────────────────────────────
+// Single source of truth for which type prefixes ("r:", "c:", "sc:", ...) are
+// recognized. Previously this alternation was retyped by hand in 4 places —
+// isNotationValid, parseNotation, reverseNotation, normalizeNotationInput —
+// and one of them (reverseNotation) had already drifted out of sync, silently
+// missing 'sc' and making split-chain reversal a no-op. TYPE_PREFIX_RE
+// requires content after the colon (used where "type: pattern" is being
+// pulled apart); TYPE_PREFIX_ONLY_RE matches just the prefix, no content
+// required (used where we only need to strip/identify the prefix itself).
+const NOTATION_TYPES = 'r|c|sc|sr|jk|fr';
+const TYPE_PREFIX_RE = new RegExp(`^(${NOTATION_TYPES}):\\s*(.+)$`, 'i');
+const TYPE_PREFIX_ONLY_RE = new RegExp(`^(${NOTATION_TYPES}):\\s*`, 'i');
+
+// A single stitch-type token: optional count prefix + one of the six stitch
+// types. (The /i flag already makes this case-insensitive, so the explicit
+// uppercase alternatives some copies of this regex used to carry — RDS, DS,
+// dS, etc. — were always redundant; dropped here.) Was duplicated 5x across
+// buildSegmentLabel, getSegmentRuns, countActualStitches, countStitchesInRange,
+// and getStitchTypes.
+const STITCH_TOKEN_RE = /^(\d+)?\s*(bds|rds|ds|lss|rss|ss)$/i;
+
+// Bare picot tokens only (p, sp, cp, lp, jp, jpg, bjp, cj, cjp, gp — with an
+// optional count prefix). Deliberately narrower than isZeroWidth: this used
+// to be a near-copy of isZeroWidth's alternation, hand-retyped 5x across
+// buildSegmentLabel, getSegmentRuns, countActualStitches, countStitchesInRange,
+// getStitchTypes. It looked like a safe swap for isZeroWidth(token) directly,
+// but isZeroWidth also matches 'be' and the 'bc:'/'bp:'/'bcp:'/'sb:'/'bjp:'
+// prefixed forms (correctly, for its own validation use), and those forms
+// have their own position-advancing handlers a few lines below this check in
+// every one of these functions — routing them through isZeroWidth here would
+// intercept them before they reach those handlers and silently stop
+// dsPosition from advancing. Keep this regex scoped to bare picots only.
+const PICOT_TOKEN_RE = /^(\d+)?(sp|cp|p|lp|jp|jpg|bjp|cj|cjp|gp)$/i;
+
+// Split a pattern into top-level tokens on '-' or '.', ignoring separators
+// inside parens (so repeat groups like "2x(2ds-p)" stay intact as one part
+// until the caller decides to expand them). Was duplicated near-verbatim as
+// an inline char-by-char loop in 6 places: expandTokens, parseNotation,
+// reverseNotation, buildSegmentLabel, getSegmentRuns, countActualStitches,
+// countStitchesInRange.
+const splitTopLevelParts = (pattern: string): string[] => {
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (const char of pattern) {
+    if (char === '(') depth++;
+    if (char === ')') depth--;
+    if ((char === '-' || char === '.') && depth === 0) {
+      if (current.trim()) parts.push(current.trim());
+      current = '';
+    } else { current += char; }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+};
+
+// Match a repeat-group token like "2x(2ds-p)" or "(2ds-p)x2", returning the
+// repeat count and the un-split inner pattern string, or null if the token
+// isn't a repeat group. Each caller still owns its own expansion/recursion
+// (some split the inner string with a plain /[-.]/  split, expandTokens
+// recurses through itself/splitTopLevelParts) — only the regex-match-and-
+// extract step is shared here, since that's what was duplicated 7x.
+const matchRepeatGroup = (token: string): { count: number; countStr: string; inner: string; prefixForm: boolean } | null => {
+  const m = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+  if (!m) return null;
+  const countStr = m[1] || m[4];
+  return { count: parseInt(countStr), countStr, inner: m[2] || m[3], prefixForm: !!m[1] };
+};
+
+// Expand a core-bead sequence like "3Y2Z" (a run-length-encoded string of
+// bead sizes) into a flat array of one-letter sizes, e.g. "3Y2Z" -> ['Y','Y',
+// 'Y','Z','Z']. Used both where the actual per-bead sizes matter (parseNotation,
+// which creates one picot per bead) and where only the total count matters
+// (buildSegmentLabel, getSegmentRuns, countStitchesInRange, getStitchTypes,
+// which just need beads.length to advance dsPosition) — those 4 sites used
+// to hand-roll their own counting-only copy of this exact walk.
+const expandBeadSequence = (seq: string): string[] => {
+  const out: string[] = [];
+  let i = 0;
+  while (i < seq.length) {
+    let count = 1;
+    if (/\d/.test(seq[i])) { count = parseInt(seq[i]); i++; }
+    if (i < seq.length && /[YZV]/i.test(seq[i])) {
+      for (let j = 0; j < count; j++) out.push(seq[i].toUpperCase());
+      i++;
+    } else { i++; }
+  }
+  return out;
+};
+
 // ── Token helpers ──────────────────────────────────────────────────────────
+
 
 // Parens are only meaningful as repeat groups ("2x(...)" / "(...)x2"). A
 // paren pair with no adjacent x/* multiplier is just visual grouping (e.g.
@@ -53,24 +161,12 @@ const normalizePattern = (pat: string): string =>
 
 export const expandTokens = (pat: string): string[] => {
 	pat = normalizePattern(pat);
-  const parts: string[] = [];
-  let current = '';
-  let depth = 0;
-  for (const char of pat) {
-    if (char === '(') depth++;
-    if (char === ')') depth--;
-    if ((char === '-' || char === '.') && depth === 0) {
-      if (current.trim()) parts.push(current.trim());
-      current = '';
-    } else { current += char; }
-  }
-  if (current.trim()) parts.push(current.trim());
+  const parts = splitTopLevelParts(pat);
   const result: string[] = [];
   for (const part of parts) {
-    const repeatMatch = part.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+    const repeatMatch = matchRepeatGroup(part);
     if (repeatMatch) {
-      const count = parseInt(repeatMatch[1] || repeatMatch[4]);
-      const inner = repeatMatch[2] || repeatMatch[3];
+      const { count, inner } = repeatMatch;
       for (let i = 0; i < count; i++) result.push(...expandTokens(inner));
     } else { result.push(part); }
   }
@@ -88,14 +184,17 @@ export const isZeroWidth = (token: string): boolean => {
 
 export const isNotationValid = (notation: string): boolean => {
   try {
-    const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
+    const match = notation.match(TYPE_PREFIX_RE);
     if (!match) return false;
+    const type = match[1].toLowerCase();
     const pattern = match[2];
     const tokens = expandTokens(pattern);
     let prevZero = false;
     for (const token of tokens) {
       const t = token.toLowerCase().trim();
       if (/^\d+(p|sp|cp|lp|jp|jpg|bjp|cj|cjp|gp)$/i.test(t)) return false;
+      // Josephine Knot is ss-only (lss/rss count as ss variants) — no ds/rds/bds.
+      if (type === 'jk' && /^(\d+)?\s*(ds|rds|bds)$/i.test(t)) return false;
       const zw = isZeroWidth(token);
       if (zw && prevZero) return false;
       prevZero = zw;
@@ -139,7 +238,7 @@ export const parseNotation = (
 ): ParsedNotation | null => {
   try {
     if (!silent) onError?.(null);
-    const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*(.+)$/i);
+    const match = notation.match(TYPE_PREFIX_RE);
     if (!match) {
       if (!silent) onError?.('Invalid format');
       return null;
@@ -152,24 +251,13 @@ export const parseNotation = (
     const picots: ParsedPicot[] = [];
     let hasInvalidToken = false;
 
-    const parts: string[] = [];
-    let current = '';
-    let depth = 0;
-    for (let char of pattern) {
-      if (char === '(') depth++;
-      if (char === ')') depth--;
-      if ((char === '-' || char === '.') && depth === 0) {
-        if (current.trim()) parts.push(current.trim());
-        current = '';
-      } else { current += char; }
-    }
-    if (current.trim()) parts.push(current.trim());
+    const parts = splitTopLevelParts(pattern);
 
     const processToken = (token: string, pos: number): number => {
-      const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+      const repeatMatch = matchRepeatGroup(token);
       if (repeatMatch) {
-        const count = parseInt(repeatMatch[1] || repeatMatch[4]);
-        const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+        const { count, inner } = repeatMatch;
+        const innerParts = inner.split(/[-.]/).map(s => s.trim());
         for (let i = 0; i < count; i++) for (let part of innerParts) pos = processToken(part, pos);
         return pos;
       }
@@ -224,20 +312,7 @@ export const parseNotation = (
       const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
       if (coreBeadMatch) {
         const rawSeq = coreBeadMatch[1].toUpperCase();
-        const expandSeq = (seq: string): string[] => {
-          const out: string[] = [];
-          let i = 0;
-          while (i < seq.length) {
-            let count = 1;
-            if (/\d/.test(seq[i])) { count = parseInt(seq[i]); i++; }
-            if (i < seq.length && /[YZV]/i.test(seq[i])) {
-              for (let j = 0; j < count; j++) out.push(seq[i].toUpperCase());
-              i++;
-            } else { i++; }
-          }
-          return out;
-        };
-        const beads = expandSeq(rawSeq);
+        const beads = expandBeadSequence(rawSeq);
         beads.forEach((size, idx) => {
           picots.push({ id: generateId(), stitchesBefore: pos + idx, length: 'medium',
             isJoint: false, isGuide: false, isGuidePoint: false, beadType: 'bc', beadSize: size });
@@ -254,9 +329,15 @@ export const parseNotation = (
 
       const num = parseInt(tokenMatch[1]) || 1;
       const el = tokenMatch[2].toLowerCase();
-      if (el === 'ds') return pos + num;
-      if (el === 'rds' || el === 'bds') return pos + num * 1.5;
-      if (el === 'ss' || el === 'lss' || el === 'rss') return pos + num * 0.5;
+      if (el === 'ds' || el === 'rds' || el === 'bds' || el === 'ss' || el === 'lss' || el === 'rss') {
+        // Josephine Knot is ss-only (lss/rss count as ss variants) — reject ds/rds/bds.
+        if (type === 'jk' && (el === 'ds' || el === 'rds' || el === 'bds')) {
+          if (!silent) onError?.('Josephine Knot only accepts ss stitches: ' + token);
+          hasInvalidToken = true;
+          return pos;
+        }
+        return pos + num * STITCH_WIDTH_DS[el];
+      }
 
       let size: 'small' | 'medium' | 'large' = 'medium';
       let isJoint = false, isGuide = false, isGuidePoint = false;
@@ -301,28 +382,18 @@ export const parseNotation = (
 
 export const reverseNotation = (notation: string): string => {
   try {
-    const match = notation.match(/^(r|c|sr|jk|fr):\s*(.+)$/i);
+    const match = notation.match(TYPE_PREFIX_RE);
     if (!match) return notation;
     const type = match[1];
     const pattern = match[2];
-    const parts: string[] = [];
-    let current = '', depth = 0;
-    for (let char of pattern) {
-      if (char === '(') depth++;
-      if (char === ')') depth--;
-      if ((char === '-' || char === '.') && depth === 0) {
-        if (current.trim()) parts.push(current.trim());
-        current = '';
-      } else { current += char; }
-    }
-    if (current.trim()) parts.push(current.trim());
+    const parts = splitTopLevelParts(pattern);
     const processedParts = parts.reverse().map(part => {
-      const repeatMatch = part.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+      const repeatMatch = matchRepeatGroup(part);
       if (repeatMatch) {
-        const count = repeatMatch[1] || repeatMatch[4];
-        const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+        const { countStr, inner, prefixForm } = repeatMatch;
+        const innerParts = inner.split(/[-.]/).map(s => s.trim());
         const reversedInner = innerParts.reverse().join('-');
-        return repeatMatch[1] ? `${count}x(${reversedInner})` : `(${reversedInner})x${count}`;
+        return prefixForm ? `${countStr}x(${reversedInner})` : `(${reversedInner})x${countStr}`;
       }
       return part;
     });
@@ -339,14 +410,7 @@ export const buildSegmentLabel = (notation: string, startDS: number, endDS: numb
   try {
     const pattern = notation.split(':').slice(1).join(':').trim();
     if (!pattern) return '';
-    const parts: string[] = [];
-    let current = '', depth = 0;
-    for (let char of pattern) {
-      if (char === '(') depth++; if (char === ')') depth--;
-      if ((char === '-' || char === '.') && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; }
-      else { current += char; }
-    }
-    if (current.trim()) parts.push(current.trim());
+    const parts = splitTopLevelParts(pattern);
 
     const runs: { type: string; count: number }[] = [];
     let dsPosition = 0;
@@ -355,34 +419,28 @@ export const buildSegmentLabel = (notation: string, startDS: number, endDS: numb
       else runs.push({ type, count: n });
     };
     const processToken = (token: string) => {
-      const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+      const repeatMatch = matchRepeatGroup(token);
       if (repeatMatch) {
-        const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-        const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+        const { count: repeatCount, inner } = repeatMatch;
+        const innerParts = inner.split(/[-.]/).map(s => s.trim());
         for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
         return;
       }
-      if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
+      if (PICOT_TOKEN_RE.test(token)) return;
       if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
       if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
       if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
       if (token.match(/^be$/i)) { dsPosition += 1; return; }
       const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
       if (coreBeadMatch) {
-        const seq = coreBeadMatch[1].toUpperCase();
-        let n = 0, i = 0;
-        while (i < seq.length) {
-          let cnt = 1;
-          if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
-          if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
-        }
-        dsPosition += n; return;
+        dsPosition += expandBeadSequence(coreBeadMatch[1].toUpperCase()).length;
+        return;
       }
-      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(STITCH_TOKEN_RE);
       if (!match) return;
       const num = parseInt(match[1]) || 1;
       const type = match[2].toLowerCase();
-      const advance = (type === 'rds' || type === 'bds') ? 1.5 : type === 'ds' ? 1 : 0.5;
+      const advance = STITCH_WIDTH_DS[type] ?? 0.5;
       for (let i = 0; i < num; i++) {
         const stitchStart = dsPosition, stitchEnd = dsPosition + advance;
         if (stitchEnd > startDS && stitchStart < endDS) addRun(type, 1);
@@ -410,14 +468,7 @@ export const getSegmentRuns = (notation: string, startDS: number, endDS: number)
   try {
     const pattern = notation.split(':').slice(1).join(':').trim();
     if (!pattern) return [];
-    const parts: string[] = [];
-    let current = '', depth = 0;
-    for (let char of pattern) {
-      if (char === '(') depth++; if (char === ')') depth--;
-      if ((char === '-' || char === '.') && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; }
-      else { current += char; }
-    }
-    if (current.trim()) parts.push(current.trim());
+    const parts = splitTopLevelParts(pattern);
     const runs: { type: string; count: number; runStartDS: number; runEndDS: number }[] = [];
     let dsPosition = 0;
     const addStitch = (type: string, stitchStart: number, stitchEnd: number) => {
@@ -428,34 +479,28 @@ export const getSegmentRuns = (notation: string, startDS: number, endDS: number)
       } else { runs.push({ type, count: 1, runStartDS: stitchStart, runEndDS: stitchEnd }); }
     };
     const processToken = (token: string) => {
-      const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+      const repeatMatch = matchRepeatGroup(token);
       if (repeatMatch) {
-        const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-        const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+        const { count: repeatCount, inner } = repeatMatch;
+        const innerParts = inner.split(/[-.]/).map(s => s.trim());
         for (let i = 0; i < repeatCount; i++) innerParts.forEach(p => processToken(p));
         return;
       }
-      if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
+      if (PICOT_TOKEN_RE.test(token)) return;
       if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
       if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
       if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
       if (token.match(/^be$/i)) { dsPosition += 1; return; }
       const coreBeadMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
       if (coreBeadMatch) {
-        const seq = coreBeadMatch[1].toUpperCase();
-        let n = 0, i = 0;
-        while (i < seq.length) {
-          let cnt = 1;
-          if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
-          if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
-        }
-        dsPosition += n; return;
+        dsPosition += expandBeadSequence(coreBeadMatch[1].toUpperCase()).length;
+        return;
       }
-      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(STITCH_TOKEN_RE);
       if (!match) return;
       const num = parseInt(match[1]) || 1;
       const type = match[2].toLowerCase();
-      const advance = (type === 'rds' || type === 'bds') ? 1.5 : type === 'ds' ? 1 : 0.5;
+      const advance = STITCH_WIDTH_DS[type] ?? 0.5;
       for (let i = 0; i < num; i++) { addStitch(type, dsPosition, dsPosition + advance); dsPosition += advance; }
     };
     for (let part of parts) processToken(part);
@@ -478,26 +523,19 @@ export const countActualStitches = (notation: string): number => {
   try {
     const pattern = notation.split(':').slice(1).join(':').trim();
     if (!pattern) return 0;
-    const parts: string[] = [];
-    let current = '', depth = 0;
-    for (let char of pattern) {
-      if (char === '(') depth++; if (char === ')') depth--;
-      if ((char === '-' || char === '.') && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; }
-      else { current += char; }
-    }
-    if (current.trim()) parts.push(current.trim());
+    const parts = splitTopLevelParts(pattern);
     const processToken = (token: string) => {
-      const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+      const repeatMatch = matchRepeatGroup(token);
       if (repeatMatch) {
-        const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-        const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+        const { count: repeatCount, inner } = repeatMatch;
+        const innerParts = inner.split(/[-.]/).map(s => s.trim());
         for (let i = 0; i < repeatCount; i++) for (let part of innerParts) processToken(part);
         return;
       }
-      if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
+      if (PICOT_TOKEN_RE.test(token)) return;
       if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
       if (token.match(/^bc:/i) || token.match(/^bcp:/i)) return;
-      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(STITCH_TOKEN_RE);
       if (match) count += parseInt(match[1]) || 1;
     };
     for (let part of parts) processToken(part);
@@ -510,46 +548,33 @@ export const countStitchesInRange = (notation: string, startDS: number, endDS: n
   try {
     const pattern = notation.split(':').slice(1).join(':').trim();
     if (!pattern) return 0;
-    const parts: string[] = [];
-    let current = '', depth = 0;
-    for (let char of pattern) {
-      if (char === '(') depth++; if (char === ')') depth--;
-      if ((char === '-' || char === '.') && depth === 0) { if (current.trim()) parts.push(current.trim()); current = ''; }
-      else { current += char; }
-    }
-    if (current.trim()) parts.push(current.trim());
+    const parts = splitTopLevelParts(pattern);
     let dsPosition = 0;
     const processToken = (token: string) => {
-      const repeatMatch = token.match(/^(\d+)[x*]\((.+)\)$|^\((.+)\)[x*](\d+)$/i);
+      const repeatMatch = matchRepeatGroup(token);
       if (repeatMatch) {
-        const repeatCount = parseInt(repeatMatch[1] || repeatMatch[4]);
-        const innerParts = (repeatMatch[2] || repeatMatch[3]).split(/[-.]/).map(s => s.trim());
+        const { count: repeatCount, inner } = repeatMatch;
+        const innerParts = inner.split(/[-.]/).map(s => s.trim());
         for (let i = 0; i < repeatCount; i++) for (let part of innerParts) processToken(part);
         return;
       }
-      if (token.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) return;
+      if (PICOT_TOKEN_RE.test(token)) return;
       if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
       if (token.match(/^bcp:/i)) { dsPosition += 1; return; }
       if (token.match(/^bcjp:/i)) { dsPosition += 1; return; }
       if (token.match(/^be$/i)) { dsPosition += 1; return; }
       const coreBeadSkipMatch = token.match(/^bc:([YZVyzv0-9]+)$/i);
       if (coreBeadSkipMatch) {
-        const seq = coreBeadSkipMatch[1].toUpperCase();
-        let n = 0, i = 0;
-        while (i < seq.length) {
-          let cnt = 1;
-          if (/\d/.test(seq[i])) { cnt = parseInt(seq[i]); i++; }
-          if (i < seq.length && /[YZV]/i.test(seq[i])) { n += cnt; i++; } else { i++; }
-        }
-        dsPosition += n; return;
+        dsPosition += expandBeadSequence(coreBeadSkipMatch[1].toUpperCase()).length;
+        return;
       }
-      const match = token.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = token.match(STITCH_TOKEN_RE);
       if (match) {
         const num = parseInt(match[1]) || 1;
         const type = match[2].toLowerCase();
         for (let i = 0; i < num; i++) {
           const stitchStartDS = dsPosition;
-          const stitchEndDS = dsPosition + (type === 'ds' ? 1 : (type === 'rds' || type === 'bds') ? 1.5 : 0.5);
+          const stitchEndDS = dsPosition + (STITCH_WIDTH_DS[type] ?? 0.5);
           if (stitchEndDS > startDS && stitchStartDS < endDS) count++;
           dsPosition = stitchEndDS;
         }
@@ -573,32 +598,26 @@ export const getStitchTypes = (
     const parts = notation.split(':').slice(1).join(':').trim().split(/[,.\-]/).map(s => s.trim()) || [];
     let dsPosition = 0;
     for (let part of parts) {
-      if (part.match(/^(sp|cp|p|lp|jp|jpg|cj|cjp|gp|sP|cP|LP|Lp|lP|CP|SP|JP|JPG|CJ|CJP|GP|Gp|gP|P)$/i)) continue;
+      if (PICOT_TOKEN_RE.test(part)) continue;
       if (part.match(/^bp:/i) || part.match(/^bjp:/i) || part.match(/^sb:/i)) continue;
       if (part.match(/^bcp:/i)) { dsPosition += 1; continue; }
       if (part.match(/^bcjp:/i)) { dsPosition += 1; continue; }
       if (part.match(/^be$/i)) { dsPosition += 1; continue; }
       const coreBeadTypeMatch = part.match(/^bc:([YZVyzv0-9]+)$/i);
       if (coreBeadTypeMatch) {
-        const seq = coreBeadTypeMatch[1].toUpperCase();
-        let n = 0, si = 0;
-        while (si < seq.length) {
-          let cnt = 1;
-          if (/\d/.test(seq[si])) { cnt = parseInt(seq[si]); si++; }
-          if (si < seq.length && /[YZV]/i.test(seq[si])) { n += cnt; si++; } else { si++; }
-        }
-        dsPosition += n; continue;
+        dsPosition += expandBeadSequence(coreBeadTypeMatch[1].toUpperCase()).length;
+        continue;
       }
-      const match = part.match(/^(\d+)?\s*(bds|rds|ds|lss|rss|ss|RDS|Rds|rDs|DS|Ds|dS|LSS|RSS|SS)$/i);
+      const match = part.match(STITCH_TOKEN_RE);
       if (match) {
         const count = parseInt(match[1]) || 1;
         const type = match[2].toLowerCase();
         for (let i = 0; i < count; i++) {
-          if (type === 'rds' || type === 'bds') { stitchMap[dsPosition] = 'rds'; stitchMap[dsPosition + 0.75] = 'rds-cont'; dsPosition += 1.5; }
-          else if (type === 'ds') { stitchMap[dsPosition] = 'ds'; dsPosition += 1; }
-          else if (type === 'ss') { stitchMap[dsPosition] = ['ss', 'ss']; dsPosition += 0.5; }
-          else if (type === 'lss') { stitchMap[dsPosition] = ['lss', 'lss']; dsPosition += 0.5; }
-          else if (type === 'rss') { stitchMap[dsPosition] = ['rss', 'rss']; dsPosition += 0.5; }
+          if (type === 'rds' || type === 'bds') { stitchMap[dsPosition] = 'rds'; stitchMap[dsPosition + 0.5] = 'rds-cont'; stitchMap[dsPosition + 1.0] = 'rds-cont'; dsPosition += STITCH_WIDTH_DS.rds; }
+          else if (type === 'ds') { stitchMap[dsPosition] = 'ds'; dsPosition += STITCH_WIDTH_DS.ds; }
+          else if (type === 'ss') { stitchMap[dsPosition] = ['ss', 'ss']; dsPosition += STITCH_WIDTH_DS.ss; }
+          else if (type === 'lss') { stitchMap[dsPosition] = ['lss', 'lss']; dsPosition += STITCH_WIDTH_DS.lss; }
+          else if (type === 'rss') { stitchMap[dsPosition] = ['rss', 'rss']; dsPosition += STITCH_WIDTH_DS.rss; }
         }
       }
     }
@@ -607,7 +626,7 @@ export const getStitchTypes = (
   return stitchMap;
   };
   export const normalizeNotationInput = (notation: string): string => {
-  const match = notation.match(/^(r|c|sc|sr|jk|fr):\s*/i);
+  const match = notation.match(TYPE_PREFIX_ONLY_RE);
   if (!match) return notation;
   const prefix = match[0];
 let pat = normalizePattern(notation.slice(prefix.length));

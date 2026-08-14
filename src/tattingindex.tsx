@@ -107,6 +107,7 @@ import {
   expandTokens,
   normalizeNotationInput,
   isZeroWidth,
+  STITCH_WIDTH_DS,
 } from './domain/parser';
 import {
   analyzeNotation as analyzeNotationForWizard,
@@ -125,6 +126,24 @@ import {
   totalRunDs,
 } from './domain/picotTools';
 const logoUrl = '/logo.png';
+
+// Text-editable input types — the only ones where a global keyboard
+// shortcut (Ctrl+Z, Delete, etc.) should be suppressed because the browser
+// has its own native text-editing behavior for that key. Deliberately
+// excludes range/checkbox/color/radio/button/etc. — focus merely sitting on
+// one of those (e.g. right after dragging a slider) isn't "the user is
+// typing," and treating it as such silently swallowed shortcuts anywhere
+// those input types appear, most noticeably the fold-property sliders in
+// PicotJoinModeBar.
+const TEXT_INPUT_TYPES = new Set(['text', 'number', 'email', 'search', 'tel', 'url', 'password', undefined, '']);
+const isTypingTarget = (target: EventTarget | null): boolean => {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.isContentEditable) return true;
+  if (el.tagName === 'INPUT') return TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
+  return false;
+};
 
 // Icons imported from ./components/icons
 
@@ -280,6 +299,32 @@ const WEDGE_SHAPES = {
     [-0.2450, -0.0951,  0.2128, 0.5229],  // post 3
     [-0.0705,  0.0794,  0.2128, 0.5229],  // post 4
   ],
+  'bds': [
+    // bds is an alias for rds — same realistic-mode shape, different
+    // notation keyword.
+    [-0.5933,  0.0798,  0.0500, 0.2002],
+    [-0.5946, -0.4447,  0.2128, 0.5229],
+    [-0.4198, -0.2699,  0.2128, 0.5229],
+    [-0.2450, -0.0951,  0.2128, 0.5229],
+    [-0.0705,  0.0794,  0.2128, 0.5229],
+  ],
+};
+
+// The x-extents (leftmost/rightmost x across all WEDGE_SHAPES rects) for
+// each stitch type — used to map a symbol's normalized x-coordinates onto
+// a stitch's angular/path-distance span. Single source of truth: this used
+// to be redeclared as 4 separate local consts, one per render branch
+// (renderWedgeRingShapes, renderWedgeTeardropShapes, renderWedgeSplitRingShapes,
+// renderWedgeChainShapes), and had already drifted — one copy had 'ss'
+// xMin -0.1036 while the other three (correctly, matching WEDGE_SHAPES.ss
+// itself) had -0.1023. Fixed to -0.1023 here.
+const STITCH_X_EXTENTS: Record<string, { xMin: number; xMax: number }> = {
+  'ds':  { xMin: -0.2622, xMax:  0.0504 },
+  'ss':  { xMin: -0.1023, xMax:  0.0463 },
+  'lss': { xMin: -0.1023, xMax:  0.0463 },
+  'rss': { xMin: -0.1023, xMax:  0.0463 },
+  'rds': { xMin: -0.5946, xMax:  0.0798 },
+  'bds': { xMin: -0.5946, xMax:  0.0798 }, // alias for rds
 };
 
 
@@ -1193,7 +1238,7 @@ const APP_VERSION = '1.2.0-beta';
       }
       if (e.key === ' ') {
         // Don't intercept Space when the user is typing in a field
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (isTypingTarget(e.target)) return;
         e.preventDefault(); // Prevent page scroll
         if (!spaceDownRef.current) {
           spaceDownRef.current = true;
@@ -1201,7 +1246,7 @@ const APP_VERSION = '1.2.0-beta';
         }
       }
       if (e.key === 'z' || e.key === 'Z') {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (isTypingTarget(e.target)) return;
         if (e.ctrlKey || e.metaKey || e.shiftKey) return; // Don't intercept Ctrl+Z (undo) or Shift+Z (redo)
         if (!zDownRef.current) {
           zDownRef.current = true;
@@ -1345,16 +1390,29 @@ const APP_VERSION = '1.2.0-beta';
 
     for (let step_i = 0; step_i < totalSteps; step_i++) {
       const i = step_i * step;
-      const type = stitchTypeMap[i] || (step === 0.5 ? 'ss' : 'ds');
-      if (type === 'rds-cont') continue; // second DS slot of RDS — skip
+      let type = stitchTypeMap[i];
+      if (type === undefined) {
+        // No map entry at this half-step slot — before defaulting to a
+        // brand new stitch, check whether it's actually the tail half of
+        // a plain 'ds' that started at the previous half-step. ds/rds/bds
+        // are the only types that span more than one half-step slot;
+        // rds/bds already leave their own 'rds-cont' markers, but ds
+        // (which only needs the half-step grid because something ELSE in
+        // this notation forced hasHalfStitches on) doesn't — so without
+        // this check every plain ds next to an rds/bds/ss run rendered as
+        // itself PLUS a spurious extra 'ss' mark in its own tail half.
+        if (step === 0.5 && stitchTypeMap[i - 0.5] === 'ds') continue;
+        type = step === 0.5 ? 'ss' : 'ds';
+      }
+      if (type === 'rds-cont') continue; // second/third half-step of RDS/BDS — skip
 
-      // RDS spans 2 DS slots: sample at midpoint of the full span
-      const position = type === 'rds' ? (i + 1) / stitchCount : (i + step * 0.5) / stitchCount;
+      // RDS/BDS spans 1.5 DS slots: sample at midpoint of the full span
+      const position = type === 'rds' ? (i + 0.75) / stitchCount : (i + step * 0.5) / stitchCount;
       const distance = position * totalLength;
       const { x, y, angle } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, distance);
       
       const startDist = (i / stitchCount) * totalLength;
-      const endDist = ((i + (type === 'rds' ? 2 : step)) / stitchCount) * totalLength;
+      const endDist = ((i + (type === 'rds' ? 1.5 : step)) / stitchCount) * totalLength;
       const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, startDist);
       const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, endDist);
       
@@ -1441,10 +1499,17 @@ const APP_VERSION = '1.2.0-beta';
 
     for (let step_i = 0; step_i < totalSteps; step_i++) {
       const i = step_i * step;
-      const type = stitchTypeMap[i] || (hasHalfStitches ? ['ss', 'ss'] : 'ds');
+      let type = stitchTypeMap[i];
+      if (type === undefined) {
+        // See the matching comment in calculateChainStitches — plain ds's
+        // tail half under a half-step grid forced on by something else in
+        // the notation, not a real gap.
+        if (step === 0.5 && stitchTypeMap[i - 0.5] === 'ds') continue;
+        type = hasHalfStitches ? ['ss', 'ss'] : 'ds';
+      }
       if (type === 'rds-cont') continue;
       
-      const position = type === 'rds' ? (i + 1) / stitchCount : (i + step * 0.5) / stitchCount;
+      const position = type === 'rds' ? (i + 0.75) / stitchCount : (i + step * 0.5) / stitchCount;
       const angle = position * Math.PI * 2 + rotation;
       const x = element.center.x + Math.cos(angle) * radius;
       const y = element.center.y + Math.sin(angle) * radius;
@@ -1491,18 +1556,10 @@ const APP_VERSION = '1.2.0-beta';
     const centerPolarAngle = stitch.centerPolarAngle;
 
     // Angular half-span for this stitch type (RDS = 2 DS slots wide)
-    const dsEquivWidth = { 'ds': 1.0, 'ss': 0.5, 'lss': 0.5, 'rss': 0.5, 'rds': 2.0 };
-    const halfArc = (Math.PI / el.stitchCount) * (dsEquivWidth[stitchType] || 1.0);
+    const halfArc = (Math.PI / el.stitchCount) * (STITCH_WIDTH_DS[stitchType] || 1.0);
 
     // The WEDGE_SHAPES x-extents of the DS/SS/RDS base symbol
     // These are the leftmost and rightmost x coords across ALL rects for this type
-    const STITCH_X_EXTENTS = {
-      'ds':  { xMin: -0.2622, xMax:  0.0504 },
-      'ss':  { xMin: -0.1036, xMax:  0.0463 },
-      'lss': { xMin: -0.1036, xMax:  0.0463 },
-      'rss': { xMin: -0.1036, xMax:  0.0463 },
-      'rds': { xMin: -0.5946, xMax:  0.0798 },
-    };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
     const xSpan = ext.xMax - ext.xMin;     // full symbol width in normalized units
     const alphaStart = centerPolarAngle - halfArc;  // left edge of this stitch's arc
@@ -1571,24 +1628,10 @@ const APP_VERSION = '1.2.0-beta';
     const totalSamples = stitchCount * samplesPerDS;
 
     // DS-equivalent width for each stitch type (SS is half of DS)
-    const dsEquivalentWidth = {
-      'ds': 1.0,
-      'ss': 0.5,
-      'lss': 0.5,
-      'rss': 0.5,
-      'rds': 2.0
-    };
-    const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
+    const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
     const samplesForThisStitch = samplesPerDS * stitchWidth;
 
     // Find the full horizontal span of this stitch type
-    const STITCH_X_EXTENTS = {
-      'ds':  { xMin: -0.2622, xMax:  0.0504 },
-      'ss':  { xMin: -0.1023, xMax:  0.0463 },
-      'lss': { xMin: -0.1023, xMax:  0.0463 },
-      'rss': { xMin: -0.1023, xMax:  0.0463 },
-      'rds': { xMin: -0.5946, xMax:  0.0798 },
-    };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
     const xSpan = ext.xMax - ext.xMin;
 
@@ -1649,17 +1692,9 @@ const APP_VERSION = '1.2.0-beta';
     const samplesPerDS = 10;
     const totalSamples = localCount * samplesPerDS;
 
-    const STITCH_X_EXTENTS = {
-      'ds':  { xMin: -0.2622, xMax:  0.0504 },
-      'ss':  { xMin: -0.1023, xMax:  0.0463 },
-      'lss': { xMin: -0.1023, xMax:  0.0463 },
-      'rss': { xMin: -0.1023, xMax:  0.0463 },
-      'rds': { xMin: -0.5946, xMax:  0.0798 },
-    };
-    const dsEquivalentWidth = { 'ds': 1.0, 'ss': 0.5, 'lss': 0.5, 'rss': 0.5, 'rds': 2.0 };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
     const xSpan = ext.xMax - ext.xMin;
-    const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
+    const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
     const samplesForThisStitch = samplesPerDS * stitchWidth;
 
     return shapes.map(([xl, xr, yo, yi]) => {
@@ -1699,23 +1734,9 @@ const APP_VERSION = '1.2.0-beta';
     const totalSamples = stitchCount * samplesPerDS;
 
     // DS-equivalent width for each stitch type
-    const dsEquivalentWidth = {
-      'ds': 1.0,
-      'ss': 0.5,
-      'lss': 0.5,
-      'rss': 0.5,
-      'rds': 2.0
-    };
-    const stitchWidth = dsEquivalentWidth[stitchType] || 1.0;
+    const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
     const samplesForThisStitch = samplesPerDS * stitchWidth;
 
-    const STITCH_X_EXTENTS = {
-      'ds':  { xMin: -0.2622, xMax:  0.0504 },
-      'ss':  { xMin: -0.1023, xMax:  0.0463 },
-      'lss': { xMin: -0.1023, xMax:  0.0463 },
-      'rss': { xMin: -0.1023, xMax:  0.0463 },
-      'rds': { xMin: -0.5946, xMax:  0.0798 },
-    };
     const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
     const xSpan = ext.xMax - ext.xMin;
 
@@ -3866,7 +3887,7 @@ const APP_VERSION = '1.2.0-beta';
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (isTypingTarget(e.target)) return;
       
       // Undo: Ctrl+Z (not Shift)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -4376,13 +4397,24 @@ const APP_VERSION = '1.2.0-beta';
         newPathData = { paths: scaledPaths };
       }
     } else {
-      if (el.paths && el.paths.length > 0) {
-        const newLength = parsed.stitchCount * dsWidth;
+      // Only regenerate the curve when the notation edit actually changes the
+      // stitch count (mirrors the isClosed branch's oldLength/newLength gate
+      // above). Without this gate, the bisection below ran on EVERY edit —
+      // including ones like a pure reversal that leave stitchCount unchanged
+      // — and it targets stitchCount*dsWidth exactly, discarding whatever
+      // actual current arc length the chain had. If the user had ever
+      // manually stretched/dragged the chain so its real length differs even
+      // slightly from that nominal value, any subsequent edit would silently
+      // snap it back, which is what was resetting manually-adjusted curves
+      // (and tripping the live isTooShort check) on a same-length reversal.
+      const oldLength = el.stitchCount * dsWidth;
+      const newLength = parsed.stitchCount * dsWidth;
+      if (el.paths && el.paths.length > 0 && Math.abs(oldLength - newLength) > 0.01) {
         const tolerance = newLength * 0.005;
         const adjustedPaths = el.paths.map(path => {
           if (path.type !== 'cubic') {
             const startX = path.x, startY = path.y;
-            const scaleFactor = newLength / (el.stitchCount * dsWidth);
+            const scaleFactor = newLength / oldLength;
             return { ...path,
               endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
               controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
@@ -4410,23 +4442,6 @@ const APP_VERSION = '1.2.0-beta';
           return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
         });
         newPathData = { paths: adjustedPaths };
-
-        // Flag the chain as visually too short if its natural length is so
-        // close to the straight-line endpoint distance that it can't form a
-        // meaningful curve. Threshold 0.92: if the chain's physical length
-        // is less than ~8% longer than the straight line between its endpoints
-        // it'll render nearly flat.
-        // Uses the first path only (covers simple chains; split chains each
-        // get checked independently when their own notation is edited).
-        const firstPath = el.paths[0];
-        if (firstPath) {
-          const endpointDist = Math.hypot(firstPath.endX - firstPath.x, firstPath.endY - firstPath.y);
-          const TOO_SHORT_THRESHOLD = 0.92;
-          newPathData = {
-            ...newPathData,
-            isTooShort: newLength > 0 && (endpointDist / newLength) > TOO_SHORT_THRESHOLD,
-          };
-        }
       }
     }
 
@@ -5351,22 +5366,27 @@ const APP_VERSION = '1.2.0-beta';
       // jp/jpg: fall through to dot (picotJoin) or arm (normal) below
     }
 
-    // ── guide point ── pure snap target, no physical thread — draw a small
-    // diamond marker (theme.gpDiamond) so it's visible/selectable. It's a
-    // construction aid, not a stitch, so it's suppressed in realistic mode
-    // and when editing artifacts are hidden, same as other non-physical
-    // markers above.
+    // ── guide point ── pure snap target, no physical thread — draw the
+    // same plain dot used for chain-endpoint markers (orange when
+    // unconnected, same dotColor/dotR already computed above for joints)
+    // so it reads as "just another connectable point," not a distinct
+    // shape. Construction aid, not a stitch, so it's suppressed in
+    // realistic mode and when editing artifacts are hidden, same as other
+    // non-physical markers above.
     if (p.isGuidePoint) {
       if (renderMode === 'realistic') return null;
       if (!showEditingArtifacts) return null;
-      const gpR = isSelected ? 5 / zoom : 3.5 / zoom;
+      // No offset arm, so it sits exactly on the path centerline — the
+      // path's own stroke (drawn after it in DOM order) was painting
+      // straight over it. Nudge it outward along perpAngle, same
+      // convention every other off-path marker in this file uses, just
+      // far enough to clear the path stroke width.
+      const gpOffset = 6 / zoom;
+      const gx = x + Math.cos(perpAngle) * gpOffset;
+      const gy = y + Math.sin(perpAngle) * gpOffset;
       return (
         <g key={key} className="guide-picot">
-          <rect
-            x={x - gpR} y={y - gpR} width={gpR * 2} height={gpR * 2}
-            transform={`rotate(45 ${x} ${y})`}
-            fill={armColor} stroke="#000" strokeWidth={1.5 / zoom}
-          />
+          <circle cx={gx} cy={gy} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} opacity={0.9} />
         </g>
       );
     }
@@ -9029,12 +9049,23 @@ const APP_VERSION = '1.2.0-beta';
                 const activeDraft = (draftNotation?.elementId === el.id && draftNotation) ? draftNotation.value : null;
                 const hasInvalidNotation = el.type !== 'line' && renderMode === 'schematic' && (() => {
                   const notationToCheck = activeDraft ?? el.notation;
-                  // jk: is a valid prefix that isNotationValid doesn't recognise (it only
-                  // checks r|c|sc|sr). Exempt it here — parseNotation accepts jk: correctly.
-                  if (notationToCheck && /^jk:/i.test(notationToCheck.trim())) return false;
                   return notationToCheck && !isNotationValid(notationToCheck.trim());
                 })();
-                const isTooShort = !el.isClosed && !!el.isTooShort;
+                // Computed live from the current path geometry rather than
+                // trusting el.isTooShort — that flag is only ever refreshed
+                // inside computeElementAfterNotationEdit (a notation-text-
+                // edit-time snapshot), so anything else that changes a
+                // chain's geometry (duplication, array creation, drag,
+                // rotation, mirror) leaves it stale. A live check can't go
+                // stale. Same 0.92 threshold/formula as the edit-time
+                // computation it replaces.
+                const isTooShort = !el.isClosed && el.type === 'chain' && el.paths?.length === 1 && (() => {
+                  const p = el.paths[0];
+                  const arcLen = calculatePathLength(sampleBezierPath(p, 20));
+                  if (arcLen <= 0) return false;
+                  const endpointDist = Math.hypot(p.endX - p.x, p.endY - p.y);
+                  return (endpointDist / arcLen) > 0.92;
+                })();
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)'
                   : (showInvalidNotation && isTooShort) ? 'url(#amber-glow)'
                   : shouldHighlight ? 'url(#pink-glow)'

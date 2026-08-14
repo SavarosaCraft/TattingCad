@@ -248,7 +248,14 @@ export function useEditorActions(p: UseEditorActionsParams) {
     const stitchCount = 12;
     const chord = stitchCount * p.dsWidth * 0.92;
     const halfChord = chord / 2;
-    const arcLift = chord / 5;
+    // chord/3 (not /5): a shallower bulge sits right on top of the
+    // isTooShort 0.92 ratio threshold — chord/5 measures out to a ratio of
+    // ~0.946, comfortably over it, which is why every brand-new default
+    // chain was getting flagged "too short" the instant that check went
+    // live. chord/3 measures ~0.87, safely clear. (The chord's own 0.92
+    // multiplier above doesn't affect this ratio at all — it's scale-
+    // invariant against dsWidth/stitchCount, so only this divisor matters.)
+    const arcLift = chord / 3;
     const startX = center.x - halfChord, startY = center.y;
     const endX = center.x + halfChord, endY = center.y;
     const newEl = {
