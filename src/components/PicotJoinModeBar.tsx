@@ -22,12 +22,23 @@ import { IconJoinPicots, IconLink, IconUnlink } from './icons';
 // A fold connection's editable properties, as stored on the picotConnections
 // entry (connectionType: 'fold'). Mirrors DEFAULT_FOLD_PROPS in
 // useJoinActions.ts.
+// innerGap removed: the gap between the outer/inner arcs is controlled by
+// the length difference the two arcs' heights already imply
+// (totalLength/foldRatio), not a separate slider — nothing has read
+// conn.innerGap since the footOffset-based spacing redesign.
+// tangentA/tangentB added: each end's launch tangent blends between the
+// picot's own perpendicular direction (1, matches the hand-sketched
+// reference) and the old along-the-chord-biased direction (0, inherently
+// loop-safe) — dial an end down to break a self-crossing twist that pure-
+// perpendicular can produce when both picots' outward angles happen to
+// converge toward the same side of the connection.
 export interface FoldProps {
   totalLength: number;
   foldRatio: number;
   bendOuter: number;
   bendInner: number;
-  innerGap: number;
+  tangentA: number;
+  tangentB: number;
 }
 
 export interface ActiveFoldConnection extends FoldProps {
@@ -60,38 +71,98 @@ interface PicotJoinModeBarProps {
   t: (key: string) => string;
 }
 
-// Local-only: gives the slider a responsive drag feel (thumb moves every
-// frame) while only committing to history once, on release — dragging a
-// range input fires onChange continuously, and committing every one of
-// those ticks through pushHistoryState would flood the 50-entry undo stack
-// with intermediate drag positions instead of one final value.
-const FoldSlider: React.FC<{
+// Local-only: numeric stepper for fold properties — a click on +/- or a
+// typed value commits immediately (each is one discrete action, unlike a
+// slider drag which fires continuously), so there's no drag-vs-commit split
+// to manage the way FoldSlider (the range-input version this replaced)
+// needed. Switched from a range slider to this after live feedback: a
+// slider's precision is bounded by its on-screen pixel width, so reaching a
+// specific high value (e.g. a long totalLength) meant dragging right up
+// against the track's end — typing the number directly has no such ceiling.
+// min is still enforced (values below it are physically/mathematically
+// meaningless for every one of these properties); max is only enforced
+// where exceeding it is ALSO meaningless (foldRatio/bendOuter/bendInner are
+// 0-1 proportions by construction — the geometry code clamps them
+// regardless, so letting the field show an out-of-range number would just
+// silently stop matching what's rendered). totalLength has no such
+// mathematical ceiling — it's a physical thread length the user should be
+// free to push arbitrarily high — so its max is left generous rather than
+// clamped tightly.
+//
+// value/min/max/step/onCommit are all in RAW units — whatever's actually
+// stored on the connection and read by the geometry code in
+// tattingindex.tsx. displayScale/suffix let a caller show something more
+// human-friendly (a raw totalLength of 196 shown as "19.6", a raw foldRatio
+// of 0.5 shown as "50%") without changing the underlying stored value or
+// touching the geometry code's units at all — the conversion happens only
+// at this component's edges: raw is multiplied by displayScale on the way
+// out to the screen, and divided by it on the way from a typed/clicked
+// value back to what onCommit receives. step is still specified in RAW
+// units (so callers reason in the same units as min/max); the on-screen
+// step is derived as step * displayScale.
+const FoldNumberStepper: React.FC<{
   label: string;
   value: number;
   min: number;
   max: number;
   step: number;
   onCommit: (v: number) => void;
-  decimals?: number; // display precision — 0 for integer-stepped sliders like Total length, defaults to 2
-}> = ({ label, value, min, max, step, onCommit, decimals = 2 }) => {
-  const [live, setLive] = useState(value);
-  useEffect(() => { setLive(value); }, [value]);
+  decimals?: number; // display precision — 0 for integer-stepped fields like Total length, defaults to 2
+  displayScale?: number; // raw * displayScale = shown number; defaults to 1 (no transform)
+  suffix?: string; // e.g. '%' — appended after the numeric field, defaults to none
+}> = ({ label, value, min, max, step, onCommit, decimals = 2, displayScale = 1, suffix = '' }) => {
+  const toDisplay = (raw: number) => raw * displayScale;
+  const toRaw = (display: number) => display / displayScale;
+
+  const [liveDisplay, setLiveDisplay] = useState(() => toDisplay(value));
+  useEffect(() => { setLiveDisplay(toDisplay(value)); }, [value, displayScale]);
+
+  const displayStep = step * displayScale;
+
+  const commit = (rawCandidate: number) => {
+    if (Number.isNaN(rawCandidate)) { setLiveDisplay(toDisplay(value)); return; }
+    const clampedRaw = Math.min(max, Math.max(min, rawCandidate));
+    // Round in RAW units (not display decimals) so repeated +step/-step
+    // clicks can't accumulate binary floating-point drift regardless of
+    // what displayScale happens to be.
+    const roundedRaw = parseFloat(clampedRaw.toFixed(6));
+    setLiveDisplay(toDisplay(roundedRaw));
+    onCommit(roundedRaw);
+  };
+
   return (
     <label className="flex items-center gap-1.5 text-xs text-gray-300 whitespace-nowrap">
       <span className="w-20 shrink-0">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={live}
-        onChange={e => setLive(parseFloat(e.target.value))}
-        onMouseUp={() => onCommit(live)}
-        onTouchEnd={() => onCommit(live)}
-        onKeyUp={() => onCommit(live)}
-        className="w-16 accent-purple-500"
-      />
-      <span className="w-10 shrink-0 text-right tabular-nums">{live.toFixed(decimals)}</span>
+      <div className="flex items-center border border-gray-500 rounded overflow-hidden">
+        <button
+          type="button"
+          onClick={() => commit(toRaw(liveDisplay) - step)}
+          className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs leading-none"
+          aria-label={`Decrease ${label}`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          value={parseFloat(liveDisplay.toFixed(decimals))}
+          step={displayStep}
+          onChange={e => setLiveDisplay(e.target.valueAsNumber)}
+          onBlur={() => commit(toRaw(liveDisplay))}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { commit(toRaw(liveDisplay)); (e.target as HTMLInputElement).blur(); }
+          }}
+          className="w-14 text-center bg-gray-800 text-gray-100 text-xs py-0.5 tabular-nums outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        {suffix && <span className="text-gray-400 text-xs pr-1.5 select-none">{suffix}</span>}
+        <button
+          type="button"
+          onClick={() => commit(toRaw(liveDisplay) + step)}
+          className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs leading-none"
+          aria-label={`Increase ${label}`}
+        >
+          +
+        </button>
+      </div>
     </label>
   );
 };
@@ -112,8 +183,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
 
   const handleCopyFold = () => {
     if (!activeFold) return;
-    const { totalLength, foldRatio, bendOuter, bendInner, innerGap } = activeFold;
-    const props = { totalLength, foldRatio, bendOuter, bendInner, innerGap };
+    const { totalLength, foldRatio, bendOuter, bendInner, tangentA, tangentB } = activeFold;
+    const props = { totalLength, foldRatio, bendOuter, bendInner, tangentA, tangentB };
     lastCopiedFoldProps = props;
     setCopiedFoldProps(props);
   };
@@ -185,36 +256,50 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
           <span className="text-xs font-bold text-purple-300 uppercase tracking-wide shrink-0">
             {t('picotFoldPropsLabel')}
           </span>
-          <FoldSlider
+          <FoldNumberStepper
             label={t('picotFoldTotalLength')}
             value={activeFold.totalLength}
-            min={4} max={200} step={1}
-            decimals={0}
+            min={4} max={1000} step={5}
+            decimals={1}
+            displayScale={0.1}
             onCommit={v => onFoldPropertyChange(activeFold.id, { totalLength: v })}
           />
-          <FoldSlider
+          <FoldNumberStepper
             label={t('picotFoldPosition')}
             value={activeFold.foldRatio}
             min={0.05} max={0.95} step={0.01}
+            decimals={0}
+            displayScale={100}
+            suffix="%"
             onCommit={v => onFoldPropertyChange(activeFold.id, { foldRatio: v })}
           />
-          <FoldSlider
+          <FoldNumberStepper
             label={t('picotFoldBendOuter')}
             value={activeFold.bendOuter}
-            min={0} max={1} step={0.01}
+            min={0} max={2} step={0.01}
+            decimals={0}
+            displayScale={100}
             onCommit={v => onFoldPropertyChange(activeFold.id, { bendOuter: v })}
           />
-          <FoldSlider
+          <FoldNumberStepper
             label={t('picotFoldBendInner')}
             value={activeFold.bendInner}
-            min={0} max={1} step={0.01}
+            min={0} max={2} step={0.01}
+            decimals={0}
+            displayScale={100}
             onCommit={v => onFoldPropertyChange(activeFold.id, { bendInner: v })}
           />
-          <FoldSlider
-            label={t('picotFoldInnerGap')}
-            value={activeFold.innerGap}
-            min={0} max={10} step={0.1}
-            onCommit={v => onFoldPropertyChange(activeFold.id, { innerGap: v })}
+          <FoldNumberStepper
+            label={t('picotFoldTangentA')}
+            value={activeFold.tangentA}
+            min={0} max={1} step={0.01}
+            onCommit={v => onFoldPropertyChange(activeFold.id, { tangentA: v })}
+          />
+          <FoldNumberStepper
+            label={t('picotFoldTangentB')}
+            value={activeFold.tangentB}
+            min={0} max={1} step={0.01}
+            onCommit={v => onFoldPropertyChange(activeFold.id, { tangentB: v })}
           />
           <div className="ml-auto flex items-center gap-1.5 shrink-0">
             <button

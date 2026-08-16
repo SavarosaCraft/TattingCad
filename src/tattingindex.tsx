@@ -27,7 +27,7 @@ import { ORDER_GROUP_COLORS } from './render/svgExport';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths, mirrorPaths, applyRotationToPathData, rotatePathsAroundCenter,
-  applyPathPreset, applyLinePreset,
+  applyPathPreset, applyLinePreset, isChainTooShort,
 } from './geometry/paths';
 import { useEditorActions } from './hooks/useEditorActions';
 import { useBEClipboard } from './hooks/useBEClipboard';
@@ -3390,61 +3390,6 @@ const APP_VERSION = '1.2.0-beta';
   };
 
   // ── Folded picot loop geometry (session 47) ────────────────────────────
-  // Builds ONE apparent-picot's SVG path `d` — a two-legged loop rather than
-  // the single-tip "arm" a normal picot uses, matching the hand-sketched
-  // reference (nested rainbow-arc loops, not straight arms).
-  //
-  // footX/footY: where THIS loop's first foot sits — NOT always the origin
-  // picot's exact base. See buildFoldLoopPair below: the inner loop's foot
-  // is deliberately offset into the outer loop's own footprint rather than
-  // sharing the outer's exact foot point. Confirmed by a live visual check
-  // this session (static preset gallery, not the running app — still no live
-  // app available) that sharing one foot point exactly makes the two loops
-  // trace an IDENTICAL curve whenever totalLength happens to split evenly
-  // (foldRatio = 0.5), since length was the only thing distinguishing them.
-  // The offset guarantees the two loops are always visually adjacent
-  // regardless of how close their lengths are — this fixed offset is what
-  // replaced the innerGap slider that got dropped in design.
-  //
-  // outwardAngle: the origin picot's outward direction (from
-  //   getPicotPosition's .angle field).
-  // length: this arc's share of totalLength.
-  // bend: 0-1, this arc's own bendOuter/bendInner value — leans the loop's
-  //   peak toward the "leading" foot the higher it is.
-  // footSpreadFrac: how far apart THIS loop's own two feet sit, as a
-  //   fraction of its own length.
-  const buildFoldLoopPathD = (
-    footX: number, footY: number, outwardAngle: number,
-    length: number, bend: number, footSpreadFrac = 0.22
-  ): string => {
-    const ox = Math.cos(outwardAngle), oy = Math.sin(outwardAngle);
-    const tangentAngle = outwardAngle - Math.PI / 2;
-    const tx = Math.cos(tangentAngle), ty = Math.sin(tangentAngle);
-
-    const spread = length * footSpreadFrac;
-    const foot1X = footX, foot1Y = footY;
-    const foot2X = footX + tx * spread, foot2Y = footY + ty * spread;
-    const midX = (foot1X + foot2X) / 2, midY = (foot1Y + foot2Y) / 2;
-    const peakX = midX + ox * length, peakY = midY + oy * length;
-
-    // bend leans the loop's control points along the tangent — higher bend
-    // = more lopsided/draped loop, matching the "outer bend"/"inner bend"
-    // sliders' intent (drape, not just height).
-    const lean = (bend - 0.5) * length * 0.4;
-    const c1x = foot1X + ox * length * 0.55 - tx * spread * 0.3 + tx * lean * 0.3;
-    const c1y = foot1Y + oy * length * 0.55 - ty * spread * 0.3 + ty * lean * 0.3;
-    const c2x = peakX - tx * spread * 0.4 - tx * lean * 0.2;
-    const c2y = peakY - ty * spread * 0.4 - ty * lean * 0.2;
-    const c3x = peakX + tx * spread * 0.4 + tx * lean * 0.2;
-    const c3y = peakY + ty * spread * 0.4 + ty * lean * 0.2;
-    const c4x = foot2X + ox * length * 0.55 + tx * spread * 0.3 - tx * lean * 0.3;
-    const c4y = foot2Y + oy * length * 0.55 + ty * spread * 0.3 - ty * lean * 0.3;
-
-    return `M ${foot1X},${foot1Y} C ${c1x},${c1y} ${c2x},${c2y} ${peakX},${peakY} `
-         + `C ${c3x},${c3y} ${c4x},${c4y} ${foot2X},${foot2Y}`;
-  };
-
-  // Builds a single rainbow-style arch between two FIXED, real points — used
   // for the fold's outer arc (session 47, revised after live in-app
   // feedback with sketches: the outer arc's two feet should be the real
   // origin/anchor picot positions and their actual on-canvas distance apart,
@@ -3455,39 +3400,73 @@ const APP_VERSION = '1.2.0-beta';
   // bend: 0-1, leans the arc's peak toward one foot or the other — 0.5 is
   //   symmetric, matches the "outer bend"/"inner bend" slider's drape intent
   //   as before, just applied to a different shape.
-  // outwardAngleHint: origin's own outward direction, used only to pick
-  //   which of the two perpendicular directions the arc bulges toward (away
-  //   from the base curve, not into it) — matters when origin and anchor
-  //   are nearly colinear along the base, where the feet-to-feet line alone
-  //   doesn't disambiguate "up" from "down."
+  // originAngle/anchorAngle: each foot's OWN outward-perpendicular direction
+  //   (same direction a normal picot's arm exits the ring).
+  // tangentA/tangentB: 0-1, blends each end's launch tangent between the
+  //   along-chord-biased direction (0 — the pre-revision formula's own
+  //   tangent, which always points at least partly toward the OTHER foot
+  //   and is therefore inherently loop-safe) and this foot's own outward-
+  //   perpendicular direction (1 — leaves the ring dead straight, matching
+  //   the hand-sketched reference, but can self-cross into a twist when
+  //   both ends' outward angles happen to converge toward the same side of
+  //   the chord — confirmed numerically, not hypothetical: two adjacent
+  //   rings with both picots facing the same general direction is enough to
+  //   trigger it). Defaults to 1 (DEFAULT_FOLD_PROPS) so existing behavior
+  //   is unchanged until dialed down per-end to break a twist.
   const buildFixedFeetArcD = (
     foot1X: number, foot1Y: number, foot2X: number, foot2Y: number,
-    height: number, bend: number, outwardAngleHint: number
+    height: number, bend: number, originAngle: number, anchorAngle: number,
+    tangentA: number, tangentB: number
   ): string => {
     const dx = foot2X - foot1X, dy = foot2Y - foot1Y;
     const dist = Math.hypot(dx, dy) || 1;
     const alongX = dx / dist, alongY = dy / dist;
-    // Two perpendicular candidates; pick the one that agrees with the
-    // origin's own outward direction so the arc bulges away from the base
-    // curve like every other picot, not into it.
-    let perpX = -alongY, perpY = alongX;
-    const hintX = Math.cos(outwardAngleHint), hintY = Math.sin(outwardAngleHint);
-    if (perpX * hintX + perpY * hintY < 0) { perpX = -perpX; perpY = -perpY; }
+    // Chord-perpendicular direction for the along-chord-biased end of the
+    // blend, picked to agree with the origin's own outward angle so it
+    // still bulges away from the base curve, not into it.
+    let chordPerpX = -alongY, chordPerpY = alongX;
+    const hintX = Math.cos(originAngle), hintY = Math.sin(originAngle);
+    if (chordPerpX * hintX + chordPerpY * hintY < 0) { chordPerpX = -chordPerpX; chordPerpY = -chordPerpY; }
 
-    const lean = (bend - 0.5) * 0.6; // -0.3..0.3, shifts which shoulder rises higher
-    // k = 4/3: cubic-bezier control points at t=0.33/0.66 only produce a
-    // visual peak bulge of ~0.75x their own perpendicular offset — verified
-    // numerically this session (peak bulge measured at t=0.5 via De
-    // Casteljau, offset swept 0.5/0.667/0.75, bulge scaled linearly with it,
-    // solved for the coefficient that makes peak bulge == height exactly).
-    // Without this correction "height" quietly meant "a fraction of the
-    // requested height," which would have made totalLength/foldRatio feel
-    // wrong/muted in the property sliders for no visible reason.
-    const k = 4 / 3;
-    const c1x = foot1X + alongX * dist * 0.33 + perpX * height * (k + lean);
-    const c1y = foot1Y + alongY * dist * 0.33 + perpY * height * (k + lean);
-    const c2x = foot2X - alongX * dist * 0.33 + perpX * height * (k - lean);
-    const c2y = foot2Y - alongY * dist * 0.33 + perpY * height * (k - lean);
+    const chordLean = (bend - 0.5) * 0.6;
+    const chordK = 4 / 3;
+    // Along-chord-biased offset — the pre-revision formula's own absolute
+    // control-point offset, unchanged.
+    const chordOff1X = alongX * dist * 0.33 + chordPerpX * height * (chordK + chordLean);
+    const chordOff1Y = alongY * dist * 0.33 + chordPerpY * height * (chordK + chordLean);
+    const chordOff2X = -alongX * dist * 0.33 + chordPerpX * height * (chordK - chordLean);
+    const chordOff2Y = -alongY * dist * 0.33 + chordPerpY * height * (chordK - chordLean);
+
+    // Pure-perpendicular offset — this session's earlier fix. k1/k2 are
+    // floored at 0 rather than left to go negative: they used to share a
+    // fixed budget (k1+k2 == height, always), so bend past 1.0 (display
+    // 100) had nowhere left to pull from and k2 would flip negative —
+    // pulling the far foot's control point backward instead of leaning the
+    // curve further, which looks broken rather than more exaggerated.
+    // Flooring at 0 lets k1 keep growing past height for bend > 1 while k2
+    // just holds at its floor, so "more bend" keeps meaning more bend
+    // instead of hitting an arbitrary wall. Verified this doesn't
+    // reintroduce the self-crossing twist fixed earlier — larger bend
+    // asymmetry, if anything, reduces twist risk since it shrinks one
+    // side's pull toward zero rather than keeping both ends' pulls large.
+    const lean = bend - 0.5;
+    const k1 = Math.max(0, height * (0.5 + lean)), k2 = Math.max(0, height * (0.5 - lean));
+    const perpOff1X = Math.cos(originAngle) * k1, perpOff1Y = Math.sin(originAngle) * k1;
+    const perpOff2X = Math.cos(anchorAngle) * k2, perpOff2Y = Math.sin(anchorAngle) * k2;
+
+    // Blend the two formulas' own absolute offset VECTORS directly — each
+    // keeps its own calibrated magnitude/ratio, rather than being converted
+    // to a unit direction and rescaled to a shared magnitude (an earlier
+    // attempt at this did that and it quietly broke: at tangent=0 it no
+    // longer reduced to the actual safe formula, since normalizing throws
+    // away the along/perp ratio that made it safe in the first place —
+    // caught via simulation before this ever shipped).
+    const t1 = Math.max(0, Math.min(1, tangentA));
+    const t2 = Math.max(0, Math.min(1, tangentB));
+    const c1x = foot1X + chordOff1X * (1 - t1) + perpOff1X * t1;
+    const c1y = foot1Y + chordOff1Y * (1 - t1) + perpOff1Y * t1;
+    const c2x = foot2X + chordOff2X * (1 - t2) + perpOff2X * t2;
+    const c2y = foot2Y + chordOff2Y * (1 - t2) + perpOff2Y * t2;
 
     return `M ${foot1X},${foot1Y} C ${c1x},${c1y} ${c2x},${c2y} ${foot2X},${foot2Y}`;
   };
@@ -3520,10 +3499,11 @@ const APP_VERSION = '1.2.0-beta';
   // sharing literal identical pixels there.
   const buildFoldLoopPair = (
     originX: number, originY: number, originAngle: number,
-    anchorX: number, anchorY: number,
+    anchorX: number, anchorY: number, anchorAngle: number,
     totalLength: number, foldRatio: number, bendOuter: number, bendInner: number,
+    tangentA: number, tangentB: number,
     footOffset: number = dsWidth / 2
-  ): { outerD: string; innerD: string } => {
+  ): { outerD: string; innerD: string; outerHeight: number; innerHeight: number } => {
     const outerHeight = totalLength * foldRatio;
     const innerHeight = totalLength * (1 - foldRatio);
 
@@ -3539,10 +3519,23 @@ const APP_VERSION = '1.2.0-beta';
     const innerOriginX = originX + alongX * footOffset, innerOriginY = originY + alongY * footOffset;
     const innerAnchorX = anchorX - alongX * footOffset, innerAnchorY = anchorY - alongY * footOffset;
 
-    const outerD = buildFixedFeetArcD(outerOriginX, outerOriginY, outerAnchorX, outerAnchorY, outerHeight, bendOuter, originAngle);
-    const innerD = buildFixedFeetArcD(innerOriginX, innerOriginY, innerAnchorX, innerAnchorY, innerHeight, bendInner, originAngle);
+    // Both arcs' feet are shifted slightly along the chord from the real
+    // origin/anchor points (see above), but they still launch along the
+    // SAME real origin/anchor outward angles — the shift is small (half a
+    // stitch-width) and purely to keep the two arcs visually separated at
+    // the base, not a different picot with its own angle. Same
+    // tangentA/tangentB for both arcs — the twist-prevention blend is about
+    // each picot's own angle, not which arc (outer/inner) it belongs to.
+    const outerD = buildFixedFeetArcD(outerOriginX, outerOriginY, outerAnchorX, outerAnchorY, outerHeight, bendOuter, originAngle, anchorAngle, tangentA, tangentB);
+    const innerD = buildFixedFeetArcD(innerOriginX, innerOriginY, innerAnchorX, innerAnchorY, innerHeight, bendInner, originAngle, anchorAngle, tangentA, tangentB);
 
-    return { outerD, innerD };
+    // outerHeight/innerHeight are returned (not just used internally) so the
+    // caller's paint-order check (which arc is currently bigger, for
+    // z-ordering) reads the SAME values that actually built the arcs,
+    // instead of recomputing totalLength*foldRatio a second time — two
+    // copies of one formula is exactly the kind of thing that quietly
+    // drifts apart after the next tweak to either one.
+    return { outerD, innerD, outerHeight, innerHeight };
   };
 
   // Build the project data object (shared by save and autosave)
@@ -8908,11 +8901,20 @@ const APP_VERSION = '1.2.0-beta';
                   const foldRatio = conn.foldRatio ?? DEFAULT_FOLD_PROPS.foldRatio;
                   const bendOuter = conn.bendOuter ?? DEFAULT_FOLD_PROPS.bendOuter;
                   const bendInner = conn.bendInner ?? DEFAULT_FOLD_PROPS.bendInner;
+                  const tangentA = conn.tangentA ?? DEFAULT_FOLD_PROPS.tangentA;
+                  const tangentB = conn.tangentB ?? DEFAULT_FOLD_PROPS.tangentB;
                   const anchorPos = positions[1] ?? positions[0];
-                  const { outerD, innerD } = buildFoldLoopPair(
+                  // anchorPos.angle should always be present — positions[]
+                  // is built via getPicotPosition(el, picot, true) same as
+                  // originFrame, and fold is plain-picot-only (see comment
+                  // above) — but fall back to facing the origin if it's
+                  // ever missing rather than crashing.
+                  const anchorAngle = anchorPos.angle ?? Math.atan2(originFrame.y - anchorPos.y, originFrame.x - anchorPos.x);
+                  const { outerD, innerD, outerHeight, innerHeight } = buildFoldLoopPair(
                     originFrame.x, originFrame.y, originFrame.angle,
-                    anchorPos.x, anchorPos.y,
-                    totalLength, foldRatio, bendOuter, bendInner
+                    anchorPos.x, anchorPos.y, anchorAngle,
+                    totalLength, foldRatio, bendOuter, bendInner,
+                    tangentA, tangentB
                   );
                   // Same material-color resolution the realistic join render
                   // already uses just below (stored materialId on the
@@ -8935,9 +8937,8 @@ const APP_VERSION = '1.2.0-beta';
                   // the two totalLength shares it implies) shifts which
                   // one is actually bigger, the smaller one visually tucks
                   // behind the larger one instead of always sitting on top
-                  // of it regardless of size.
-                  const outerHeight = totalLength * foldRatio;
-                  const innerHeight = totalLength * (1 - foldRatio);
+                  // of it regardless of size. outerHeight/innerHeight come
+                  // from buildFoldLoopPair above, not recomputed here.
                   const outerArcEls = (
                     <React.Fragment key="outer">
                       <path d={outerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
@@ -9057,15 +9058,13 @@ const APP_VERSION = '1.2.0-beta';
                 // edit-time snapshot), so anything else that changes a
                 // chain's geometry (duplication, array creation, drag,
                 // rotation, mirror) leaves it stale. A live check can't go
-                // stale. Same 0.92 threshold/formula as the edit-time
-                // computation it replaces.
-                const isTooShort = !el.isClosed && el.type === 'chain' && el.paths?.length === 1 && (() => {
-                  const p = el.paths[0];
-                  const arcLen = calculatePathLength(sampleBezierPath(p, 20));
-                  if (arcLen <= 0) return false;
-                  const endpointDist = Math.hypot(p.endX - p.x, p.endY - p.y);
-                  return (endpointDist / arcLen) > 0.92;
-                })();
+                // stale. Uses physical thread length (stitchCount * dsWidth)
+                // vs the chain's actual current chord distance, not the
+                // currently-rendered curve's own arc length — a chain can
+                // always bulge or flatten to span any chord up to its
+                // physical length, so only being stretched past that (plus
+                // a little give) is genuinely "too short". See paths.ts.
+                const isTooShort = isChainTooShort(el, dsWidth);
                 const elementFilter = (showInvalidNotation && hasInvalidNotation) ? 'url(#red-glow)'
                   : (showInvalidNotation && isTooShort) ? 'url(#amber-glow)'
                   : shouldHighlight ? 'url(#pink-glow)'

@@ -13,18 +13,34 @@ const isEndpointPicotId = (id: string) =>
 // values — tune once the bezier rendering pass (still undesigned) gives a
 // sense of what looks right. Units follow the same convention as other
 // picot-length values in this codebase (mm-relative), except foldRatio/
-// bendOuter/bendInner which are 0.0-1.0 proportions per the design brief.
-// totalLength default raised session 47 after live in-app feedback: the
-// original 16 (against the old 4-40 slider range) produced visually flat
-// arcs against typical picot-to-picot spacing — range widened to 4-200,
-// default raised to roughly the middle of that so a freshly-created fold
-// starts out visible rather than needing an immediate slider push.
+// bendOuter/bendInner/tangentA/tangentB which are 0.0-1.0 proportions per
+// the design brief.
+// innerGap removed: the gap between the outer/inner arcs is now controlled
+// entirely by the length difference the two arcs' heights already imply
+// (totalLength * foldRatio vs totalLength * (1 - foldRatio)) — the fixed
+// footOffset in buildFoldLoopPair replaced the old innerGap-driven spacing
+// design, and nothing has read conn.innerGap since. See tattingindex.tsx's
+// buildFoldLoopPair.
+// tangentA/tangentB added: each end's launch tangent used to be locked
+// purely to that picot's own outward-perpendicular angle, which can loop
+// the arc into a self-crossing twist when both picots' outward angles
+// happen to converge toward the same side (an ordinary case — e.g. two
+// adjacent rings with both picots facing the same general direction).
+// These blend each end between that pure-perpendicular direction (1.0) and
+// the old along-the-chord-biased direction (0.0), which is inherently
+// loop-safe since it always points at least partly toward the other foot.
+// Default 1.0 preserves the fully-perpendicular look; dial down per-end to
+// break a twist in a specific problem geometry.
+// totalLength/foldRatio set to specific user-facing values — raw values
+// here, displayed in the property bar as 14 and 60% respectively via
+// PicotJoinModeBar's displayScale of 0.1 and 100 on those two fields.
 export const DEFAULT_FOLD_PROPS = {
-  totalLength: 70,
-  foldRatio: 0.5,
+  totalLength: 140,
+  foldRatio: 0.6,
   bendOuter: 0.5,
   bendInner: 0.5,
-  innerGap: 2,
+  tangentA: 1,
+  tangentB: 1,
 };
 
 // A picot is eligible to become one end of a NEW fold when: it's a real
@@ -77,19 +93,16 @@ export const getFoldPartner = (
   elementId: string,
   picotId: string,
 ): { elementId: string; picotId: string } | null => {
-  const conn = picotConnections.find(c =>
-    c.connectionType === 'fold' &&
-    c.picots.some((cp: any) => cp.elementId === elementId && cp.picotId === picotId)
-  );
+  const conn = getFoldConnection(picotConnections, elementId, picotId);
   if (!conn) return null;
   const partner = conn.picots.find((cp: any) => !(cp.elementId === elementId && cp.picotId === picotId));
   return partner ? { elementId: partner.elementId, picotId: partner.picotId } : null;
 };
 
-// Finds the fold connection (if any) that a given picot belongs to. Small
-// wrapper around the same lookup getFoldPartner does, for callers (the
-// property-bar slider UI) that want the connection object itself — id and
-// current property values — rather than just the partner identity.
+// Finds the fold connection (if any) that a given picot belongs to. Used by
+// getFoldPartner above, and directly by callers (the property-bar slider UI)
+// that want the connection object itself — id and current property values —
+// rather than just the partner identity.
 export const getFoldConnection = (
   picotConnections: any[],
   elementId: string,
@@ -285,6 +298,30 @@ const buildConnectionsForInheritedJoin = (
   return newConns;
 };
 
+// Applies isJoint flag changes to picots identified by "elementId::picotId"
+// keys — shared by every place in this file that promotes newly-connected
+// picots to isJoint:true or demotes newly-disconnected ones to isJoint:false.
+// checkAndStoreInheritedJoin, reapplyInheritedJoins, performJoin,
+// removeInheritedJoins, and breakSelectedPicots each used to hand-roll their
+// own copy of this same "map elements, map picots, flip isJoint if the key
+// is in my set and the value actually differs" loop. Only keys present in
+// desiredByKey are touched; a key mapped to the picot's current isJoint
+// value is a no-op — preserves the existing "updated === el.picots ? el :
+// ..." identity-check pattern every call site already relied on, so
+// unaffected elements/picots keep the same object reference (avoids
+// unnecessary re-renders).
+const applyJointFlags = (elements: any[], desiredByKey: Map<string, boolean>): any[] => {
+  if (desiredByKey.size === 0) return elements;
+  return elements.map(el => {
+    if (!el.picots) return el;
+    const updated = el.picots.map((pic: any) => {
+      const desired = desiredByKey.get(`${el.id}::${pic.id}`);
+      return desired !== undefined && desired !== pic.isJoint ? { ...pic, isJoint: desired } : pic;
+    });
+    return updated === el.picots ? el : { ...el, picots: updated };
+  });
+};
+
 export interface UseJoinActionsParams {
   // Refs
   selectedPicotsRef: React.RefObject<any[]>;
@@ -382,20 +419,12 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.setPicotConnections(allNewConns);
     p.picotConnectionsRef.current = allNewConns;
 
-    const inheritedKeys = new Set(
+    const inheritedKeys = new Map<string, boolean>(
       newInheritedConns.flatMap(conn =>
-        conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`)
+        conn.picots.map(cp => [`${cp.elementId}::${cp.picotId}`, true] as [string, boolean])
       )
     );
-    const updatedEls = currentElements.map(el => {
-      if (!el.picots) return el;
-      const updated = el.picots.map(pic =>
-        inheritedKeys.has(`${el.id}::${pic.id}`) && !pic.isJoint
-          ? { ...pic, isJoint: true }
-          : pic
-      );
-      return updated === el.picots ? el : { ...el, picots: updated };
-    });
+    const updatedEls = applyJointFlags(currentElements, inheritedKeys);
     p.setElements(updatedEls);
     p.elementsRef.current = updatedEls;
   };
@@ -450,18 +479,10 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.setPicotConnections(workingConns);
     p.picotConnectionsRef.current = workingConns;
 
-    const inheritedKeys = new Set(
-      allNewConns.flatMap(conn => conn.picots.map((cp: any) => `${cp.elementId}::${cp.picotId}`))
+    const inheritedKeys = new Map<string, boolean>(
+      allNewConns.flatMap(conn => conn.picots.map((cp: any) => [`${cp.elementId}::${cp.picotId}`, true] as [string, boolean]))
     );
-    const updatedEls = currentElements.map(el => {
-      if (!el.picots) return el;
-      const updated = el.picots.map((pic: any) =>
-        inheritedKeys.has(`${el.id}::${pic.id}`) && !pic.isJoint
-          ? { ...pic, isJoint: true }
-          : pic
-      );
-      return updated === el.picots ? el : { ...el, picots: updated };
-    });
+    const updatedEls = applyJointFlags(currentElements, inheritedKeys);
     p.setElements(updatedEls);
     p.elementsRef.current = updatedEls;
   };
@@ -495,16 +516,9 @@ export function useJoinActions(p: UseJoinActionsParams) {
       p.setPicotConnections(newConns);
       p.picotConnectionsRef.current = newConns;
 
-      const updatedEls = currentElements.map(el => {
-        if (!el.picots) return el;
-        const updated = el.picots.map(pic => {
-          const key = `${el.id}::${pic.id}`;
-          return (removedKeys.has(key) && !stillConnectedKeys.has(key) && pic.isJoint)
-            ? { ...pic, isJoint: false }
-            : pic;
-        });
-        return updated === el.picots ? el : { ...el, picots: updated };
-      });
+      const demoteKeys = new Map<string, boolean>();
+      removedKeys.forEach(key => { if (!stillConnectedKeys.has(key)) demoteKeys.set(key, false); });
+      const updatedEls = applyJointFlags(currentElements, demoteKeys);
       p.setElements(updatedEls);
       p.elementsRef.current = updatedEls;
     }
@@ -549,16 +563,10 @@ export function useJoinActions(p: UseJoinActionsParams) {
     p.picotConnectionsRef.current = newConns;
 
     // Auto-promote to isJoint: true (skip endpoint pseudo-picots)
-    const jointSet = new Set(
-      sel.filter(sp => !isEndpointPicotId(sp.picotId)).map(sp => `${sp.elementId}::${sp.picotId}`)
+    const jointKeys = new Map<string, boolean>(
+      sel.filter(sp => !isEndpointPicotId(sp.picotId)).map(sp => [`${sp.elementId}::${sp.picotId}`, true] as [string, boolean])
     );
-    let newEls = p.elementsRef.current.map(el => {
-      if (!el.picots) return el;
-      const updated = el.picots.map(pic =>
-        jointSet.has(`${el.id}::${pic.id}`) && !pic.isJoint ? { ...pic, isJoint: true } : pic
-      );
-      return updated === el.picots ? el : { ...el, picots: updated };
-    });
+    let newEls = applyJointFlags(p.elementsRef.current, jointKeys);
 
     // Mirror isJoint to sibling boundary ghosts by picot index
     const mirrorSet: Array<{ arrayId: string; picotIndex: number }> = [];
@@ -677,16 +685,9 @@ export function useJoinActions(p: UseJoinActionsParams) {
     const stillConnected = new Set(
       newConns.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
     );
-    const newEls = p.elementsRef.current.map(el => {
-      if (!el.picots) return el;
-      const updated = el.picots.map(pic => {
-        const key = `${el.id}::${pic.id}`;
-        return (brokenSet.has(key) && !stillConnected.has(key) && pic.isJoint)
-          ? { ...pic, isJoint: false }
-          : pic;
-      });
-      return updated === el.picots ? el : { ...el, picots: updated };
-    });
+    const demoteKeys = new Map<string, boolean>();
+    brokenSet.forEach(key => { if (!stillConnected.has(key)) demoteKeys.set(key, false); });
+    const newEls = applyJointFlags(p.elementsRef.current, demoteKeys);
     p.setElements(newEls);
 
     p.setSelectedPicots([]);

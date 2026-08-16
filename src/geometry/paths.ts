@@ -8,6 +8,34 @@
 
 import { sampleBezierPath, calculatePathLength } from '../geometry/bezier';
 
+// ── Chain length guard ───────────────────────────────────────────────────────
+
+// How far past its physical thread length (stitchCount * dsWidth) a chain's
+// endpoints are allowed to be dragged before it's flagged "too short". A
+// chain can always bulge (endpoints close together) or flatten out toward a
+// straight line (endpoints near the physical length apart) to span whatever
+// chord distance its endpoints currently sit at — a curve of a given arc
+// length can have any chord from 0 up to that same arc length (fully
+// straight is the maximum). So "too short" should only ever mean "the
+// endpoints are farther apart than the thread can physically reach, even
+// fully straight" — not anything about the curve's current bow. This is
+// deliberately blind to the chain's current control points for exactly that
+// reason: checking the currently-rendered curve's own arc-length-to-chord
+// ratio (the old approach) meant the flag depended on whatever shape
+// happened to be sitting there, which drifted from unrelated edits,
+// regeneration, reversal, etc. — see session 49/50 handoffs for the trail of
+// bugs that caused. Physical length vs actual chord sidesteps all of it.
+const TOO_SHORT_OVERSTRETCH_TOLERANCE = 1.10;
+
+export const isChainTooShort = (el: any, dsWidth: number): boolean => {
+  if (el.isClosed || el.type !== 'chain' || el.paths?.length !== 1) return false;
+  const p = el.paths[0];
+  const physicalLength = (el.stitchCount || 0) * dsWidth;
+  if (physicalLength <= 0) return false;
+  const endpointDist = Math.hypot(p.endX - p.x, p.endY - p.y);
+  return endpointDist > physicalLength * TOO_SHORT_OVERSTRETCH_TOLERANCE;
+};
+
 // ── Circle ────────────────────────────────────────────────────────────────────
 
 export const createCirclePath = (cx: number, cy: number, targetLength: number, squeeze = 0) => {

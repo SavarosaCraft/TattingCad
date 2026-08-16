@@ -580,10 +580,26 @@ export function useEditorActions(p: UseEditorActionsParams) {
     const selectedIdSet = new Set(ids);
     const newConnections = p.picotConnectionsRef.current
       .filter(conn => conn.picots.every((pt: any) => selectedIdSet.has(pt.elementId)))
-      .map((conn: any) => ({
-        id: generateId(),
-        picots: conn.picots.map((pt: any) => ({ elementId: elementIdMap.get(pt.elementId), picotId: pt.picotId })),
-      }));
+      .map((conn: any) => {
+        // Spread the whole original connection — not just id/picots — so
+        // connectionType, materialId, and every fold-specific property
+        // (totalLength, foldRatio, bendOuter, bendInner, tangentA,
+        // tangentB) carry over. Rebuilding from scratch with only {id,
+        // picots} silently downgraded a duplicated fold connection to a
+        // bare, type-less one: the connection itself still existed (so it
+        // looked kept), but connectionType and every fold property were
+        // gone, so it rendered/behaved like an ordinary join instead.
+        // isInheritedJoin is explicitly dropped: it tags a connection as
+        // belonging to a specific ghost array's managed replay set
+        // (reapplyInheritedJoins), which a fresh manual duplicate isn't
+        // part of.
+        const { isInheritedJoin, ...rest } = conn;
+        return {
+          ...rest,
+          id: generateId(),
+          picots: conn.picots.map((pt: any) => ({ elementId: elementIdMap.get(pt.elementId), picotId: pt.picotId })),
+        };
+      });
 
     p.setElements(prev => [...prev, ...newElements]);
     if (newConnections.length > 0) p.setPicotConnections(prev => [...prev, ...newConnections]);

@@ -577,5 +577,13 @@
   "propShapeTeardrop": "Teardrop",
   "propShapeCircle": "Circle",
   "picotWizardSideBoth": "Both",
-  "picotWizardReverse": "Reverse notation"
+  "picotWizardReverse": "Reverse notation",
+  "picotFoldTangentA": "Angle 1.",
+  "picotFoldTangentB": "Angle 2.",
+"picotFoldCopySettings": "Copy fold settings",
+"picotFoldCopyBtn": "Copy",
+"picotFoldPasteSettings": "Paste fold settings",
+"picotFoldPasteBtn": "Paste"
+
+
 }
