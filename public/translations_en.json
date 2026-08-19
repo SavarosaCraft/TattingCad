@@ -283,11 +283,6 @@
   "toolFoldPicots": "Fold Picots — while armed, Join creates a folded picot instead of a regular join",
   "picotFoldBtn": "Fold Picots",
   "picotFoldPropsLabel": "Fold:",
-  "picotFoldTotalLength": "Total length",
-  "picotFoldPosition": "Fold position",
-  "picotFoldBendOuter": "Outer bend",
-  "picotFoldBendInner": "Inner bend",
-  "picotFoldInnerGap": "Inner gap",
   "beadExitBtn": "Exit Mode",
   "beadSelectHint": "tap or drag-select ◆ diamonds",
   "beadSelectedCount": "{n} selected",
@@ -578,12 +573,12 @@
   "propShapeCircle": "Circle",
   "picotWizardSideBoth": "Both",
   "picotWizardReverse": "Reverse notation",
-  "picotFoldTangentA": "Angle 1.",
-  "picotFoldTangentB": "Angle 2.",
 "picotFoldCopySettings": "Copy fold settings",
 "picotFoldCopyBtn": "Copy",
 "picotFoldPasteSettings": "Paste fold settings",
-"picotFoldPasteBtn": "Paste"
-
-
+"picotFoldPasteBtn": "Paste",
+"picotFoldOuterLength": "Outer Length",
+"picotFoldInnerLength": "Inside Length",
+"picotFoldAngleA": "Angle 1",
+"picotFoldAngleB": "Angle 1"
 }

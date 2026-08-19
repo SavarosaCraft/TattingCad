@@ -9,38 +9,41 @@ import { generateId } from '../utils/id';
 const isEndpointPicotId = (id: string) =>
   id === '__start__' || id === '__end__' || id === '__anchor__';
 
-// Default fold properties applied to every new fold connection. Placeholder
-// values — tune once the bezier rendering pass (still undesigned) gives a
-// sense of what looks right. Units follow the same convention as other
-// picot-length values in this codebase (mm-relative), except foldRatio/
-// bendOuter/bendInner/tangentA/tangentB which are 0.0-1.0 proportions per
-// the design brief.
-// innerGap removed: the gap between the outer/inner arcs is now controlled
-// entirely by the length difference the two arcs' heights already imply
-// (totalLength * foldRatio vs totalLength * (1 - foldRatio)) — the fixed
-// footOffset in buildFoldLoopPair replaced the old innerGap-driven spacing
-// design, and nothing has read conn.innerGap since. See tattingindex.tsx's
-// buildFoldLoopPair.
-// tangentA/tangentB added: each end's launch tangent used to be locked
-// purely to that picot's own outward-perpendicular angle, which can loop
-// the arc into a self-crossing twist when both picots' outward angles
-// happen to converge toward the same side (an ordinary case — e.g. two
-// adjacent rings with both picots facing the same general direction).
-// These blend each end between that pure-perpendicular direction (1.0) and
-// the old along-the-chord-biased direction (0.0), which is inherently
-// loop-safe since it always points at least partly toward the other foot.
-// Default 1.0 preserves the fully-perpendicular look; dial down per-end to
-// break a twist in a specific problem geometry.
-// totalLength/foldRatio set to specific user-facing values — raw values
-// here, displayed in the property bar as 14 and 60% respectively via
-// PicotJoinModeBar's displayScale of 0.1 and 100 on those two fields.
+// Default fold properties applied to every new fold connection.
+//
+// Replaces the earlier totalLength/foldRatio/bendOuter/bendInner/tangentA/
+// tangentB model entirely, after discussion settled on a simpler, more
+// direct physical parameterization: a fold is one continuous strand of
+// thread folded over itself, so "how much thread on each side" is naturally
+// two independent lengths (outerLength/innerLength) rather than a total
+// plus a ratio standing in for the same two numbers — and each end's
+// departure direction is a literal angle (angleA/angleB, degrees off that
+// picot's own perpendicular), not an abstract 0-1 blend between two
+// different formulas. See tattingindex.tsx's buildFixedFeetArcD/
+// buildFoldLoopPair for the geometry side.
+//
+// outerLength/innerLength are physical thread-length units, same convention
+// as other picot-length values in this codebase — no artificial ceiling,
+// since there's no mathematical reason to cap a physical thread length.
+// Defaults of 130/100 (not smaller numbers like 8/6) are deliberate: these
+// are raw canvas-coordinate units, same scale as dsWidth, and a curve can
+// never be shorter than the straight-line distance between its own
+// endpoints — for a typical 6ds picot-to-picot spacing that chord is
+// already ~60 raw units, so a target length below that silently collapses
+// to a flat line with no visible error. 130/100 sit well clear of that for
+// ordinary picot spacings. Displayed to the user as 13.0/10.0 (divided by
+// 10) via PicotJoinModeBar's displayScale — only the on-screen number is
+// scaled down for friendliness; the stored/geometry units are unchanged.
+// angleA/angleB are in degrees, nominally -90 to 90 (a fold can't
+// physically leave the ring pointing back into it), with a little headroom
+// to ~-100/100 for edge cases. 0 = perpendicular to the ring surface, same
+// as a normal picot's arm and the previous fully-perpendicular default;
+// positive reads as a visually counterclockwise rotation on screen.
 export const DEFAULT_FOLD_PROPS = {
-  totalLength: 140,
-  foldRatio: 0.6,
-  bendOuter: 0.5,
-  bendInner: 0.5,
-  tangentA: 1,
-  tangentB: 1,
+  outerLength: 130,
+  innerLength: 100,
+  angleA: 0,
+  angleB: 0,
 };
 
 // A picot is eligible to become one end of a NEW fold when: it's a real
@@ -645,22 +648,28 @@ export function useJoinActions(p: UseJoinActionsParams) {
     performJoin(sel, { connectionType: 'fold', ...DEFAULT_FOLD_PROPS });
   }, [p.elementById, p.ghostArrays]);
 
-  // Updates one or more fold properties (totalLength, foldRatio, bendOuter,
-  // bendInner, innerGap) on an existing fold connection — the slider-drag
-  // handler in PicotJoinModeBar calls this on every change. Deliberately
-  // does NOT go through performJoin/checkAndStoreInheritedJoin — editing a
-  // fold's drape is a property tweak, not a new topological join, so ghost-
-  // array propagation doesn't apply (each propagated fold instance already
-  // has its own independent copy of these properties — see the connExtra
-  // doc comment on buildConnectionsForInheritedJoin — and this only touches
-  // the one connection the user is actually looking at).
-  const updateFoldConnection = useCallback((connectionId: string, patch: Record<string, any>) => {
+  // Updates one or more fold properties (outerLength, innerLength, angleA,
+  // angleB) on an existing fold connection. Deliberately does NOT go
+  // through performJoin/checkAndStoreInheritedJoin — editing a fold's drape
+  // is a property tweak, not a new topological join, so ghost-array
+  // propagation doesn't apply (each propagated fold instance already has
+  // its own independent copy of these properties — see the connExtra doc
+  // comment on buildConnectionsForInheritedJoin — and this only touches the
+  // one connection the user is actually looking at).
+  //
+  // pushHistory defaults to true (every call pushes one history entry,
+  // matching prior behavior) but can be set false for intermediate ticks of
+  // a press-and-hold nudge — mirrors applySingleRotationDelta's own
+  // pushHistory param in useEditorActions.ts, same reasoning: a hold that
+  // fires many rapid updates should collapse into ONE undo entry on
+  // release, not one per tick.
+  const updateFoldConnection = useCallback((connectionId: string, patch: Record<string, any>, pushHistory: boolean = true) => {
     const newConns = p.picotConnectionsRef.current.map(conn =>
       conn.id === connectionId ? { ...conn, ...patch } : conn
     );
     p.setPicotConnections(newConns);
     p.picotConnectionsRef.current = newConns;
-    p.pushHistoryState(p.elementsRef.current, newConns, p.roundsRef.current);
+    if (pushHistory) p.pushHistoryState(p.elementsRef.current, newConns, p.roundsRef.current);
   }, []);
 
   const breakSelectedPicots = useCallback(() => {

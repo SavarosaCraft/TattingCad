@@ -87,6 +87,7 @@ import { SplitRingNotationInput } from './components/SplitRingNotationInput';
 import { NotationInput } from './components/NotationInput';
 import { TattingOrderModeBar } from './components/TattingOrderModeBar';
 import { MultiSelectSummaryBar } from './components/MultiSelectSummaryBar';
+import { NumberStepper } from './components/NumberStepper';
 import { ColorPickerPickerTab } from './components/ColorPickerPickerTab';
 import { ColorPickerSwatchesTab } from './components/ColorPickerSwatchesTab';
 import { ColorPickerGradientsTab } from './components/ColorPickerGradientsTab';
@@ -544,7 +545,6 @@ const TattingDesigner = () => {
     rulerPoints, setRulerPoints,
     rulerMousePos, setRulerMousePos,
     groupRotationInput, setGroupRotationInput,
-    singleRotationInput, setSingleRotationInput,
   } = useCanvasInteraction();
 
   // ── Tatting order state ──────────────────────────────────────────────────
@@ -687,8 +687,10 @@ const APP_VERSION = '1.2.0-beta';
   const historyIndexRef = useRef(0);  // Ref to current index
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
-  const nudgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // For press-and-hold rotation nudge
-  const nudgeAccumulatedDeltaRef = useRef(0); // Track total rotation during hold for single history push
+  // nudgeActiveRef also gates the separate auto-history-push effect
+  // elsewhere in this file — kept for that reason even though the
+  // press-and-hold bookkeeping it used to support locally (an interval ref
+  // and an accumulated-delta ref) now lives inside NumberStepper.tsx itself.
   const nudgeActiveRef = useRef(false); // Whether a nudge hold is in progress
   const createdNewLineRef = useRef(false); // Track if a new line was created (for auto-switch back to select)
   const groupDropdownButtonRef = useRef<HTMLButtonElement>(null); // For fixed-position group dropdown on mobile
@@ -3389,84 +3391,70 @@ const APP_VERSION = '1.2.0-beta';
     };
   };
 
-  // ── Folded picot loop geometry (session 47) ────────────────────────────
-  // for the fold's outer arc (session 47, revised after live in-app
-  // feedback with sketches: the outer arc's two feet should be the real
-  // origin/anchor picot positions and their actual on-canvas distance apart,
-  // not a synthetic offset — see the two-sketch comparison that drove this).
-  // height: how far the arc bulges away from the straight line between the
-  //   feet (this is what totalLength*foldRatio now drives for the outer
-  //   arc, replacing its old role as a foot-to-foot spread).
-  // bend: 0-1, leans the arc's peak toward one foot or the other — 0.5 is
-  //   symmetric, matches the "outer bend"/"inner bend" slider's drape intent
-  //   as before, just applied to a different shape.
-  // originAngle/anchorAngle: each foot's OWN outward-perpendicular direction
-  //   (same direction a normal picot's arm exits the ring).
-  // tangentA/tangentB: 0-1, blends each end's launch tangent between the
-  //   along-chord-biased direction (0 — the pre-revision formula's own
-  //   tangent, which always points at least partly toward the OTHER foot
-  //   and is therefore inherently loop-safe) and this foot's own outward-
-  //   perpendicular direction (1 — leaves the ring dead straight, matching
-  //   the hand-sketched reference, but can self-cross into a twist when
-  //   both ends' outward angles happen to converge toward the same side of
-  //   the chord — confirmed numerically, not hypothetical: two adjacent
-  //   rings with both picots facing the same general direction is enough to
-  //   trigger it). Defaults to 1 (DEFAULT_FOLD_PROPS) so existing behavior
-  //   is unchanged until dialed down per-end to break a twist.
+  // ── Folded picot loop geometry ──────────────────────────────────────────
+  // Builds a single arc between two FIXED, real points — used for the
+  // fold's outer arc (revised after live in-app feedback with sketches: the
+  // outer arc's two feet should be the real origin/anchor picot positions
+  // and their actual on-canvas distance apart, not a synthetic offset — see
+  // the two-sketch comparison that drove this) — with an independently
+  // specified departure angle at each end and an actual
+  // target arc length. Replaces the earlier height/bend/tangent-blend
+  // parameterization (three different proxies stacked on each other, none
+  // of which mapped to anything a person could reason about directly, and
+  // the blend still allowed a self-crossing twist with no direct fix — only
+  // an indirect slider) with three literal, physically-meaningful numbers.
+  //
+  // originAngle/anchorAngle: each foot's OWN outward-perpendicular angle
+  //   (same direction a normal picot's arm exits the ring) — the zero
+  //   reference each angle offset below is measured from.
+  // angleA/angleB: degrees offset from that foot's own perpendicular,
+  //   independently at each end. 0 = leaves the ring dead straight
+  //   (perpendicular), matching a normal picot's arm — same default look as
+  //   before. Positive reads as a visually counterclockwise rotation on
+  //   screen: SVG's y-axis increases downward, so the standard (y-up)
+  //   counterclockwise rotation formula would look clockwise here unless
+  //   the angle is negated first — verified numerically before shipping
+  //   (rotating a straight-up direction by a small positive angle moves it
+  //   toward 9 o'clock, not 3 o'clock, as expected for CCW).
+  // targetLength: the actual arc length the resulting curve should have —
+  //   found via the same fixed-endpoints/target-length binary search
+  //   applyPathPreset (paths.ts) already uses for the regular chain bow-
+  //   angle presets, generalized from one shared angle to two independent
+  //   ones. Both ends share a single solved-for control-point magnitude
+  //   (matching applyPathPreset's existing symmetric-t approach) since
+  //   there's only one length constraint to satisfy — an asymmetric
+  //   magnitude split isn't something this can determine on its own.
+  //   Physically bounded below by the straight-line distance between the
+  //   two feet (a curve can never be shorter than its own chord); a target
+  //   below that is simply unreachable and the search converges toward the
+  //   chord length rather than erroring.
   const buildFixedFeetArcD = (
     foot1X: number, foot1Y: number, foot2X: number, foot2Y: number,
-    height: number, bend: number, originAngle: number, anchorAngle: number,
-    tangentA: number, tangentB: number
+    originAngle: number, anchorAngle: number,
+    angleA: number, angleB: number,
+    targetLength: number
   ): string => {
-    const dx = foot2X - foot1X, dy = foot2Y - foot1Y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const alongX = dx / dist, alongY = dy / dist;
-    // Chord-perpendicular direction for the along-chord-biased end of the
-    // blend, picked to agree with the origin's own outward angle so it
-    // still bulges away from the base curve, not into it.
-    let chordPerpX = -alongY, chordPerpY = alongX;
-    const hintX = Math.cos(originAngle), hintY = Math.sin(originAngle);
-    if (chordPerpX * hintX + chordPerpY * hintY < 0) { chordPerpX = -chordPerpX; chordPerpY = -chordPerpY; }
+    const rotateCCWOnScreen = (x: number, y: number, angleDeg: number) => {
+      const rad = -angleDeg * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      return { x: x * cos - y * sin, y: x * sin + y * cos };
+    };
 
-    const chordLean = (bend - 0.5) * 0.6;
-    const chordK = 4 / 3;
-    // Along-chord-biased offset — the pre-revision formula's own absolute
-    // control-point offset, unchanged.
-    const chordOff1X = alongX * dist * 0.33 + chordPerpX * height * (chordK + chordLean);
-    const chordOff1Y = alongY * dist * 0.33 + chordPerpY * height * (chordK + chordLean);
-    const chordOff2X = -alongX * dist * 0.33 + chordPerpX * height * (chordK - chordLean);
-    const chordOff2Y = -alongY * dist * 0.33 + chordPerpY * height * (chordK - chordLean);
+    const dir1 = rotateCCWOnScreen(Math.cos(originAngle), Math.sin(originAngle), angleA);
+    const dir2 = rotateCCWOnScreen(Math.cos(anchorAngle), Math.sin(anchorAngle), angleB);
 
-    // Pure-perpendicular offset — this session's earlier fix. k1/k2 are
-    // floored at 0 rather than left to go negative: they used to share a
-    // fixed budget (k1+k2 == height, always), so bend past 1.0 (display
-    // 100) had nowhere left to pull from and k2 would flip negative —
-    // pulling the far foot's control point backward instead of leaning the
-    // curve further, which looks broken rather than more exaggerated.
-    // Flooring at 0 lets k1 keep growing past height for bend > 1 while k2
-    // just holds at its floor, so "more bend" keeps meaning more bend
-    // instead of hitting an arbitrary wall. Verified this doesn't
-    // reintroduce the self-crossing twist fixed earlier — larger bend
-    // asymmetry, if anything, reduces twist risk since it shrinks one
-    // side's pull toward zero rather than keeping both ends' pulls large.
-    const lean = bend - 0.5;
-    const k1 = Math.max(0, height * (0.5 + lean)), k2 = Math.max(0, height * (0.5 - lean));
-    const perpOff1X = Math.cos(originAngle) * k1, perpOff1Y = Math.sin(originAngle) * k1;
-    const perpOff2X = Math.cos(anchorAngle) * k2, perpOff2Y = Math.sin(anchorAngle) * k2;
-
-    // Blend the two formulas' own absolute offset VECTORS directly — each
-    // keeps its own calibrated magnitude/ratio, rather than being converted
-    // to a unit direction and rescaled to a shared magnitude (an earlier
-    // attempt at this did that and it quietly broke: at tangent=0 it no
-    // longer reduced to the actual safe formula, since normalizing throws
-    // away the along/perp ratio that made it safe in the first place —
-    // caught via simulation before this ever shipped).
-    const t1 = Math.max(0, Math.min(1, tangentA));
-    const t2 = Math.max(0, Math.min(1, tangentB));
-    const c1x = foot1X + chordOff1X * (1 - t1) + perpOff1X * t1;
-    const c1y = foot1Y + chordOff1Y * (1 - t1) + perpOff1Y * t1;
-    const c2x = foot2X + chordOff2X * (1 - t2) + perpOff2X * t2;
-    const c2y = foot2Y + chordOff2Y * (1 - t2) + perpOff2Y * t2;
+    const chordLen = Math.hypot(foot2X - foot1X, foot2Y - foot1Y);
+    let lo = 0, hi = Math.max(targetLength, chordLen) * 4, t = targetLength / 3;
+    let c1x = foot1X, c1y = foot1Y, c2x = foot2X, c2y = foot2Y;
+    for (let iter = 0; iter < 30; iter++) {
+      c1x = foot1X + dir1.x * t; c1y = foot1Y + dir1.y * t;
+      c2x = foot2X + dir2.x * t; c2y = foot2Y + dir2.y * t;
+      const tryPath = { type: 'cubic', x: foot1X, y: foot1Y, control1X: c1x, control1Y: c1y, control2X: c2x, control2Y: c2y, endX: foot2X, endY: foot2Y };
+      const len = calculatePathLength(sampleBezierPath(tryPath, 30));
+      if (Math.abs(len - targetLength) < targetLength * 0.005) break;
+      if (len < targetLength) lo = t; else hi = t;
+      t = (lo + hi) / 2;
+    }
 
     return `M ${foot1X},${foot1Y} C ${c1x},${c1y} ${c2x},${c2y} ${foot2X},${foot2Y}`;
   };
@@ -3487,7 +3475,7 @@ const APP_VERSION = '1.2.0-beta';
   // now repurposed as the OFFSET each arc's feet get pulled apart by, at
   // BOTH ends, so the two arcs don't literally touch down on the exact same
   // pixels (which reads as one merged shape at the base, especially when
-  // totalLength/foldRatio put both arcs' heights close together). Session
+  // outerLength/innerLength put both arcs' lengths close together). Session
   // 47, live-tested value: offset = dsWidth / 2 (half a stitch-width) is
   // confirmed as "perfect" against dsWidth = 10px at default zoom — tied to
   // dsWidth rather than hardcoded so it stays correct if dsWidth is ever
@@ -3500,13 +3488,9 @@ const APP_VERSION = '1.2.0-beta';
   const buildFoldLoopPair = (
     originX: number, originY: number, originAngle: number,
     anchorX: number, anchorY: number, anchorAngle: number,
-    totalLength: number, foldRatio: number, bendOuter: number, bendInner: number,
-    tangentA: number, tangentB: number,
+    outerLength: number, innerLength: number, angleA: number, angleB: number,
     footOffset: number = dsWidth / 2
-  ): { outerD: string; innerD: string; outerHeight: number; innerHeight: number } => {
-    const outerHeight = totalLength * foldRatio;
-    const innerHeight = totalLength * (1 - foldRatio);
-
+  ): { outerD: string; innerD: string } => {
     const dx = anchorX - originX, dy = anchorY - originY;
     const dist = Math.hypot(dx, dy) || 1;
     const alongX = dx / dist, alongY = dy / dist;
@@ -3524,18 +3508,13 @@ const APP_VERSION = '1.2.0-beta';
     // SAME real origin/anchor outward angles — the shift is small (half a
     // stitch-width) and purely to keep the two arcs visually separated at
     // the base, not a different picot with its own angle. Same
-    // tangentA/tangentB for both arcs — the twist-prevention blend is about
-    // each picot's own angle, not which arc (outer/inner) it belongs to.
-    const outerD = buildFixedFeetArcD(outerOriginX, outerOriginY, outerAnchorX, outerAnchorY, outerHeight, bendOuter, originAngle, anchorAngle, tangentA, tangentB);
-    const innerD = buildFixedFeetArcD(innerOriginX, innerOriginY, innerAnchorX, innerAnchorY, innerHeight, bendInner, originAngle, anchorAngle, tangentA, tangentB);
+    // angleA/angleB for both arcs — the departure direction is about each
+    // picot's own angle, not which arc (outer/inner) it belongs to; only
+    // the length differs between them.
+    const outerD = buildFixedFeetArcD(outerOriginX, outerOriginY, outerAnchorX, outerAnchorY, originAngle, anchorAngle, angleA, angleB, outerLength);
+    const innerD = buildFixedFeetArcD(innerOriginX, innerOriginY, innerAnchorX, innerAnchorY, originAngle, anchorAngle, angleA, angleB, innerLength);
 
-    // outerHeight/innerHeight are returned (not just used internally) so the
-    // caller's paint-order check (which arc is currently bigger, for
-    // z-ordering) reads the SAME values that actually built the arcs,
-    // instead of recomputing totalLength*foldRatio a second time — two
-    // copies of one formula is exactly the kind of thing that quietly
-    // drifts apart after the next tweak to either one.
-    return { outerD, innerD, outerHeight, innerHeight };
+    return { outerD, innerD };
   };
 
   // Build the project data object (shared by save and autosave)
@@ -6498,6 +6477,41 @@ const APP_VERSION = '1.2.0-beta';
     return nearestPoint;
   };
 
+  // Sets a single element's rotation to an ABSOLUTE normalized target
+  // (0-360), rather than applying a relative delta the way
+  // applySingleRotationDelta (useEditorActions.ts) does. Needed because
+  // NumberStepper's onCommit hands back an absolute value, and
+  // rotation was never normalized back into [0,360) after repeated nudges
+  // (applySingleRotationDelta just adds the delta onto whatever raw value
+  // is already there) — the ORIGINAL text-input's blur handler computed
+  // `delta = result - selectedElement.rotation` against that un-normalized
+  // raw value, which is wrong once rotation has drifted past 360 or below
+  // 0 from repeated nudging (a clean target like 95° against a drifted raw
+  // rotation of 450° would compute delta=-355° instead of the intended
+  // small nudge). Reading el.rotation fresh inside the functional updater
+  // (not from a closure) avoids the same class of staleness risk during a
+  // rapid hold-to-repeat sequence that applySingleRotationDelta's own
+  // functional-updater pattern already avoids.
+  const setSingleRotationAbsolute = (elId: string, newRotationNormalized: number, pushHistory: boolean) => {
+    setElements(prev => prev.map(el => {
+      if (el.id !== elId) return el;
+      const currentNormalized = ((el.rotation || 0) % 360 + 360) % 360;
+      const delta = newRotationNormalized - currentNormalized;
+      if (Math.abs(delta) < 0.0001) return el;
+      const polarPivot = getPolarPivot([el.id]);
+      const pivot = polarPivot || getElementPivot(el);
+      const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
+      const rad = delta * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      const newPivot = polarPivot
+        ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
+            y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
+        : getElementPivot({ ...el, paths: newPaths });
+      return { ...el, paths: newPaths, rotation: newRotationNormalized, center: { x: newPivot.x, y: newPivot.y } };
+    }));
+    if (pushHistory) pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
+  };
+
   // Rotate ±90°, ±1° nudge, and mirror H/V buttons for the single-element
   // property bar. Shared between the line-only branch and the general
   // (ring/chain/split-ring) branch below — both act on selectedElement.id via
@@ -6506,145 +6520,32 @@ const APP_VERSION = '1.2.0-beta';
   // (what else appears alongside it) differs per branch.
   const renderRotateFlipControls = () => (
     <>
-      <button
-        onClick={() => {
-          const newRotation = (selectedElement.rotation || 0) - 90;
-          setElements(prev => prev.map(el => {
-            if (el.id !== selectedElement.id) return el;
-            const polarPivot = getPolarPivot([el.id]);
-            const pivot = polarPivot || getElementPivot(el);
-            const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, -90);
-            const newPivot = polarPivot
-              ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(-Math.PI/2) - (el.center.y - pivot.y) * Math.sin(-Math.PI/2),
-                  y: pivot.y + (el.center.x - pivot.x) * Math.sin(-Math.PI/2) + (el.center.y - pivot.y) * Math.cos(-Math.PI/2) }
-              : getElementPivot({ ...el, paths: newPaths });
-            return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-          }));
+      <NumberStepper
+        value={((selectedElement.rotation || 0) % 360 + 360) % 360}
+        min={0} max={360} step={1} wrap
+        jump={90}
+        jumpMinusContent={<IconRotateCCW size={16} />}
+        jumpPlusContent={<IconRotateCW size={16} />}
+        jumpMinusTitle={t('propRotateMinus90')}
+        jumpPlusTitle={t('propRotatePlus90')}
+        stepMinusTitle={t('rotateNudgeMinus')}
+        stepPlusTitle={t('rotateNudgePlus')}
+        suffix="°"
+        holdToRepeat
+        onCommit={(newValue, { pushHistory }) => {
+          // nudgeActiveRef also gates the separate auto-history-push effect
+          // elsewhere in this file (search for its other usage) — without
+          // setting it here too, that effect would push a history entry on
+          // every intermediate tick regardless of what this component does,
+          // defeating the point of batching. Reset only AFTER the final
+          // explicit push, matching the original mouseUp handler's exact
+          // ordering (set true for the whole hold, false only once the last
+          // push has actually happened).
+          if (!pushHistory) nudgeActiveRef.current = true;
+          setSingleRotationAbsolute(selectedElement.id, newValue, pushHistory);
+          if (pushHistory) nudgeActiveRef.current = false;
         }}
-        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-        title={t('propRotateMinus90')}
-      >
-        <IconRotateCCW size={16} />
-      </button>
-      <input
-        type="text"
-        value={singleRotationInput}
-        onFocus={(e) => {
-          if (singleRotationInput === '') {
-            setSingleRotationInput(String(parseFloat((((selectedElement.rotation || 0) % 360 + 360) % 360).toFixed(1))));
-            e.target.select();
-          }
-        }}
-        onChange={(e) => setSingleRotationInput(e.target.value)}
-        onBlur={(e) => {
-          const currentDeg = ((selectedElement.rotation || 0) % 360 + 360) % 360;
-          const result = parseRotationExpr(e.target.value, currentDeg);
-          setSingleRotationInput('');
-          if (result === null) return;
-          const delta = result - (selectedElement.rotation || 0);
-          if (Math.abs(delta) < 0.001) return;
-          setElements(prev => prev.map(el => {
-            if (el.id !== selectedElement.id) return el;
-            const polarPivot = getPolarPivot([el.id]);
-            const pivot = polarPivot || getElementPivot(el);
-            const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
-            const rad = delta * Math.PI / 180;
-            const cos = Math.cos(rad), sin = Math.sin(rad);
-            const newPivot = polarPivot
-              ? { x: pivot.x + (el.center.x - pivot.x) * cos - (el.center.y - pivot.y) * sin,
-                  y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
-              : getElementPivot({ ...el, paths: newPaths });
-            return { ...el, paths: newPaths, rotation: result, center: { x: newPivot.x, y: newPivot.y } };
-          }));
-          needsHistoryPushRef.current = true;
-        }}
-        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-        className="px-1 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white text-center"
-        style={{width:'6.5ch', minWidth:'6.5ch'}}
-        placeholder="0°"
       />
-      {/* ±1° nudge arrows — side by side, press-and-hold to repeat.
-          All intermediate rotations skip history; one push on mouseUp captures the full delta. */}
-      <button
-        onMouseDown={() => {
-          nudgeActiveRef.current = true;
-          nudgeAccumulatedDeltaRef.current = 1;
-          applySingleRotationDelta(selectedElement.id, 1);
-          nudgeIntervalRef.current = setInterval(() => {
-            nudgeAccumulatedDeltaRef.current += 1;
-            applySingleRotationDelta(selectedElement.id, 1, false);
-          }, 80);
-        }}
-        onMouseUp={() => {
-          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
-          }
-          nudgeActiveRef.current = false;
-          nudgeAccumulatedDeltaRef.current = 0;
-        }}
-        onMouseLeave={() => {
-          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
-          }
-          nudgeActiveRef.current = false;
-          nudgeAccumulatedDeltaRef.current = 0;
-        }}
-        className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
-        style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
-        title={t('rotateNudgePlus')}
-      >▲</button>
-      <button
-        onMouseDown={() => {
-          nudgeActiveRef.current = true;
-          nudgeAccumulatedDeltaRef.current = -1;
-          applySingleRotationDelta(selectedElement.id, -1);
-          nudgeIntervalRef.current = setInterval(() => {
-            nudgeAccumulatedDeltaRef.current -= 1;
-            applySingleRotationDelta(selectedElement.id, -1, false);
-          }, 80);
-        }}
-        onMouseUp={() => {
-          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
-          }
-          nudgeActiveRef.current = false;
-          nudgeAccumulatedDeltaRef.current = 0;
-        }}
-        onMouseLeave={() => {
-          if (nudgeIntervalRef.current) { clearInterval(nudgeIntervalRef.current); nudgeIntervalRef.current = null; }
-          if (nudgeActiveRef.current && nudgeAccumulatedDeltaRef.current !== 0) {
-            pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
-          }
-          nudgeActiveRef.current = false;
-          nudgeAccumulatedDeltaRef.current = 0;
-        }}
-        className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 flex items-center justify-center select-none"
-        style={{fontSize:'0.6rem', lineHeight:1, minWidth:'1.4rem'}}
-        title={t('rotateNudgeMinus')}
-      >▼</button>
-      <button
-        onClick={() => {
-          const newRotation = (selectedElement.rotation || 0) + 90;
-          setElements(prev => prev.map(el => {
-            if (el.id !== selectedElement.id) return el;
-            const polarPivot = getPolarPivot([el.id]);
-            const pivot = polarPivot || getElementPivot(el);
-            const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, 90);
-            const newPivot = polarPivot
-              ? { x: pivot.x + (el.center.x - pivot.x) * Math.cos(Math.PI/2) - (el.center.y - pivot.y) * Math.sin(Math.PI/2),
-                  y: pivot.y + (el.center.x - pivot.x) * Math.sin(Math.PI/2) + (el.center.y - pivot.y) * Math.cos(Math.PI/2) }
-              : getElementPivot({ ...el, paths: newPaths });
-            return { ...el, paths: newPaths, rotation: newRotation, center: { x: newPivot.x, y: newPivot.y } };
-          }));
-        }}
-        className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
-        title={t('propRotatePlus90')}
-      >
-        <IconRotateCW size={16} />
-      </button>
 
       {/* Flip buttons */}
       <button
@@ -8897,12 +8798,10 @@ const APP_VERSION = '1.2.0-beta';
                   if (!originFrame || originFrame.angle === undefined) {
                     return null;
                   }
-                  const totalLength = conn.totalLength ?? DEFAULT_FOLD_PROPS.totalLength;
-                  const foldRatio = conn.foldRatio ?? DEFAULT_FOLD_PROPS.foldRatio;
-                  const bendOuter = conn.bendOuter ?? DEFAULT_FOLD_PROPS.bendOuter;
-                  const bendInner = conn.bendInner ?? DEFAULT_FOLD_PROPS.bendInner;
-                  const tangentA = conn.tangentA ?? DEFAULT_FOLD_PROPS.tangentA;
-                  const tangentB = conn.tangentB ?? DEFAULT_FOLD_PROPS.tangentB;
+                  const outerLength = conn.outerLength ?? DEFAULT_FOLD_PROPS.outerLength;
+                  const innerLength = conn.innerLength ?? DEFAULT_FOLD_PROPS.innerLength;
+                  const angleA = conn.angleA ?? DEFAULT_FOLD_PROPS.angleA;
+                  const angleB = conn.angleB ?? DEFAULT_FOLD_PROPS.angleB;
                   const anchorPos = positions[1] ?? positions[0];
                   // anchorPos.angle should always be present — positions[]
                   // is built via getPicotPosition(el, picot, true) same as
@@ -8910,11 +8809,10 @@ const APP_VERSION = '1.2.0-beta';
                   // above) — but fall back to facing the origin if it's
                   // ever missing rather than crashing.
                   const anchorAngle = anchorPos.angle ?? Math.atan2(originFrame.y - anchorPos.y, originFrame.x - anchorPos.x);
-                  const { outerD, innerD, outerHeight, innerHeight } = buildFoldLoopPair(
+                  const { outerD, innerD } = buildFoldLoopPair(
                     originFrame.x, originFrame.y, originFrame.angle,
                     anchorPos.x, anchorPos.y, anchorAngle,
-                    totalLength, foldRatio, bendOuter, bendInner,
-                    tangentA, tangentB
+                    outerLength, innerLength, angleA, angleB
                   );
                   // Same material-color resolution the realistic join render
                   // already uses just below (stored materialId on the
@@ -8933,12 +8831,13 @@ const APP_VERSION = '1.2.0-beta';
                   // Paint order (session 47, live feedback): whichever
                   // apparent picot is currently smaller should paint
                   // UNDERNEATH the bigger one, automatically, rather than
-                  // outer always being drawn first — so as foldRatio (or
-                  // the two totalLength shares it implies) shifts which
-                  // one is actually bigger, the smaller one visually tucks
-                  // behind the larger one instead of always sitting on top
-                  // of it regardless of size. outerHeight/innerHeight come
-                  // from buildFoldLoopPair above, not recomputed here.
+                  // outer always being drawn first — so as the two lengths
+                  // shift which one is actually bigger, the smaller one
+                  // visually tucks behind the larger one instead of always
+                  // sitting on top of it regardless of size. Compared
+                  // directly (outerLength/innerLength are now the actual
+                  // stored values, not something derived that needs
+                  // recomputing to stay in sync).
                   const outerArcEls = (
                     <React.Fragment key="outer">
                       <path d={outerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
@@ -8966,7 +8865,7 @@ const APP_VERSION = '1.2.0-beta';
                       )}
                       {/* SVG paints later siblings on top — smaller arc
                           first (underneath), bigger arc last (on top). */}
-                      {outerHeight >= innerHeight
+                      {outerLength >= innerLength
                         ? <>{innerArcEls}{outerArcEls}</>
                         : <>{outerArcEls}{innerArcEls}</>}
                     </g>
