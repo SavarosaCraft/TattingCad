@@ -720,7 +720,7 @@ const APP_VERSION = '1.2.0-beta';
   const lastMousePosRef = useRef(null); // was state — now ref to avoid re-render on every move
   // PERFORMANCE: During element translate-drag, accumulate offset in a ref instead of
   // calling setElements every frame. SVG transform handles the visual update.
-  // setElements is called once on mouseup. This keeps stitchCache/elementById valid all drag.
+  // setElements is called once on mouseup. This keeps elementById valid all drag.
   const dragOffsetRef = useRef({ active: false, dx: 0, dy: 0 });
   const dragTouchIdRef = useRef(null); // identifier of the touch that started the drag
 
@@ -826,7 +826,7 @@ const APP_VERSION = '1.2.0-beta';
   const movingPivotRef = useRef(false);   // ref mirror of movingPivot — readable in touch handlers
   const rotationHandleRef = useRef<string | null>(null); // ref mirror of rotationHandle
   // PERFORMANCE: Persistent notation-parse cache. Keyed by notation string.
-  // Survives stitchCache rebuilds (e.g. dsWidth change) — only re-parses when notation text changes.
+  // Only re-parses when notation text changes.
   const stitchTypesCacheRef = useRef(new Map());
   // PERFORMANCE: Canvas pixel dimensions — updated by ResizeObserver.
   // Used for viewport culling without calling getBoundingClientRect() every frame.
@@ -1342,32 +1342,6 @@ const APP_VERSION = '1.2.0-beta';
     return interpolateColor(before.color, after.color, localT);
   };
 
-  // Sample the entire closed path as a smooth offset curve (for teardrops)
-  // Returns an array of {x, y, distance} points tracing the offset curve
-  const sampleClosedPathOffset = (paths, offset, samplesPerStitch) => {
-    let totalLength = 0;
-    for (const path of paths) {
-      const samples = sampleBezierPath(path, 50);
-      totalLength += calculatePathLength(samples);
-    }
-    
-    const numSamples = samplesPerStitch; // Total samples for entire ring
-    const points = [];
-    
-    for (let i = 0; i < numSamples; i++) {
-      const dist = (i / numSamples) * totalLength;
-      const { x, y, angle } = getPointAndAngleAtDistance(paths, dist);
-      const perpAngle = angle - Math.PI / 2;
-      points.push({
-        x: x + Math.cos(perpAngle) * offset,
-        y: y + Math.sin(perpAngle) * offset,
-        distance: dist
-      });
-    }
-    
-    return points;
-  };
-
   // Calculate stitch positions along paths (chains/teardrops)
   const calculatePathStitches = (element) => {
     if (!element || !element.paths || element.paths.length === 0) return [];
@@ -1781,27 +1755,6 @@ const APP_VERSION = '1.2.0-beta';
     });
   };
 
-  // Build a skew-corrected SVG matrix transform for chain/teardrop stitches.
-  // Uses the tangent angle change across the stitch to shear the symbol
-  // into a parallelogram that closes gaps on curved paths.
-  const getWedgePathTransform = (stitch, offsetX, offsetY, scale) => {
-    const sA = stitch.startAngle ?? stitch.angle;
-    const eA = stitch.endAngle   ?? stitch.angle;
-    const midAngle = (sA + eA) * 0.5;
-    const phi      = (eA - sA) * 0.5; // half-skew angle
-    const cosTh    = Math.cos(midAngle);
-    const sinTh    = Math.sin(midAngle);
-    const tanPhi   = Math.tan(phi);
-    // matrix(a,b,c,d,e,f) = rotate(midAngle) * skewX(phi) * scale
-    const a = scale * cosTh;
-    const b = scale * sinTh;
-    const c = scale * (cosTh * tanPhi - sinTh);
-    const d = scale * (sinTh * tanPhi + cosTh);
-    return `matrix(${a},${b},${c},${d},${offsetX},${offsetY})`;
-  };
-
-
-
   // isNotationValid, expandTokens, isZeroWidth imported from ./domain/parser
 
   // ── Notation parser functions imported from ./domain/parser ──────────────
@@ -1860,7 +1813,7 @@ const APP_VERSION = '1.2.0-beta';
   });
 
   // PERFORMANCE: O(1) material lookup by id — getElementColor calls materials.find() on every
-  // element every render. This map makes it O(1) and speeds up stitchCache builds too.
+  // element every render. This map makes it O(1).
   const materialsById = useMemo(() => new Map(materials.map(m => [m.id, m])), [materials]);
 
   // Convert a ghost array to real elements (called after confirmation)
@@ -6012,27 +5965,6 @@ const APP_VERSION = '1.2.0-beta';
   // below that need to know whether to draw it as a chain/ring/line.
   const effectiveElementType = (el: any): string => el.type === 'ghost' ? (el.sourceType ?? el.type) : el.type;
 
-  // PERFORMANCE OPTIMIZATION: Memoize all stitch geometry calculations.
-  // calculateCircleStitches / calculatePathStitches / calculateSplitRingStitches are
-  // expensive (Bézier sampling, trig per stitch) and must NOT run on every React render.
-  // Placed here because it depends on getElementColor (defined just above).
-  // This cache recomputes only when elements, renderMode, or dsWidth actually change.
-  const stitchCache = useMemo(() => {
-    const map = new Map();
-    if (renderMode !== 'realistic') return map; // schematic mode needs nothing
-    for (const el of elements) {
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        map.set(el.id, calculateCircleStitches(el));
-      } else if (el.isSplitRing) {
-        map.set(el.id, calculateSplitRingStitches(el));
-      } else if (effectiveElementType(el) === 'chain' || effectiveElementType(el) === 'ring') {
-        map.set(el.id, calculatePathStitches(el));
-      }
-    }
-    return map;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements, renderMode, dsWidth]);
-
   // ── BAKED REALISTIC VIEW ──────────────────────────────────────────────────
   // Runs once on switch to realistic. Serializes all stitch geometry to a
   // static SVG string. Pan/zoom then costs zero geometry work.
@@ -8482,7 +8414,7 @@ const APP_VERSION = '1.2.0-beta';
                 const ghostOpacity = isGhost ? (el.isBoundary ? 0.65 : 0.4) : 1;
                 const ghostPointerEvents = isGhost && !el.isBoundary ? 'none' as const : undefined;
                 // PERFORMANCE: During translate-drag, apply offset via SVG transform instead of
-                // mutating element state. Keeps stitchCache valid throughout the drag.
+                // mutating element state during the drag.
                 const dragTransform = (isSelected && dragOffsetRef.current.active)
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})`
                   : undefined;
