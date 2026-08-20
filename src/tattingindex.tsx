@@ -24,6 +24,7 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
+import { getFlipSign, getCircleStitchAngle, effectiveElementType } from './geometry/stitchGeometry';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths, mirrorPaths, applyRotationToPathData, rotatePathsAroundCenter,
@@ -3193,35 +3194,8 @@ const APP_VERSION = '1.2.0-beta';
 
 
 
-  // ── Flip-aware side/tangent helpers (session 48) ───────────────────────────
-  // A true mirror reverses a ring's winding direction as seen on screen; a
-  // plain rotation does not. isFlippedH/isFlippedV together track how many
-  // times an element has been mirrored — an ODD total means stitches now run
-  // the opposite way around the ring, so anything computing "which way
-  // around" or "which side of the tangent" from stitchesBefore/dx,dy needs a
-  // sign flip. An even count (0 or 2 flips) nets out to a plain rotation, so
-  // no correction is needed there.
-  // Single source of truth — getPicotPosition, renderPicots, and the baked
-  // renderer all call these instead of re-deriving the formula, so a fix
-  // here can't drift out of sync between snap/hit-testing and rendering.
-  const getFlipSign = (element) => (
-    (element.isFlippedH || false) !== (element.isFlippedV || false) ? -1 : 1
-  );
-
-  // Angle (radians) of a stitch position around a circle-shaped closed ring
-  // (plain circles and Josephine Knots). stitchesBefore is the raw stitch
-  // position (already includes the +0.5 bead offset where applicable).
-  const getCircleStitchAngle = (element, stitchesBefore) => {
-    // flipSign applies to the -π/2 reference-phase term only. stitchesBefore
-    // already encodes the post-flip stitch order (it's recomputed as
-    // stitchCount - old value by the notation-reversal pipeline), so
-    // flipping the progress term too would double-count the reversal —
-    // that was the bug: it left position-0 markers (Josephine Knot guide
-    // points) completely unmoved by a flip, since 0 * anything = 0.
-    const flipSign = getFlipSign(element);
-    const rotation = (element.rotation || 0) * Math.PI / 180;
-    return (stitchesBefore / element.stitchCount) * Math.PI * 2 - (Math.PI / 2) * flipSign + rotation;
-  };
+  // getFlipSign / getCircleStitchAngle moved to geometry/stitchGeometry.ts
+  // (imported above) — flip-aware side/tangent helpers (session 48).
 
   // Outward perpendicular angle at a path point given its tangent (dx, dy).
   // Unlike getCircleStitchAngle, this does NOT need a flip correction: dx,dy
@@ -5959,11 +5933,7 @@ const APP_VERSION = '1.2.0-beta';
     return { isGradient: element.isGradient || false, color: element.color };
   };
 
-  // Ghost elements' own `type` is always 'ghost' (join logic elsewhere relies
-  // on that staying true) — this resolves to the shape it's actually a copy
-  // of, via sourceType (see createPolarInstance), for the rendering branches
-  // below that need to know whether to draw it as a chain/ring/line.
-  const effectiveElementType = (el: any): string => el.type === 'ghost' ? (el.sourceType ?? el.type) : el.type;
+  // effectiveElementType moved to geometry/stitchGeometry.ts (imported above).
 
   // ── BAKED REALISTIC VIEW ──────────────────────────────────────────────────
   // Runs once on switch to realistic. Serializes all stitch geometry to a
