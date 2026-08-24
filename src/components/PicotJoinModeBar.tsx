@@ -42,6 +42,22 @@ export interface ActiveFoldConnection extends FoldProps {
   id: string;
 }
 
+// Any connection (fold or regular join) whose color-override dropdown
+// should show — generalizes ActiveFoldConnection, since the color control
+// applies to both connection types, unlike the fold-specific sliders.
+export interface ActiveJoinConnection {
+  id: string;
+  materialId?: string;
+}
+
+// One selectable color-override choice — sourced only from the materials
+// actually involved in the join (never an open picker; see the doc comment
+// on connectionColorOptions in tattingindex.tsx for why).
+export interface ConnectionColorOption {
+  id: string;
+  label: string;
+}
+
 // Module-level, not component state: the "last copied fold settings"
 // clipboard should survive the bar unmounting when the user exits picotJoin
 // mode and re-enters it later in the same session — same reasoning as
@@ -69,6 +85,17 @@ interface PicotJoinModeBarProps {
   // hold collapses into one undo entry on release instead of one per tick
   // — see NumberStepper.tsx and updateFoldConnection in useJoinActions.ts.
   onFoldPropertyChange: (connectionId: string, patch: Partial<FoldProps>, pushHistory?: boolean) => void;
+  // Color-override dropdown — active for BOTH fold and regular joins,
+  // unlike activeFold above (fold-only, drives the drape sliders). Non-null
+  // whenever selectedPicots exactly matches some connection's picot set.
+  activeConnection: ActiveJoinConnection | null;
+  // Choices for that dropdown — one per distinct material actually
+  // involved in the connection, computed by the caller (tattingindex.tsx).
+  // Deliberately not an open color picker.
+  connectionColorOptions: ConnectionColorOption[];
+  // materialId undefined/empty means "Auto" — clears the override so the
+  // connection's color live-tracks its origin picot's element again.
+  onConnectionColorChange: (connectionId: string, materialId: string | undefined) => void;
   t: (key: string) => string;
 }
 
@@ -83,6 +110,9 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
   onToggleFoldMode,
   activeFold,
   onFoldPropertyChange,
+  activeConnection,
+  connectionColorOptions,
+  onConnectionColorChange,
   t,
 }) => {
   const [copiedFoldProps, setCopiedFoldProps] = useState<FoldProps | null>(() => lastCopiedFoldProps);
@@ -142,6 +172,30 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
         {t('picotFoldBtn')}
       </button>
 
+      {/* Color-override dropdown — shows for BOTH fold and regular
+          connections whenever the current selection belongs to one (see
+          activeConnection's subset-match doc comment in tattingindex.tsx).
+          Placed here (not row 2) per design decision — same spot for both
+          connection types. */}
+      {activeConnection && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-xs font-bold text-purple-300 uppercase tracking-wide">
+            {t('picotConnectionColorLabel')}
+          </span>
+          <select
+            value={activeConnection.materialId || ''}
+            onChange={(e) => onConnectionColorChange(activeConnection.id, e.target.value || undefined)}
+            className="px-2 py-1 rounded bg-gray-700 text-gray-200 text-xs font-medium border border-gray-500"
+            title={t('picotConnectionColorLabel')}
+          >
+            <option value="">{t('picotConnectionColorAuto')}</option>
+            {connectionColorOptions.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="ml-auto">
         <button
           onClick={onExit}
@@ -153,7 +207,7 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
       </div>
     </div>
 
-    {/* Row 2: fold-property sliders — always rendered (fixed min-height) so
+    {/* Row 2: fold drape sliders — always rendered (fixed min-height) so
         the bar's total height never changes between "no fold selected" and
         "editing a fold." Empty but present when activeFold is null. */}
     <div className="flex items-center gap-3 flex-wrap min-h-[26px]">

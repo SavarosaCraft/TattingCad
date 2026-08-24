@@ -24,7 +24,8 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
-import { getFlipSign, getCircleStitchAngle, effectiveElementType } from './geometry/stitchGeometry';
+import { getCircleStitchAngle, effectiveElementType } from './geometry/stitchGeometry';
+import { bakeRealisticView } from './render/realisticRenderer';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths, mirrorPaths, applyRotationToPathData, rotatePathsAroundCenter,
@@ -34,7 +35,7 @@ import { useEditorActions } from './hooks/useEditorActions';
 import { useBEClipboard } from './hooks/useBEClipboard';
 import { useHistoryActions } from './hooks/useHistoryActions';
 import { useInputHandlers } from './hooks/useInputHandlers';
-import { useJoinActions, canFoldSelection, DEFAULT_FOLD_PROPS } from './hooks/useJoinActions';
+import { useJoinActions, canFoldSelection, DEFAULT_FOLD_PROPS, applyJointFlags } from './hooks/useJoinActions';
 import { useProjectFile } from './hooks/useProjectFile';
 import { useUIState } from './hooks/useUIState';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
@@ -267,68 +268,6 @@ const JP_PICOT_PATH = "m -0.0262,0 c -0.0519,0.0308 -0.0954,0.0729 -0.12747,0.11
 
 // Picot arm lengths in canvas units — shared by renderPicots, renderOnePicot, getPicotPosition
 const PICOT_SIZE: Record<string, number> = { small: 13, medium: 20, large: 26 };
-
-// ============================================================================
-// WEDGE SHAPES - Bounding rectangles for each stitch type in normalized coords
-// Derived by tracing the SVG sub-paths of DS/SS/RDS stitch symbols.
-// Format: [x_left, x_right, y_outer, y_inner]
-//   x: tangent direction (positive = forward along path)
-//   y: perpendicular direction (positive = INWARD toward ring center)
-//   Origin = stitch center point, already offset outward from ring by offsetAmount
-//   Scale factor: 0.4 normalized units = 1 DS width
-// ============================================================================
-const WEDGE_SHAPES = {
-  'ds': [
-    [-0.2609,  0.0492,  0.0500, 0.2002],  // horizontal bar
-    [-0.2622, -0.1123,  0.2128, 0.5229],  // left post
-    [-0.0995,  0.0504,  0.2128, 0.5229],  // right post
-  ],
-  'ss': [
-    [-0.1023,  0.0463,  0.0500, 0.2002],  // bar (half width of DS)
-    [-0.1023,  0.0463,  0.2128, 0.5229],  // post (same width as bar)
-  ],
-  'lss': [
-    [-0.1023,  0.0463,  0.0500, 0.2002],
-    [-0.1023,  0.0463,  0.2128, 0.5229],
-  ],
-  'rss': [
-    [-0.1023,  0.0463,  0.0500, 0.2002],
-    [-0.1023,  0.0463,  0.2128, 0.5229],
-  ],
-  'rds': [
-    [-0.5933,  0.0798,  0.0500, 0.2002],  // wide bar
-    [-0.5946, -0.4447,  0.2128, 0.5229],  // post 1
-    [-0.4198, -0.2699,  0.2128, 0.5229],  // post 2
-    [-0.2450, -0.0951,  0.2128, 0.5229],  // post 3
-    [-0.0705,  0.0794,  0.2128, 0.5229],  // post 4
-  ],
-  'bds': [
-    // bds is an alias for rds — same realistic-mode shape, different
-    // notation keyword.
-    [-0.5933,  0.0798,  0.0500, 0.2002],
-    [-0.5946, -0.4447,  0.2128, 0.5229],
-    [-0.4198, -0.2699,  0.2128, 0.5229],
-    [-0.2450, -0.0951,  0.2128, 0.5229],
-    [-0.0705,  0.0794,  0.2128, 0.5229],
-  ],
-};
-
-// The x-extents (leftmost/rightmost x across all WEDGE_SHAPES rects) for
-// each stitch type — used to map a symbol's normalized x-coordinates onto
-// a stitch's angular/path-distance span. Single source of truth: this used
-// to be redeclared as 4 separate local consts, one per render branch
-// (renderWedgeRingShapes, renderWedgeTeardropShapes, renderWedgeSplitRingShapes,
-// renderWedgeChainShapes), and had already drifted — one copy had 'ss'
-// xMin -0.1036 while the other three (correctly, matching WEDGE_SHAPES.ss
-// itself) had -0.1023. Fixed to -0.1023 here.
-const STITCH_X_EXTENTS: Record<string, { xMin: number; xMax: number }> = {
-  'ds':  { xMin: -0.2622, xMax:  0.0504 },
-  'ss':  { xMin: -0.1023, xMax:  0.0463 },
-  'lss': { xMin: -0.1023, xMax:  0.0463 },
-  'rss': { xMin: -0.1023, xMax:  0.0463 },
-  'rds': { xMin: -0.5946, xMax:  0.0798 },
-  'bds': { xMin: -0.5946, xMax:  0.0798 }, // alias for rds
-};
 
 
 const DEFAULT_THREAD_PRESET = {
@@ -916,7 +855,13 @@ const APP_VERSION = '1.2.0-beta';
       setReferenceImage(projectData.referenceImage || null);
       setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
       setProjectName(projectData.name || 'Untitled Pattern');
-      setRenderMode(projectData.renderMode || 'schematic');
+      // Always load into schematic, regardless of what renderMode was
+      // saved — bakedRealisticSVG isn't part of the autosave payload either,
+      // same reasoning as the fix in useProjectFile.ts's file-open path
+      // (session 52 bug fix — this is a second, separate load path that
+      // needed the same fix, easy to miss since it doesn't go through
+      // useProjectFile.ts at all).
+      setRenderMode('schematic');
       setPatternNotes(projectData.patternNotes || '');
       if (projectData.materials) setMaterials(projectData.materials);
       setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
@@ -1343,418 +1288,10 @@ const APP_VERSION = '1.2.0-beta';
     return interpolateColor(before.color, after.color, localT);
   };
 
-  // Calculate stitch positions along paths (chains/teardrops)
-  const calculatePathStitches = (element) => {
-    if (!element || !element.paths || element.paths.length === 0) return [];
-    
-    const stitches = [];
-    const stitchCount = element.stitchCount || 0;
-    
-    // Parse stitch types from notation
-    const stitchTypeMap = getStitchTypes(element.notation || '');
-    
-    const renderPaths = element.paths;
-    
-    // Pre-sample each path ONCE - avoids re-sampling on every getPointAndAngle call
-    const allSamples = renderPaths.map(p => sampleBezierPath(p, 50));
-    const pathLengths = allSamples.map(s => calculatePathLength(s));
-    const totalLength = pathLengths.reduce((a, b) => a + b, 0);
-
-    // Determine step size: 0.5 when the element uses ss/lss/rss stitches
-    // (which sit at half-integer dsPosition keys), 1 otherwise.
-    const hasHalfStitches = Object.keys(stitchTypeMap).some(k => parseFloat(k) % 1 !== 0);
-    const step = hasHalfStitches ? 0.5 : 1;
-    const totalSteps = Math.round(stitchCount / step);
-
-    for (let step_i = 0; step_i < totalSteps; step_i++) {
-      const i = step_i * step;
-      let type = stitchTypeMap[i];
-      if (type === undefined) {
-        // No map entry at this half-step slot — before defaulting to a
-        // brand new stitch, check whether it's actually the tail half of
-        // a plain 'ds' that started at the previous half-step. ds/rds/bds
-        // are the only types that span more than one half-step slot;
-        // rds/bds already leave their own 'rds-cont' markers, but ds
-        // (which only needs the half-step grid because something ELSE in
-        // this notation forced hasHalfStitches on) doesn't — so without
-        // this check every plain ds next to an rds/bds/ss run rendered as
-        // itself PLUS a spurious extra 'ss' mark in its own tail half.
-        if (step === 0.5 && stitchTypeMap[i - 0.5] === 'ds') continue;
-        type = step === 0.5 ? 'ss' : 'ds';
-      }
-      if (type === 'rds-cont') continue; // second/third half-step of RDS/BDS — skip
-
-      // RDS/BDS spans 1.5 DS slots: sample at midpoint of the full span
-      const position = type === 'rds' ? (i + 0.75) / stitchCount : (i + step * 0.5) / stitchCount;
-      const distance = position * totalLength;
-      const { x, y, angle } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, distance);
-      
-      const startDist = (i / stitchCount) * totalLength;
-      const endDist = ((i + (type === 'rds' ? 1.5 : step)) / stitchCount) * totalLength;
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, startDist);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, endDist);
-      
-      const _matEC = getElementColor(element);
-      const color = _matEC.isGradient ? getGradientColorAtPosition(_matEC.id, position) : (_matEC.color || element.color);
-      
-      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type, dsPosition: i });
-    }
-    
-    // Return stitches + the pre-sampled path data so the render can reuse it
-    // without calling sampleBezierPath again (totalPathLength IIFE in JSX)
-    return { stitches, allSamples, pathLengths, totalLength };
-  };
-
-  // Calculate stitch positions for split rings (two separate paths)
-  const calculateSplitRingStitches = (element) => {
-    if (!element || !element.paths || element.paths.length < 2) return [];
-    
-    const stitches = [];
-    const stitchCountA = element.splitPosition || Math.floor(element.stitchCount / 2);
-    const stitchCountB = element.stitchCount - stitchCountA;
-    
-    const notationA = element.notation || 'sr: 5ds';
-    const notationB = element.notationB ? `sr: ${element.notationB}` : 'sr: 5ds';
-    const stitchTypeMapA = getStitchTypes(notationA);
-    const stitchTypeMapB = getStitchTypes(notationB);
-    
-    // Pre-sample each path ONCE
-    const pathA = element.paths[0];
-    const samplesA = [sampleBezierPath(pathA, 50)];
-    const lengthsA = [calculatePathLength(samplesA[0])];
-    const lengthA = lengthsA[0];
-    
-    // Path A uses materialId, Path B uses materialIdB (fallback to materialId)
-    const ecA = getElementColor({ ...element });
-    const ecB = getElementColor({ ...element, materialId: element.materialIdB || element.materialId });
-
-    for (let i = 0; i < stitchCountA; i++) {
-      const distance = ((i + 0.5) / stitchCountA) * lengthA;
-      const { x, y, angle } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, distance);
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, (i / stitchCountA) * lengthA);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, ((i + 1) / stitchCountA) * lengthA);
-      const color = ecA.isGradient ? getGradientColorAtPosition(ecA.id, i / stitchCountA) : ecA.color;
-      const type = stitchTypeMapA[i] || 'ds';
-      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
-    }
-    
-    const pathB = element.paths[1];
-    const samplesB = [sampleBezierPath(pathB, 50)];
-    const lengthsB = [calculatePathLength(samplesB[0])];
-    const lengthB = lengthsB[0];
-    
-    for (let i = 0; i < stitchCountB; i++) {
-      const distance = ((i + 0.5) / stitchCountB) * lengthB;
-      const { x, y, angle } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, distance);
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, (i / stitchCountB) * lengthB);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, ((i + 1) / stitchCountB) * lengthB);
-      const color = ecB.isGradient ? getGradientColorAtPosition(ecB.id, i / stitchCountB) : ecB.color;
-      const type = stitchTypeMapB[i] || 'ds';
-      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
-    }
-    
-    return stitches;
-  };
-
-  // Calculate stitch positions for circular rings
-  const calculateCircleStitches = (element) => {
-    if (!element || element.shapeStyle !== 'circle') return [];
-    
-    const stitches = [];
-    const stitchCount = element.stitchCount || 0;
-    const targetCircumference = stitchCount * dsWidth;
-    const radius = targetCircumference / (2 * Math.PI);
-    const rotation = (element.rotation || 0) * Math.PI / 180;
-    
-    // Parse stitch types from notation
-    const stitchTypeMap = getStitchTypes(element.notation || '');
-
-    // Use 0.5 step when the element has half-stitches (ss/lss/rss sit at
-    // half-integer dsPosition keys). Integer-only step misses them entirely.
-    const hasHalfStitches = Object.keys(stitchTypeMap).some(k => parseFloat(k) % 1 !== 0);
-    const step = hasHalfStitches ? 0.5 : 1;
-    const totalSteps = Math.round(stitchCount / step);
-
-    for (let step_i = 0; step_i < totalSteps; step_i++) {
-      const i = step_i * step;
-      let type = stitchTypeMap[i];
-      if (type === undefined) {
-        // See the matching comment in calculateChainStitches — plain ds's
-        // tail half under a half-step grid forced on by something else in
-        // the notation, not a real gap.
-        if (step === 0.5 && stitchTypeMap[i - 0.5] === 'ds') continue;
-        type = hasHalfStitches ? ['ss', 'ss'] : 'ds';
-      }
-      if (type === 'rds-cont') continue;
-      
-      const position = type === 'rds' ? (i + 0.75) / stitchCount : (i + step * 0.5) / stitchCount;
-      const angle = position * Math.PI * 2 + rotation;
-      const x = element.center.x + Math.cos(angle) * radius;
-      const y = element.center.y + Math.sin(angle) * radius;
-      const tangentAngle = angle + Math.PI / 2;
-      
-      let color;
-      const ec = getElementColor(element);
-      if (ec.isGradient) {
-        color = getGradientColorAtPosition(ec.id, position);
-      } else {
-        color = ec.color;
-      }
-      
-      stitches.push({ x, y, angle: tangentAngle, centerPolarAngle: angle, color, type, dsPosition: i });
-    }
-    
-    return stitches;
-  };
-
-  // Calculate scale factor for stitches
-  const calculateStitchScale = () => {
-    const normalizedWidth = 0.4; // Single DS width (half of the original 0.8)
-    return dsWidth / normalizedWidth;
-  };
-
-  // Generate SVG transform for a stitch
-
-  // ============================================================================
-  // WEDGE STITCH RENDERING
-  // Trapezoid shapes that conform to path curvature, filling gaps between stitches.
-  // ============================================================================
-
-  // Render a DS/SS/RDS stitch as trapezoid paths for circular rings.
-  // Works in world coordinates using exact polar geometry — perfect radial edges.
-  // Returns an array of SVG "d" path strings (one per sub-shape: bar + posts).
-  const renderWedgeRingShapes = (stitch, el, scale, offsetAmount, stitchType) => {
-    const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
-    const cx = el.center.x;
-    const cy = el.center.y;
-    const r = el.stitchCount * dsWidth / (2 * Math.PI);
-    const baseRadius = r + offsetAmount;
-
-    // centerPolarAngle is the polar angle of this stitch's midpoint from ring center
-    const centerPolarAngle = stitch.centerPolarAngle;
-
-    // Angular half-span for this stitch type (RDS = 2 DS slots wide)
-    const halfArc = (Math.PI / el.stitchCount) * (STITCH_WIDTH_DS[stitchType] || 1.0);
-
-    // The WEDGE_SHAPES x-extents of the DS/SS/RDS base symbol
-    // These are the leftmost and rightmost x coords across ALL rects for this type
-    const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
-    const xSpan = ext.xMax - ext.xMin;     // full symbol width in normalized units
-    const alphaStart = centerPolarAngle - halfArc;  // left edge of this stitch's arc
-    const alphaEnd   = centerPolarAngle + halfArc;  // right edge
-
-    return shapes.map(([xl, xr, yo, yi]) => {
-      // Convert symbol y to radial distances from ring center.
-      // Positive y in symbol = inward = SUBTRACT from baseRadius.
-      const d_outer = baseRadius - yo * scale;
-      const d_inner = baseRadius - yi * scale;
-
-      // Map symbol x linearly onto the stitch's full angular span.
-      // xl=ext.xMin → alphaStart, xr=ext.xMax → alphaEnd
-      const tLeft  = (xl - ext.xMin) / xSpan;
-      const tRight = (xr - ext.xMin) / xSpan;
-      const a_left  = alphaStart + tLeft  * (alphaEnd - alphaStart);
-      const a_right = alphaStart + tRight * (alphaEnd - alphaStart);
-
-      // Four trapezoid corners in world coordinates
-      const p1x = cx + d_outer * Math.cos(a_left);
-      const p1y = cy + d_outer * Math.sin(a_left);
-      const p2x = cx + d_outer * Math.cos(a_right);
-      const p2y = cy + d_outer * Math.sin(a_right);
-      const p3x = cx + d_inner * Math.cos(a_right);
-      const p3y = cy + d_inner * Math.sin(a_right);
-      const p4x = cx + d_inner * Math.cos(a_left);
-      const p4y = cy + d_inner * Math.sin(a_left);
-
-      return `M ${p1x},${p1y} L ${p2x},${p2y} L ${p3x},${p3y} L ${p4x},${p4y} Z`;
-    });
-  };
-
-  // Wedge trapezoid rendering for CLOSED non-circle paths (teardrops, squeezed rings).
-  // SMOOTH OUTER CURVE PRIORITY: Uses a pre-sampled continuous offset curve for the outer edge,
-  // then bridges to polar-computed inner edge. Accepts slight distortion of hidden inner parts
-  // to achieve smooth visible appearance.
-  // Sample a segment of the path between startDist and endDist with offset perpendicular
-  // Sample entire path with perpendicular offset, returning array of points
-  const sampleFullPathWithOffset = (paths, offset, totalSamples) => {
-    let totalLength = 0;
-    for (const path of paths) {
-      const samples = sampleBezierPath(path, 50);
-      totalLength += calculatePathLength(samples);
-    }
-
-    const points = [];
-    for (let i = 0; i <= totalSamples; i++) {
-      const dist = (i / totalSamples) * totalLength;
-      const { x, y, angle } = getPointAndAngleAtDistance(paths, dist);
-      const perpAngle = angle - Math.PI / 2;
-      points.push({
-        x: x + Math.cos(perpAngle) * offset,
-        y: y + Math.sin(perpAngle) * offset
-      });
-    }
-    
-    return points;
-  };
-
-  // Render closed path stitches using TWO parallel offset curves
-  // Clean approach: sample full outer + inner curves, slice by stitch count
-  const renderWedgeTeardropShapes = (stitch, el, scale, offsetAmount, stitchType, stitchIndex, subStitchCount = 1) => {
-    const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
-    const stitchCount = el.stitchCount; // DS-equivalent count
-    const samplesPerDS = 10; // Samples for one DS stitch
-    const totalSamples = stitchCount * samplesPerDS;
-
-    // DS-equivalent width for each stitch type (SS is half of DS)
-    const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
-    const samplesForThisStitch = samplesPerDS * stitchWidth;
-
-    // Find the full horizontal span of this stitch type
-    const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
-    const xSpan = ext.xMax - ext.xMin;
-
-    return shapes.map(([xl, xr, yo, yi]) => {
-      // Sample TWO parallel curves at this rectangle's outer and inner radii
-      const outerOffset = offsetAmount - yo * scale;
-      const innerOffset = offsetAmount - yi * scale;
-      
-      const outerCurve = sampleFullPathWithOffset(el.paths, outerOffset, totalSamples);
-      const innerCurve = sampleFullPathWithOffset(el.paths, innerOffset, totalSamples);
-
-      // Map this rectangle's horizontal position to slice indices
-      const tLeft  = (xl - ext.xMin) / xSpan;
-      const tRight = (xr - ext.xMin) / xSpan;
-
-      // Calculate the start position in DS-equivalent units
-      // For SS at effectiveIndex 5.5: baseIndex=5, fraction=0.5, so dsStart = 5.5
-      const baseIndex = Math.floor(stitchIndex);
-      const fraction = stitchIndex - baseIndex;
-      
-      const dsStart = baseIndex + fraction;  // fraction is already the DS offset
-      const stitchSliceStart = dsStart * samplesPerDS;
-      
-      const rectStart = Math.round(stitchSliceStart + tLeft * samplesForThisStitch);
-      const rectEnd = Math.round(stitchSliceStart + tRight * samplesForThisStitch);
-      
-      const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
-      const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
-      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
-
-      // Build closed path: outer curve forward, inner curve backward
-      let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
-      for (let j = 1; j < outerSlice.length; j++) {
-        pathD += ` L ${outerSlice[j].x},${outerSlice[j].y}`;
-      }
-      pathD += ` L ${innerSlice[innerSlice.length - 1].x},${innerSlice[innerSlice.length - 1].y}`;
-      for (let j = innerSlice.length - 2; j >= 0; j--) {
-        pathD += ` L ${innerSlice[j].x},${innerSlice[j].y}`;
-      }
-      pathD += ` Z`;
-
-      return pathD;
-    });
-  };
-
-  // Render split ring stitches using TWO parallel offset curves per path half.
-  // Each half (pathA / pathB) is treated independently like a mini teardrop ring.
-  // Accepts the global stitch index so it can determine which path half to use.
-  const renderWedgeSplitRingShapes = (stitch, el, scale, offsetAmount, stitchType, globalIndex) => {
-    const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
-    const splitPos = el.splitPosition || Math.floor(el.stitchCount / 2);
-    const inA = globalIndex < splitPos;
-    const path = inA ? el.paths[0] : el.paths[1];
-    if (!path) return shapes.map(() => '');
-    const localCount = inA ? splitPos : el.stitchCount - splitPos;
-    const localIndex = inA ? globalIndex : globalIndex - splitPos;
-
-    const samplesPerDS = 10;
-    const totalSamples = localCount * samplesPerDS;
-
-    const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
-    const xSpan = ext.xMax - ext.xMin;
-    const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
-    const samplesForThisStitch = samplesPerDS * stitchWidth;
-
-    return shapes.map(([xl, xr, yo, yi]) => {
-      const outerOffset = offsetAmount - yo * scale;
-      const innerOffset = offsetAmount - yi * scale;
-
-      // Sample offset curves for this path half only
-      const outerCurve = sampleFullPathWithOffset([path], outerOffset, totalSamples);
-      const innerCurve = sampleFullPathWithOffset([path], innerOffset, totalSamples);
-
-      const tLeft  = (xl - ext.xMin) / xSpan;
-      const tRight = (xr - ext.xMin) / xSpan;
-      const stitchSliceStart = localIndex * samplesPerDS;
-      const rectStart = Math.round(stitchSliceStart + tLeft  * samplesForThisStitch);
-      const rectEnd   = Math.round(stitchSliceStart + tRight * samplesForThisStitch);
-
-      const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
-      const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
-      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
-
-      let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
-      for (let j = 1; j < outerSlice.length; j++) {
-        pathD += ` L ${outerSlice[j].x},${outerSlice[j].y}`;
-      }
-      pathD += ` L ${innerSlice[innerSlice.length - 1].x},${innerSlice[innerSlice.length - 1].y}`;
-      for (let j = innerSlice.length - 2; j >= 0; j--) {
-        pathD += ` L ${innerSlice[j].x},${innerSlice[j].y}`;
-      }
-      return pathD + ' Z';
-    });
-  };
-
-  const renderWedgeChainShapes = (stitch, el, scale, offsetAmount, stitchType, stitchIndex) => {
-    const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
-    const stitchCount = el.stitchCount; // DS-equivalent count
-    const samplesPerDS = 10;
-    const totalSamples = stitchCount * samplesPerDS;
-
-    // DS-equivalent width for each stitch type
-    const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
-    const samplesForThisStitch = samplesPerDS * stitchWidth;
-
-    const ext = STITCH_X_EXTENTS[stitchType] || STITCH_X_EXTENTS['ds'];
-    const xSpan = ext.xMax - ext.xMin;
-
-    return shapes.map(([xl, xr, yo, yi]) => {
-      const outerOffset = offsetAmount - yo * scale;
-      const innerOffset = offsetAmount - yi * scale;
-      
-      const outerCurve = sampleFullPathWithOffset(el.paths, outerOffset, totalSamples);
-      const innerCurve = sampleFullPathWithOffset(el.paths, innerOffset, totalSamples);
-
-      const tLeft  = (xl - ext.xMin) / xSpan;
-      const tRight = (xr - ext.xMin) / xSpan;
-
-      // Calculate position in DS-equivalent units
-      // fraction is already the offset within the DS unit
-      const baseIndex = Math.floor(stitchIndex);
-      const fraction = stitchIndex - baseIndex;
-      const dsStart = baseIndex + fraction;
-      const stitchSliceStart = dsStart * samplesPerDS;
-      
-      const rectStart = Math.round(stitchSliceStart + tLeft * samplesForThisStitch);
-      const rectEnd = Math.round(stitchSliceStart + tRight * samplesForThisStitch);
-      
-      const outerSlice = outerCurve.slice(rectStart, rectEnd + 1);
-      const innerSlice = innerCurve.slice(rectStart, rectEnd + 1);
-      if (outerSlice.length < 2 || innerSlice.length < 2) return '';
-
-      let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
-      for (let j = 1; j < outerSlice.length; j++) {
-        pathD += ` L ${outerSlice[j].x},${outerSlice[j].y}`;
-      }
-      pathD += ` L ${innerSlice[innerSlice.length - 1].x},${innerSlice[innerSlice.length - 1].y}`;
-      for (let j = innerSlice.length - 2; j >= 0; j--) {
-        pathD += ` L ${innerSlice[j].x},${innerSlice[j].y}`;
-      }
-      pathD += ` Z`;
-
-      return pathD;
-    });
-  };
+  // calculatePathStitches, calculateSplitRingStitches, calculateCircleStitches,
+  // calculateStitchScale, renderWedge*Shapes, sampleFullPathWithOffset moved
+  // to render/realisticRenderer.ts (imported above) — realistic-renderer
+  // extraction, session 51.
 
   // isNotationValid, expandTokens, isZeroWidth imported from ./domain/parser
 
@@ -2641,6 +2178,11 @@ const APP_VERSION = '1.2.0-beta';
     setCurrentFilePath(null);
     setRounds([]);
     setActiveRoundId(null);
+    // Was missing entirely — every other piece of project state above got
+    // reset, but materials didn't, so "New" silently carried over whatever
+    // materials/gradients the previous project had defined instead of
+    // starting from the single default white thread (bug fix, session 52).
+    setMaterials(DEFAULT_MATERIALS);
   };
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
@@ -2766,6 +2308,27 @@ const APP_VERSION = '1.2.0-beta';
     ) ?? null;
   }, [selectedPicots, picotConnections]);
 
+  // Any connection (fold OR regular) that contains every currently
+  // selected picot — generalizes activeFoldConnection above to drive the
+  // color-override dropdown, which applies to both connection types (unlike
+  // the fold sliders, which stay fold-only). Deliberately a SUBSET match,
+  // not an exact-set match: fold picots auto-select their partner on click
+  // (getFoldPartner in useJoinActions.ts), so a fold's full picot set is
+  // typically selected together — but regular joins have no such
+  // auto-select, so clicking one regular-joined picot only ever selects
+  // that one picot. A subset match makes the dropdown show correctly for
+  // both cases: fully-selected connections (fold) and single-picot
+  // selections that belong to a larger connection (regular, or a fold/join
+  // clicked before its partner). Also handles 3+-picot connections.
+  const activeConnection = useMemo(() => {
+    if (selectedPicots.length === 0) return null;
+    const selKeys = selectedPicots.map(sp => `${sp.elementId}::${sp.picotId}`);
+    return picotConnections.find(conn => {
+      const connKeys = new Set(conn.picots.map((cp: any) => `${cp.elementId}::${cp.picotId}`));
+      return selKeys.every(k => connKeys.has(k));
+    }) ?? null;
+  }, [selectedPicots, picotConnections]);
+
   // Join button's effective action while in picotJoin mode: fold when Fold
   // Mode is armed, regular join otherwise. Also gates the button's disabled
   // state — canFoldSelection is stricter than "length >= 2" (exactly 2,
@@ -2851,13 +2414,17 @@ const APP_VERSION = '1.2.0-beta';
   const getPolarFlipGrid = (ids) => {
     // Only use a polar grid as flip axis when ALL selected elements are explicitly linked to the same grid.
     if (ids && ids.length > 0) {
-      const firstEl = elementsRef.current.find(e => String(e.id) === String(ids[0]));
-      const gid = firstEl?.polarRotationGridId || null;
-      if (gid && ids.every(id => {
-        const el = elementsRef.current.find(e => String(e.id) === String(id));
-        return el?.polarRotationGridId === gid;
-      })) {
-        const linked = polarGrids.find(g => g.id === gid);
+      // One id→element map per call instead of ids.every(id => array.find(...))
+      // — see getPolarPivot (useEditorActions.ts) for why this was
+      // O(selected × total) and why elementsRef.current (not elementById)
+      // stays the data source.
+      const byId = new Map((elementsRef.current as any[]).map((e: any) => [String(e.id), e]));
+      const gid = byId.get(String(ids[0]))?.polarRotationGridId || null;
+      if (gid && ids.every(id => byId.get(String(id))?.polarRotationGridId === gid)) {
+        // Same visibility requirement as getPolarPivot (useEditorActions.ts) —
+        // an invisible/hidden grid shouldn't silently govern the flip axis
+        // either, for the same reason it shouldn't govern rotation.
+        const linked = polarGrids.find(g => g.id === gid && g.visible);
         if (linked) return linked;
       }
     }
@@ -2958,12 +2525,13 @@ const APP_VERSION = '1.2.0-beta';
   // or a person-reviewed subset of it). Only touches `paths`; everything
   // else (picots, notation, connections, color) is left exactly as-is.
   const repairElements = (ids) => {
-    setElements(prev => prev.map(el => {
+    const newEls = elementsRef.current.map(el => {
       if (!ids.includes(el.id)) return el;
       if (!detectCorruptedRingGeometry(el)) return el; // safety: re-check, don't touch anything not actually flagged
       return { ...el, paths: repairRingGeometry(el) };
-    }));
-    pushHistory();
+    });
+    setElements(newEls);
+    pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
   };
 
   const flipElements = (ids, axisAngleDeg, pivotX, pivotY) => {
@@ -4406,11 +3974,31 @@ const APP_VERSION = '1.2.0-beta';
       const commit = () => {
         if (droppedJoinIds.length > 0 && !preservesExistingPicots) {
           const droppedSet = new Set(droppedJoinIds);
-          const newConns = picotConnectionsRef.current.filter(conn =>
-            !conn.picots.some(cp => isTargetOrGhost(cp.elementId) && droppedSet.has(cp.picotId))
+          const connsToRemove = picotConnectionsRef.current.filter(conn =>
+            conn.picots.some(cp => isTargetOrGhost(cp.elementId) && droppedSet.has(cp.picotId))
           );
+          const newConns = picotConnectionsRef.current.filter(conn => !connsToRemove.includes(conn));
           setPicotConnections(newConns);
           picotConnectionsRef.current = newConns;
+
+          // Demote isJoint on the OTHER side of each removed connection too.
+          // The dropped picot's own element gets a fresh picots array below
+          // (nextEl / ghost regen), but the picot on the far end of a
+          // removed connection — e.g. the other half of a fold — was
+          // previously left stranded showing isJoint: true with no
+          // connection record behind it (bug fix, session 52 — same
+          // demotion breakSelectedPicots already does in useJoinActions.ts,
+          // applied here since this path drops connections as a side
+          // effect too, not just on an explicit Break action).
+          const demoteKeys = new Map<string, boolean>();
+          connsToRemove.forEach(conn => {
+            conn.picots.forEach(cp => {
+              if (!isTargetOrGhost(cp.elementId)) demoteKeys.set(`${cp.elementId}::${cp.picotId}`, false);
+            });
+          });
+          if (demoteKeys.size > 0) {
+            elementsRef.current = applyJointFlags(elementsRef.current, demoteKeys);
+          }
         }
 
         // Read elementsRef.current directly rather than via a setElements
@@ -4583,11 +4171,29 @@ const APP_VERSION = '1.2.0-beta';
         };
 
         // Wipe all picot connections that reference this element
-        const newConns = picotConnectionsRef.current.filter(
-          conn => !conn.picots.some(cp => cp.elementId === currentEl.id)
+        const connsToRemove = picotConnectionsRef.current.filter(
+          conn => conn.picots.some(cp => cp.elementId === currentEl.id)
         );
+        const newConns = picotConnectionsRef.current.filter(conn => !connsToRemove.includes(conn));
         setPicotConnections(newConns);
         picotConnectionsRef.current = newConns;
+
+        // Demote isJoint on the OTHER side of each wiped connection too —
+        // currentEl's own picots are already gone (picots: [] above), but
+        // the picot on the far end of a wiped connection — e.g. the other
+        // half of a fold — was previously left stranded showing
+        // isJoint: true with no connection record behind it (bug fix,
+        // session 52 — same fix applied to updateNotation's dropped-join
+        // path just above).
+        const demoteKeys = new Map<string, boolean>();
+        connsToRemove.forEach(conn => {
+          conn.picots.forEach(cp => {
+            if (cp.elementId !== currentEl.id) demoteKeys.set(`${cp.elementId}::${cp.picotId}`, false);
+          });
+        });
+        if (demoteKeys.size > 0) {
+          elementsRef.current = applyJointFlags(elementsRef.current, demoteKeys);
+        }
 
         let finalElements = elementsRef.current.map(e => e.id === currentEl.id ? updatedEl : e);
 
@@ -5935,374 +5541,6 @@ const APP_VERSION = '1.2.0-beta';
 
   // effectiveElementType moved to geometry/stitchGeometry.ts (imported above).
 
-  // ── BAKED REALISTIC VIEW ──────────────────────────────────────────────────
-  // Runs once on switch to realistic. Serializes all stitch geometry to a
-  // static SVG string. Pan/zoom then costs zero geometry work.
-  const bakeRealisticView = () => {
-    const scale = calculateStitchScale();
-    const offsetAmount = dsWidth * 0.125 + 5;
-    const PICOT_TIP_H = { sp: 1.2, p: 2.0, lp: 3.2, medium: 2.0, small: 1.2, large: 3.2 };
-    const PICOT_BASE_OFF = 0.6;
-
-    // ── bounds tracking ──
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const expand = (x: number, y: number) => {
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
-    };
-
-    // ── shared picot helpers ──────────────────────────────────────────────────
-    const shouldSkipPicot = (picot: any, elId: string): boolean => {
-      if (picot.isGuidePoint) return true;
-      if (picot.beadType) return true;
-      // cj (core join, no arm) — nothing to render
-      if (picot.isCoreJoin && !picot.hasPicotArm) return true;
-      // cjp (core join + arm) — render the arm, don't skip
-      if (picot.isCoreJoin && picot.hasPicotArm) return false;
-      // For all other picots (regular, jp): skip if they appear in any connection.
-      // Checks picotConnections directly rather than relying on isJoint flag,
-      // so a stale/missing flag doesn't cause double-rendering.
-      return picotConnections.some(conn =>
-        conn.picots.some(cp => cp.elementId === elId && cp.picotId === picot.id)
-      );
-    };
-
-    const emitPicot = (
-      bL: {x:number,y:number}, bR: {x:number,y:number},
-      tip: {x:number,y:number}, color: string, lw: number
-    ): string => {
-      const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-      const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
-      const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-      expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
-      return `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>` +
-             `<path d="${d}" stroke="${color}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
-    };
-
-    // ── per-element SVG fragments ──
-    const fragments: string[] = [];
-
-    for (const el of elements) {
-      const elColor = getElementColor(el);
-
-      // ── helper: picot SVG for a path element ──
-      const picotSVG = (totalPathLength: any): string => {
-        if (!el.picots) return '';
-        const picotSideDir = el.picotSideMultiplier || 1;
-        const N = el.stitchCount;
-        let out = '';
-        for (const picot of el.picots) {
-          // cjp: core join with picot arm — render arm in realistic mode
-          if (picot.isJoint && picot.isCoreJoin && picot.hasPicotArm) {
-            const tMid   = picot.stitchesBefore / N;
-            const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
-            const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
-            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
-            const ptAt = (frac: number) =>
-              getPointAndAngleAtDistanceFast(
-                totalPathLength.allSamples,
-                totalPathLength.pathLengths,
-                frac * totalPathLength.totalLength
-              );
-            const ptMid   = ptAt(tMid);
-            const ptLeft  = ptAt(tLeft);
-            const ptRight = ptAt(tRight);
-            let nx: number, ny: number;
-            const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
-            if (isHalfway) {
-              const ptJoin = ptAt(0);
-              const ax = ptMid.x - ptJoin.x, ay = ptMid.y - ptJoin.y;
-              const al = Math.sqrt(ax*ax + ay*ay) || 1;
-              nx = (ax / al) * picotSideDir;
-              ny = (ay / al) * picotSideDir;
-            } else {
-              nx =  Math.sin(ptMid.angle) * picotSideDir;
-              ny = -Math.cos(ptMid.angle) * picotSideDir;
-            }
-            const bL  = { x: ptLeft.x,  y: ptLeft.y  };
-            const bR  = { x: ptRight.x, y: ptRight.y };
-            const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
-            const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-            const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
-            const cjColor = elColor.isGradient
-              ? getGradientColorAtPosition(elColor.id, tMid)
-              : elColor.color;
-            const lw = el.lineWidth || 2;
-            const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-            expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
-            out += `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>`;
-            out += `<path d="${d}" stroke="${cjColor}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
-            continue;
-          }
-          if (shouldSkipPicot(picot, el.id)) continue;
-          const tMid   = picot.stitchesBefore / N;
-          const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
-          const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
-          const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
-
-          const ptAt = (frac: number) =>
-            getPointAndAngleAtDistanceFast(
-              totalPathLength.allSamples,
-              totalPathLength.pathLengths,
-              frac * totalPathLength.totalLength
-            );
-
-          const ptMid   = ptAt(tMid);
-          const ptLeft  = ptAt(tLeft);
-          const ptRight = ptAt(tRight);
-
-          let nx: number, ny: number;
-          const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
-          if (isHalfway) {
-            const ptJoin = ptAt(0);
-            const ax = ptMid.x - ptJoin.x, ay = ptMid.y - ptJoin.y;
-            const al = Math.sqrt(ax*ax + ay*ay) || 1;
-            nx = (ax / al) * picotSideDir;
-            ny = (ay / al) * picotSideDir;
-          } else {
-            nx =  Math.sin(ptMid.angle) * picotSideDir;
-            ny = -Math.cos(ptMid.angle) * picotSideDir;
-          }
-
-          const bL  = { x: ptLeft.x,  y: ptLeft.y  };
-          const bR  = { x: ptRight.x, y: ptRight.y };
-          const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
-          const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-          const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
-
-          const picotColor = elColor.isGradient
-            ? getGradientColorAtPosition(elColor.id, tMid)
-            : elColor.color;
-          const lw = el.lineWidth || 2;
-          const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-
-          expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
-
-          out += `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>`;
-          out += `<path d="${d}" stroke="${picotColor}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
-        }
-        return out;
-      };
-
-      // ── stitch buckets → merged paths per color ──
-      const stitchesToSVG = (stitches: any[], isCircle: boolean, isSplitRing = false): string => {
-        if (!stitches || stitches.length === 0) return '';
-        const buckets = new Map<string, string[]>();
-        const strokeW = 0.05 * scale;
-
-        for (let i = 0; i < stitches.length; i++) {
-          const stitch = stitches[i];
-          const stitchTypes = Array.isArray(stitch.type) ? stitch.type : [stitch.type];
-          for (let subIdx = 0; subIdx < stitchTypes.length; subIdx++) {
-            const type = stitchTypes[subIdx];
-            const dsPos = stitch.dsPosition ?? i;
-            const effectiveIndex = stitchTypes.length > 1
-              ? dsPos + (subIdx / stitchTypes.length)
-              : dsPos;
-
-            let wedgePaths: string[];
-            if (isCircle) {
-              wedgePaths = renderWedgeRingShapes(stitch, el, scale, offsetAmount, type);
-            } else if (isSplitRing) {
-              wedgePaths = renderWedgeSplitRingShapes(stitch, el, scale, offsetAmount, type, i);
-            } else if (el.isClosed) {
-              wedgePaths = renderWedgeTeardropShapes(stitch, el, scale, offsetAmount, type, effectiveIndex, stitchTypes.length);
-            } else {
-              wedgePaths = renderWedgeChainShapes(stitch, el, scale, offsetAmount, type, effectiveIndex);
-            }
-
-            const existing = buckets.get(stitch.color) || [];
-            buckets.set(stitch.color, existing.concat(wedgePaths));
-
-            // expand bounds from stitch positions
-            expand(stitch.x - dsWidth, stitch.y - dsWidth);
-            expand(stitch.x + dsWidth, stitch.y + dsWidth);
-          }
-        }
-
-        let out = '';
-        for (const [color, dParts] of buckets.entries()) {
-          const d = dParts.filter(Boolean).join(' ');
-          if (d) out += `<path d="${d}" fill="${color}" stroke="black" stroke-width="${strokeW.toFixed(3)}" stroke-linejoin="miter"/>`;
-        }
-        return out;
-      };
-
-      let frag = '';
-
-      if (el.isClosed && el.shapeStyle === 'circle') {
-        // ── circle ring ──
-        const stitches = calculateCircleStitches(el);
-        const r = el.stitchCount * dsWidth / (2 * Math.PI);
-        expand(el.center.x - r - dsWidth*2, el.center.y - r - dsWidth*2);
-        expand(el.center.x + r + dsWidth*2, el.center.y + r + dsWidth*2);
-
-        // ── picots first so they render underneath stitches ──
-        if (el.picots?.length) {
-          const N = el.stitchCount;
-          const picotSideDir = el.picotSideMultiplier || 1;
-          let out = '';
-          for (const picot of el.picots) {
-            if (shouldSkipPicot(picot, el.id)) continue;
-            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
-            const tMid   = picot.stitchesBefore / N;
-            const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_BASE_OFF) / N);
-            const tRight = Math.min(1, (picot.stitchesBefore + PICOT_BASE_OFF) / N);
-            // t is a stitch-progress fraction (0-1), same role as
-            // stitchesBefore/stitchCount — pass it through as N*t so this
-            // goes through the same flip-aware formula as everywhere else.
-            const angleOf = (t: number) => getCircleStitchAngle(el, t * N);
-            const ptOn    = (t: number) => ({
-              x: el.center.x + Math.cos(angleOf(t)) * r,
-              y: el.center.y + Math.sin(angleOf(t)) * r,
-            });
-            const bL  = ptOn(tLeft);
-            const bR  = ptOn(tRight);
-            const mx  = ptOn(tMid);
-            const tip = {
-              x: mx.x + Math.cos(angleOf(tMid)) * picotSideDir * tipH,
-              y: mx.y + Math.sin(angleOf(tMid)) * picotSideDir * tipH,
-            };
-            const color = elColor.isGradient
-              ? getGradientColorAtPosition(elColor.id, tMid)
-              : elColor.color;
-            out += emitPicot(bL, bR, tip, color, el.lineWidth || 2);
-          }
-          frag += out;
-        }
-        // ── stitches after picots so they render on top ──
-        frag += stitchesToSVG(stitches, true);
-
-      } else if (el.isSplitRing) {
-        // ── split ring ──
-        const cached = calculateSplitRingStitches(el);
-        for (const path of el.paths || []) {
-          const pts = sampleBezierPath(path, 20);
-          for (const pt of pts) expand(pt.x, pt.y);
-        }
-
-        // ── picots for split ring — emitted BEFORE stitches so they sit underneath ──
-        if (el.picots?.length && el.paths?.[0] && el.paths?.[1]) {
-          const splitPos = el.splitPosition || Math.floor(el.stitchCount / 2);
-          const countA = splitPos;
-          const countB = el.stitchCount - splitPos;
-          const picotSideDir = el.picotSideMultiplier || 1;
-          const samplesA = sampleBezierPath(el.paths[0], 60);
-          const samplesB = sampleBezierPath(el.paths[1], 60);
-          const lenA = calculatePathLength(samplesA);
-          const lenB = calculatePathLength(samplesB);
-          const lw = el.lineWidth || 2;
-
-          // Walk a pre-computed sample array to find position at fractional distance
-          // Defined once outside the picot loop — not recreated per picot
-          const ptAtFrac = (samples: any[], pathLen: number, frac: number) => {
-            const target = frac * pathLen;
-            let accum = 0;
-            for (let i = 1; i < samples.length; i++) {
-              const seg = Math.hypot(
-                samples[i].x - samples[i-1].x,
-                samples[i].y - samples[i-1].y
-              );
-              if (accum + seg >= target) {
-                const lt = (target - accum) / seg;
-                return {
-                  x: samples[i-1].x + lt * (samples[i].x - samples[i-1].x),
-                  y: samples[i-1].y + lt * (samples[i].y - samples[i-1].y),
-                  angle: Math.atan2(
-                    samples[i].y - samples[i-1].y,
-                    samples[i].x - samples[i-1].x
-                  ),
-                };
-              }
-              accum += seg;
-            }
-            const last = samples[samples.length - 1];
-            const prev = samples[samples.length - 2] ?? last;
-            return { x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) };
-          };
-
-          let out = '';
-          for (const picot of el.picots) {
-            if (shouldSkipPicot(picot, el.id)) continue;
-            const inA = picot.stitchesBefore <= splitPos;
-            const localCount = inA ? countA : countB;
-            if (localCount <= 0) continue; // degenerate split — skip
-            const localSb = inA ? picot.stitchesBefore : picot.stitchesBefore - splitPos;
-            const samples = inA ? samplesA : samplesB;
-            const pathLen = inA ? lenA : lenB;
-            const tMid   = localSb / localCount;
-            const tLeft  = Math.max(0, (localSb - PICOT_BASE_OFF) / localCount);
-            const tRight = Math.min(1, (localSb + PICOT_BASE_OFF) / localCount);
-            const tipH   = (PICOT_TIP_H[picot.length] || 2.0) * dsWidth;
-            const ptMid   = ptAtFrac(samples, pathLen, tMid);
-            const ptLeft  = ptAtFrac(samples, pathLen, tLeft);
-            const ptRight = ptAtFrac(samples, pathLen, tRight);
-            const nx =  Math.sin(ptMid.angle) * picotSideDir;
-            const ny = -Math.cos(ptMid.angle) * picotSideDir;
-            const bL  = { x: ptLeft.x,  y: ptLeft.y  };
-            const bR  = { x: ptRight.x, y: ptRight.y };
-            const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
-            const color = elColor.isGradient
-              ? getGradientColorAtPosition(elColor.id, tMid)
-              : elColor.color;
-            out += emitPicot(bL, bR, tip, color, lw);
-          }
-          frag += out;
-        }
-        // ── stitches after picots so they render on top ──
-        frag += stitchesToSVG(cached, false, true);
-
-      } else if (effectiveElementType(el) === 'chain' || effectiveElementType(el) === 'ring') {
-        // ── path element (chain / teardrop ring) ──
-        const cached = calculatePathStitches(el);
-        const stitches = cached?.stitches ?? cached;
-        if (stitches && stitches.length > 0) {
-          const allSamples = (el.paths || []).map((p: any) => sampleBezierPath(p, 50));
-          const pathLengths = allSamples.map((s: any[]) => calculatePathLength(s));
-          const totalLength = pathLengths.reduce((a: number, b: number) => a + b, 0);
-          const totalPathLength = { allSamples, pathLengths, totalLength };
-
-          // expand bounds from path
-          for (const path of el.paths || []) {
-            const pts = sampleBezierPath(path, 20);
-            for (const pt of pts) expand(pt.x, pt.y);
-          }
-
-          frag += picotSVG(totalPathLength);
-          frag += stitchesToSVG(stitches, false);
-        }
-
-      } else if (effectiveElementType(el) === 'line') {
-        // ── line element — simple stroke ──
-        const elStroke = elColor.isGradient
-          ? getGradientColorAtPosition(elColor.id, 0.5)
-          : elColor.color;
-        for (const path of el.paths || []) {
-          let d: string;
-          if (path.type === 'cubic') {
-            d = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
-          } else {
-            d = `M ${path.x},${path.y} Q ${path.controlX},${path.controlY} ${path.endX},${path.endY}`;
-          }
-          frag += `<path d="${d}" fill="none" stroke="black" stroke-width="${(el.lineWidth || 2) + 2}" stroke-linecap="round"/>`;
-          frag += `<path d="${d}" fill="none" stroke="${elStroke}" stroke-width="${el.lineWidth || 2}" stroke-linecap="round"/>`;
-          const pts = sampleBezierPath(path, 20);
-          for (const pt of pts) expand(pt.x, pt.y);
-        }
-      }
-
-      if (frag) fragments.push(frag);
-    }
-
-    // ── fallback bounds ──
-    if (!isFinite(minX)) { minX = -100; minY = -100; maxX = 100; maxY = 100; }
-    const PAD = dsWidth * 3;
-    minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
-    const W = maxX - minX, H = maxY - minY;
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX.toFixed(1)} ${minY.toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}">${fragments.join('')}</svg>`;
-    setBakedRealisticSVG(svg);
-  };
 
   // ── handleSetRenderMode: wrapper that manages baking on transition ──────
   const handleSetRenderMode = (next: string) => {
@@ -6310,7 +5548,13 @@ const APP_VERSION = '1.2.0-beta';
       setCurrentTool('pan');
       setBakedRealisticSVG(null);
       setRenderMode('realistic');
-      setTimeout(() => bakeRealisticView(), 0);
+      setTimeout(() => {
+        const svg = bakeRealisticView({
+          elements, dsWidth, picotConnections,
+          getElementColor, getGradientColorAtPosition, getStitchTypes,
+        });
+        setBakedRealisticSVG(svg);
+      }, 0);
     } else {
       setBakedRealisticSVG(null);
       setRenderMode('schematic');
@@ -6343,6 +5587,94 @@ const APP_VERSION = '1.2.0-beta';
     }
     
     return '#FFFFFF'; // Fallback
+  };
+
+  // Which half (A/B) of a split ring a picot is on — null for non-split-ring
+  // elements or a missing picot. Single source of truth for the inA
+  // decision, used by both position (gradient sampling, below) and color
+  // (materialId vs materialIdB, below that) — derived from existing data
+  // (stitchesBefore vs splitPosition), no new field needed on the picot.
+  const getSplitRingSide = (element, picot) => {
+    if (!element?.isSplitRing || !picot) return null;
+    const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
+    return picot.stitchesBefore <= splitPos ? 'A' : 'B';
+  };
+
+  // Position (0–1) of a picot along its element's stitch sequence — same
+  // formula the baked realistic renderer uses for regular picots' gradient
+  // sampling (tMid = picot.stitchesBefore / N), including the split-ring
+  // adjustment (N is the local half's stitch count, not the whole element's).
+  const getPicotPositionFraction = (element, picot) => {
+    if (!element || !picot) return 0;
+    let localCount = element.stitchCount || 1;
+    let localSb = picot.stitchesBefore;
+    if (element.isSplitRing) {
+      const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
+      const inA = getSplitRingSide(element, picot) !== 'B';
+      localCount = inA ? splitPos : element.stitchCount - splitPos;
+      localSb = inA ? picot.stitchesBefore : picot.stitchesBefore - splitPos;
+    }
+    return localCount > 0 ? localSb / localCount : 0;
+  };
+
+  // Connection/fold-line color resolution, gradient-position-aware — the
+  // same getElementColor + getGradientColorAtPosition approach regular
+  // picots already use in the baked realistic view, instead of
+  // getSolidColor's always-first-stop shortcut (session 52: unified fold
+  // and regular join-line coloring onto this). materialIdOverride mirrors
+  // a connection's frozen materialId, when set. picot may be null (endpoint
+  // pseudo-picots aren't real picot objects) — falls back to the gradient's
+  // first stop in that case, since there's no stitch position to sample.
+  // Split-ring picots on side B now correctly resolve materialIdB instead
+  // of always taking the element's side-A material (bug fix, session 52 —
+  // same fix as the baked realistic renderer's split-ring picot rendering).
+  const getConnectionThreadColor = (element, picot, materialIdOverride?) => {
+    if (!element) return null;
+    let colorEl;
+    if (materialIdOverride) {
+      colorEl = { materialId: materialIdOverride };
+    } else if (getSplitRingSide(element, picot) === 'B') {
+      colorEl = { ...element, materialId: element.materialIdB || element.materialId };
+    } else {
+      colorEl = element;
+    }
+    const ec = getElementColor(colorEl);
+    if (!ec.isGradient) return ec.color;
+    const position = picot ? getPicotPositionFraction(element, picot) : 0;
+    return getGradientColorAtPosition(ec.id, position) || ec.color;
+  };
+
+  // Dropdown choices for the color-override control in PicotJoinModeBar —
+  // one entry per distinct (element, split-ring side) among the active
+  // connection's own picots, deduped by resolved materialId. Deliberately
+  // NOT an open color/material picker — per design decision, only the
+  // materials actually involved in the join are selectable, so "which of
+  // these threads' colors should the join use" rather than an arbitrary
+  // pick (session 52).
+  const connectionColorOptions = useMemo(() => {
+    if (!activeConnection) return [];
+    const seen = new Map<string, string>(); // materialId -> label
+    activeConnection.picots.forEach((cp: any) => {
+      const el = elementById.get(cp.elementId);
+      if (!el) return;
+      const picot = el.picots?.find((pic: any) => pic.id === cp.picotId)
+        || getEndpointPseudoPicots(el).find((e: any) => e.id === cp.picotId);
+      const side = getSplitRingSide(el, picot);
+      const matId = side === 'B' ? (el.materialIdB || el.materialId || 'default') : (el.materialId || 'default');
+      if (!seen.has(matId)) {
+        const mat = materialsById.get(matId);
+        seen.set(matId, mat?.name || matId);
+      }
+    });
+    return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+  }, [activeConnection, elementById, materialsById]);
+
+  // Sets (or clears, when materialId is undefined/empty) a connection's
+  // color override. Reuses updateFoldConnection — despite the name, its
+  // body is connection-type-agnostic (patches by connectionId), so it
+  // already works for regular joins too, not just folds.
+  const onConnectionColorChange = (connectionId: string, materialId: string | undefined) => {
+    updateFoldConnection(connectionId, { materialId });
   };
 
   // Get snap points for an element
@@ -7006,6 +6338,9 @@ const APP_VERSION = '1.2.0-beta';
               onToggleFoldMode={() => setFoldModeArmed(v => !v)}
               activeFold={activeFoldConnection}
               onFoldPropertyChange={(id, patch) => updateFoldConnection(id, patch)}
+              activeConnection={activeConnection}
+              connectionColorOptions={connectionColorOptions}
+              onConnectionColorChange={onConnectionColorChange}
               t={t}
             />
           ) : activeMode === 'beading' ? (
@@ -7126,6 +6461,7 @@ const APP_VERSION = '1.2.0-beta';
                 elementById={elementById}
                 elements={elements}
                 selectedIdSet={selectedIdSet}
+                dsWidth={dsWidth}
                 getPolarPivot={getPolarPivot}
                 setElements={setElements}
                 groupRotationInput={groupRotationInput}
@@ -8081,6 +7417,193 @@ const APP_VERSION = '1.2.0-beta';
             <g transform={`translate(${camera.x}, ${camera.y}) scale(${zoom})`}>
               {gridEnabled && renderMode !== 'realistic' && <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)" />}
 
+              {/* NEW: Render joint picot connection lines */}
+              {showEditingArtifacts && picotConnections.map(conn => {
+                if (conn.picots.length < 2) return null;
+                
+                // Get positions of all connected picots
+                const positions = conn.picots.map(p => {
+                  const el = elementById.get(p.elementId);
+                  if (!el) return null;
+                  const picot = el.picots?.find(pic => pic.id === p.picotId);
+                  if (picot) return getPicotPosition(el, picot, true);
+                  // Endpoint pseudo-picot (__start__, __end__, __anchor__)
+                  const ep = getEndpointPseudoPicots(el).find(e => e.id === p.picotId);
+                  return ep ? { x: ep.x, y: ep.y } : null;
+                }).filter(Boolean);
+                
+                if (positions.length < 2) return null;
+                
+                // All lines meet at the centroid of the connected picots
+                const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+                const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+                
+                // Fold connections (session 47) render identically in both
+                // schematic and realistic mode — the "line tool" look (solid
+                // material-colored stroke with a black outline) applies
+                // regardless of mode, unlike regular join lines which differ
+                // between dashed-schematic and solid-realistic. Checked
+                // before the renderMode split for that reason. Origin is
+                // always conn.picots[0] — which physical picot that is
+                // doesn't matter for pattern output (both ends read
+                // symmetrically as fp//ref//), so it's picked by array order
+                // alone, not any semantic rule.
+                if (conn.connectionType === 'fold') {
+                  const originRef = conn.picots[0];
+                  const originEl = elementById.get(originRef.elementId);
+                  const originPicot = originEl?.picots?.find(pic => pic.id === originRef.picotId);
+                  const originFrame = originEl && originPicot ? getPicotPosition(originEl, originPicot, true) : null;
+                  // Fold is plain-picot-only and endpoint pseudo-picots are
+                  // never fold-eligible (see isPicotFoldEligible), so
+                  // originPicot should always resolve — this null check is
+                  // just defensive, matching the "should already be
+                  // guarded upstream" pattern used elsewhere in this file.
+                  if (!originFrame || originFrame.angle === undefined) {
+                    return null;
+                  }
+                  const outerLength = conn.outerLength ?? DEFAULT_FOLD_PROPS.outerLength;
+                  const innerLength = conn.innerLength ?? DEFAULT_FOLD_PROPS.innerLength;
+                  const angleA = conn.angleA ?? DEFAULT_FOLD_PROPS.angleA;
+                  const angleB = conn.angleB ?? DEFAULT_FOLD_PROPS.angleB;
+                  const anchorPos = positions[1] ?? positions[0];
+                  // anchorPos.angle should always be present — positions[]
+                  // is built via getPicotPosition(el, picot, true) same as
+                  // originFrame, and fold is plain-picot-only (see comment
+                  // above) — but fall back to facing the origin if it's
+                  // ever missing rather than crashing.
+                  const anchorAngle = anchorPos.angle ?? Math.atan2(originFrame.y - anchorPos.y, originFrame.x - anchorPos.x);
+                  const { outerD, innerD } = buildFoldLoopPair(
+                    originFrame.x, originFrame.y, originFrame.angle,
+                    anchorPos.x, anchorPos.y, anchorAngle,
+                    outerLength, innerLength, angleA, angleB
+                  );
+                  // Same material-color resolution regular join lines use
+                  // (session 52: unified — both now sample gradients at the
+                  // origin picot's stitch position instead of always taking
+                  // the gradient's first stop) — this is what makes it
+                  // "look like the line tool" rather than the schematic
+                  // theme color, in both modes.
+                  const foldFirstEl = originEl;
+                  let foldLineColor;
+                  if (conn.materialId) {
+                    const mat = materialsById.get(conn.materialId);
+                    foldLineColor = mat
+                      ? getConnectionThreadColor(foldFirstEl, originPicot, conn.materialId)
+                      : getConnectionThreadColor(foldFirstEl, originPicot);
+                  } else {
+                    foldLineColor = getConnectionThreadColor(foldFirstEl, originPicot) || '#FF8C00';
+                  }
+                  const foldLineWidth = foldFirstEl?.lineWidth || 2;
+                  // Paint order (session 47, live feedback): whichever
+                  // apparent picot is currently smaller should paint
+                  // UNDERNEATH the bigger one, automatically, rather than
+                  // outer always being drawn first — so as the two lengths
+                  // shift which one is actually bigger, the smaller one
+                  // visually tucks behind the larger one instead of always
+                  // sitting on top of it regardless of size. Compared
+                  // directly (outerLength/innerLength are now the actual
+                  // stored values, not something derived that needs
+                  // recomputing to stay in sync).
+                  const outerArcEls = (
+                    <React.Fragment key="outer">
+                      <path d={outerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
+                      <path d={outerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
+                    </React.Fragment>
+                  );
+                  const innerArcEls = (
+                    <React.Fragment key="inner">
+                      <path d={innerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
+                      <path d={innerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
+                    </React.Fragment>
+                  );
+                  return (
+                    <g key={conn.id}>
+                      {/* Thin connector to the anchor picot — schematic-only;
+                          in realistic mode the arcs themselves already show
+                          where the fold reaches, an extra dashed guide line
+                          would look out of place next to solid thread color. */}
+                      {renderMode !== 'realistic' && (
+                        <line
+                          x1={originFrame.x} y1={originFrame.y} x2={anchorPos.x} y2={anchorPos.y}
+                          stroke={theme.connectionLine} strokeWidth="2"
+                          strokeDasharray="3,4" opacity="0.5"
+                        />
+                      )}
+                      {/* SVG paints later siblings on top — smaller arc
+                          first (underneath), bigger arc last (on top). */}
+                      {outerLength >= innerLength
+                        ? <>{innerArcEls}{outerArcEls}</>
+                        : <>{outerArcEls}{innerArcEls}</>}
+                    </g>
+                  );
+                }
+
+                if (renderMode === 'realistic') {
+                  // Realistic mode: use the material stored on the connection (set by first-selected picot)
+                  const connectedPairs = conn.picots.map(p => {
+                    const el = elementById.get(p.elementId);
+                    if (!el) return null;
+                    const picot = el.picots?.find(pic => pic.id === p.picotId);
+                    return { el, picot: picot || null }; // picot null for endpoint pseudo-picots
+                  }).filter(pair => pair && pair.el);
+                  const firstPair = connectedPairs[0];
+                  const firstEl = firstPair?.el;
+                  // Use stored materialId if present, otherwise fall back to old heuristic
+                  let lineColor;
+                  if (conn.materialId) {
+                    const mat = materialsById.get(conn.materialId);
+                    lineColor = mat
+                      ? getConnectionThreadColor(firstPair?.el, firstPair?.picot, conn.materialId)
+                      : getConnectionThreadColor(firstEl, firstPair?.picot);
+                  } else {
+                    const pickedPair = connectedPairs.find(pair => {
+                      const c = getConnectionThreadColor(pair.el, pair.picot);
+                      return c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== '#fff';
+                    }) || firstPair;
+                    lineColor = (pickedPair ? getConnectionThreadColor(pickedPair.el, pickedPair.picot) : null) || '#FF8C00';
+                  }
+                  const lineWidth = firstEl?.lineWidth || 2;
+                  const beadSeqForConnR = getConnectionBeadSeq(conn);
+                  return (
+                    <g key={conn.id}>
+                      {positions.map((pos, i) => (
+                        <g key={`${conn.id}-${i}`}>
+                          <line x1={pos.x} y1={pos.y} x2={cx} y2={cy}
+                            stroke="black" strokeWidth={lineWidth + 2} strokeLinecap="round" />
+                          <line x1={pos.x} y1={pos.y} x2={cx} y2={cy}
+                            stroke={lineColor} strokeWidth={lineWidth} strokeLinecap="round" />
+                        </g>
+                      ))}
+                      {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
+                      {beadSeqForConnR
+                        ? renderClusteredBeads(`conn-r-${conn.id}`, cx, cy, beadSeqForConnR)
+                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke="black" strokeWidth="1" />
+                      }
+                    </g>
+                  );
+                } else {
+                  // Schematic mode: each picot → center, dotted orange
+                  const beadSeqForConn = getConnectionBeadSeq(conn);
+                  return (
+                    <g key={conn.id}>
+                      {positions.map((pos, i) => (
+                        <line
+                          key={`${conn.id}-${i}`}
+                          x1={pos.x} y1={pos.y} x2={cx} y2={cy}
+                          stroke={theme.connectionLine} strokeWidth="3"
+                          strokeDasharray="5,5" opacity="0.7"
+                        />
+                      ))}
+                      {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
+                      {beadSeqForConn
+                        ? renderClusteredBeads(`conn-${conn.id}`, cx, cy, beadSeqForConn)
+                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={4/zoom} fill={theme.connectionDot} opacity="0.9" />
+                      }
+                    </g>
+                  );
+                }
+              })}
+
               {/* ── Baked realistic view ─────────────────────────────────── */}
               {renderMode === 'realistic' && bakedRealisticSVG && (
                 <g dangerouslySetInnerHTML={{ __html: bakedRealisticSVG
@@ -8161,182 +7684,6 @@ const APP_VERSION = '1.2.0-beta';
                   preserveAspectRatio="xMidYMid meet"
                 />
               )}
-
-              {/* NEW: Render joint picot connection lines */}
-              {showEditingArtifacts && picotConnections.map(conn => {
-                if (conn.picots.length < 2) return null;
-                
-                // Get positions of all connected picots
-                const positions = conn.picots.map(p => {
-                  const el = elementById.get(p.elementId);
-                  if (!el) return null;
-                  const picot = el.picots?.find(pic => pic.id === p.picotId);
-                  if (picot) return getPicotPosition(el, picot, true);
-                  // Endpoint pseudo-picot (__start__, __end__, __anchor__)
-                  const ep = getEndpointPseudoPicots(el).find(e => e.id === p.picotId);
-                  return ep ? { x: ep.x, y: ep.y } : null;
-                }).filter(Boolean);
-                
-                if (positions.length < 2) return null;
-                
-                // All lines meet at the centroid of the connected picots
-                const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
-                const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
-                
-                // Fold connections (session 47) render identically in both
-                // schematic and realistic mode — the "line tool" look (solid
-                // material-colored stroke with a black outline) applies
-                // regardless of mode, unlike regular join lines which differ
-                // between dashed-schematic and solid-realistic. Checked
-                // before the renderMode split for that reason. Origin is
-                // always conn.picots[0] — which physical picot that is
-                // doesn't matter for pattern output (both ends read
-                // symmetrically as fp//ref//), so it's picked by array order
-                // alone, not any semantic rule.
-                if (conn.connectionType === 'fold') {
-                  const originRef = conn.picots[0];
-                  const originEl = elementById.get(originRef.elementId);
-                  const originPicot = originEl?.picots?.find(pic => pic.id === originRef.picotId);
-                  const originFrame = originEl && originPicot ? getPicotPosition(originEl, originPicot, true) : null;
-                  // Fold is plain-picot-only and endpoint pseudo-picots are
-                  // never fold-eligible (see isPicotFoldEligible), so
-                  // originPicot should always resolve — this null check is
-                  // just defensive, matching the "should already be
-                  // guarded upstream" pattern used elsewhere in this file.
-                  if (!originFrame || originFrame.angle === undefined) {
-                    return null;
-                  }
-                  const outerLength = conn.outerLength ?? DEFAULT_FOLD_PROPS.outerLength;
-                  const innerLength = conn.innerLength ?? DEFAULT_FOLD_PROPS.innerLength;
-                  const angleA = conn.angleA ?? DEFAULT_FOLD_PROPS.angleA;
-                  const angleB = conn.angleB ?? DEFAULT_FOLD_PROPS.angleB;
-                  const anchorPos = positions[1] ?? positions[0];
-                  // anchorPos.angle should always be present — positions[]
-                  // is built via getPicotPosition(el, picot, true) same as
-                  // originFrame, and fold is plain-picot-only (see comment
-                  // above) — but fall back to facing the origin if it's
-                  // ever missing rather than crashing.
-                  const anchorAngle = anchorPos.angle ?? Math.atan2(originFrame.y - anchorPos.y, originFrame.x - anchorPos.x);
-                  const { outerD, innerD } = buildFoldLoopPair(
-                    originFrame.x, originFrame.y, originFrame.angle,
-                    anchorPos.x, anchorPos.y, anchorAngle,
-                    outerLength, innerLength, angleA, angleB
-                  );
-                  // Same material-color resolution the realistic join render
-                  // already uses just below (stored materialId on the
-                  // connection, falling back to the origin element's own
-                  // color) — this is what makes it "look like the line tool"
-                  // rather than the schematic theme color, in both modes.
-                  const foldFirstEl = originEl;
-                  let foldLineColor;
-                  if (conn.materialId) {
-                    const mat = materialsById.get(conn.materialId);
-                    foldLineColor = mat ? getSolidColor({ materialId: conn.materialId }) : getSolidColor(foldFirstEl);
-                  } else {
-                    foldLineColor = (foldFirstEl ? getSolidColor(foldFirstEl) : null) || '#FF8C00';
-                  }
-                  const foldLineWidth = foldFirstEl?.lineWidth || 2;
-                  // Paint order (session 47, live feedback): whichever
-                  // apparent picot is currently smaller should paint
-                  // UNDERNEATH the bigger one, automatically, rather than
-                  // outer always being drawn first — so as the two lengths
-                  // shift which one is actually bigger, the smaller one
-                  // visually tucks behind the larger one instead of always
-                  // sitting on top of it regardless of size. Compared
-                  // directly (outerLength/innerLength are now the actual
-                  // stored values, not something derived that needs
-                  // recomputing to stay in sync).
-                  const outerArcEls = (
-                    <React.Fragment key="outer">
-                      <path d={outerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
-                      <path d={outerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
-                    </React.Fragment>
-                  );
-                  const innerArcEls = (
-                    <React.Fragment key="inner">
-                      <path d={innerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
-                      <path d={innerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
-                    </React.Fragment>
-                  );
-                  return (
-                    <g key={conn.id}>
-                      {/* Thin connector to the anchor picot — schematic-only;
-                          in realistic mode the arcs themselves already show
-                          where the fold reaches, an extra dashed guide line
-                          would look out of place next to solid thread color. */}
-                      {renderMode !== 'realistic' && (
-                        <line
-                          x1={originFrame.x} y1={originFrame.y} x2={anchorPos.x} y2={anchorPos.y}
-                          stroke={theme.connectionLine} strokeWidth="2"
-                          strokeDasharray="3,4" opacity="0.5"
-                        />
-                      )}
-                      {/* SVG paints later siblings on top — smaller arc
-                          first (underneath), bigger arc last (on top). */}
-                      {outerLength >= innerLength
-                        ? <>{innerArcEls}{outerArcEls}</>
-                        : <>{outerArcEls}{innerArcEls}</>}
-                    </g>
-                  );
-                }
-
-                if (renderMode === 'realistic') {
-                  // Realistic mode: use the material stored on the connection (set by first-selected picot)
-                  const connectedEls = conn.picots.map(p => elementById.get(p.elementId)).filter(Boolean);
-                  const firstEl = connectedEls[0];
-                  // Use stored materialId if present, otherwise fall back to old heuristic
-                  let lineColor;
-                  if (conn.materialId) {
-                    const mat = materialsById.get(conn.materialId);
-                    lineColor = mat ? getSolidColor({ materialId: conn.materialId }) : getSolidColor(firstEl);
-                  } else {
-                    const pickedEl = connectedEls.find(e => {
-                      const c = getSolidColor(e);
-                      return c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== '#fff';
-                    }) || firstEl;
-                    lineColor = (pickedEl ? getSolidColor(pickedEl) : null) || '#FF8C00';
-                  }
-                  const lineWidth = firstEl?.lineWidth || 2;
-                  const beadSeqForConnR = getConnectionBeadSeq(conn);
-                  return (
-                    <g key={conn.id}>
-                      {positions.map((pos, i) => (
-                        <g key={`${conn.id}-${i}`}>
-                          <line x1={pos.x} y1={pos.y} x2={cx} y2={cy}
-                            stroke="black" strokeWidth={lineWidth + 2} strokeLinecap="round" />
-                          <line x1={pos.x} y1={pos.y} x2={cx} y2={cy}
-                            stroke={lineColor} strokeWidth={lineWidth} strokeLinecap="round" />
-                        </g>
-                      ))}
-                      {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
-                      {beadSeqForConnR
-                        ? renderClusteredBeads(`conn-r-${conn.id}`, cx, cy, beadSeqForConnR)
-                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke="black" strokeWidth="1" />
-                      }
-                    </g>
-                  );
-                } else {
-                  // Schematic mode: each picot → center, dotted orange
-                  const beadSeqForConn = getConnectionBeadSeq(conn);
-                  return (
-                    <g key={conn.id}>
-                      {positions.map((pos, i) => (
-                        <line
-                          key={`${conn.id}-${i}`}
-                          x1={pos.x} y1={pos.y} x2={cx} y2={cy}
-                          stroke={theme.connectionLine} strokeWidth="3"
-                          strokeDasharray="5,5" opacity="0.7"
-                        />
-                      ))}
-                      {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
-                      {beadSeqForConn
-                        ? renderClusteredBeads(`conn-${conn.id}`, cx, cy, beadSeqForConn)
-                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={4/zoom} fill={theme.connectionDot} opacity="0.9" />
-                      }
-                    </g>
-                  );
-                }
-              })}
 
               {/* picotJoin/beading dim overlay wraps all path elements */}
               <g opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.25 : renderMode === 'realistic' ? 0 : 1} style={{ pointerEvents: renderMode === 'realistic' ? 'none' : undefined }}>

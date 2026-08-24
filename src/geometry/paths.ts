@@ -325,6 +325,74 @@ export const applyPathPreset = (path: any, presetDeg: number, targetLength: numb
   };
 };
 
+// ── Reset transform ───────────────────────────────────────────────────────────
+
+// Resets a single element's shape back to a "relaxed" default and clears
+// rotation to 0. "Pivot reset to itself" means two things together, both
+// handled here:
+//   - rotation: 0 — the baseline angle.
+//   - polarRotationGridId: null — elements linked to a polar grid pivot
+//     rotation around that grid's center instead of their own (see
+//     getPolarPivot/getElementPivot in tattingindex.tsx's
+//     setSingleRotationAbsolute — the polar pivot wins whenever it's set,
+//     regardless of the rotation value). Leaving this set would silently
+//     keep the external pivot even after rotation was zeroed, which is
+//     exactly the bug this function exists to fix.
+//
+// Deliberately reuses two formulas that already exist elsewhere rather than
+// inventing a third default:
+//   - closed rings/teardrops/circles/split-rings: the exact same squeeze
+//     defaults + rotation:0 as the per-element squeeze "Reset" button
+//     (ShapeAndSqueezeControls.tsx) already uses.
+//   - open chains (single cubic path): the same chord/arcLift bow formula
+//     addChain (useEditorActions.ts) uses to build a brand-new chain,
+//     centered on the element's own `center` (not the viewport center) and
+//     keeping its actual stitchCount — see addChain's comment for why
+//     chord/3 (not chord/5) is the right divisor.
+//
+// Returns null for anything this doesn't handle yet (ghosts, lines,
+// multi-segment/split chains) — callers should treat null as "not
+// resettable" (disable the button / skip the element) rather than applying
+// a partial patch.
+export const resetElementShape = (el: any, dsWidth: number): any | null => {
+  if (el.type === 'ghost' || el.isGhost) return null;
+
+  if (el.isSplitRing) {
+    return {
+      squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0, polarRotationGridId: null,
+      ...createSplitRingPathFromEl(el, dsWidth, { squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75 }),
+    };
+  }
+
+  if (el.isClosed) {
+    const targetLength = el.stitchCount * dsWidth;
+    const newPathData = el.shapeStyle === 'circle'
+      ? createCirclePath(el.center.x, el.center.y, targetLength, 0)
+      : createTeardropPath(el.center.x, el.center.y, targetLength, 0);
+    return { squeeze: 0, rotation: 0, polarRotationGridId: null, ...newPathData };
+  }
+
+  if (el.type === 'chain' && !el.isSplitChain && el.paths?.length === 1) {
+    const cx = el.center.x, cy = el.center.y;
+    const chord = el.stitchCount * dsWidth * 0.92; // same ratio addChain uses
+    const halfChord = chord / 2;
+    const arcLift = chord / 3; // same divisor addChain uses (see its own comment re: isTooShort margin)
+    const startX = cx - halfChord, startY = cy;
+    const endX = cx + halfChord, endY = cy;
+    return {
+      rotation: 0, polarRotationGridId: null,
+      paths: [{
+        type: 'cubic', x: startX, y: startY,
+        control1X: startX + chord / 3, control1Y: startY - arcLift,
+        control2X: startX + chord * 2 / 3, control2Y: startY - arcLift,
+        endX, endY,
+      }],
+    };
+  }
+
+  return null;
+};
+
 // Apply an angle preset to a line element (presetDeg = 0 → horizontal).
 // Keeps start (x, y) fixed; rotates endpoint to new angle at the same length.
 export const applyLinePreset = (path: any, presetDeg: number): any => {

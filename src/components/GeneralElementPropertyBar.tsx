@@ -28,6 +28,7 @@ import {
   totalRunDs,
 } from '../domain/picotTools';
 import { updateSelected, updateElement } from '../utils/elementUpdates';
+import { resetElementShape } from '../geometry/paths';
 
 // Extracted from tattingindex.tsx (single-select property bar, general/non-line branch:
 // notation input, split-ring dual notation, picot wizard, rotation controls, round group
@@ -466,12 +467,11 @@ export function GeneralElementPropertyBar({
               {/* Rotation input */}
               <NotationRotationControls
                 rotateFlipControls={renderRotateFlipControls()}
-                labelOffset={elements.find(e => selectedIdSet.has(e.id))?.labelOffset ?? 8}
+                labelOffset={selectedElement.labelOffset ?? 8}
                 onLabelOffsetChange={setLabelOffset}
-                allLabelsHidden={elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel)}
+                allLabelsHidden={!!selectedElement.hideLabel}
                 onToggleHideLabel={() => {
-                  const allHidden = elements.filter(e => selectedIdSet.has(e.id)).every(e => e.hideLabel);
-                  setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !allHidden }));
+                  setElements(prev => updateSelected(prev, selectedIdSet, { hideLabel: !selectedElement.hideLabel }));
                 }}
                 polarGrids={polarGrids.filter(g => g.visible)}
                 selectedPolarRotationGridId={selectedElement.polarRotationGridId}
@@ -481,6 +481,36 @@ export function GeneralElementPropertyBar({
                 }}
                 t={t}
               />
+
+              {/* Reset transform — relaxes shape (chain bow / ring squeeze)
+                  back to default and clears rotation to 0. Reuses the same
+                  look and generic "Reset" label as the squeeze-only Reset
+                  button in ShapeAndSqueezeControls.tsx (Row 2); this one is
+                  broader (also covers open chains) and lives in Row 1 since
+                  it's a general per-element reset, not squeeze-specific.
+                  Disabled for ghosts (reset only the source element — ghosts
+                  regenerate from it) and for anything resetElementShape
+                  doesn't handle yet (lines, multi-segment/split chains). */}
+              {(() => {
+                const resetPatch = resetElementShape(selectedElement, dsWidth);
+                return (
+                  <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
+                    <button
+                      onClick={() => {
+                        if (!resetPatch) return;
+                        const newEls = elementsRef.current.map(el =>
+                          el.id === selectedElement.id ? { ...el, ...resetPatch } : el
+                        );
+                        setElements(newEls);
+                        pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
+                      }}
+                      disabled={!resetPatch}
+                      className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs disabled:opacity-40 disabled:pointer-events-none"
+                      title={t('propResetTransform')}
+                    >{t('propResetBtn')}</button>
+                  </div>
+                );
+              })()}
 
               {/* ── Row 2 starts here ── */}
               <div className="w-full" />
@@ -532,7 +562,6 @@ export function GeneralElementPropertyBar({
                 active={selectedElement.rw}
                 onClick={() => {
                   setElements(prev => updateElement(prev, selectedElement.id, el => ({ rw: !el.rw })));
-                  needsHistoryPushRef.current = true;
                 }}
                 title={t('propRWTooltip')}
               />
@@ -549,7 +578,6 @@ export function GeneralElementPropertyBar({
                 toggleShape={toggleShape}
                 convertToJosephineKnot={convertToJosephineKnot}
                 isInteractingRef={isInteractingRef}
-                needsHistoryPushRef={needsHistoryPushRef}
                 t={t}
               />
     </>

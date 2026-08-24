@@ -10,6 +10,13 @@ import { sampleBezierPath, calculatePathLength } from '../geometry/bezier';
 import { rotatePaths, createSplitRingPathFromEl } from '../geometry/paths';
 import { getFoldPartner } from './useJoinActions';
 
+// How far a chain's rendered curve (arc length) may stretch or compress away
+// from its physical thread length (stitchCount * dsWidth) while dragging a
+// bezier handle in path-edit mode. Symmetric both directions, unlike the
+// separate TOO_SHORT_OVERSTRETCH_TOLERANCE in geometry/paths.ts (which only
+// checks endpoint/chord distance, not the drawn curve's own arc length).
+const CHAIN_HANDLE_LENGTH_ELASTICITY = 0.10;
+
 export interface UseInputHandlersParams {
   // State values
   elements: any[];
@@ -518,19 +525,40 @@ export function useInputHandlers(p: UseInputHandlersParams) {
               const mhAngle = Math.atan2(mhDy, mhDx), mhLen = Math.hypot(mhDx, mhDy);
               const chordAngle = Math.atan2(P3.y - P0.y, P3.x - P0.x);
               const mirroredAngle = 2 * chordAngle - mhAngle + Math.PI;
-              let minH = 0, maxH = Math.min(mhLen, targetLength), bestH = mhLen;
+
+              const lenAtH = (h: number) => calculatePathLength(sampleBezierPath({ type: 'cubic', x: P0.x, y: P0.y, endX: P3.x, endY: P3.y,
+                control1X: P0.x + Math.cos(isC1 ? mhAngle : mirroredAngle) * h,
+                control1Y: P0.y + Math.sin(isC1 ? mhAngle : mirroredAngle) * h,
+                control2X: P3.x + Math.cos(isC1 ? mirroredAngle : mhAngle) * h,
+                control2Y: P3.y + Math.sin(isC1 ? mirroredAngle : mhAngle) * h,
+              }, 20));
+
+              // Elastic band around targetLength (±10%), not a single exact
+              // target — free movement inside the band, hard walls at both
+              // ends. hLow/hHigh are the handle magnitudes that put the
+              // curve's arc length exactly at the band's floor/ceiling;
+              // clamping mhLen between them replaces the old maxH-only cap
+              // (which had no floor at all, so dragging inward could
+              // collapse the curve to nearly a straight line).
+              const minTargetLength = targetLength * (1 - CHAIN_HANDLE_LENGTH_ELASTICITY);
+              const maxTargetLength = targetLength * (1 + CHAIN_HANDLE_LENGTH_ELASTICITY);
+              const searchCeiling = targetLength * (1 + CHAIN_HANDLE_LENGTH_ELASTICITY) * 2;
+
+              let loLow = 0, hiLow = searchCeiling;
               for (let i = 0; i < 20; i++) {
-                const h = (minH + maxH) / 2;
-                const tryLen = calculatePathLength(sampleBezierPath({ type: 'cubic', x: P0.x, y: P0.y, endX: P3.x, endY: P3.y,
-                  control1X: P0.x + Math.cos(isC1 ? mhAngle : mirroredAngle) * h,
-                  control1Y: P0.y + Math.sin(isC1 ? mhAngle : mirroredAngle) * h,
-                  control2X: P3.x + Math.cos(isC1 ? mirroredAngle : mhAngle) * h,
-                  control2Y: P3.y + Math.sin(isC1 ? mirroredAngle : mhAngle) * h,
-                }, 20));
-                if (Math.abs(tryLen - targetLength) < tolerance * 0.5) { bestH = h; break; }
-                if (tryLen < targetLength) minH = h; else maxH = h;
-                bestH = h;
+                const h = (loLow + hiLow) / 2;
+                if (lenAtH(h) < minTargetLength) loLow = h; else hiLow = h;
               }
+              const hLow = hiLow;
+
+              let loHigh = 0, hiHigh = searchCeiling;
+              for (let i = 0; i < 20; i++) {
+                const h = (loHigh + hiHigh) / 2;
+                if (lenAtH(h) < maxTargetLength) loHigh = h; else hiHigh = h;
+              }
+              const hHigh = loHigh;
+
+              const bestH = Math.min(Math.max(mhLen, hLow), hHigh);
               return { ...el, paths: [{ ...path,
                 control1X: P0.x + Math.cos(isC1 ? mhAngle : mirroredAngle) * bestH,
                 control1Y: P0.y + Math.sin(isC1 ? mhAngle : mirroredAngle) * bestH,

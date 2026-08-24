@@ -580,5 +580,7 @@
 "picotFoldOuterLength": "Outer Length",
 "picotFoldInnerLength": "Inside Length",
 "picotFoldAngleA": "Angle 1",
-"picotFoldAngleB": "Angle 1"
+"picotFoldAngleB": "Angle 1",
+"picotConnectionColorLabel": "Picot Color:",
+"picotConnectionColorAuto": "Auto"
 }

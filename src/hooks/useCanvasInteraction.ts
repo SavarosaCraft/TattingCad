@@ -41,7 +41,6 @@ export function useCanvasInteraction() {
 
   // ── Rotation input ─────────────────────────────────────────────────────
   const [groupRotationInput, setGroupRotationInput] = useState('');
-  const [singleRotationInput, setSingleRotationInput] = useState('');
 
   return {
     currentTool, setCurrentTool,
@@ -64,6 +63,5 @@ export function useCanvasInteraction() {
     rulerPoints, setRulerPoints,
     rulerMousePos, setRulerMousePos,
     groupRotationInput, setGroupRotationInput,
-    singleRotationInput, setSingleRotationInput,
   };
 }

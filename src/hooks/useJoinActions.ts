@@ -187,7 +187,12 @@ const buildConnectionsForInheritedJoin = (
   sourcePicotIndex: number | string,
   targetPicotIndex: number | string,
   existingConns: any[],
-  materialId: string,
+  // Optional — when provided, freezes the propagated connections' color to
+  // this material (an explicit override, once that feature exists). When
+  // omitted, the connection's color live-tracks its element's current
+  // material at render time instead (session 52 fix — see performJoin's
+  // comment on the same change for regular/fold joins).
+  materialId?: string,
   anchorEnd?: 'start' | 'end',
   // Extra fields to spread onto every connection this call creates — e.g.
   // { connectionType: 'fold', ...DEFAULT_FOLD_PROPS } when the original
@@ -243,7 +248,7 @@ const buildConnectionsForInheritedJoin = (
           { elementId: ghost.id, picotId: srcPicot.id },
           { elementId: nextGhost.id, picotId: tgtPicot.id },
         ],
-        materialId,
+        ...(materialId ? { materialId } : {}),
         isInheritedJoin: matchingArray.id,
         ...(connExtra ? { ...connExtra } : {}),
       });
@@ -262,7 +267,7 @@ const buildConnectionsForInheritedJoin = (
             { elementId: farGhost.id, picotId: srcPicotLast.id },
             { elementId: sourceEl.id, picotId: tgtPicotLast.id },
           ],
-          materialId,
+          ...(materialId ? { materialId } : {}),
           isInheritedJoin: matchingArray.id,
           ...(connExtra ? { ...connExtra } : {}),
         });
@@ -291,7 +296,7 @@ const buildConnectionsForInheritedJoin = (
           { elementId: ghost.id, picotId: srcPicot.id },
           { elementId: prevGhost.id, picotId: tgtPicot.id },
         ],
-        materialId,
+        ...(materialId ? { materialId } : {}),
         isInheritedJoin: matchingArray.id,
         ...(connExtra ? { ...connExtra } : {}),
       });
@@ -313,7 +318,7 @@ const buildConnectionsForInheritedJoin = (
 // ..." identity-check pattern every call site already relied on, so
 // unaffected elements/picots keep the same object reference (avoids
 // unnecessary re-renders).
-const applyJointFlags = (elements: any[], desiredByKey: Map<string, boolean>): any[] => {
+export const applyJointFlags = (elements: any[], desiredByKey: Map<string, boolean>): any[] => {
   if (desiredByKey.size === 0) return elements;
   return elements.map(el => {
     if (!el.picots) return el;
@@ -414,7 +419,10 @@ export function useJoinActions(p: UseJoinActionsParams) {
 
     const newInheritedConns = buildConnectionsForInheritedJoin(
       matchingArray, currentElements, isSourceElement, sourcePicotIndex, targetPicotIndex,
-      p.picotConnectionsRef.current, ghostEl.materialId || 'default', anchorEnd, connExtra
+      // materialId omitted (was ghostEl.materialId || 'default') — see
+      // performJoin's comment on the same session-52 fix; propagated
+      // connections should live-track color too, not freeze it.
+      p.picotConnectionsRef.current, undefined, anchorEnd, connExtra
     );
     if (newInheritedConns.length === 0) return;
 
@@ -450,8 +458,9 @@ export function useJoinActions(p: UseJoinActionsParams) {
     currentGhostArrays.forEach(matchingArray => {
       const entries = matchingArray.inheritedJoins || [];
       if (entries.length === 0) return;
-      const sourceEl = currentElements.find(e => e.id === matchingArray.sourceId);
-      const materialId = sourceEl?.materialId || 'default';
+      // materialId omitted here (was sourceEl?.materialId || 'default') —
+      // see performJoin's comment on the same session-52 fix; replayed
+      // connections should live-track color too, not freeze it.
 
       entries.forEach((entry: any) => {
         if (typeof entry.isSourceElement !== 'boolean') return;
@@ -468,7 +477,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
         // needed here beyond the isSourceElement/anchorEnd guards above.
         const newConns = buildConnectionsForInheritedJoin(
           matchingArray, currentElements, entry.isSourceElement, entry.sourcePicotIndex, entry.targetPicotIndex,
-          workingConns, materialId, entry.anchorEnd, entry.connExtra
+          workingConns, undefined, entry.anchorEnd, entry.connExtra
         );
         if (newConns.length > 0) {
           workingConns = [...workingConns, ...newConns];
@@ -552,13 +561,19 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // revert instead of one.
     p.skipAutoHistoryRef.current = true;
 
-    const firstEl = p.elementById.get(sel[0].elementId);
-    const connMaterialId = firstEl?.materialId || 'default';
-
     const connection = {
       id: generateId(),
       picots: [...sel],
-      materialId: connMaterialId,
+      // materialId intentionally NOT set here — omitting it means the
+      // connection's color live-tracks whichever element/picot the
+      // rendering code resolves it from (see getConnectionThreadColor in
+      // tattingindex.tsx), instead of freezing to whatever material was
+      // active at join time. Previously this always snapshotted
+      // firstEl.materialId (falling back to 'default'), which — because
+      // 'default' is a truthy string — permanently locked the connection's
+      // color and never updated even after the joined elements' own
+      // materials changed (session 52 bug fix). Set this field explicitly
+      // when a real per-connection color override feature is built.
       ...(connExtra ? { ...connExtra } : {}),
     };
     const newConns = [...p.picotConnectionsRef.current, connection];

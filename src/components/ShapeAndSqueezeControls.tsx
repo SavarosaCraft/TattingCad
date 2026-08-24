@@ -27,7 +27,6 @@ interface ShapeAndSqueezeControlsProps {
   toggleShape: () => void;
   convertToJosephineKnot: () => void;
   isInteractingRef: React.RefObject<boolean>;
-  needsHistoryPushRef: React.RefObject<boolean>;
   t: (key: string) => string;
 }
 
@@ -42,7 +41,6 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
   toggleShape,
   convertToJosephineKnot,
   isInteractingRef,
-  needsHistoryPushRef,
   t,
 }) => {
   if (!selectedElement.isClosed) return null;
@@ -50,14 +48,16 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
   // Shared mouse/touch events for every squeeze slider — extracted
   // because: (a) 4 sliders had identical onMouseDown/Up/Touch handlers,
   // (b) the handlers must mark isInteractingRef so the canvas doesn't
-  //     start a drag during squeeze, and (c) the doc-level pointerup
-  //     safety net catches cases where the slider remounts mid-drag and
-  //     loses its own onMouseUp.
+  //     start a drag during squeeze, and (c) history is pushed explicitly
+  //     on release rather than via needsHistoryPushRef — that flag's only
+  //     consumer is the canvas SVG's own onMouseUp (useInputHandlers.ts),
+  //     which never fires for a property-bar slider release, so the final
+  //     dragged value was silently never getting its own undo entry.
   const squeezeSliderEvents = {
     onMouseDown: () => { isInteractingRef.current = true; },
     onTouchStart: () => { isInteractingRef.current = true; },
-    onMouseUp: () => { isInteractingRef.current = false; needsHistoryPushRef.current = true; },
-    onTouchEnd: () => { isInteractingRef.current = false; needsHistoryPushRef.current = true; },
+    onMouseUp: () => { isInteractingRef.current = false; pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current); },
+    onTouchEnd: () => { isInteractingRef.current = false; pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current); },
   };
 
   return (

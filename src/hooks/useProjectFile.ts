@@ -250,7 +250,11 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setReferenceImage(projectData.referenceImage || null);
     p.setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
     p.setProjectName(projectData.name || 'Untitled Pattern');
-    p.setRenderMode(projectData.renderMode || 'schematic');
+    // Always load into schematic mode, regardless of what was saved.
+    // bakedRealisticSVG is derived/computed (not persisted), so loading
+    // straight into 'realistic' leaves the canvas blank until the user
+    // manually toggles modes. See handoff docs re: session 52 load bug.
+    p.setRenderMode('schematic');
     p.setPatternNotes(projectData.patternNotes || '');
     p.setMaterials(projectData.materials || DEFAULT_MATERIALS);
     p.setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);

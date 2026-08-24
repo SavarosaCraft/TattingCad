@@ -148,13 +148,28 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
   const getPolarPivot = (ids: string[]) => {
     if (!ids?.length) return null;
-    const first = p.elementsRef.current.find(e => String(e.id) === String(ids[0]));
-    const gid = first?.polarRotationGridId || null;
-    if (gid && ids.every(id => {
-      const el = p.elementsRef.current.find(e => String(e.id) === String(id));
-      return el?.polarRotationGridId === gid;
-    })) {
-      const grid = p.polarGrids.find(g => g.id === gid);
+    // One id→element map per call instead of ids.every(id => array.find(...))
+    // — the old version was O(selected × total elements), rescanning the
+    // whole array once per selected id. This function runs on every
+    // mousemove during a rotate drag, so that mattered for large patterns
+    // with a large multi-select. Deliberately still reads elementsRef.current
+    // (not the memoized elementById) — a couple of code paths elsewhere
+    // (applyJointFlags) write elementsRef.current directly, ahead of the
+    // next render, so elementById could be briefly stale relative to it.
+    const byId = new Map(p.elementsRef.current.map((e: any) => [String(e.id), e]));
+    const gid = byId.get(String(ids[0]))?.polarRotationGridId || null;
+    if (gid && ids.every(id => byId.get(String(id))?.polarRotationGridId === gid)) {
+      // Only an actually-visible grid counts as an active pivot — matches
+      // the property bar's own filter (polarGrids.filter(g => g.visible) in
+      // GeneralElementPropertyBar.tsx) for which grids are offered/shown as
+      // linked. Without this check, an element linked to a grid that's been
+      // hidden (or was never re-shown after a legacy save) still silently
+      // rotates around that grid's center while the property bar shows no
+      // indication anything is linked — every rotation path routes through
+      // this one function (applySingleRotationDelta, applyMultiSelectRotationDelta,
+      // applyGroupRotation, setSingleRotationAbsolute in tattingindex.tsx),
+      // so fixing it here fixes all of them at once.
+      const grid = p.polarGrids.find(g => g.id === gid && g.visible);
       if (grid) return { x: grid.center.x, y: grid.center.y };
     }
     return null;

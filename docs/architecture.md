@@ -56,6 +56,14 @@ src/
                           createSplitRingPathFromEl, rotatePaths, mirrorPaths,
                           applyRotationToPathData, rotatePathsAroundCenter,
                           applyPathPreset, applyLinePreset
+    stitchGeometry.ts      getFlipSign, getCircleStitchAngle, effectiveElementType —
+                          promoted out of tattingindex.tsx (session 52, realistic-
+                          renderer extraction, Phase 2/3). Pure — no closures over
+                          component state, take only plain arguments.
+                          getCircleStitchAngle is used both by the realistic
+                          renderer (render/realisticRenderer.ts) and by schematic-
+                          mode picot positioning in tattingindex.tsx, which is why
+                          it lives here rather than folding into render/.
 
   domain/
     parser.ts             parseNotation, reverseNotation, buildSegmentLabel,
@@ -84,6 +92,40 @@ src/
 
   render/
     svgExport.ts          prepareSvgForExport(), ORDER_GROUP_COLORS
+    realisticRenderer.ts   bakeRealisticView(params) — serializes all stitch
+                          geometry into one baked SVG string for realistic-mode
+                          rendering. Extracted from tattingindex.tsx (session 52,
+                          following the realistic-renderer-extraction-plan.md
+                          design doc). No React — takes an explicit
+                          BakeRealisticViewParams object instead of closing over
+                          component state (elements, dsWidth, picotConnections,
+                          getElementColor, getGradientColorAtPosition,
+                          getStitchTypes), and returns the SVG string instead of
+                          calling setBakedRealisticSVG itself — that call now
+                          happens at the tattingindex.tsx call site
+                          (handleSetRenderMode).
+                          Also contains: calculateCircleStitches,
+                          calculatePathStitches, calculateSplitRingStitches,
+                          renderWedgeRingShapes, sampleFullPathWithOffset, the
+                          WEDGE_SHAPES/STITCH_X_EXTENTS constants, and the named
+                          picot-geometry constants OFFSET_DS_FRACTION/
+                          OFFSET_BASE_PADDING/PICOT_TIP_LENGTH_DS/
+                          PICOT_TIP_LENGTH_DEFAULT/PICOT_GAP_HALF_WIDTH_DS
+                          (promoted from inline magic numbers, same session).
+                          renderWedgeTeardropShapes/renderWedgeSplitRingShapes/
+                          renderWedgeChainShapes were consolidated into one
+                          shared renderWedgePathShapes core (same session) — the
+                          three were near-identical trapezoid-slicing logic,
+                          differing only in which paths get sampled and what
+                          count the sampling is normalized against.
+                          renderWedgeRingShapes (circle variant) is genuinely
+                          different — polar-angle math instead of path-sampling
+                          — deliberately left separate.
+                          Split-ring picot color now correctly selects
+                          materialId vs materialIdB based on which half the
+                          picot is actually on (session 52 bug fix — was always
+                          using materialId regardless of side; see the matching
+                          fix in tattingindex.tsx's getConnectionThreadColor).
 
   components/
     ScaleControls.tsx     Shared presentational Scale UI — two rows of preset buttons
@@ -115,6 +157,32 @@ src/
                           extraction, batch 1). Each only needs a handful of props;
                           no shared-state concerns since only one branch is ever
                           mounted at a time.
+                          PicotJoinModeBar.tsx specifically has grown two later
+                          additions, undocumented here until session 52:
+                          — Session 47: the Fold Picots feature. A sticky "Fold
+                          Picots" toggle in row 1, and a row-2 block of drape
+                          sliders (outerLength/innerLength/angleA/angleB) that
+                          appears when activeFold is non-null — either just
+                          created, or selected by clicking either picot of an
+                          existing fold (fold picots auto-select their partner
+                          on click; see useJoinActions.ts's getFoldPartner).
+                          — Session 52: a connection color-override dropdown,
+                          in row 1 between "Fold Picots" and "Exit" — same
+                          position for both fold and regular joins. Options are
+                          "Auto" (clears the override, connection live-tracks
+                          its origin element's material) plus one entry per
+                          material actually involved in the connection —
+                          deliberately not an open color picker, by explicit
+                          design decision. Driven by activeConnection in
+                          tattingindex.tsx, which — unlike activeFold — uses a
+                          SUBSET match (every selected picot must belong to the
+                          connection, not an exact-set match) rather than an
+                          exact match, because only fold picots auto-select
+                          their partner; a regular join only ever has one picot
+                          selected unless the user manually multi-selects both.
+                          Getting this subset-vs-exact distinction wrong was
+                          the initial bug: the dropdown never appeared for
+                          regular joins until the match was relaxed.
     OrderNumberInput.tsx   The "order number" input used in the per-element
                           properties bar. TWO call sites (the 'line'-type branch
                           and the generic element branch) — genuinely NOT
@@ -362,6 +430,45 @@ src/
                           lines from its original 248 — just the notation
                           display, rotate/flip controls, and the calls to
                           OrderNumberInput/RoundGroupPicker/LineBeadPicker.
+    SingleSelectPropertyBar.tsx  Dispatcher for the single-selected-element
+                          property bar (session — property bar cleanup,
+                          batch 12, later session). Routes selectedElement.type
+                          === 'line' to LineElementPropertyBar vs. everything
+                          else to GeneralElementPropertyBar, then renders
+                          MaterialAssignmentDropdown after the dispatch as a
+                          shared sibling. Pure prop-drilling — no logic
+                          changes from what was previously inline in
+                          tattingindex.tsx. Replaces a 554-line inline block
+                          with a 61-line component call.
+    LineElementPropertyBar.tsx  The ~65-line 'line'-type branch (batch 10 had
+                          already extracted its sub-pieces — OrderNumberInput,
+                          RoundGroupPicker, LineBeadPicker — this batch wraps
+                          what was left: the notation display + rotate/flip
+                          controls call + the three sub-component calls) into
+                          its own file.
+    GeneralElementPropertyBar.tsx  The remaining non-line branch content:
+                          split-ring/single notation input ternary, Picot
+                          Wizard trigger + analysis logic (previously
+                          documented as "deliberately left inline" in batches
+                          6/8/11 — that reasoning was about not fragmenting it
+                          further, not about it never getting its own file;
+                          this batch gives it one without changing its
+                          internal shape), plus the calls to
+                          NotationRotationControls/RoundGroupPicker/
+                          RwToggleButton/ShapeAndSqueezeControls. Does NOT
+                          include the material-assignment dropdown — see next
+                          entry.
+    MaterialAssignmentDropdown.tsx  Newly discovered during this batch: the
+                          material A/B selector at the end of the property bar
+                          is NOT part of the general-element branch — it's a
+                          sibling that renders after the entire line-vs-general
+                          dispatch closes, so it applies to line elements too.
+                          The original charting diagram had this folded into
+                          the "everything-else branch" total; it should have
+                          been its own sibling row all along. Caught by
+                          compiling the extraction with `tsc` (structural JSX
+                          check) rather than by reading — see batch 12 note
+                          below for the full story.
     DropdownMenu.tsx      Shared shell for the top-bar dropdown menus (File, View,
                           Arrange, Options, Help). Owns the click-away overlay and
                           the getBoundingClientRect()-based positioning, including
@@ -472,7 +579,13 @@ src/
                             destructure whenever adding new state — missing declarations
                             crash silently mid-function (dialog never closes, state never
                             updates). See session 37 for the cross-check script.
-    useCanvasInteraction.ts  Canvas drag, pivot, selection, rotation handle state
+    useCanvasInteraction.ts  Canvas drag, pivot, selection, rotation handle state.
+                          `singleRotationInput` state removed (session — property
+                          bar cleanup, later session): confirmed zero references
+                          in tattingindex.tsx before deleting — dead since the
+                          single-element rotation control was rebuilt on
+                          NumberStepper.tsx in an earlier session and this field
+                          was never wired to it.
     useTattingOrder.ts    Tatting order mode state
     useProjectState.ts    Project/file state
     useBeadState.ts       Bead, picot, thread state
@@ -601,10 +714,62 @@ src/
                           array indices into el.picots — and replayed across ghosts by indexing
                           ghost.picots[idx]; this is why pseudo-picots (not stored in el.picots)
                           don't fit the model without a parallel ID-based field.
+                          Also exports (undocumented here until session 52, though the Fold
+                          Picots feature itself dates to session 47 — see
+                          components/PicotJoinModeBar.tsx's own header comment):
+                          foldSelectedPicots, updateFoldConnection (generic despite the name —
+                          patches any connection by id, fold or regular, used by both the fold
+                          drape sliders and the session-52 connection color-override dropdown),
+                          getFoldPartner/getFoldConnection (fold-only picot-click auto-select —
+                          NOT generalized to regular joins; this is why regular-joined picots
+                          don't auto-select their partner on click the way fold picots do),
+                          DEFAULT_FOLD_PROPS.
+                          applyJointFlags — exported as of session 52 (previously module-private)
+                          so tattingindex.tsx could reuse the same isJoint-demotion logic at two
+                          more connection-removal sites (applyNotationChange, 
+                          convertToJosephineKnot) that were leaving the far side of a removed
+                          connection stranded showing isJoint: true — see the session 52 writeup
+                          under Rules for the full bug and fix.
+                          Session 52 also changed materialId handling on newly-created
+                          connections: performJoin and both calls to
+                          buildConnectionsForInheritedJoin no longer auto-populate a connection's
+                          materialId from the origin element's current material at creation time.
+                          It's left unset by default now, so a connection's rendered color
+                          live-tracks its origin element's material going forward, instead of
+                          freezing to a stale snapshot. materialId is still a real, working field
+                          — it's the mechanism behind the session-52 color-override dropdown in
+                          PicotJoinModeBar — it's just no longer auto-set; something (currently
+                          only that dropdown) has to set it explicitly for an override to exist.
     useBEClipboard.ts     copyBEToClipboard, cutBEToClipboard, pasteBeClipboard
     useProjectFile.ts     buildProjectData, saveToPath, performSave, saveProject,
                           saveProjectAs, applyProjectData, loadFromPath, loadProject,
                           exportSVG
+                          applyProjectData always sets renderMode to 'schematic' on
+                          load now (session 52 bug fix), ignoring whatever
+                          projectData.renderMode was saved as. bakedRealisticSVG
+                          (the actual rendered content shown in realistic mode) is
+                          intentionally not part of the save payload — it's
+                          derived/rebuilt on demand by bakeRealisticView — so
+                          restoring straight into 'realistic' left the canvas with
+                          nothing baked until the user manually toggled modes.
+                          tattingindex.tsx's separate loadFromAutosave() (restores
+                          from the 'tatting-designer-autosave' localStorage key,
+                          the splash-screen "restore autosave" button — a distinct
+                          code path that doesn't go through this file at all) got
+                          the identical fix in the same session, for the same
+                          reason — easy to miss since it's not called from here.
+                          KNOWN OPEN ISSUE as of session 52: despite both of the
+                          above being fixed and tsc-clean, a user report of "file
+                          load still opens in realistic mode" was NOT resolved by
+                          end of session — every setRenderMode(...) call site in
+                          both this file and tattingindex.tsx was enumerated and
+                          only these two are load-related (the other two are the
+                          manual toggle button, correct as-is), so either a third,
+                          undiscovered load path exists (leading candidate: a
+                          Tauri file-association/listen() handler not yet
+                          uploaded/found), or the fix hadn't reached the build
+                          being tested. See handoff.md from that session for the
+                          full investigation and next steps.
 
   i18n/
     translations_en.json  Bundled English strings — canonical fallback,
@@ -935,6 +1100,116 @@ ring, 3 picots, a small ghost array) and joining the mother to the left boundary
 
 ---
 
+### Realistic renderer extraction, connection color resolution, and related bug fixes (session 52)
+
+**Extraction (per `realistic-renderer-extraction-plan.md`).** `bakeRealisticView`
+and its dependency graph moved from tattingindex.tsx to render/realisticRenderer.ts
+in three phases: (1) dead code removed first (`stitchCache` — computed but never
+read, `sampleClosedPathOffset`/`getWedgePathTransform` — zero call sites); (2)
+the pure Group B functions (`getFlipSign`, `getCircleStitchAngle`,
+`effectiveElementType`) promoted to the new geometry/stitchGeometry.ts; (3)
+Group A (the calculate*Stitches/renderWedge* functions) plus bakeRealisticView
+itself moved, converted from closures to an explicit `BakeRealisticViewParams`
+object. Verified `tsc`-clean against a pre-session baseline at every step (same
+error set, only line numbers shifting) — see the extraction plan doc's own
+"suggested order of operations" for the methodology, which was followed as
+written. Live-tested working (mode switching, all four shape types, picots)
+after Phase 3.
+
+**Cleanup, same session, after the extraction.** The three near-identical
+`renderWedgeTeardropShapes`/`SplitRingShapes`/`ChainShapes` functions were
+consolidated into one shared `renderWedgePathShapes` core (see
+render/realisticRenderer.ts entry above) — verified behavior-preserving, not
+just similar-looking: a `baseIndex`/`fraction` split in the original
+teardrop/chain bodies was a mathematical no-op (`floor(x) + (x - floor(x)) ===
+x`), so collapsing it changed nothing about output. Also: inline magic numbers
+(`dsWidth * 0.125 + 5`, the picot tip-length table, the `0.6` picot gap
+half-width) promoted to named module-level constants.
+
+**Bug: layer order.** Fold/join connection lines were painting on top of the
+baked realistic shapes instead of underneath — the `bakedRealisticSVG` `<g>`
+and the `picotConnections.map(...)` render block were siblings in the wrong
+order, and the tier-sorted schematic-shape block that *would* have gotten this
+right is `opacity: 0` in realistic mode, so it wasn't actually the visible
+layer. Fixed by moving the connections block earlier in the JSX. Confirmed
+working live.
+
+**Bug: gradient color on fold/join lines.** `getSolidColor` (still used for
+picot-arm rendering elsewhere, out of scope) always returns a gradient's first
+stop, never samples by position. Fold arcs and realistic-mode join lines both
+used it. New `getConnectionThreadColor` in tattingindex.tsx resolves color the
+same way regular picots already do in the baked renderer —
+`getElementColor` + `getGradientColorAtPosition`, sampled at the origin
+picot's own stitch position via a new `getPicotPositionFraction` helper.
+
+**Bug: connection color frozen at join time.** Even after the above fix,
+color still didn't update when the joined elements' materials changed later.
+Root cause was one layer deeper, in useJoinActions.ts: `conn.materialId` was
+being auto-populated from the origin element's material at connection-creation
+time (in `performJoin` and both calls to `buildConnectionsForInheritedJoin`),
+and — because `'default'` is a truthy string — that "frozen" branch was always
+taken in the color-resolution logic, permanently locking the color. Fixed by
+no longer auto-populating it; connections now live-track by default, and
+`materialId` is reserved for an explicit override (see the color-override
+dropdown below).
+
+**Bug: split-ring picots always using side-A material.** Split rings track
+two materials (`materialId` for side A, `materialIdB` for side B), but picot
+color resolution — in both the baked realistic renderer and
+`getConnectionThreadColor` — only ever read `materialId`, regardless of which
+side a given picot was actually on. Fixed by deriving the side from existing
+data (`picot.stitchesBefore` vs `element.splitPosition`, the same comparison
+already used for gradient-position sampling) via a new `getSplitRingSide`
+helper — no new field stored on picots. Confirmed the equivalent case in
+schematic mode (`renderOnePicot`'s `armColor`) has the same gap and is NOT
+fixed — see the pending-refactor table.
+
+**Bug: isJoint left stale after a connection silently disappears.** Two
+places removed connections as a side effect (a notation edit dropping a
+picot, in `applyNotationChange`; converting an element to a Josephine Knot,
+in `convertToJosephineKnot`) without demoting `isJoint` on the *other* side
+of the removed connection — leaving it showing as still-connected with no
+connection record behind it. `breakSelectedPicots` (the explicit "Break"
+action) already did this demotion correctly via a private `applyJointFlags`
+helper in useJoinActions.ts; exported that helper and reused it at both
+sites. A third, structurally similar site (ghost-array-regeneration's
+connection remap) was flagged but not fixed — see pending-refactor table.
+
+**Bug: New Project not resetting materials.** `confirmNewCanvas` reset ~13
+pieces of project state but never called `setMaterials(...)` — a project
+loaded before "New" would leave its materials/gradients carried over into the
+nominally blank new project. Pre-existing, unrelated to any of the above;
+found while investigating a different report. Fixed: resets to
+`DEFAULT_MATERIALS` now, same constant used elsewhere.
+
+**Bug: file load restoring realistic mode.** `bakedRealisticSVG` (the actual
+rendered content in realistic mode) isn't part of any save/autosave payload —
+it's derived on demand. Loading straight into a saved-as-realistic
+`renderMode` left the canvas with nothing baked until the user manually
+toggled modes. Fixed at the two load sites found (`useProjectFile.ts`'s
+`applyProjectData`, and tattingindex.tsx's separate `loadFromAutosave`) to
+always force `'schematic'` on load. **Not resolved as of end of session** —
+user still saw the bug after both fixes; see pending-refactor table and
+handoff.md for the open investigation.
+
+**New feature: connection color-override dropdown.** In PicotJoinModeBar,
+row 1, between "Fold Picots" and "Exit" — same position for both fold and
+regular joins. Lets the user pick which of the connection's own involved
+materials to freeze the color to (or "Auto" to clear the override and resume
+live-tracking) — deliberately not an open color picker, by explicit design
+decision. Required generalizing `activeFoldConnection` (exact-match, fold-
+only) into a new `activeConnection` (subset-match, any connection type) in
+tattingindex.tsx, since fold picots auto-select their partner on click but
+regular-join picots don't — an exact-set match never fired for a
+single-picot selection. See the PicotJoinModeBar.tsx and useJoinActions.ts
+entries above for the full mechanism.
+
+Translation keys `picotConnectionColorLabel`/`picotConnectionColorAuto` were
+added to the dropdown's JSX but NOT to any i18n file — none were available
+this session. Will render as raw keys until added.
+
+---
+
 ## What stays in tattingindex.tsx for now
 
 - `computeElementAfterNotationEdit` — extracted from `updateNotation` as a pure
@@ -984,26 +1259,29 @@ Main return
 │  │     ├─ Picot Join mode bar ................ 37 lines → PicotJoinModeBar.tsx ✅
 │  │     ├─ Beading mode bar .................. 171 lines → BeadingModeBar.tsx ✅
 │  │     ├─ Tatting Order mode bar ............ 370 lines → TattingOrderModeBar.tsx ✅
-│  │     ├─ Element properties bar (1,051 lines) — splits on selectedElement.type:
-│  │     │  ├─ 'line' type branch ............ 248 lines (has its own OrderNumberInput ✅)
-│  │     │  └─ everything-else branch (720 lines) → sibling sections:
-│  │     │     ├─ Notation input + Picot Wizard . 348 lines — split-ring A/B
-│  │     │     │  fields → SplitRingNotationInput.tsx ✅; single-notation field
-│  │     │     │  → NotationInput.tsx ✅ (batch 11, later session); Picot
-│  │     │     │  Wizard trigger/analysis deliberately left inline
-│  │     │     │  (genuinely different behavior / already-documented reasoning)
-│  │     │     ├─ Rotate/label controls .......... 60 lines → NotationRotationControls.tsx ✅
-│  │     │     │  (mis-catalogued during charting as "materials/color" — corrected)
-│  │     │     ├─ small section (Order Number) ... 15 lines → OrderNumberInput.tsx ✅
-│  │     │     ├─ Round Group Picker ............. 75 lines → RoundGroupPicker.tsx ✅
-│  │     │     │  (mis-catalogued as "rw/hide-label/bead" — it's actually the
-│  │     │     │   group-assignment dropdown; RW toggle turned out to be its
-│  │     │     │   own separate sibling, not nested inside this one)
-│  │     │     ├─ tiny section (RW toggle) ....... 11 lines → RwToggleButton.tsx ✅
-│  │     │     └─ Shape toggle + squeeze sliders . 190 lines → ShapeAndSqueezeControls.tsx ✅
-│  │     │        (turned out to be shape/squeeze, not "materials" — corrected
-│  │     │         again; every guessed label in this chart has needed correction
-│  │     │         once actually opened — treat unopened labels below the same way)
+│  │     ├─ Element properties bar — SingleSelectPropertyBar.tsx ✅
+│  │     │  (session — property bar cleanup, batch 12, later session;
+│  │     │  61-line component call replaces the old 554-line inline block):
+│  │     │  ├─ 'line' type branch → LineElementPropertyBar.tsx ✅ (has its
+│  │     │  │  own OrderNumberInput call, ~65 lines)
+│  │     │  ├─ everything-else branch → GeneralElementPropertyBar.tsx ✅
+│  │     │  │  ├─ Notation input + Picot Wizard . 348 lines — split-ring A/B
+│  │     │  │  │  fields → SplitRingNotationInput.tsx ✅; single-notation field
+│  │     │  │  │  → NotationInput.tsx ✅ (batch 11, later session); Picot
+│  │     │  │  │  Wizard trigger/analysis stayed inline WITHIN this file
+│  │     │  │  │  (genuinely different behavior / already-documented
+│  │     │  │  │  reasoning — this batch relocated the file it lives in,
+│  │     │  │  │  not its internal shape)
+│  │     │  │  ├─ Rotate/label controls .......... 60 lines → NotationRotationControls.tsx ✅
+│  │     │  │  ├─ small section (Order Number) ... 15 lines → OrderNumberInput.tsx ✅
+│  │     │  │  ├─ Round Group Picker ............. 75 lines → RoundGroupPicker.tsx ✅
+│  │     │  │  ├─ tiny section (RW toggle) ....... 11 lines → RwToggleButton.tsx ✅
+│  │     │  │  └─ Shape toggle + squeeze sliders . 190 lines → ShapeAndSqueezeControls.tsx ✅
+│  │     │  └─ Material assignment dropdown → MaterialAssignmentDropdown.tsx ✅
+│  │     │     (session — batch 12; discovered to be a SIBLING of the
+│  │     │     line/general dispatch, not nested inside the general branch
+│  │     │     as the original charting diagram implied — applies to both
+│  │     │     types. See MaterialAssignmentDropdown.tsx entry above.)
 │  │     └─ Nothing-selected bar (651 lines)
 │  │        ├─ Multi-select summary/actions .... 517 lines → MultiSelectSummaryBar.tsx ✅
 │  │        └─ two smaller trailing bits ........ 4 + 123 lines
@@ -1127,7 +1405,108 @@ returned a string and silently dropped that conditional. Fixed by typing
 when non-null — verified against the full diff afterward, which showed
 only the intended block and one import line changed.
 
-Still open, not part of this list, fair game for a future session:
+Batch 12 (later session, "property bar cleanup") done: gave the remaining
+inline single-select property bar content its own files. This was the piece
+batches 1-11 never fully closed out — earlier batches extracted specific
+sub-components CALLED FROM WITHIN the inline JSX (OrderNumberInput,
+RoundGroupPicker, etc.) but the wrapping JSX itself (line-vs-general dispatch,
+notation/picot-wizard analysis block, material dropdown) stayed directly in
+tattingindex.tsx. Result: 554 inline lines (7160-7713) replaced with a
+61-line component call, split across 4 new files (SingleSelectPropertyBar,
+LineElementPropertyBar, GeneralElementPropertyBar, MaterialAssignmentDropdown
+— see component entries above for what each contains).
+
+Two real findings, both caught by compiling the extraction with `tsc`
+(structural-JSX-only check against each new file, then the full original
+file for comparison) rather than by reading:
+- The material-assignment dropdown is a SIBLING of the line/general dispatch,
+  not nested inside the general branch. First-draft extraction included it
+  in GeneralElementPropertyBar.tsx, which produced a real
+  "JSX expressions must have one parent element" compiler error — traced via
+  indentation-level comparison against the original file (matching indent
+  on the ternary's opening `{selectedElement.type === 'line' ? (` and its
+  closing `)}` confirmed the material section was outside that ternary
+  entirely). This means the original charting diagram's line-count
+  attribution for "everything-else branch (720 lines)" was slightly wrong —
+  part of that total was actually shared-sibling content. Fixed by giving it
+  its own file rather than duplicating it into both branches.
+- Several picot-wizard helpers (`analyzeNotationForWizard`, `autoCompact`,
+  `scaleNotation`, `reverseNotation`, `compactRepeatedPicots`, etc.) needed
+  importing from `domain/picotTools` (most of them) and `domain/parser`
+  (`reverseNotation`, `normalizeNotationInput`) — an early draft guessed
+  they'd all come from `domain/parser` since that's what the adjacent
+  notation-parsing code imports from; `tsc`'s "cannot find name" errors
+  caught the wrong-module guesses immediately. Also caught: `updateNotation`
+  takes an optional 4th options arg (several original call sites already
+  used it), and `dsWidth`/`updateSelected`/`updateElement` were missing from
+  the first prop-dependency scan entirely (only surfaced once the type
+  checker actually tried to resolve them).
+
+Verification approach for this batch, worth reusing: static dependency
+scanning (regex cross-reference against component-scope declarations) to
+draft the initial prop list, then `tsc --noEmit` against the isolated new
+files (loose tsconfig — jsx:react, no strict, skipLibCheck — since sibling
+components/domain files weren't in the sandbox) to catch structural and
+naming errors before wiring into tattingindex.tsx, then `tsc` against the
+FULL edited file afterward and diffed its error set against the same check
+on the untouched original to confirm zero new errors introduced (the 3
+pre-existing Modal `children` prop errors were unchanged). Line-count math
+(removed 554, added 61 call site + 1 import line = exact predicted total)
+also cross-checked as a cheap sanity gate.
+
+**Post-batch-12 correction (live-tested same later session, after the
+initial handoff):** the verification approach above still shipped a real
+bug — `Uncaught ReferenceError: allPicots is not defined`, thrown the
+moment a ring was selected. Root cause: the regex-based dependency scan
+checks "is this name declared anywhere before line X in the file" but
+doesn't check WHERE — so a name that's declared locally inside the block
+being extracted (shadowing an outer prop, or just reused as an unrelated
+object-literal key) reads as an external dependency. Two names got
+promoted to props that were never real: `allPicots` (real dependency was a
+same-named `const allPicots = currentElement?.picots || []` declared
+*inside* a nested IIFE within the extracted block — pure shadowing, the
+prop was never actually read) and `picotMatchMode` (its only appearance in
+the extracted block is as an object-literal key —
+`{ picotMatchMode: 'order' }` — not a variable reference at all). Both
+props were wired at the tattingindex.tsx call site to variables that don't
+exist at that scope, which is a plain `ReferenceError` at render time —
+not a type error, so `noImplicitAny`/`any`-typed props didn't catch it
+either.
+
+Compounding factor: `tsc` actually did flag this (`TS2304: Cannot find
+name 'allPicots'`), but every verification command that session filtered
+`grep -v "TS2307"` (module-not-found, expected noise from the sandbox
+having no node_modules) without also excluding `TS2304` from the *filtered
+out* set — meaning `TS2304` should have stayed visible but at some point
+got swept into a broader filter list (`TS2307|TS2304|TS2554|...`) built to
+cut down noise for the OTHER prop-typing errors in that same pass, and the
+real `TS2304` for these two names got lost in that. Lesson for next time:
+`TS2304` ("cannot find name") should never be blanket-filtered — it's the
+one error class that's essentially never sandbox noise and always worth
+reading individually.
+
+**Takeaway for the next dependency-scan-based extraction** (directly
+relevant to the realistic-renderer extraction plan, which proposes the
+same static-scan method): after drafting a prop list this way, grep the
+candidate block for `const NAME =` and `NAME:` (destructure/object-key
+patterns) to catch shadowing before finalizing the prop interface — not
+just after wiring, when `tsc`'s `TS2304` is the last line of defense and
+apparently easy to lose in filtered output.
+
+**Unrelated pre-existing bug, found incidentally while chasing the above,
+not fixed:** `tattingindex.tsx` line ~3012, inside `repairElements`, calls
+`pushHistory()` — no function of that name is defined anywhere in the
+file (confirmed via `tsc`'s `TS2304`, and confirmed present in the
+untouched original file predating this session's edits — not introduced
+by batch 12). Likely meant to call `pushHistoryState(...)` like every
+other mutation path does. `repairElements` is the ring-geometry-corruption
+repair path, so this would throw if that path is ever exercised. Not
+touched this session — flagging for whenever ghost-array-adjacent geometry
+work happens next, since that's the likeliest place `repairElements`
+actually gets called from.
+
+
+
 - Promoting `categorizeColor` to utils/color.ts if another caller
   ever needs it (currently fine as a prop into ColorPickerSwatchesTab.tsx).
 - The Ref mirror → useReducer item and the Beading/TattingOrder mode
@@ -1145,7 +1524,7 @@ Still open, not part of this list, fair game for a future session:
 | Picot Wizard popovers → components | Clear/Add/Fill/Compact still inline IIFEs; follow the ScaleControls pattern |
 | `usePicotWizardState.ts` | 6 wizard state entries currently in `useUIState.ts`; enough to warrant a dedicated hook once the popovers are componentised |
 | `getSnapPoints` → `geometry/layout.ts` | Blocked by `getPicotPosition` dependency |
-| `bakeRealisticView` → `render/realisticRenderer.ts` | Needs explicit data interface design first |
+| ~~`bakeRealisticView` → `render/realisticRenderer.ts`~~ | DONE (session 52) — see render/realisticRenderer.ts entry above for what moved and what was cleaned up (wedge-shape consolidation, named constants) in the same pass. |
 | Tauri `ask` call → `tauri/file.ts` | Small, low priority |
 | History system — perf only | Replace full JSON stringify/deep-clone per entry with structural diff, for large-pattern performance. NOT a correctness fix — the push mechanism itself is sound and documented under `useHistoryActions.ts` above. |
 | `regenerateGhostArrays` → dedicated hook/module | Needs clean data interface for `createPolarInstance`/`createLinearInstance` |
@@ -1154,3 +1533,6 @@ Still open, not part of this list, fair game for a future session:
 | OBB bounding box | Oriented bounding box for single-element selection (rotate box with object); AABB stays for multi-select |
 | `isTooShort` flag on move/transform | Currently only set when notation changes (via `computeElementAfterNotationEdit`). Investigated (later session): the flag compares `endpointDist` (straight-line distance between the element's actual endpoint coordinates) against `newLength` (notation-derived physical curve length) — see the computation and its comment around line 3724 in tattingindex.tsx. This means it's NOT purely a notation-derived property, despite the name suggesting otherwise. Verified: plain whole-element move/drag translates both endpoints by the same offset, so `endpointDist` is invariant — that case genuinely cannot trigger the bug, confirming a fix targeting "move" specifically would be unnecessary. NOT verified: path-edit-mode single-endpoint dragging (moving one endpoint handle independently of the other) — this is the case that could plausibly change `endpointDist` without any notation edit, but the handler for it lives in `useCanvasInteraction.ts`/`useInputHandlers.ts`, neither of which were in the sandbox this session. Before doing this fix: get those two files uploaded and confirm whether single-endpoint dragging actually leaves `isTooShort` stale — don't assume the original table note was right, and don't assume it was wrong either. |
 | ~~Endpoint joints across ghost arrays~~ | DONE (later session) — see "Endpoint joints across ghost arrays — implemented" under Rules above for root cause and implementation details. |
+| File load still opens in realistic mode | OPEN as of session 52 — both known `renderMode`-on-load sites were fixed and confirmed `tsc`-clean, but the user still saw the bug afterward. Likely an undiscovered third load path (Tauri file-association handler is the leading suspect — see useProjectFile.ts entry above and handoff.md). Start here, don't re-derive from scratch. |
+| Split-ring picot color, schematic mode | OPEN as of session 52 — `armColor` in `renderOnePicot` (via `getSolidColor`) has the same side-blind bug that was fixed for the baked realistic renderer and fold/join connection color this session (always resolves `materialId`, never `materialIdB`, regardless of which side the picot is on). Two other `getSolidColor` call sites (~5010, ~5119) never investigated. Fix would follow the established pattern: check `getSplitRingSide(element, picot)` (tattingindex.tsx) and substitute `materialIdB` when it's `'B'`. |
+| Ghost-array regeneration's connection remap may drop connections silently | OPEN as of session 52 — flagged but not traced deeply enough to confirm reachability. If a polar array shrinks, the ghost-ID remap (tattingindex.tsx, near `setPicotConnections(merged)`, search `oldGhostIdsSorted`/`newGhostIdsSorted`) may leave some old connections with no remap target, silently dropping them without demoting `isJoint` on the far side — the same bug pattern fixed at two other sites this session (see `applyJointFlags` note under useJoinActions.ts above). |

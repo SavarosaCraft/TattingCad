@@ -32,7 +32,7 @@ import {
   IconNotationM, IconNotationOn, IconNotationOff, IconPaste, IconMagicWand,
 } from './icons';
 import { ScaleControls } from './ScaleControls';
-import { rotatePaths } from '../geometry/paths';
+import { rotatePaths, resetElementShape } from '../geometry/paths';
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
 
 // Single source of truth for "what color does a group get when it has no
@@ -53,6 +53,7 @@ interface MultiSelectSummaryBarProps {
   elementById: Map<string, any>;
   elements: any[];
   selectedIdSet: Set<string>;
+  dsWidth: number;
   getPolarPivot: (ids: string[]) => { x: number; y: number } | null;
   setElements: (fn: (prev: any[]) => any[]) => void;
   groupRotationInput: string;
@@ -98,6 +99,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   elementById,
   elements,
   selectedIdSet,
+  dsWidth,
   getPolarPivot,
   setElements,
   groupRotationInput,
@@ -572,6 +574,25 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
           <button onClick={() => applyMultiSelectRotationDelta(90)} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('propRotatePlus90')}><IconRotateCW size={16} /></button>
           <button onClick={doFlipH} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipH')}><IconFlipH size={16} /></button>
           <button onClick={doFlipV} className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs" title={t('multiFlipV')}><IconFlipV size={16} /></button>
+          {/* Reset transform — same per-element reset as the single-select
+              property bar (GeneralElementPropertyBar.tsx), applied to every
+              selected element resetElementShape supports. Elements it
+              doesn't handle (ghosts, lines, split chains) are left
+              untouched rather than skipped-with-error — same "return null,
+              caller no-ops" contract as the single-select button. */}
+          <button
+            onClick={() => {
+              const newEls = elements.map(el => {
+                if (!selectedIdSet.has(el.id)) return el;
+                const patch = resetElementShape(el, dsWidth);
+                return patch ? { ...el, ...patch } : el;
+              });
+              setElements(newEls);
+              pushHistoryState(newEls, picotConnections, rounds);
+            }}
+            className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
+            title={t('propResetTransform')}
+          >{t('propResetBtn')}</button>
 
           {/* Notation label offset */}
           <div className="w-px h-6 bg-gray-600 mx-1" />
