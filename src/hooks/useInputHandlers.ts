@@ -74,8 +74,8 @@ export interface UseInputHandlersParams {
   setDragStart: (v: any) => void;
   setZoomRectBox: (v: any) => void;
   setCamera: (fn: (prev: any) => any) => void;
-  setElements: (fn: (prev: any[]) => any[]) => void;
-  setSelectedIds: (ids: string[]) => void;
+  setElements: React.Dispatch<React.SetStateAction<any[]>>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
   setSelectionBox: (v: any) => void;
   setDraggedElement: (id: string | null) => void;
   setRotationHandle: (v: string | null) => void;
@@ -83,7 +83,7 @@ export interface UseInputHandlersParams {
   setPivotOffset: (v: { x: number; y: number }) => void;
   setRulerPoints: (fn: (prev: any[]) => any[]) => void;
   setRulerMousePos: (v: any) => void;
-  setSelectedBEs: (v: any[]) => void;
+  setSelectedBEs: React.Dispatch<React.SetStateAction<any[]>>;
   setDragTick: (fn: (prev: number) => number) => void;
   setTattingOrderConflict: (v: any) => void;
   setPropBarOrderDraft: (v: any) => void;
@@ -109,7 +109,7 @@ export interface UseInputHandlersParams {
     { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> };
   setGhostArrays: (arrays: any[]) => void;
   setPicotConnections: (fn: ((prev: any[]) => any[]) | any[]) => void;
-  skipAutoHistoryRef: React.RefObject<boolean>;
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
   assignOrderNumber: (id: string, n: number) => void;
   zoomToRect: (minX: number, minY: number, maxX: number, maxY: number) => void;
 }
@@ -222,8 +222,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       }
       const clicked = p.findClosestElement(world.x, world.y);
       if (clicked) {
-        if (isPathEditable(clicked)) { p.setSelectedIds([clicked.id]); }
-        else { p.setSelectedIds([clicked.id]); }
+        p.setSelectedIds([clicked.id]);
       }
     } else if (p.currentTool === 'line') {
       if (p.selectedIds.length === 1) {
@@ -237,6 +236,8 @@ export function useInputHandlers(p: UseInputHandlersParams) {
             const path = selected.paths[0];
             if (path.type === 'cubic') {
               p.pathDragStartRef.current = { startX: world.x, startY: world.y, control1X: path.control1X, control1Y: path.control1Y, control2X: path.control2X, control2Y: path.control2Y };
+            } else {
+              p.pathDragStartRef.current = { startX: world.x, startY: world.y, controlX: path.controlX, controlY: path.controlY };
             }
             return;
           }
@@ -403,15 +404,23 @@ export function useInputHandlers(p: UseInputHandlersParams) {
         if (handleInfo.type === 'start') {
           let newX = world.x, newY = world.y;
           if (p.snapEnabled) { const sp = p.findNearestSnapPointWithPolar(world.x, world.y, handleInfo.elementId); if (sp) { newX = sp.x; newY = sp.y; } }
-          return { ...el, paths: [{ ...path, x: newX, y: newY, control1X: newX + (path.endX - newX) * 0.33, control1Y: newY + (path.endY - newY) * 0.33 }], center: { x: (newX + path.endX) / 2, y: (newY + path.endY) / 2 } };
+          const newPath = path.type === 'cubic'
+            ? { ...path, x: newX, y: newY, control1X: newX + (path.endX - newX) * 0.33, control1Y: newY + (path.endY - newY) * 0.33 }
+            : { ...path, x: newX, y: newY };
+          return { ...el, paths: [newPath], center: { x: (newX + path.endX) / 2, y: (newY + path.endY) / 2 } };
         } else if (handleInfo.type === 'end') {
           let newX = world.x, newY = world.y;
           if (p.snapEnabled) { const sp = p.findNearestSnapPointWithPolar(world.x, world.y, handleInfo.elementId); if (sp) { newX = sp.x; newY = sp.y; } }
-          return { ...el, paths: [{ ...path, endX: newX, endY: newY, control2X: path.x + (newX - path.x) * 0.67, control2Y: path.y + (newY - path.y) * 0.67 }], center: { x: (path.x + newX) / 2, y: (path.y + newY) / 2 } };
+          const newPath = path.type === 'cubic'
+            ? { ...path, endX: newX, endY: newY, control2X: path.x + (newX - path.x) * 0.67, control2Y: path.y + (newY - path.y) * 0.67 }
+            : { ...path, endX: newX, endY: newY };
+          return { ...el, paths: [newPath], center: { x: (path.x + newX) / 2, y: (path.y + newY) / 2 } };
         } else if (handleInfo.type === 'control1') {
           return { ...el, paths: [{ ...path, control1X: world.x, control1Y: world.y }] };
         } else if (handleInfo.type === 'control2') {
           return { ...el, paths: [{ ...path, control2X: world.x, control2Y: world.y }] };
+        } else if (handleInfo.type === 'control') {
+          return { ...el, paths: [{ ...path, controlX: world.x, controlY: world.y }] };
         }
         return el;
       }));
@@ -784,7 +793,21 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       p.setSelectionBox(null);
     }
 
-    if (p.isInteractingRef.current && p.needsHistoryPushRef.current)
+    // Captured here, before draggedHandleRef gets cleared below, so we know
+    // at push-time whether this gesture is "drew a line, released without
+    // meaningfully moving it" — that case should leave no history trace at
+    // all, not push the too-short line then immediately push its removal
+    // as a second entry.
+    const newLineId = p.createdNewLineRef.current ? (p.draggedHandleRef.current?.elementId ?? null) : null;
+    const isNewLineTooShort = (() => {
+      if (!newLineId) return false;
+      const el = p.elements.find((e: any) => e.id === newLineId);
+      if (!el || el.type !== 'line' || !el.paths?.length) return false;
+      const path = el.paths[0];
+      return Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y) < 12;
+    })();
+
+    if (p.isInteractingRef.current && p.needsHistoryPushRef.current && !isNewLineTooShort)
       p.pushHistoryState(p.elements, p.picotConnections, p.rounds);
     p.isInteractingRef.current = false;
     p.needsHistoryPushRef.current = false;
@@ -888,11 +911,20 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       }
     }
 
-    p.setElements(prev => prev.filter((el:any) => {
-      if (el.type !== 'line' || !el.paths?.length) return true;
-      const path = el.paths[0];
-      return Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y) >= 12;
-    }));
+    // Discard the just-drawn line if it never grew past a meaningful length.
+    // Scoped to the specific line this gesture created (newLineId), not a
+    // scan over every line element — this used to run unconditionally on
+    // every mouseUp regardless of tool or gesture, which meant deliberately
+    // shrinking an EXISTING line below 12 units via handle-editing silently
+    // deleted it too. skipAutoHistoryRef suppresses this removal's own
+    // history entry, since the explicit push above was already skipped for
+    // this same gesture — net effect is zero history entries for a line
+    // that was drawn and immediately abandoned, same as if it never
+    // happened, rather than one entry with the line and a second removing it.
+    if (isNewLineTooShort && newLineId) {
+      p.skipAutoHistoryRef.current = true;
+      p.setElements(prev => prev.filter((el: any) => el.id !== newLineId));
+    }
 
     if (p.createdNewLineRef.current) { p.setCurrentTool('select'); p.createdNewLineRef.current = false; }
   };

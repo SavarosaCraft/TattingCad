@@ -55,7 +55,7 @@ interface MultiSelectSummaryBarProps {
   selectedIdSet: Set<string>;
   dsWidth: number;
   getPolarPivot: (ids: string[]) => { x: number; y: number } | null;
-  setElements: (fn: (prev: any[]) => any[]) => void;
+  setElements: (fn: any[] | ((prev: any[]) => any[])) => void;
   groupRotationInput: string;
   setGroupRotationInput: (v: string) => void;
   applyGroupRotation: (deg: number) => void;
@@ -222,19 +222,8 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
         <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
           <button
             onClick={() => {
-              const _ppN = getPolarPivot(selectedIds);
-              const gcx = _ppN ? _ppN.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
-              const gcy = _ppN ? _ppN.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
-              const cos = Math.cos(-Math.PI/2), sin = Math.sin(-Math.PI/2);
-              setElements(prev => prev.map(el => {
-                if (!selectedIdSet.has(el.id)) return el;
-                const dx = el.center.x - gcx, dy = el.center.y - gcy;
-                return { ...el,
-                  center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
-                  paths: rotatePaths(el.paths, gcx, gcy, -90),
-                  rotation: ((el.rotation || 0) - 90) % 360 };
-              }));
-              setGroupRotationInput('');
+              const currentDeg = ((groupElements[0]?.rotation || 0) % 360 + 360) % 360;
+              applyGroupRotation(currentDeg - 90);
             }}
             className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
             title={t('propRotateGroupMinus90')}
@@ -272,19 +261,8 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
           />
           <button
             onClick={() => {
-              const _ppP = getPolarPivot(selectedIds);
-              const gcx = _ppP ? _ppP.x : groupElements.reduce((s, e) => s + e.center.x, 0) / groupElements.length;
-              const gcy = _ppP ? _ppP.y : groupElements.reduce((s, e) => s + e.center.y, 0) / groupElements.length;
-              const cos = Math.cos(Math.PI/2), sin = Math.sin(Math.PI/2);
-              setElements(prev => prev.map(el => {
-                if (!selectedIdSet.has(el.id)) return el;
-                const dx = el.center.x - gcx, dy = el.center.y - gcy;
-                return { ...el,
-                  center: { x: gcx + dx * cos - dy * sin, y: gcy + dx * sin + dy * cos },
-                  paths: rotatePaths(el.paths, gcx, gcy, 90),
-                  rotation: ((el.rotation || 0) + 90) % 360 };
-              }));
-              setGroupRotationInput('');
+              const currentDeg = ((groupElements[0]?.rotation || 0) % 360 + 360) % 360;
+              applyGroupRotation(currentDeg + 90);
             }}
             className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
             title={t('propRotateGroupPlus90')}

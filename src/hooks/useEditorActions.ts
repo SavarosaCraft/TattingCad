@@ -916,7 +916,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const dx = el.center.x - groupCenterX, dy = el.center.y - groupCenterY;
       const newCenterX = groupCenterX + dx * cos - dy * sin;
       const newCenterY = groupCenterY + dx * sin + dy * cos;
-      const newRotation = ((el.rotation || 0) + delta) % 360;
+      const newRotation = (((el.rotation || 0) + delta) % 360 + 360) % 360;
       return { ...el, center: { x: newCenterX, y: newCenterY },
         paths: rotatePaths(el.paths, groupCenterX, groupCenterY, delta),
         rotation: newRotation };

@@ -55,7 +55,30 @@ src/
     paths.ts              createCirclePath, createTeardropPath, createSplitRingPath,
                           createSplitRingPathFromEl, rotatePaths, mirrorPaths,
                           applyRotationToPathData, rotatePathsAroundCenter,
-                          applyPathPreset, applyLinePreset
+                          applyPathPreset, applyLinePreset, resetElementShape
+                          resetElementShape(el, dsWidth) — new (session 52).
+                          Resets a single element's shape to a relaxed default
+                          and clears rotation + polarRotationGridId to 0/null
+                          (the "pivot reset to itself" request —
+                          polarRotationGridId is what actually overrides an
+                          element's own center as rotation pivot; rotation
+                          alone isn't enough). Deliberately reuses two
+                          existing formulas rather than inventing a third
+                          default: the squeeze-reset defaults from
+                          ShapeAndSqueezeControls.tsx for closed/split-ring
+                          shapes, and addChain's chord/arcLift bow formula
+                          (useEditorActions.ts) for open chains, centered on
+                          the element's own `center` instead of the viewport
+                          center. Returns null for ghosts, lines, and
+                          multi-segment/split chains (not handled) — callers
+                          treat null as "not resettable." Wired into
+                          GeneralElementPropertyBar.tsx (single-select, Row 1)
+                          and MultiSelectSummaryBar.tsx (batch over every
+                          selected non-null-result element). See the
+                          "ShapeAndSqueezeControls.tsx squeeze-reset buttons
+                          vs resetElementShape" row in Pending refactor work
+                          for the one piece of follow-up DRY cleanup this
+                          created.
     stitchGeometry.ts      getFlipSign, getCircleStitchAngle, effectiveElementType —
                           promoted out of tattingindex.tsx (session 52, realistic-
                           renderer extraction, Phase 2/3). Pure — no closures over
@@ -688,6 +711,65 @@ src/
                           Don't "fix" this with a mechanical retrofit of all call sites —
                           most of them are already correct; check skipAutoHistoryRef usage at
                           each site individually before touching it.
+
+                          ADDENDUM (session 52 — nearly repeated the exact mistake this
+                          section already warns against): an undo/history audit initially
+                          flagged ~10 handlers across MultiSelectSummaryBar.tsx and
+                          useEditorActions.ts (group ±90° rotate buttons, hide-label
+                          toggles, polar-grid selects, the material dropdown,
+                          applyGroupRotation, applyMultiSelectRotationDelta, all six
+                          align* functions) as likely missing history pushes, before
+                          finding this section and re-reading the "NOT a real risk"
+                          paragraph above. All ~10 were false positives — plain
+                          setElements calls with none of the four guard refs touched,
+                          correctly covered by the auto-push effect. Only two real bugs
+                          existed, both matching the ACTUAL narrow risk this section
+                          already describes ("an explicit push site that forgets
+                          skipAutoHistoryRef") plus one new variant not previously
+                          documented:
+
+                          1. RoundGroupPicker (LineElementPropertyBar.tsx,
+                          GeneralElementPropertyBar.tsx) — a second confirmed instance of
+                          the exact useJoinActions.ts pattern above: an explicit
+                          pushHistoryState call with no skipAutoHistoryRef set first, so
+                          the auto-push effect also fires for the same change. Not a lost
+                          undo step (de-dupe makes it harmless per this section's own
+                          note) but a real duplicate entry in practice, since the
+                          explicit call and the auto-effect's call don't always compare
+                          equal at the exact moment each runs. Fixed by extracting both
+                          files' handlers into utils/roundGroupActions.ts, following the
+                          addRing-style pattern correctly this time.
+
+                          2. NEW VARIANT — squeeze sliders (ShapeAndSqueezeControls.tsx):
+                          this one isn't "forgot skipAutoHistoryRef," it's a case the
+                          four-guard-ref design doesn't actually cover. The sliders
+                          correctly set isInteractingRef.current = true on their own
+                          onMouseDown (to batch drag ticks into one entry, exactly as
+                          intended) — but nothing outside useInputHandlers.ts's
+                          canvas-scoped onMouseUp actually consumes needsHistoryPushRef.
+                          The sliders' own onMouseUp sets isInteractingRef.current =
+                          false itself before any canvas mouseup could ever see it as
+                          true, so the deferred push is silently orphaned — the final
+                          dragged value never got its own undo entry. This mechanism is
+                          fine for the canvas's own drag gestures (mousedown and mouseup
+                          both go through the same canvas-scoped handler) but isn't safe
+                          to reuse for ANY property-bar control that starts its own
+                          isInteractingRef-gated interaction outside that pair. Fixed by
+                          calling pushHistoryState directly on the slider's own
+                          onMouseUp/onTouchEnd instead of routing through
+                          needsHistoryPushRef. Worth grepping
+                          `isInteractingRef.current = true` across the whole codebase
+                          before trusting any other control that uses this pattern —
+                          ShapeAndSqueezeControls.tsx was the only offender found this
+                          session, but the search wasn't exhaustive beyond the files
+                          uploaded so far.
+
+                          LESSON FOR NEXT TIME: read this whole useHistoryActions.ts
+                          section before auditing anything history-related. It already
+                          documents the mechanism, the convention, a historical example
+                          of exactly this bug class, and an explicit warning against
+                          flagging plain setElements calls. Skipping that read cost a
+                          full audit pass that had to be substantially walked back.
     useEditorActions.ts   All element-level actions: creation, deletion, clipboard,
                           ordering, grouping, alignment, rotation, undo/redo (reviewed
                           directly, later session — see "Endpoint joints across ghost
@@ -1505,7 +1587,34 @@ touched this session — flagging for whenever ghost-array-adjacent geometry
 work happens next, since that's the likeliest place `repairElements`
 actually gets called from.
 
+**Verification methodology upgrade (session 52):** the "loose tsconfig, no
+@types/react" sandbox check used above is noisy enough to hide real errors
+inside thousands of harmless TS7026 ("JSX element implicitly has type
+'any'...") and TS7006 ("Parameter implicitly has an 'any' type")
+diagnostics — every JSX line and every untyped callback param in the whole
+file trips these, none of which would fire in the real project build (which
+has actual @types/react). This noise masked a genuinely new TS2698
+spread-type error and made several diffs unreadable by count alone.
 
+Better approach, low cost: `npm install --no-save @types/react@18
+@types/node` into the sandbox once, then run the same `tsc --noEmit --jsx
+react-jsx --esModuleInterop --skipLibCheck --target es2020 <file>` checks as
+before (note: react-jsx, not react, once real types are present). TS7026
+disappears entirely; remaining diagnostics are real. This is how two more
+pre-existing latent bugs were found this session (both same root cause):
+`getPolarFlipGrid` and `repairElements` in tattingindex.tsx both do
+`elementsRef.current.map(...)` — `elementsRef` there is declared as bare
+`useRef([])` (infers as `never[]`), unlike `useEditorActions.ts`'s
+properly-typed `elementsRef: React.RefObject<any[]>`. `.find()` had been
+silently tolerated as implicit-any; swapping to `.map()` for an O(n²) fix
+surfaced real type errors. Fixed both with a local cast
+(`(elementsRef.current as any[])`) rather than changing the ref's own
+declaration, which is used throughout the ~11k-line file and risked
+surfacing unrelated errors far from the actual fix. Still always diff
+against a baseline captured in the SAME environment (same node_modules
+present or absent on both sides) — comparing a real-types run against a
+stale no-types baseline produces a huge, meaningless-looking diff (hit this
+exact trap once this session before catching it).
 
 - Promoting `categorizeColor` to utils/color.ts if another caller
   ever needs it (currently fine as a prop into ColorPickerSwatchesTab.tsx).
@@ -1531,8 +1640,17 @@ actually gets called from.
 | Ref mirror → `useReducer` | The big architectural unlock; makes memoization meaningful and eliminates the remaining ~14 mirror refs |
 | ~~JSX panel extraction~~ | DONE (10 batches, + batch 11 single-notation-input in a later session) — see "Properties-bar mode dispatch" below for the full history and what's still open (categorizeColor promotion — minor). |
 | OBB bounding box | Oriented bounding box for single-element selection (rotate box with object); AABB stays for multi-select |
-| `isTooShort` flag on move/transform | Currently only set when notation changes (via `computeElementAfterNotationEdit`). Investigated (later session): the flag compares `endpointDist` (straight-line distance between the element's actual endpoint coordinates) against `newLength` (notation-derived physical curve length) — see the computation and its comment around line 3724 in tattingindex.tsx. This means it's NOT purely a notation-derived property, despite the name suggesting otherwise. Verified: plain whole-element move/drag translates both endpoints by the same offset, so `endpointDist` is invariant — that case genuinely cannot trigger the bug, confirming a fix targeting "move" specifically would be unnecessary. NOT verified: path-edit-mode single-endpoint dragging (moving one endpoint handle independently of the other) — this is the case that could plausibly change `endpointDist` without any notation edit, but the handler for it lives in `useCanvasInteraction.ts`/`useInputHandlers.ts`, neither of which were in the sandbox this session. Before doing this fix: get those two files uploaded and confirm whether single-endpoint dragging actually leaves `isTooShort` stale — don't assume the original table note was right, and don't assume it was wrong either. |
+| ~~`isTooShort` flag on move/transform~~ | CLOSED (session 52) — turned out to be moot, not fixed. Got `useInputHandlers.ts` uploaded and traced `smartEndpointDrag` (the actual single-endpoint drag handler): it never writes a stored `isTooShort` field at all, and neither does `computeElementAfterNotationEdit` in the current code — the only `isTooShort` anywhere is a local var computed live every render via `isChainTooShort(el, dsWidth)` (tattingindex.tsx ~line 7720), which checks current chord-vs-physical-length directly regardless of what changed the geometry. Its own comment already explains why: a chain can always bulge/flatten to span any chord up to its physical length, so only exceeding that (plus a little give) is genuinely too short. `smartEndpointDrag` independently re-bulges to match target length on every drag, so it can't produce a false "too short" either. Nothing to fix — the table row's premise (a stale stored flag) describes an earlier design already superseded by the live check. |
 | ~~Endpoint joints across ghost arrays~~ | DONE (later session) — see "Endpoint joints across ghost arrays — implemented" under Rules above for root cause and implementation details. |
-| File load still opens in realistic mode | OPEN as of session 52 — both known `renderMode`-on-load sites were fixed and confirmed `tsc`-clean, but the user still saw the bug afterward. Likely an undiscovered third load path (Tauri file-association handler is the leading suspect — see useProjectFile.ts entry above and handoff.md). Start here, don't re-derive from scratch. |
+| ~~File load still opens in realistic mode~~ | FIXED (session 52). Root cause was NOT a third load path — it was a bug in the fix that session 52's handoff believed was already applied. `useProjectFile.ts`'s `applyProjectData`, the line actually in the uploaded file, was `p.setRenderMode(projectData.renderMode || 'schematic')` — using the *saved* renderMode whenever present, only falling back to schematic when the field was missing/falsy. Since a project saved while in realistic mode has `renderMode: 'realistic'` in the file, loading it reproduced exactly the reported bug. The handoff's claim that this line "forces schematic, ignores projectData.renderMode" didn't match what was actually in the file — either the real fix never got saved, or was reverted. Fixed to unconditionally `setRenderMode('schematic')`. Confirmed `loadFromAutosave()` (tattingindex.tsx ~line 864) was correct all along — hardcoded, no fallback trick, nothing to fix there. Traced both `loadFromPath`/`loadProject` (recent-projects and browse-button paths) and confirmed both route through `applyProjectData` — there was never a third path. |
 | Split-ring picot color, schematic mode | OPEN as of session 52 — `armColor` in `renderOnePicot` (via `getSolidColor`) has the same side-blind bug that was fixed for the baked realistic renderer and fold/join connection color this session (always resolves `materialId`, never `materialIdB`, regardless of which side the picot is on). Two other `getSolidColor` call sites (~5010, ~5119) never investigated. Fix would follow the established pattern: check `getSplitRingSide(element, picot)` (tattingindex.tsx) and substitute `materialIdB` when it's `'B'`. |
 | Ghost-array regeneration's connection remap may drop connections silently | OPEN as of session 52 — flagged but not traced deeply enough to confirm reachability. If a polar array shrinks, the ghost-ID remap (tattingindex.tsx, near `setPicotConnections(merged)`, search `oldGhostIdsSorted`/`newGhostIdsSorted`) may leave some old connections with no remap target, silently dropping them without demoting `isJoint` on the far side — the same bug pattern fixed at two other sites this session (see `applyJointFlags` note under useJoinActions.ts above). |
+| Round-group assignment duplication + missing skipAutoHistoryRef | FIXED (session 52). `LineElementPropertyBar.tsx` and `GeneralElementPropertyBar.tsx` each had their own ~25-line inline RoundGroupPicker wiring, and had drifted onto two different (both broken) history strategies — see the useHistoryActions.ts addendum above for the skipAutoHistoryRef half of this; this is the duplication half. Extracted to `utils/roundGroupActions.ts`'s `createRoundGroupHandlers(...)` factory, used identically by both files now. `GeneralElementPropertyBar.tsx`'s old `pushOrderHistory`/`setTimeout(...,0)` and `needsHistoryPushRef` props are fully retired on this path; `skipAutoHistoryRef` threaded through instead (SingleSelectPropertyBar.tsx → tattingindex.tsx call site). |
+| `applyGroupRotation` negative-modulo bug + duplicated ±90° button math | FIXED (session 52). `useEditorActions.ts`'s `applyGroupRotation`: `(rotation + delta) % 360` with no second normalization pass could store e.g. `-90` instead of `270`, unlike the `((x%360)+360)%360` idiom used everywhere else `.rotation` is computed — including its own sibling `applyMultiSelectRotationDelta` right above it, which was already correct. Fixed the modulo, and redirected `MultiSelectSummaryBar.tsx`'s ±90° group-rotate buttons (which had their own hand-rolled copy of the same pivot/rotation geometry, sharing the same modulo bug) to call `applyGroupRotation(currentDeg ± 90)` instead — one geometry implementation instead of two. |
+| `loadFromPath`/`loadProject` duplication | FIXED (session 52). `useProjectFile.ts`: both were ~90% identical (same read+applyProjectData+error-handling block, differing only in how `filePath` is obtained). Extracted to a shared `readAndApplyProjectFile(filePath)` helper; both are now thin wrappers. Motivation: this is exactly the kind of split that let the file-load-realistic-mode bug's fix apply cleanly to one copy and get missed in the other (see FIXED row above). |
+| Squeeze slider undo (`ShapeAndSqueezeControls.tsx`) | FIXED (session 52) — see the useHistoryActions.ts addendum above for full detail. Short version: the only place outside `useInputHandlers.ts`'s canvas mousedown/mouseup pair that sets `isInteractingRef.current = true`. Its deferred push via `needsHistoryPushRef` was never flushed, since that flag's only consumer is scoped to the canvas SVG's own `onMouseUp`. Fixed with a direct `pushHistoryState` call on release. |
+| Six `align*` functions duplication (`useEditorActions.ts`) | OPEN. `alignLeft`/`alignRight`/`alignTop`/`alignBottom`/`alignCenterHorizontal`/`alignCenterVertical` are structurally identical — get bounding box, compute target position per aggregation, map selected elements shifting by delta — varying only in which bounds property/aggregation is used. Collapsible into one parameterized function. Note for whoever picks this up: none of the six call `pushHistoryState` or touch `skipAutoHistoryRef`/`isInteractingRef` — per the useHistoryActions.ts convention, that's correct as-is (the auto-push effect covers plain `setElements` calls with none of the four guard refs touched); don't "fix" a missing history push here, there isn't one. |
+| `paths.ts` binary-search duplication | OPEN. `splitRingMaxH`, `splitRingSolveBulge`, and both branches of `applyPathPreset` (symmetric/non-symmetric, which are themselves ~90% duplicate of each other) each hand-roll the same "grow hi until it overshoots, then bisect" idiom against a different target function. Candidate for one shared `solveForTarget(evalFn, target, tolerance, maxIters)` utility. |
+| `ShapeAndSqueezeControls.tsx` squeeze-reset buttons vs `resetElementShape` | OPEN. The two internal squeeze-reset buttons (regular ring, split ring) now duplicate exactly what `resetElementShape` (paths.ts, added session 52 for the Reset Transform feature) already does for closed/split-ring shapes. Duplication was created deliberately that session — didn't want to touch verified-working slider code while adding an unrelated feature. Worth revisiting now that `resetElementShape` is proven correct (see paths.ts entry above); output should be byte-identical, this is a pure DRY cleanup. |
+| Duplicated rotation-expression evaluators (`MultiSelectSummaryBar.tsx`) | OPEN, not yet fixed. The free multi-select rotation-delta input's `onBlur`/`onKeyDown` each hand-roll their own `new Function('"use strict"; return (' + s + ')')()` mini math-expression evaluator (regex-gated to digits/operators/parens), duplicated between the two handlers. The group-rotation text field *in the same file* already uses the existing `parseRotationExpr` prop for the identical job. Worth checking whether `parseRotationExpr` can just be reused here directly before writing a third variant. |
+| Free multi-select notation scaling vs `updateNotationForMultiple` | OPEN, needs verification before assuming it's pure duplication. `MultiSelectSummaryBar.tsx`'s free-multi-select notation `onBlur` (~50 lines) reimplements per-shape-type path scaling inline (ring/split-ring, with a `scPt` scaling helper defined twice within it) instead of delegating to `updateNotationForMultiple`. BUT: per the existing "Picot Wizard — batch update" doc section, `updateNotationForMultiple` only supports `preservesExistingPicots: true` callers and silently skips ghost-mother elements — confirm the free-multi-select scaling use case can actually satisfy that constraint before assuming this is a clean swap; it may be intentionally separate. |

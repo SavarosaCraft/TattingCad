@@ -2525,7 +2525,7 @@ const APP_VERSION = '1.2.0-beta';
   // or a person-reviewed subset of it). Only touches `paths`; everything
   // else (picots, notation, connections, color) is left exactly as-is.
   const repairElements = (ids) => {
-    const newEls = elementsRef.current.map(el => {
+    const newEls = (elementsRef.current as any[]).map((el: any) => {
       if (!ids.includes(el.id)) return el;
       if (!detectCorruptedRingGeometry(el)) return el; // safety: re-check, don't touch anything not actually flagged
       return { ...el, paths: repairRingGeometry(el) };
@@ -4803,7 +4803,7 @@ const APP_VERSION = '1.2.0-beta';
     const dotColor = p.isCoreJoin
       ? (isSelected ? theme.cjSelected : getIsConnected() ? theme.cjConnected : theme.cjUnconnected)
       : (isSelected ? theme.jpSelected : getIsConnected() ? theme.jpConnected : theme.jpUnconnected);
-    const armColor = p.isGuidePoint ? theme.gpDiamond : getSolidColor(element);
+    const armColor = p.isGuidePoint ? theme.gpDiamond : getSolidColor(element, p);
     const sw = isSelected ? '4' : '2';
     const dotR = isSelected ? 6 / zoom : 4.5 / zoom;
     const len = PICOT_SIZE[p.length] || 20;
@@ -5561,8 +5561,14 @@ const APP_VERSION = '1.2.0-beta';
     }
   };
 
-  const getSolidColor = (element) => {
-    const mat = materialsById.get(element.materialId || 'default');
+  // picot is optional — only split-ring picot-arm rendering needs side
+  // awareness (materialId vs materialIdB); the two label-color call sites
+  // below have no specific picot in scope and are unaffected, since
+  // getSplitRingSide returns null with no picot passed.
+  const getSolidColor = (element, picot) => {
+    const side = getSplitRingSide(element, picot);
+    const materialId = (side === 'B' && element.materialIdB) ? element.materialIdB : element.materialId;
+    const mat = materialsById.get(materialId || 'default');
     if (mat && !mat.isGradient) return mat.color;
     if (mat && mat.isGradient) {
       const gradientColor = dmcColors.find(c => c.id === mat.color);
@@ -6420,7 +6426,7 @@ const APP_VERSION = '1.2.0-beta';
               picotWizardSide={picotWizardSide}
               picotWizardSymmetric={picotWizardSymmetric}
               isInteractingRef={isInteractingRef}
-              needsHistoryPushRef={needsHistoryPushRef}
+              skipAutoHistoryRef={skipAutoHistoryRef}
               notationEscapeRef={notationEscapeRef}
               pendingNotationRef={pendingNotationRef}
               picotConnectionsRef={picotConnectionsRef}
@@ -6434,7 +6440,6 @@ const APP_VERSION = '1.2.0-beta';
               setLabelOffset={setLabelOffset}
               commitOrderDraft={commitOrderDraft}
               pushHistoryState={pushHistoryState}
-              pushOrderHistory={pushOrderHistory}
               setAlertDialog={setAlertDialog}
               setDraftNotation={setDraftNotation}
               setNotationError={setNotationError}

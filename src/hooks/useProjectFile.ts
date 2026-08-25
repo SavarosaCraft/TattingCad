@@ -290,11 +290,10 @@ export function useProjectFile(p: UseProjectFileParams) {
     addToRecents(displayName, filePath, thumbPath);
   }, [p.t]);
 
-  const loadFromPath = useCallback(async (filePath: string) => {
-    if (!filePath) {
-      p.showLoadMsg('error', p.t('loadErrFileNotFound'));
-      return;
-    }
+  // Shared by loadFromPath and loadProject — both need to read a project
+  // file, apply it, and handle the same two error cases the same way; only
+  // how filePath is obtained differs between the two callers.
+  const readAndApplyProjectFile = useCallback(async (filePath: string) => {
     try {
       const projectData = await readProjectFile(filePath);
       console.log('[load] readProjectFile succeeded for', filePath);
@@ -309,22 +308,19 @@ export function useProjectFile(p: UseProjectFileParams) {
     }
   }, [applyProjectData, p.t]);
 
+  const loadFromPath = useCallback(async (filePath: string) => {
+    if (!filePath) {
+      p.showLoadMsg('error', p.t('loadErrFileNotFound'));
+      return;
+    }
+    await readAndApplyProjectFile(filePath);
+  }, [readAndApplyProjectFile, p.t]);
+
   const loadProject = useCallback(async () => {
     const filePath = await showOpenDialog();
     if (!filePath) return;
-    try {
-      const projectData = await readProjectFile(filePath);
-      console.log('[load] readProjectFile succeeded for', filePath);
-      applyProjectData(projectData, filePath);
-    } catch (error: any) {
-      console.log('[load] readProjectFile/applyProjectData threw:', error);
-      if (isFileNotFoundError(error)) {
-        p.showLoadMsg('error', p.t('loadErrFileNotFound'));
-      } else {
-        p.showLoadMsg('error', p.t('loadErrGeneric').replace('{msg}', getErrorMessage(error)));
-      }
-    }
-  }, [applyProjectData, p.t]);
+    await readAndApplyProjectFile(filePath);
+  }, [readAndApplyProjectFile]);
 
   const exportSVG = useCallback(async () => {
     if (!p.canvasRef.current) return;

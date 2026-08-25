@@ -29,6 +29,7 @@ import {
 } from '../domain/picotTools';
 import { updateSelected, updateElement } from '../utils/elementUpdates';
 import { resetElementShape } from '../geometry/paths';
+import { createRoundGroupHandlers } from '../utils/roundGroupActions';
 
 // Extracted from tattingindex.tsx (single-select property bar, general/non-line branch:
 // notation input, split-ring dual notation, picot wizard, rotation controls, round group
@@ -60,7 +61,6 @@ interface GeneralElementPropertyBarProps {
   picotWizardSide: any;
   picotWizardSymmetric: boolean;
   isInteractingRef: React.MutableRefObject<boolean>;
-  needsHistoryPushRef: React.MutableRefObject<boolean>;
   notationEscapeRef: React.MutableRefObject<any>;
   pendingNotationRef: React.MutableRefObject<any>;
   picotConnectionsRef: React.MutableRefObject<any>;
@@ -74,7 +74,7 @@ interface GeneralElementPropertyBarProps {
   setLabelOffset: (...args: any[]) => void;
   commitOrderDraft: (id: any, draft: string | null, el?: any) => void;
   pushHistoryState: (els: any[], picotConnections: any, rounds: any[]) => void;
-  pushOrderHistory: (...args: any[]) => void;
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
   setAlertDialog: (v: any) => void;
   setDraftNotation: (v: any) => void;
   setNotationError: (v: any) => void;
@@ -112,7 +112,6 @@ export function GeneralElementPropertyBar({
   picotWizardSide,
   picotWizardSymmetric,
   isInteractingRef,
-  needsHistoryPushRef,
   notationEscapeRef,
   pendingNotationRef,
   picotConnectionsRef,
@@ -126,7 +125,7 @@ export function GeneralElementPropertyBar({
   setLabelOffset,
   commitOrderDraft,
   pushHistoryState,
-  pushOrderHistory,
+  skipAutoHistoryRef,
   setAlertDialog,
   setDraftNotation,
   setNotationError,
@@ -528,35 +527,31 @@ export function GeneralElementPropertyBar({
               </div>
 
               {/* Round group picker — inline next to order number, available outside tatting order mode */}
-              <RoundGroupPicker
-                buttonRef={propBarGroupButtonRef}
-                isOpen={showPropBarGroupDropdown}
-                onToggle={() => setShowPropBarGroupDropdown(d => !d)}
-                currentGroupId={getRoundId(selectedElement)}
-                rounds={rounds}
-                onSelectUngrouped={() => {
-                  setElements(prev => updateElement(prev, selectedElement.id, { roundId: undefined, orderGroup: undefined }));
-                  setShowPropBarGroupDropdown(false);
-                  pushOrderHistory();
-                }}
-                onSelectGroup={(groupId) => {
-                  setElements(prev => updateElement(prev, selectedElement.id, { roundId: groupId, orderGroup: undefined }));
-                  setShowPropBarGroupDropdown(false);
-                  pushOrderHistory();
-                }}
-                onCreateNew={() => {
-                  const name = t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1));
-                  const id = crypto.randomUUID();
-                  setRounds(prev => [...prev, { id, name }]);
-                  setElements(prev => updateElement(prev, selectedElement.id, { roundId: id, orderGroup: undefined }));
-                  setShowPropBarGroupDropdown(false);
-                  setTimeout(() => pushOrderHistory(), 0);
-                }}
-                ungroupedLabel={t('tattingOrderUngrouped')}
-                createNewLabel={t('tattingOrderRoundNew')}
-                triggerTitle={t('tattingOrderGroupTitle') || 'Assign to round'}
-                wrapperClassName="relative flex-shrink-0 top-toolbar-scalable"
-              />
+              {(() => {
+                const roundGroupHandlers = createRoundGroupHandlers({
+                  selectedElementId: selectedElement.id,
+                  elementsRef, picotConnectionsRef, roundsRef, skipAutoHistoryRef,
+                  setElements, setRounds, pushHistoryState,
+                  closeDropdown: () => setShowPropBarGroupDropdown(false),
+                  roundDefaultNameTemplate: t('tattingOrderRoundDefault'),
+                });
+                return (
+                  <RoundGroupPicker
+                    buttonRef={propBarGroupButtonRef}
+                    isOpen={showPropBarGroupDropdown}
+                    onToggle={() => setShowPropBarGroupDropdown(d => !d)}
+                    currentGroupId={getRoundId(selectedElement)}
+                    rounds={rounds}
+                    onSelectUngrouped={roundGroupHandlers.onSelectUngrouped}
+                    onSelectGroup={roundGroupHandlers.onSelectGroup}
+                    onCreateNew={roundGroupHandlers.onCreateNew}
+                    ungroupedLabel={t('tattingOrderUngrouped')}
+                    createNewLabel={t('tattingOrderRoundNew')}
+                    triggerTitle={t('tattingOrderGroupTitle') || 'Assign to round'}
+                    wrapperClassName="relative flex-shrink-0 top-toolbar-scalable"
+                  />
+                );
+              })()}
 
               <RwToggleButton
                 active={selectedElement.rw}

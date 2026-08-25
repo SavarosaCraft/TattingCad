@@ -2,6 +2,7 @@ import React from 'react';
 import { OrderNumberInput } from './OrderNumberInput';
 import { RoundGroupPicker } from './RoundGroupPicker';
 import { LineBeadPicker } from './LineBeadPicker';
+import { createRoundGroupHandlers } from '../utils/roundGroupActions';
 
 // Extracted from tattingindex.tsx (single-select property bar, line-type branch).
 // Pure relocation — no logic changes. Verify against original lines 7163–7223.
@@ -19,6 +20,7 @@ interface LineElementPropertyBarProps {
   showPropBarGroupDropdown: boolean;
   propBarGroupButtonRef: React.RefObject<HTMLButtonElement>;
   picotConnectionsRef: React.MutableRefObject<any>;
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
   renderRotateFlipControls: () => React.ReactNode;
   getRoundId: (el: any) => any;
   commitOrderDraft: (id: any, draft: string | null, el?: any) => void;
@@ -46,6 +48,7 @@ export function LineElementPropertyBar({
   showPropBarGroupDropdown,
   propBarGroupButtonRef,
   picotConnectionsRef,
+  skipAutoHistoryRef,
   renderRotateFlipControls,
   getRoundId,
   commitOrderDraft,
@@ -75,37 +78,29 @@ export function LineElementPropertyBar({
         label={t('propOrder')}
       />
         {/* Round group picker for lines */}
-        <RoundGroupPicker
-          buttonRef={propBarGroupButtonRef}
-          isOpen={showPropBarGroupDropdown}
-          onToggle={() => setShowPropBarGroupDropdown(d => !d)}
-          currentGroupId={getRoundId(selectedElement)}
-          rounds={rounds}
-          onSelectUngrouped={() => {
-            const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, roundId: undefined, orderGroup: undefined } : el);
-            setElements(newEls);
-            setShowPropBarGroupDropdown(false);
-            pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
-          }}
-          onSelectGroup={(groupId) => {
-            const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, roundId: groupId, orderGroup: undefined } : el);
-            setElements(newEls);
-            setShowPropBarGroupDropdown(false);
-            pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
-          }}
-          onCreateNew={() => {
-            const name = t('tattingOrderRoundDefault').replace('{n}', String(rounds.length + 1));
-            const id = crypto.randomUUID();
-            const newGroups = [...roundsRef.current, { id, name }];
-            const newEls = elementsRef.current.map(el => el.id === selectedElement.id ? { ...el, roundId: id, orderGroup: undefined } : el);
-            setRounds(newGroups);
-            setElements(newEls);
-            setShowPropBarGroupDropdown(false);
-            pushHistoryState(newEls, picotConnectionsRef.current, newGroups);
-          }}
-          ungroupedLabel={t('tattingOrderUngrouped')}
-          createNewLabel={t('tattingOrderRoundNew')}
-        />
+        {(() => {
+          const roundGroupHandlers = createRoundGroupHandlers({
+            selectedElementId: selectedElement.id,
+            elementsRef, picotConnectionsRef, roundsRef, skipAutoHistoryRef,
+            setElements, setRounds, pushHistoryState,
+            closeDropdown: () => setShowPropBarGroupDropdown(false),
+            roundDefaultNameTemplate: t('tattingOrderRoundDefault'),
+          });
+          return (
+            <RoundGroupPicker
+              buttonRef={propBarGroupButtonRef}
+              isOpen={showPropBarGroupDropdown}
+              onToggle={() => setShowPropBarGroupDropdown(d => !d)}
+              currentGroupId={getRoundId(selectedElement)}
+              rounds={rounds}
+              onSelectUngrouped={roundGroupHandlers.onSelectUngrouped}
+              onSelectGroup={roundGroupHandlers.onSelectGroup}
+              onCreateNew={roundGroupHandlers.onCreateNew}
+              ungroupedLabel={t('tattingOrderUngrouped')}
+              createNewLabel={t('tattingOrderRoundNew')}
+            />
+          );
+        })()}
         {/* ── Line bead picker ── */}
         <LineBeadPicker
           selectedElement={selectedElement}

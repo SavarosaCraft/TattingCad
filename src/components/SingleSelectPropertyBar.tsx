@@ -33,7 +33,7 @@ interface SingleSelectPropertyBarProps {
   picotWizardSide: any;
   picotWizardSymmetric: boolean;
   isInteractingRef: React.MutableRefObject<boolean>;
-  needsHistoryPushRef: React.MutableRefObject<boolean>;
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
   notationEscapeRef: React.MutableRefObject<any>;
   pendingNotationRef: React.MutableRefObject<any>;
   picotConnectionsRef: React.MutableRefObject<any>;
@@ -47,7 +47,6 @@ interface SingleSelectPropertyBarProps {
   setLabelOffset: (...args: any[]) => void;
   commitOrderDraft: (id: any, draft: string | null, el?: any) => void;
   pushHistoryState: (els: any[], picotConnections: any, rounds: any[]) => void;
-  pushOrderHistory: (...args: any[]) => void;
   setAlertDialog: (v: any) => void;
   setDraftNotation: (v: any) => void;
   setNotationError: (v: any) => void;
@@ -86,6 +85,7 @@ export function SingleSelectPropertyBar(props: SingleSelectPropertyBarProps) {
           showPropBarGroupDropdown={props.showPropBarGroupDropdown}
           propBarGroupButtonRef={props.propBarGroupButtonRef}
           picotConnectionsRef={props.picotConnectionsRef}
+          skipAutoHistoryRef={props.skipAutoHistoryRef}
           renderRotateFlipControls={props.renderRotateFlipControls}
           getRoundId={props.getRoundId}
           commitOrderDraft={props.commitOrderDraft}
@@ -121,7 +121,7 @@ export function SingleSelectPropertyBar(props: SingleSelectPropertyBarProps) {
           picotWizardSide={props.picotWizardSide}
           picotWizardSymmetric={props.picotWizardSymmetric}
           isInteractingRef={props.isInteractingRef}
-          needsHistoryPushRef={props.needsHistoryPushRef}
+          skipAutoHistoryRef={props.skipAutoHistoryRef}
           notationEscapeRef={props.notationEscapeRef}
           pendingNotationRef={props.pendingNotationRef}
           picotConnectionsRef={props.picotConnectionsRef}
@@ -135,7 +135,6 @@ export function SingleSelectPropertyBar(props: SingleSelectPropertyBarProps) {
           setLabelOffset={props.setLabelOffset}
           commitOrderDraft={props.commitOrderDraft}
           pushHistoryState={props.pushHistoryState}
-          pushOrderHistory={props.pushOrderHistory}
           setAlertDialog={props.setAlertDialog}
           setDraftNotation={props.setDraftNotation}
           setNotationError={props.setNotationError}
