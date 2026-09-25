@@ -655,6 +655,8 @@ const APP_VERSION = '1.2.0-beta';
   useEffect(() => {
     historyRef.current = history;
     historyIndexRef.current = historyIndex;
+    // eslint-disable-next-line no-console
+    console.log(`[HIST] ref-sync: historyRef.length=${history.length} historyIndexRef=${historyIndex}`);
   }, [history, historyIndex]);
 
   const lastMousePosRef = useRef(null); // was state — now ref to avoid re-render on every move
@@ -704,8 +706,16 @@ const APP_VERSION = '1.2.0-beta';
 
   // Track history when elements or connections change
   useEffect(() => {
-    if (isUndoRedoRef.current) return; // Don't add during undo/redo
-    if (skipAutoHistoryRef.current) { skipAutoHistoryRef.current = false; return; } // Explicit push already done
+    if (isUndoRedoRef.current) {
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] auto-push SKIPPED: mid undo/redo, els=${elements.length}:[${elements.slice(0, 6).map(e => e?.id).join(',')}]`);
+      return; // Don't add during undo/redo
+    }
+    if (skipAutoHistoryRef.current) {
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] auto-push SKIPPED: skipAutoHistoryRef (explicit push already done), els=${elements.length}:[${elements.slice(0, 6).map(e => e?.id).join(',')}]`);
+      skipAutoHistoryRef.current = false; return;
+    } // Explicit push already done
     if (isInteractingRef.current) {
       needsHistoryPushRef.current = true; // Push after interaction ends instead
       return;
@@ -719,6 +729,8 @@ const APP_VERSION = '1.2.0-beta';
     // which has the same latent issue but never hits it in practice because
     // every path that changes `groups` bypasses this effect entirely via
     // skipAutoHistoryRef + an explicit push with fresh values instead).
+    // eslint-disable-next-line no-console
+    console.log(`[HIST] auto-push COMMIT: els=${elements.length}:[${elements.slice(0, 6).map(e => e?.id).join(',')}] rounds=${(roundsRef.current ?? []).length} groups=${(groupsRef.current ?? []).length}`);
     pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids, groupsRef.current, ghostArrays);
   }, [elements, picotConnections, polarGrids, ghostArrays]); // Depend on elements, connections, polarGrids, and ghostArrays
 
@@ -950,12 +962,41 @@ const APP_VERSION = '1.2.0-beta';
   // permanently stuck at true — leaving the canvas thinking a drag is still
   // in progress. A document-level pointerup clears it regardless of which
   // element originally received the pointerdown.
+  //
+  // BUG FOUND VIA LOGGING (see [HIST] instrumentation): this fired on EVERY
+  // pointerup, not just orphaned slider drags — including ordinary canvas
+  // drags that the SVG's own onMouseUp (handleMouseUp, useInputHandlers.ts)
+  // was about to handle correctly. Browsers dispatch 'pointerup' BEFORE
+  // 'mouseup' for the same physical release, so this ran first, saw
+  // isInteractingRef.current === true, and reset it to false before
+  // handleMouseUp's own explicit history push could check it — silently
+  // dropping that edit from history. Root cause of the intermittent
+  // "bend a line, undo removes more than expected" / "undo digs into a
+  // previous project's history" reports. Deferred by one tick so the
+  // canvas's own mouseup handler (same gesture, fires moments later)
+  // always runs its correct cleanup+push first; the orphaned-slider case
+  // this net actually exists for has nothing else to reset the flag, so it
+  // still fires correctly here, just one tick later.
   useEffect(() => {
     const handleDocPointerUp = () => {
-      if (isInteractingRef.current) {
-        isInteractingRef.current = false;
-        needsHistoryPushRef.current = true;
-      }
+      setTimeout(() => {
+        if (isInteractingRef.current) {
+          // Genuinely orphaned (not the race above, which resolves to false
+          // by this point every time) — nothing else will ever push this
+          // edit, since the only reader of needsHistoryPushRef also requires
+          // isInteractingRef to still be true (useInputHandlers.ts mouseUp
+          // check), which we're about to clear. Push directly instead of
+          // just setting a flag that would never actually get consumed.
+          // Uses the *Ref.current convention (elementsRef/picotConnectionsRef/
+          // roundsRef), same as every other explicit pushHistoryState call
+          // site in this file, so this effect can stay mount-once ([] deps)
+          // rather than rebinding a document listener on every drag tick.
+          // eslint-disable-next-line no-console
+          console.log('[HIST] safety-net pointerup: isInteractingRef was still true after mouseup handling — orphaned drag, pushing directly');
+          isInteractingRef.current = false;
+          pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
+        }
+      }, 0);
     };
     document.addEventListener('pointerup', handleDocPointerUp);
     return () => document.removeEventListener('pointerup', handleDocPointerUp);
@@ -1222,12 +1263,28 @@ const APP_VERSION = '1.2.0-beta';
       }
     };
     
+    const handleBlur = () => {
+      // If the window/tab loses focus while a modifier is physically held
+      // (alt-tab, OS shortcut stealing the keyup, devtools taking focus,
+      // etc.), the corresponding keyup event never reaches this page and
+      // these flags stick at their "held" value forever — permanently
+      // axis-locking drags (isShiftHeld), or leaving pan/zoom-rect mode
+      // stuck on. Reset all three whenever we lose focus.
+      setIsShiftHeld(false);
+      spaceDownRef.current = false;
+      setSpaceDown(false);
+      zDownRef.current = false;
+      setZDown(false);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
 
@@ -2153,7 +2210,13 @@ const APP_VERSION = '1.2.0-beta';
 
   // New canvas - confirm if there are elements
   const newCanvas = () => {
-    if (elements.length === 0 && historyIndex === 0) return;
+    if (elements.length === 0 && historyIndex === 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] newCanvas(): early-return no-op, already empty at idx 0`);
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[HIST] newCanvas(): showing confirm dialog. current els=${elements.length} historyIndex=${historyIndex} historyLen=${history.length}`);
     setConfirmDialog({
       title: t('newCanvasTitle'),
       message: t('newCanvasBody'),
@@ -2163,6 +2226,21 @@ const APP_VERSION = '1.2.0-beta';
   };
 
   const confirmNewCanvas = () => {
+    // eslint-disable-next-line no-console
+    console.log(`[HIST] === confirmNewCanvas() running === (pre-reset historyLen=${historyRef.current.length}, historyIndexRef=${historyIndexRef.current})`);
+    // We're about to explicitly set `history` to a single fresh entry below —
+    // but elements/picotConnections also change in this same batch, which
+    // independently re-triggers the auto-push effect. That effect would read
+    // roundsRef.current/groupsRef.current (refs, one render stale relative to
+    // this exact commit — their own sync effect hasn't run yet) and the real
+    // polarGrids state (deliberately hidden, not cleared, a few lines below),
+    // none of which match the literal empty object written to history here.
+    // The de-dupe check would then see a "different" state and push a
+    // spurious second entry — harmless in content (still empty elements) but
+    // it left the undo button enabled on a brand new project. Same
+    // skipAutoHistoryRef convention already used for rotation's ghost-regen
+    // and the short-line-discard fix.
+    skipAutoHistoryRef.current = true;
     setElements([]);
     setSelectedIds([]);
     setClipboard([]);
@@ -2183,6 +2261,13 @@ const APP_VERSION = '1.2.0-beta';
     // materials/gradients the previous project had defined instead of
     // starting from the single default white thread (bug fix, session 52).
     setMaterials(DEFAULT_MATERIALS);
+    // TEMP DEBUG: check the settled state a tick after this commit + its
+    // effects have flushed, to see whether the auto-push effect added an
+    // unexpected extra entry (and what's actually in it) right after New.
+    setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] confirmNewCanvas settled: historyRef.length=${historyRef.current.length} historyIndexRef=${historyIndexRef.current} entries=${JSON.stringify(historyRef.current.map(h => ({ els: h.elements?.length ?? 0, rounds: h.rounds?.length ?? 0, groups: h.spatialGroups?.length ?? 0 })))}`);
+    }, 0);
   };
 
   // ── Recent Projects helpers ───────────────────────────────────────────────

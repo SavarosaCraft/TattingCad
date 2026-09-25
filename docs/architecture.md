@@ -4,7 +4,12 @@
 
 ```
 src/
-  tattingindex.tsx        Main component (orchestration only)
+  tattingindex.tsx        Main component (orchestration only). Obtained directly for
+                          the first time later session (previously only ever seen via
+                          excerpts/paraphrase) — see the split-ring picot color fix
+                          (paths.ts entry) and the "Stuck modifier keys on window
+                          blur" / useHistoryActions.ts Addenda 4-5 entries under
+                          Rules for what was found once it was actually in hand.
   main.tsx
   index.css
 
@@ -613,7 +618,13 @@ src/
     useProjectState.ts    Project/file state
     useBeadState.ts       Bead, picot, thread state
     useViewState.ts       Visual settings state
-    usePatternState.ts    Core domain state (elements, picotConnections, materials…)
+    usePatternState.ts    Core domain state (elements, picotConnections, materials…).
+                          Obtained later session while chasing the history-reset bugs
+                          (useHistoryActions.ts Addendum 5) — checked and ruled out as
+                          a cause: history/historyIndex and everything else here are
+                          plain useState, no custom persistence, merging, or debounce.
+                          The actual bugs were in the effects/functions that USE this
+                          state, not in the state hook itself.
     useHistoryActions.ts  pushHistoryState(els, conns, groups?, grids?) — reviewed directly
                           (later session), then extended in the same session to add a real
                           4th parameter. Snapshot is now {elements, connections, orderGroups,
@@ -712,7 +723,7 @@ src/
                           most of them are already correct; check skipAutoHistoryRef usage at
                           each site individually before touching it.
 
-                          ADDENDUM (session 52 — nearly repeated the exact mistake this
+                          ADDENDUM 1 (session 52 — nearly repeated the exact mistake this
                           section already warns against): an undo/history audit initially
                           flagged ~10 handlers across MultiSelectSummaryBar.tsx and
                           useEditorActions.ts (group ±90° rotate buttons, hide-label
@@ -770,6 +781,177 @@ src/
                           of exactly this bug class, and an explicit warning against
                           flagging plain setElements calls. Skipping that read cost a
                           full audit pass that had to be substantially walked back.
+
+                          ADDENDUM 2 (later session — this pattern recurs even when the
+                          audit isn't a project-side mistake): an external AI review of
+                          useInputHandlers.ts standalone, without access to this doc,
+                          flagged (as HIGH severity) that needsHistoryPushRef is never
+                          set to true anywhere in that file, concluding undo must be
+                          broken for every interaction there. Verified: correct that the
+                          file only reads/resets the ref, never writes true to it — but
+                          false as a bug claim, for exactly the reason this section
+                          exists: the tattingindex.tsx auto-push effect is what sets it,
+                          specifically when isInteractingRef.current is true at the
+                          moment elements changes. useInputHandlers.ts sets
+                          isInteractingRef.current = true at its 6 drag-start sites and
+                          calls setElements during the drag — that's what trips the
+                          parent effect. Two files correctly co-own the mechanism by
+                          design; a file-only review has no way to see the other half.
+                          Rejected as a false positive; no fix made. Third occurrence of
+                          this exact misdiagnosis pattern now (useJoinActions.ts
+                          historically, ~10 handlers earlier this session, now this) —
+                          worth a one-line comment at needsHistoryPushRef's declaration
+                          in useInputHandlers.ts pointing at the effect that actually
+                          sets it, as cheap insurance against a fourth.
+
+                          ADDENDUM 3 (same session as Addendum 2) — a real bug, different
+                          shape from either addendum above: found in useInputHandlers.ts's
+                          handleMouseUp, verified by tracing rather than by the (correct,
+                          but under-specified) review finding that flagged it. Drawing a
+                          new line and releasing before it reached a minimum length used
+                          to produce TWO history entries instead of zero. Root cause was
+                          ordering, not a missing guard: the explicit push (this section's
+                          isInteractingRef && needsHistoryPushRef check) ran using
+                          p.elements as it stood with the too-short line still present;
+                          104 lines later, an unconditional cleanup filter removed any
+                          line under 12 units — as a plain setElements call, with
+                          isInteractingRef already reset to false by then, so the
+                          auto-push effect picked it up as an ordinary second change.
+                          Worse than the ordering issue alone: that cleanup filter wasn't
+                          even scoped to the line just drawn — it scanned and filtered
+                          EVERY line element on EVERY mouse-up regardless of tool or
+                          gesture, so deliberately shrinking an EXISTING line below 12
+                          units via handle-editing silently deleted it too, with no undo
+                          path back (its removal was a separate, un-skippable auto-pushed
+                          entry). Fixed by capturing which line (if any) this specific
+                          gesture created and whether it's too short, BEFORE the explicit
+                          push — skip the push entirely when it is; then scope the
+                          removal to that one line by id (not a scan of all elements) and
+                          set skipAutoHistoryRef first, same suppression convention as
+                          Addendum 1/the rotation ghost-regen case. Net effect: a drawn
+                          and abandoned line now leaves zero history entries, existing
+                          lines are never touched by this path, and the per-mouse-up
+                          scan only runs on the one gesture it's actually for.
+
+                          ADDENDUM 4 (later session — the REAL answer to a user report
+                          that Addendum 3's fix did not itself explain): "bend a line's
+                          handle twice via the path tool, then undo, removes the whole
+                          line" — not just the last edit. Static tracing of
+                          useInputHandlers.ts/useHistoryActions.ts/useEditorActions.ts
+                          alone did not reproduce it (see
+                          useInputHandlers-review-verification-and-plan.md-adjacent
+                          session notes); root cause only surfaced once temporary
+                          console logging was added across the whole push/undo/redo
+                          pipeline and the bug was caught live. The actual mechanism:
+                          document.addEventListener('pointerup', ...) in
+                          tattingindex.tsx (a safety net originally built for a
+                          narrower case — a property-bar slider whose own drag never
+                          reaches the canvas's onMouseUp) was firing on EVERY pointer
+                          release, not just orphaned ones. Browsers dispatch
+                          'pointerup' BEFORE 'mouseup' for the same physical release,
+                          so this safety net was clearing isInteractingRef.current
+                          before useInputHandlers.ts's own handleMouseUp (bound to
+                          'mouseup') got to check it — meaning ordinary canvas drags
+                          silently never pushed a history entry at all. No error, no
+                          visible symptom until the NEXT undo landed further back than
+                          expected, because the history stack genuinely had fewer
+                          entries than the number of edits made. Fixed by deferring the
+                          safety net's check by one tick (setTimeout(...,0)): since
+                          'mouseup' fires synchronously right after 'pointerup', the
+                          canvas's own handler now always resets the flag first in the
+                          ordinary case, and the safety net only ever sees
+                          isInteractingRef.current still true in the genuinely-orphaned
+                          case it was built for.
+
+                          The safety net's OWN orphaned-case recovery was also broken,
+                          found while fixing the above: it only set
+                          needsHistoryPushRef.current = true after clearing
+                          isInteractingRef.current — but the only reader of
+                          needsHistoryPushRef (this section's mouseUp check) requires
+                          BOTH flags true together, so that combination could never be
+                          read as true afterward. The flag-set did nothing; the orphaned
+                          edit was still silently dropped, just via a different
+                          mechanism than the race above. Fixed to push directly instead
+                          — pushHistoryState(elementsRef.current,
+                          picotConnectionsRef.current, roundsRef.current) — matching
+                          the *Ref.current convention already used at every other
+                          explicit push site in tattingindex.tsx, which also means the
+                          effect stays mount-once ([] deps) rather than needing to
+                          rebind the document listener on every drag tick for fresh
+                          state.
+
+                          ADDENDUM 5 (same session as Addendum 4) — a distinct bug,
+                          found while investigating a related but separate report ("New
+                          project, then redo, brings back a line from the previous
+                          project"): confirmNewCanvas, tattingindex.tsx's separate
+                          loadFromAutosave, and useProjectFile.ts's applyProjectData all
+                          share the same shape — each resets `history` directly via
+                          setHistory([{...one fresh entry...}]) while ALSO changing
+                          elements/picotConnections/(sometimes)polarGrids in the very
+                          same batch. That second change independently re-triggers the
+                          auto-push effect, which reads roundsRef.current/
+                          groupsRef.current (refs, one render stale relative to this
+                          exact commit — their own "keep refs up to date" sync effect
+                          hasn't run yet) and, for confirmNewCanvas specifically, the
+                          real polarGrids state (deliberately hidden not cleared, by
+                          design — see the "New Project" bug note elsewhere in this
+                          doc). None of those match the literal reset object just
+                          written to history, so the de-dupe check sees a "different"
+                          state and pushes a spurious second entry. In confirmNewCanvas
+                          this manifested as the undo button staying enabled on a brand
+                          new, untouched project (both entries have empty elements, so
+                          nothing was actually lost — just a confusing enabled button).
+                          It's plausible, though not confirmed, that the same mechanism
+                          — landing on one of these spurious near-duplicate entries at
+                          just the wrong moment — is what produced the original "New +
+                          redo brings back an old line" report, rather than a genuine
+                          data-loss bug; the three fixes below eliminate the mechanism
+                          either way. Fixed at all three sites the same way:
+                          skipAutoHistoryRef.current = true immediately before the
+                          state-changing calls begin, same convention as Addendum 1/3
+                          and the rotation ghost-regen case. applyProjectData needed
+                          skipAutoHistoryRef added to its params interface and threaded
+                          through at the tattingindex.tsx call site — it wasn't
+                          previously passed in at all.
+
+                          METHODOLOGY NOTE: Addenda 4 and 5 were found via temporary
+                          console.log instrumentation (prefixed [HIST]) added across
+                          useHistoryActions.ts (every push, SKIPPED vs PUSHED), 
+                          useEditorActions.ts (every undo()/redo() call and index
+                          transition), useInputHandlers.ts (the explicit-push check's
+                          inputs), and tattingindex.tsx (the ref-sync effect, the
+                          auto-push effect's skip/commit branches, confirmNewCanvas,
+                          and the safety-net pointerup effect) — not found by static
+                          tracing alone, which had been tried first and came up empty
+                          against these two specific bugs. All instrumentation was
+                          removed once both root causes were confirmed fixed by the
+                          user. Worth reaching for this earlier next time a
+                          history-adjacent bug resists tracing: the mechanism has
+                          enough moving parts (refs synced one render late, two
+                          different physical-release events firing in a fixed but
+                          easy-to-forget order, effects that fire once per commit
+                          regardless of how many watched values changed) that a live
+                          timeline of what actually fired, in what order, beats
+                          re-deriving it from reading the code a fourth time.
+
+                          STILL OPEN (deferred, not done): two more refs have the same
+                          "held, reset only by a corresponding release event" shape as
+                          isInteractingRef, and so the same theoretical vulnerability
+                          Addendum 4 fixed — nudgeActiveRef (also gates the auto-push
+                          effect, same as isInteractingRef — see the NumberStepper
+                          "hold to repeat" comment near its declaration) and
+                          isInteractingRef itself has one remaining gap: the pointerup
+                          fix only covers "released elsewhere in the page," not
+                          "mouse released outside the browser window entirely" (drag
+                          off-screen, release over another app), which a document-level
+                          listener can't observe. Both would need a proper flush (not
+                          just a reset to false) to fix correctly, same complexity as
+                          the safety-net fix above — deferred at user's request pending
+                          confirmation the current fixes hold up. Separately, isShiftHeld/
+                          spaceDown/zDown (keyboard modifiers, unrelated to history but
+                          found via the same investigation arc) had the missing-reset
+                          half of this same bug shape — see "Stuck modifier keys on
+                          window blur" under Rules for that fix.
     useEditorActions.ts   All element-level actions: creation, deletion, clipboard,
                           ordering, grouping, alignment, rotation, undo/redo (reviewed
                           directly, later session — see "Endpoint joints across ghost
@@ -782,6 +964,65 @@ src/
                           moveElement, getElementPivot, getPolarPivot) still needed by
                           tattingindex for rotation and other callbacks.
     useInputHandlers.ts   handleMouseDown/Move/Up. Zero state-mirror ref reads.
+                          Reviewed later session by an external AI (standalone, no
+                          access to this doc or the checklist) plus independent
+                          verification against the actual file before acting on any of
+                          it — see useInputHandlers-review-verification-and-plan.md for
+                          the full per-finding breakdown. Summary: review was mostly
+                          accurate, missed one real bug it should have caught, and got
+                          one HIGH-severity claim wrong for exactly the reason
+                          useHistoryActions.ts's Addendum 2 above describes (don't trust
+                          "needsHistoryPushRef never set true" as a bug without checking
+                          the other file that sets it).
+
+                          Fixed this session, in order:
+                          - setElements/setSelectedIds typed too narrowly for how they're
+                            actually called (updater-only vs value-only, but both call
+                            shapes are used depending on site — setElements specifically
+                            must accept a plain value at its two ghost-regen commit
+                            sites, since regenerateGhostArrays is impure and can't safely
+                            run inside a functional updater). Retyped both as
+                            React.Dispatch<React.SetStateAction<...>>.
+                          - setSelectedBEs had the identical bug (updater called at the
+                            beading-mode box-select site, declared value-only) — not
+                            caught by the external review; only surfaced once tsc
+                            actually ran against real @types/react. Same fix.
+                          - skipAutoHistoryRef was declared React.RefObject<boolean>
+                            (read-only) despite being assigned to — the sole outlier
+                            among this file's refs; every sibling, including
+                            needsHistoryPushRef, is already MutableRefObject. Retyped to
+                            match. Found while fixing the above, not part of the
+                            original review.
+                          - Redundant if/else in the 'select' tool's line-click handler,
+                            both branches doing the same setSelectedIds call — collapsed.
+                          - Short-line/history-ordering bug and its broader over-deletion
+                            sibling — see useHistoryActions.ts Addendum 3 above for full
+                            detail; fixed there, not repeated here.
+                          - Quadratic-path support was asymmetric for the 'line' tool
+                            specifically, even though the 'path' tool (which also edits
+                            line-type elements, via isPathEditable) already handled
+                            quadratic correctly a few lines away in the same file — ruled
+                            out as dead legacy code precisely because of that sibling
+                            block, not assumed either way. Three fixes: (1) line-tool
+                            mousedown now captures pathDragStartRef for quadratic paths
+                            too, mirroring the path-tool's existing branch; (2) the
+                            shared line-handle-drag block was missing a 'control' case
+                            for quadratic's single control handle (fell through to a
+                            silent no-op) — added, mirroring the existing control1/
+                            control2 branches; (3) that same block's start/end branches
+                            were unconditionally injecting cubic-only control1X/Y or
+                            control2X/Y fields onto ANY path type, corrupting a
+                            quadratic path's data with stray unused fields while its
+                            real controlX/Y went stale — gated both branches on
+                            path.type === 'cubic'. Deliberately did NOT invent a
+                            curve-shape-preserving repositioning formula for the
+                            quadratic case (no existing precedent for the plain,
+                            non-chain version of that problem in this file — the
+                            quadratic formula that does exist elsewhere solves a
+                            different, chain-specific stitch-length problem) — a
+                            quadratic line's control point now simply stays put when its
+                            endpoint moves, which is safe but may look visually
+                            unbalanced; see the matching Pending refactor work row.
     useJoinActions.ts     joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins,
                           checkAndStoreInheritedJoin, removeInheritedJoins (reviewed directly,
                           later session — see "Endpoint joints across ghost arrays — implemented"
@@ -840,18 +1081,35 @@ src/
                           code path that doesn't go through this file at all) got
                           the identical fix in the same session, for the same
                           reason — easy to miss since it's not called from here.
-                          KNOWN OPEN ISSUE as of session 52: despite both of the
-                          above being fixed and tsc-clean, a user report of "file
-                          load still opens in realistic mode" was NOT resolved by
-                          end of session — every setRenderMode(...) call site in
-                          both this file and tattingindex.tsx was enumerated and
-                          only these two are load-related (the other two are the
-                          manual toggle button, correct as-is), so either a third,
-                          undiscovered load path exists (leading candidate: a
-                          Tauri file-association/listen() handler not yet
-                          uploaded/found), or the fix hadn't reached the build
-                          being tested. See handoff.md from that session for the
-                          full investigation and next steps.
+                          RESOLVED (later session — see the "File load still opens
+                          in realistic mode" row in Pending refactor work for full
+                          detail). The session-52 fix above was real but masked by
+                          a SEPARATE bug: the actual line in the file was
+                          `setRenderMode(projectData.renderMode || 'schematic')`,
+                          using the saved mode whenever present — not the
+                          unconditional force the handoff believed was already
+                          shipped. No third load path ever existed; both
+                          `loadFromPath`/`loadProject` route through this same
+                          `applyProjectData`. Fixed to unconditional
+                          `setRenderMode('schematic')`.
+
+                          skipAutoHistoryRef fix (later session — undo/history
+                          investigation): applyProjectData has the identical
+                          vulnerability found and fixed the same session in
+                          tattingindex.tsx's confirmNewCanvas and
+                          loadFromAutosave — see the useHistoryActions.ts entry's
+                          Addendum 5 for the full mechanism. In short:
+                          elements/picotConnections/polarGrids all change here in
+                          the same batch as this function's own direct
+                          setHistory([...]) reset, which independently
+                          re-triggers the auto-push effect using stale
+                          roundsRef.current/groupsRef.current — pushing a
+                          spurious duplicate history entry right after a project
+                          loads. Fixed the same way: skipAutoHistoryRef.current =
+                          true before the state-changing calls. Required adding
+                          skipAutoHistoryRef to this file's params interface and
+                          threading it through at the tattingindex.tsx call site
+                          — it wasn't previously passed in at all.
 
   i18n/
     translations_en.json  Bundled English strings — canonical fallback,
@@ -1270,9 +1528,10 @@ it's derived on demand. Loading straight into a saved-as-realistic
 `renderMode` left the canvas with nothing baked until the user manually
 toggled modes. Fixed at the two load sites found (`useProjectFile.ts`'s
 `applyProjectData`, and tattingindex.tsx's separate `loadFromAutosave`) to
-always force `'schematic'` on load. **Not resolved as of end of session** —
-user still saw the bug after both fixes; see pending-refactor table and
-handoff.md for the open investigation.
+always force `'schematic'` on load. RESOLVED (later session) — see the
+"File load still opens in realistic mode" row in Pending refactor work and
+the useProjectFile.ts catalog entry above for the actual root cause (a
+different, masking bug in the same function, not a third load path).
 
 **New feature: connection color-override dropdown.** In PicotJoinModeBar,
 row 1, between "Fold Picots" and "Exit" — same position for both fold and
@@ -1289,6 +1548,28 @@ entries above for the full mechanism.
 Translation keys `picotConnectionColorLabel`/`picotConnectionColorAuto` were
 added to the dropdown's JSX but NOT to any i18n file — none were available
 this session. Will render as raw keys until added.
+
+### Stuck modifier keys on window blur (later session)
+
+**Bug: "ortho lock is basically always on."** `isShiftHeld` (and, same root
+cause, `spaceDown`/`zDown`) is set `true` on `keydown` and `false` on
+`keyup`, both via `window` listeners — but nothing reset it if the window
+lost focus while the key was physically still held (alt-tab, an OS shortcut
+stealing the key release, dev tools taking focus, etc.). The `keyup` for
+Shift then never reaches the page, and `isShiftHeld` sticks at `true` for
+the rest of the session — permanently axis-locking every drag afterward
+via the `orthoLock || isShiftHeld` check in useInputHandlers.ts, with the
+ortho-lock toolbar button not even showing as active, since `orthoLock`
+itself was never touched. Fixed with a `window` `blur` handler that resets
+all three flags (`isShiftHeld`, `spaceDown`/`spaceDownRef`,
+`zDown`/`zDownRef`) whenever the window loses focus.
+
+This is the same underlying bug shape as useHistoryActions.ts's Addendum 4
+(`isInteractingRef`/`pointerup` vs `mouseup`) — a flag that's supposed to be
+transient, held only between a down-event and its matching up-event, with
+no fallback if the up-event doesn't arrive. Worth checking any NEW such
+flag against this pattern before assuming a `keydown`/`keyup` (or
+`mousedown`/`mouseup`) pair alone is sufficient.
 
 ---
 
@@ -1643,7 +1924,7 @@ exact trap once this session before catching it).
 | ~~`isTooShort` flag on move/transform~~ | CLOSED (session 52) — turned out to be moot, not fixed. Got `useInputHandlers.ts` uploaded and traced `smartEndpointDrag` (the actual single-endpoint drag handler): it never writes a stored `isTooShort` field at all, and neither does `computeElementAfterNotationEdit` in the current code — the only `isTooShort` anywhere is a local var computed live every render via `isChainTooShort(el, dsWidth)` (tattingindex.tsx ~line 7720), which checks current chord-vs-physical-length directly regardless of what changed the geometry. Its own comment already explains why: a chain can always bulge/flatten to span any chord up to its physical length, so only exceeding that (plus a little give) is genuinely too short. `smartEndpointDrag` independently re-bulges to match target length on every drag, so it can't produce a false "too short" either. Nothing to fix — the table row's premise (a stale stored flag) describes an earlier design already superseded by the live check. |
 | ~~Endpoint joints across ghost arrays~~ | DONE (later session) — see "Endpoint joints across ghost arrays — implemented" under Rules above for root cause and implementation details. |
 | ~~File load still opens in realistic mode~~ | FIXED (session 52). Root cause was NOT a third load path — it was a bug in the fix that session 52's handoff believed was already applied. `useProjectFile.ts`'s `applyProjectData`, the line actually in the uploaded file, was `p.setRenderMode(projectData.renderMode || 'schematic')` — using the *saved* renderMode whenever present, only falling back to schematic when the field was missing/falsy. Since a project saved while in realistic mode has `renderMode: 'realistic'` in the file, loading it reproduced exactly the reported bug. The handoff's claim that this line "forces schematic, ignores projectData.renderMode" didn't match what was actually in the file — either the real fix never got saved, or was reverted. Fixed to unconditionally `setRenderMode('schematic')`. Confirmed `loadFromAutosave()` (tattingindex.tsx ~line 864) was correct all along — hardcoded, no fallback trick, nothing to fix there. Traced both `loadFromPath`/`loadProject` (recent-projects and browse-button paths) and confirmed both route through `applyProjectData` — there was never a third path. |
-| Split-ring picot color, schematic mode | OPEN as of session 52 — `armColor` in `renderOnePicot` (via `getSolidColor`) has the same side-blind bug that was fixed for the baked realistic renderer and fold/join connection color this session (always resolves `materialId`, never `materialIdB`, regardless of which side the picot is on). Two other `getSolidColor` call sites (~5010, ~5119) never investigated. Fix would follow the established pattern: check `getSplitRingSide(element, picot)` (tattingindex.tsx) and substitute `materialIdB` when it's `'B'`. |
+| ~~Split-ring picot color, schematic mode~~ | FIXED (later session). `armColor` in `renderOnePicot` (via `getSolidColor`) had the predicted side-blind bug — always resolved `materialId`, never `materialIdB`. Fixed by giving `getSolidColor` an optional second `picot` param, resolving via the existing `getSplitRingSide(element, picot)` helper (no new field, same single source of truth as `getConnectionThreadColor`); the one call site with a picot in scope (`renderOnePicot`) now passes it, the other two don't and are unaffected (`getSplitRingSide` returns `null` with no picot, falling back to the old behavior exactly). The two other `getSolidColor` call sites, once actually checked: one (`renderStitchLabels`, no-picots branch) can never have a picot in scope at all — not buggy, just not applicable; the other computes `solidColor` and never uses it anywhere in the function — dead code, left alone since removing it was out of scope. |
 | Ghost-array regeneration's connection remap may drop connections silently | OPEN as of session 52 — flagged but not traced deeply enough to confirm reachability. If a polar array shrinks, the ghost-ID remap (tattingindex.tsx, near `setPicotConnections(merged)`, search `oldGhostIdsSorted`/`newGhostIdsSorted`) may leave some old connections with no remap target, silently dropping them without demoting `isJoint` on the far side — the same bug pattern fixed at two other sites this session (see `applyJointFlags` note under useJoinActions.ts above). |
 | Round-group assignment duplication + missing skipAutoHistoryRef | FIXED (session 52). `LineElementPropertyBar.tsx` and `GeneralElementPropertyBar.tsx` each had their own ~25-line inline RoundGroupPicker wiring, and had drifted onto two different (both broken) history strategies — see the useHistoryActions.ts addendum above for the skipAutoHistoryRef half of this; this is the duplication half. Extracted to `utils/roundGroupActions.ts`'s `createRoundGroupHandlers(...)` factory, used identically by both files now. `GeneralElementPropertyBar.tsx`'s old `pushOrderHistory`/`setTimeout(...,0)` and `needsHistoryPushRef` props are fully retired on this path; `skipAutoHistoryRef` threaded through instead (SingleSelectPropertyBar.tsx → tattingindex.tsx call site). |
 | `applyGroupRotation` negative-modulo bug + duplicated ±90° button math | FIXED (session 52). `useEditorActions.ts`'s `applyGroupRotation`: `(rotation + delta) % 360` with no second normalization pass could store e.g. `-90` instead of `270`, unlike the `((x%360)+360)%360` idiom used everywhere else `.rotation` is computed — including its own sibling `applyMultiSelectRotationDelta` right above it, which was already correct. Fixed the modulo, and redirected `MultiSelectSummaryBar.tsx`'s ±90° group-rotate buttons (which had their own hand-rolled copy of the same pivot/rotation geometry, sharing the same modulo bug) to call `applyGroupRotation(currentDeg ± 90)` instead — one geometry implementation instead of two. |
@@ -1654,3 +1935,6 @@ exact trap once this session before catching it).
 | `ShapeAndSqueezeControls.tsx` squeeze-reset buttons vs `resetElementShape` | OPEN. The two internal squeeze-reset buttons (regular ring, split ring) now duplicate exactly what `resetElementShape` (paths.ts, added session 52 for the Reset Transform feature) already does for closed/split-ring shapes. Duplication was created deliberately that session — didn't want to touch verified-working slider code while adding an unrelated feature. Worth revisiting now that `resetElementShape` is proven correct (see paths.ts entry above); output should be byte-identical, this is a pure DRY cleanup. |
 | Duplicated rotation-expression evaluators (`MultiSelectSummaryBar.tsx`) | OPEN, not yet fixed. The free multi-select rotation-delta input's `onBlur`/`onKeyDown` each hand-roll their own `new Function('"use strict"; return (' + s + ')')()` mini math-expression evaluator (regex-gated to digits/operators/parens), duplicated between the two handlers. The group-rotation text field *in the same file* already uses the existing `parseRotationExpr` prop for the identical job. Worth checking whether `parseRotationExpr` can just be reused here directly before writing a third variant. |
 | Free multi-select notation scaling vs `updateNotationForMultiple` | OPEN, needs verification before assuming it's pure duplication. `MultiSelectSummaryBar.tsx`'s free-multi-select notation `onBlur` (~50 lines) reimplements per-shape-type path scaling inline (ring/split-ring, with a `scPt` scaling helper defined twice within it) instead of delegating to `updateNotationForMultiple`. BUT: per the existing "Picot Wizard — batch update" doc section, `updateNotationForMultiple` only supports `preservesExistingPicots: true` callers and silently skips ghost-mother elements — confirm the free-multi-select scaling use case can actually satisfy that constraint before assuming this is a clean swap; it may be intentionally separate. |
+| Quadratic line control-point freezes on start/end drag (`useInputHandlers.ts`) | OPEN — design question, not a data bug. Fixed this session: dragging a quadratic line's endpoint no longer corrupts its data with stray cubic-only control1X/Y fields (see useInputHandlers.ts catalog entry above). But the safe fix was to leave `controlX`/`controlY` unchanged when start/end moves, which can make the curve look visually unbalanced relative to its new endpoint — cubic paths reposition their nearer control point proportionally (the 0.33/0.67 heuristic) when an endpoint moves; quadratic has only one shared control point, so there's no existing precedent in this file for how it should respond to an endpoint move. Needs a product/design call on the right heuristic (e.g. translate controlX/Y by the same delta the endpoint moved, vs. re-blend it proportionally) before implementing — not a "just derive it" fix. |
+| `nudgeActiveRef` — same stuck-flag shape as `isInteractingRef` (Addendum 4) | OPEN, deferred at user's request pending confirmation the `isInteractingRef`/`isShiftHeld` fixes hold up first. Gates the auto-push effect exactly like `isInteractingRef` does, set `true` while a "hold to repeat" NumberStepper button is held and cleared only by that widget's own release — if the window loses focus mid-hold, same theoretical risk of sticking `true` forever and silently disabling history. Unconfirmed whether the NumberStepper component (not yet obtained) already has its own safety net against this. Would need a proper flush (push pending state), not just a reset to `false`, same complexity as the `isInteractingRef` fix in useHistoryActions.ts Addendum 4. |
+| `isInteractingRef` — remaining gap after Addendum 4's fix | OPEN, same deferral. The `pointerup` safety net now correctly handles "mouse released elsewhere in the page," but not "mouse released outside the browser window entirely" (dragged off-screen, released over another app) — a document-level listener can't observe that. A `blur`-triggered fallback (with the same flush-not-reset requirement as the pointerup fix) would close this last gap. |

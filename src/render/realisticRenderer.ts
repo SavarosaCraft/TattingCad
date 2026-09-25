@@ -480,16 +480,79 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       );
     };
 
+    // Single source of truth for picot-arm rendering. Used to be two
+    // stacked open quadratic strokes (fill:none, black underneath at
+    // lw+2 for the outline, color on top at lw) — visually looked right
+    // (a thin curved loop) but neither path was ever actually filled, so
+    // editing "fill" on the exported SVG either did nothing or filled the
+    // wrong (unintended) region.
+    //
+    // Fix is a proper stroke-to-fill conversion of that same curve: the
+    // *shape* stays identical (same bL/tip/bR quadratic, same width) —
+    // only how it's painted changes, from "stroke this line" to "fill
+    // this region". Two earlier attempts at this got the shape itself
+    // wrong: a lens pinched to a point at *both* ends read as a solid
+    // blob rather than a loop, and a solid wedge (full width at the base,
+    // tapering to a point) filled in the loop's hollow interior — the
+    // reference the user hand-built (ShouldBE.svg, a real V-shaped
+    // outline with the middle staying transparent) confirmed picots need
+    // to keep that hollow interior, not gain a fill where there wasn't
+    // one before. So: sample the original bL→tip→bR quadratic at even
+    // steps, offset each sample ±half-width along its local perpendicular
+    // (a standard stroke-to-fill/"stroke outline" technique), and trace
+    // the outer offset out and the inner offset back to close a thin
+    // ribbon. The two ends stay open/flat (straight across from the
+    // outer to the inner sample), matching the original stroke's
+    // un-capped look at the base gap.
     const emitPicot = (
       bL: {x:number,y:number}, bR: {x:number,y:number},
       tip: {x:number,y:number}, color: string, lw: number
     ): string => {
+      expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
+
       const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
       const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
-      const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-      expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
-      return `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>` +
-             `<path d="${d}" stroke="${color}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
+      const hw = lw / 2;
+
+      const bez = (t: number) => {
+        const mt = 1 - t;
+        return {
+          x: mt * mt * bL.x + 2 * mt * t * cpx + t * t * bR.x,
+          y: mt * mt * bL.y + 2 * mt * t * cpy + t * t * bR.y,
+        };
+      };
+      const tangent = (t: number) => {
+        const mt = 1 - t;
+        return {
+          x: 2 * mt * (cpx - bL.x) + 2 * t * (bR.x - cpx),
+          y: 2 * mt * (cpy - bL.y) + 2 * t * (bR.y - cpy),
+        };
+      };
+
+      const STEPS = 16;
+      const outer: {x:number,y:number}[] = [];
+      const inner: {x:number,y:number}[] = [];
+      for (let i = 0; i <= STEPS; i++) {
+        const t = i / STEPS;
+        const p = bez(t);
+        const tan = tangent(t);
+        const tlen = Math.sqrt(tan.x * tan.x + tan.y * tan.y) || 1;
+        const nx = -tan.y / tlen, ny = tan.x / tlen;
+        outer.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+        inner.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+      }
+      for (const p of outer) expand(p.x, p.y);
+      for (const p of inner) expand(p.x, p.y);
+
+      let d = `M ${outer[0].x.toFixed(2)} ${outer[0].y.toFixed(2)}`;
+      for (let i = 1; i <= STEPS; i++) d += ` L ${outer[i].x.toFixed(2)} ${outer[i].y.toFixed(2)}`;
+      for (let i = STEPS; i >= 0; i--) d += ` L ${inner[i].x.toFixed(2)} ${inner[i].y.toFixed(2)}`;
+      d += ' Z';
+
+      // paint-order="stroke": outline painted before the fill so its
+      // inward half never eats into (and hides) the thin fill band —
+      // matters most where the ribbon narrows near the tip.
+      return `<path d="${d}" fill="${color}" stroke="black" stroke-width="2.5" stroke-linejoin="round" paint-order="stroke"/>`;
     };
 
     // ── per-element SVG fragments ──
@@ -535,16 +598,11 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
             const bL  = { x: ptLeft.x,  y: ptLeft.y  };
             const bR  = { x: ptRight.x, y: ptRight.y };
             const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
-            const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-            const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
             const cjColor = elColor.isGradient
               ? getGradientColorAtPosition(elColor.id, tMid)
               : elColor.color;
             const lw = el.lineWidth || 2;
-            const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-            expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
-            out += `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>`;
-            out += `<path d="${d}" stroke="${cjColor}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
+            out += emitPicot(bL, bR, tip, cjColor, lw);
             continue;
           }
           if (shouldSkipPicot(picot, el.id)) continue;
@@ -580,19 +638,12 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
           const bL  = { x: ptLeft.x,  y: ptLeft.y  };
           const bR  = { x: ptRight.x, y: ptRight.y };
           const tip = { x: ptMid.x + nx * tipH, y: ptMid.y + ny * tipH };
-          const cpx = 2 * tip.x - 0.5 * (bL.x + bR.x);
-          const cpy = 2 * tip.y - 0.5 * (bL.y + bR.y);
 
           const picotColor = elColor.isGradient
             ? getGradientColorAtPosition(elColor.id, tMid)
             : elColor.color;
           const lw = el.lineWidth || 2;
-          const d = `M ${bL.x.toFixed(2)} ${bL.y.toFixed(2)} Q ${cpx.toFixed(2)} ${cpy.toFixed(2)} ${bR.x.toFixed(2)} ${bR.y.toFixed(2)}`;
-
-          expand(bL.x, bL.y); expand(tip.x, tip.y); expand(bR.x, bR.y);
-
-          out += `<path d="${d}" stroke="black" stroke-width="${lw + 2}" fill="none" stroke-linecap="round"/>`;
-          out += `<path d="${d}" stroke="${picotColor}" stroke-width="${lw}" fill="none" stroke-linecap="round"/>`;
+          out += emitPicot(bL, bR, tip, picotColor, lw);
         }
         return out;
       };

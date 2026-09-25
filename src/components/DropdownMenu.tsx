@@ -53,8 +53,13 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
         onClick={onClose}
       />
       <div
-        className="fixed bg-gray-700 rounded shadow-xl"
-        style={{ minWidth: width, ...style }}
+        className="fixed bg-gray-700 rounded shadow-xl select-none"
+        style={{
+          minWidth: width,
+          ...style,
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

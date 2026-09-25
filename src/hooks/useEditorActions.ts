@@ -403,10 +403,14 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const undo = useCallback(() => {
     const idx = p.historyIndexRef.current;
     const history = p.historyRef.current;
+    // eslint-disable-next-line no-console
+    console.log(`[HIST] undo() called: idx=${idx} historyLen=${history.length}`);
     if (idx > 0) {
       p.isUndoRedoRef.current = true;
       const newIdx = idx - 1;
       const state = history[newIdx];
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] undo() -> idx=${idx}->${newIdx} restoring els=${(state.elements ?? []).length}:[${(state.elements ?? []).slice(0, 6).map((e: any) => e?.id).join(',')}]`);
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
@@ -417,16 +421,23 @@ export function useEditorActions(p: UseEditorActionsParams) {
       if (state.ghostArrays) p.setGhostArrays(JSON.parse(JSON.stringify(state.ghostArrays)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] undo() no-op: already at idx 0`);
     }
   }, []); // reads via refs
 
   const redo = useCallback(() => {
     const idx = p.historyIndexRef.current;
     const history = p.historyRef.current;
+    // eslint-disable-next-line no-console
+    console.log(`[HIST] redo() called: idx=${idx} historyLen=${history.length}`);
     if (idx < history.length - 1) {
       p.isUndoRedoRef.current = true;
       const newIdx = idx + 1;
       const state = history[newIdx];
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] redo() -> idx=${idx}->${newIdx} restoring els=${(state.elements ?? []).length}:[${(state.elements ?? []).slice(0, 6).map((e: any) => e?.id).join(',')}]`);
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
@@ -437,6 +448,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
       if (state.ghostArrays) p.setGhostArrays(JSON.parse(JSON.stringify(state.ghostArrays)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(`[HIST] redo() no-op: already at end (idx=${idx}, len=${history.length})`);
     }
   }, []); // reads via refs
 
