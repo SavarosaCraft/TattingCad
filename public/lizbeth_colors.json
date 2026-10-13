@@ -1,0 +1,1658 @@
+{
+  "solidColors": [
+    {
+      "id": "LZ601",
+      "name": "601 Snow White",
+      "hex": "#E2E4EB",
+      "group": "Lizbeth – Whites & Ecru",
+      "catalogNumber": "601"
+    },
+    {
+      "id": "LZ602",
+      "name": "602 Natural",
+      "hex": "#DDD9D0",
+      "group": "Lizbeth – Whites & Ecru",
+      "catalogNumber": "602"
+    },
+    {
+      "id": "LZ603",
+      "name": "603 Ecru",
+      "hex": "#BCA793",
+      "group": "Lizbeth – Whites & Ecru",
+      "catalogNumber": "603"
+    },
+    {
+      "id": "LZ604",
+      "name": "604 Black",
+      "hex": "#0E0D12",
+      "group": "Lizbeth – Grays & Blacks",
+      "catalogNumber": "604"
+    },
+    {
+      "id": "LZ605",
+      "name": "605 Silver",
+      "hex": "#AAA5AD",
+      "group": "Lizbeth – Grays & Blacks",
+      "catalogNumber": "605"
+    },
+    {
+      "id": "LZ606",
+      "name": "606 Charcoal",
+      "hex": "#3B3C41",
+      "group": "Lizbeth – Grays & Blacks",
+      "catalogNumber": "606"
+    },
+    {
+      "id": "LZ607",
+      "name": "607 Charcoal Med",
+      "hex": "#585A65",
+      "group": "Lizbeth – Grays & Blacks",
+      "catalogNumber": "607"
+    },
+    {
+      "id": "LZ608",
+      "name": "608 Coral Pink Med",
+      "hex": "#DD9292",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "608"
+    },
+    {
+      "id": "LZ609",
+      "name": "609 Coral Pink Dk",
+      "hex": "#D26A6F",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "609"
+    },
+    {
+      "id": "LZ610",
+      "name": "610 Cream",
+      "hex": "#D2C9B5",
+      "group": "Lizbeth – Whites & Ecru",
+      "catalogNumber": "610"
+    },
+    {
+      "id": "LZ611",
+      "name": "611 Gold",
+      "hex": "#C97B23",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "611"
+    },
+    {
+      "id": "LZ612",
+      "name": "612 Golden Yellow Lt",
+      "hex": "#DACEA9",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "612"
+    },
+    {
+      "id": "LZ613",
+      "name": "613 Golden Yellow Med",
+      "hex": "#E0A747",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "613"
+    },
+    {
+      "id": "LZ614",
+      "name": "614 Lemon Lt",
+      "hex": "#D8CE74",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "614"
+    },
+    {
+      "id": "LZ615",
+      "name": "615 Yellow Lt",
+      "hex": "#D4C185",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "615"
+    },
+    {
+      "id": "LZ616",
+      "name": "616 Daffodil Med",
+      "hex": "#DCB452",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "616"
+    },
+    {
+      "id": "LZ617",
+      "name": "617 Magenta Med",
+      "hex": "#DB91B3",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "617"
+    },
+    {
+      "id": "LZ618",
+      "name": "618 Magenta Dk",
+      "hex": "#8F115F",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "618"
+    },
+    {
+      "id": "LZ619",
+      "name": "619 Baby Pink",
+      "hex": "#E6CBCD",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "619"
+    },
+    {
+      "id": "LZ620",
+      "name": "620 Azalea Med",
+      "hex": "#CA346B",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "620"
+    },
+    {
+      "id": "LZ621",
+      "name": "621 Dusty Rose Lt",
+      "hex": "#CE9AA1",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "621"
+    },
+    {
+      "id": "LZ622",
+      "name": "622 Pink Med",
+      "hex": "#D28999",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "622"
+    },
+    {
+      "id": "LZ623",
+      "name": "623 Raspberry Pink lt",
+      "hex": "#C080A1",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "623"
+    },
+    {
+      "id": "LZ624",
+      "name": "624 Raspberry Pink Med",
+      "hex": "#801557",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "624"
+    },
+    {
+      "id": "LZ625",
+      "name": "625 Plum",
+      "hex": "#820631",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "625"
+    },
+    {
+      "id": "LZ626",
+      "name": "626 Shell Pink Lt",
+      "hex": "#BB8587",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "626"
+    },
+    {
+      "id": "LZ627",
+      "name": "627 Shell Pink Med",
+      "hex": "#AB5564",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "627"
+    },
+    {
+      "id": "LZ628",
+      "name": "628 Salmon Med",
+      "hex": "#DD5A6E",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "628"
+    },
+    {
+      "id": "LZ629",
+      "name": "629 Azalea Lt",
+      "hex": "#D5A3B7",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "629"
+    },
+    {
+      "id": "LZ630",
+      "name": "630 Peach Lt.",
+      "hex": "#EBBEB2",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "630"
+    },
+    {
+      "id": "LZ631",
+      "name": "631 Country Purple Lt",
+      "hex": "#B9A1B9",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "631"
+    },
+    {
+      "id": "LZ632",
+      "name": "632 Purple Med",
+      "hex": "#997EA6",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "632"
+    },
+    {
+      "id": "LZ633",
+      "name": "633 Purple - Dk",
+      "hex": "#250B4A",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "633"
+    },
+    {
+      "id": "LZ634",
+      "name": "634 Violet/Pink Med",
+      "hex": "#AA6E95",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "634"
+    },
+    {
+      "id": "LZ635",
+      "name": "635 Violet/Pink Dk",
+      "hex": "#741A57",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "635"
+    },
+    {
+      "id": "LZ636",
+      "name": "636 Country Grape Lt",
+      "hex": "#945A7E",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "636"
+    },
+    {
+      "id": "LZ637",
+      "name": "637 Country Grape Med",
+      "hex": "#6F3E5E",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "637"
+    },
+    {
+      "id": "LZ638",
+      "name": "638 Christmas Green",
+      "hex": "#084125",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "638"
+    },
+    {
+      "id": "LZ639",
+      "name": "639 Antique Violet Lt",
+      "hex": "#C3B0B2",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "639"
+    },
+    {
+      "id": "LZ640",
+      "name": "640 Antique Violet Med",
+      "hex": "#735663",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "640"
+    },
+    {
+      "id": "LZ641",
+      "name": "641 Lilac Dk",
+      "hex": "#52417B",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "641"
+    },
+    {
+      "id": "LZ642",
+      "name": "642 Lilac Med",
+      "hex": "#8986B4",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "642"
+    },
+    {
+      "id": "LZ643",
+      "name": "643 Grape Med",
+      "hex": "#854680",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "643"
+    },
+    {
+      "id": "LZ644",
+      "name": "644 Boysenberry dk",
+      "hex": "#490531",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "644"
+    },
+    {
+      "id": "LZ645",
+      "name": "645 Grape Dk",
+      "hex": "#4C0C4C",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "645"
+    },
+    {
+      "id": "LZ646",
+      "name": "646 Purple Iris Lt",
+      "hex": "#B9A4CC",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "646"
+    },
+    {
+      "id": "LZ647",
+      "name": "647 Purple Iris Dk",
+      "hex": "#51215C",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "647"
+    },
+    {
+      "id": "LZ648",
+      "name": "648 Pearl Blush",
+      "hex": "#EDD4CD",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "648"
+    },
+    {
+      "id": "LZ649",
+      "name": "649 Baby Blue",
+      "hex": "#85ADC9",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "649"
+    },
+    {
+      "id": "LZ650",
+      "name": "650 Denim Blue Lt",
+      "hex": "#8BABBF",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "650"
+    },
+    {
+      "id": "LZ651",
+      "name": "651 Blue Med",
+      "hex": "#8AA7C5",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "651"
+    },
+    {
+      "id": "LZ652",
+      "name": "652 Royal Blue",
+      "hex": "#1B4D98",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "652"
+    },
+    {
+      "id": "LZ653",
+      "name": "653 Antique Blue Med",
+      "hex": "#7F8C99",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "653"
+    },
+    {
+      "id": "LZ654",
+      "name": "654 Navy Blue",
+      "hex": "#0D152B",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "654"
+    },
+    {
+      "id": "LZ655",
+      "name": "655 Wedgewood Lt",
+      "hex": "#84A7B6",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "655"
+    },
+    {
+      "id": "LZ656",
+      "name": "656 Wedgewood Dk",
+      "hex": "#03396A",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "656"
+    },
+    {
+      "id": "LZ657",
+      "name": "657 Ocean Turquoise Dk",
+      "hex": "#006997",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "657"
+    },
+    {
+      "id": "LZ658",
+      "name": "658 Ocean Turquoise Lt",
+      "hex": "#21ADC6",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "658"
+    },
+    {
+      "id": "LZ659",
+      "name": "659 Periwinkle",
+      "hex": "#8792BE",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "659"
+    },
+    {
+      "id": "LZ660",
+      "name": "660 Country Turquoise Lt",
+      "hex": "#B0C9C7",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "660"
+    },
+    {
+      "id": "LZ661",
+      "name": "661 Country Turquoise Med",
+      "hex": "#288092",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "661"
+    },
+    {
+      "id": "LZ662",
+      "name": "662 Turquoise Lt",
+      "hex": "#48ADCA",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "662"
+    },
+    {
+      "id": "LZ663",
+      "name": "663 Bright Turquoise Dk",
+      "hex": "#056295",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "663"
+    },
+    {
+      "id": "LZ664",
+      "name": "664 Ocean Teal Med",
+      "hex": "#34B3BE",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "664"
+    },
+    {
+      "id": "LZ665",
+      "name": "665 Ocean Teal Dk",
+      "hex": "#098597",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "665"
+    },
+    {
+      "id": "LZ667",
+      "name": "667 Orchid Green Med",
+      "hex": "#A7B473",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "667"
+    },
+    {
+      "id": "LZ668",
+      "name": "668 Orchid Green Dk",
+      "hex": "#9AA44F",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "668"
+    },
+    {
+      "id": "LZ669",
+      "name": "669 Poppy Red",
+      "hex": "#B90105",
+      "group": "Lizbeth – Reds",
+      "catalogNumber": "669"
+    },
+    {
+      "id": "LZ670",
+      "name": "670 Victorian Red",
+      "hex": "#6A0210",
+      "group": "Lizbeth – Reds",
+      "catalogNumber": "670"
+    },
+    {
+      "id": "LZ671",
+      "name": "671 Christmas Red",
+      "hex": "#990110",
+      "group": "Lizbeth – Reds",
+      "catalogNumber": "671"
+    },
+    {
+      "id": "LZ672",
+      "name": "672 Burgundy",
+      "hex": "#4E0A1D",
+      "group": "Lizbeth – Reds",
+      "catalogNumber": "672"
+    },
+    {
+      "id": "LZ673",
+      "name": "673 Terra Cotta",
+      "hex": "#7A0413",
+      "group": "Lizbeth – Reds",
+      "catalogNumber": "673"
+    },
+    {
+      "id": "LZ674",
+      "name": "674 Garnet Dk",
+      "hex": "#580311",
+      "group": "Lizbeth – Reds",
+      "catalogNumber": "674"
+    },
+    {
+      "id": "LZ675",
+      "name": "675 Fern Green Med",
+      "hex": "#446B54",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "675"
+    },
+    {
+      "id": "LZ676",
+      "name": "676 Leaf Green Dk",
+      "hex": "#304725",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "676"
+    },
+    {
+      "id": "LZ677",
+      "name": "677 Lime Green Med",
+      "hex": "#A3D59F",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "677"
+    },
+    {
+      "id": "LZ678",
+      "name": "678 Olive Dk",
+      "hex": "#6D5723",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "678"
+    },
+    {
+      "id": "LZ679",
+      "name": "679 Lime Green Order now: w",
+      "hex": "#89BF71",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "679"
+    },
+    {
+      "id": "LZ680",
+      "name": "680 Spring Green",
+      "hex": "#888C1C",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "680"
+    },
+    {
+      "id": "LZ681",
+      "name": "681 Pistachio Green Lt",
+      "hex": "#A1A784",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "681"
+    },
+    {
+      "id": "LZ682",
+      "name": "682 Country Grape Dk",
+      "hex": "#691846",
+      "group": "Lizbeth – Purples",
+      "catalogNumber": "682"
+    },
+    {
+      "id": "LZ683",
+      "name": "683 Leaf Green Lt",
+      "hex": "#B4AB5F",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "683"
+    },
+    {
+      "id": "LZ684",
+      "name": "684 Leaf Green Med",
+      "hex": "#6F7C45",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "684"
+    },
+    {
+      "id": "LZ685",
+      "name": "685 Evergreen Dk",
+      "hex": "#0F2417",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "685"
+    },
+    {
+      "id": "LZ686",
+      "name": "686 Seagreen Lt",
+      "hex": "#97C7C3",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "686"
+    },
+    {
+      "id": "LZ687",
+      "name": "687 Peppermint Green",
+      "hex": "#2FAA74",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "687"
+    },
+    {
+      "id": "LZ688",
+      "name": "688 Seagreen Dk",
+      "hex": "#058982",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "688"
+    },
+    {
+      "id": "LZ689",
+      "name": "689 Mint Lt",
+      "hex": "#BFD6CA",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "689"
+    },
+    {
+      "id": "LZ690",
+      "name": "690 Mocha Brown Lt",
+      "hex": "#C8B19C",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "690"
+    },
+    {
+      "id": "LZ691",
+      "name": "691 Mocha Brown Med",
+      "hex": "#7A5A47",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "691"
+    },
+    {
+      "id": "LZ692",
+      "name": "692 Mocha Brown Dk",
+      "hex": "#3C1C0C",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "692"
+    },
+    {
+      "id": "LZ693",
+      "name": "693 Linen Med www hhtatting com or Ca",
+      "hex": "#A28670",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "693"
+    },
+    {
+      "id": "LZ694",
+      "name": "694 Harvest Orange Med",
+      "hex": "#9E4123",
+      "group": "Lizbeth – Oranges",
+      "catalogNumber": "694"
+    },
+    {
+      "id": "LZ695",
+      "name": "695 Bright Orange",
+      "hex": "#DD6503",
+      "group": "Lizbeth – Oranges",
+      "catalogNumber": "695"
+    },
+    {
+      "id": "LZ696",
+      "name": "696 Autumn Orange Med",
+      "hex": "#E8A257",
+      "group": "Lizbeth – Oranges",
+      "catalogNumber": "696"
+    },
+    {
+      "id": "LZ697",
+      "name": "697 Fudge Dk",
+      "hex": "#2F1B17",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "697"
+    },
+    {
+      "id": "LZ698",
+      "name": "698 Fudge Med",
+      "hex": "#633F30",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "698"
+    },
+    {
+      "id": "LZ699",
+      "name": "699 Harvest Gold",
+      "hex": "#B48734",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "699"
+    },
+    {
+      "id": "LZ700",
+      "name": "700 English Rose Med",
+      "hex": "#B7577C",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "700"
+    },
+    {
+      "id": "LZ701",
+      "name": "701 English Rose Dk",
+      "hex": "#972150",
+      "group": "Lizbeth – Pinks",
+      "catalogNumber": "701"
+    },
+    {
+      "id": "LZ702",
+      "name": "702 Coral Orange Med",
+      "hex": "#C64A35",
+      "group": "Lizbeth – Oranges",
+      "catalogNumber": "702"
+    },
+    {
+      "id": "LZ703",
+      "name": "703 Sky Blue Lt",
+      "hex": "#6FA6C9",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "703"
+    },
+    {
+      "id": "LZ704",
+      "name": "704 Sky Blue Med",
+      "hex": "#0A6ABA",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "704"
+    },
+    {
+      "id": "LZ705",
+      "name": "705 Bright Yellow",
+      "hex": "#E0C13B",
+      "group": "Lizbeth – Yellows & Golds",
+      "catalogNumber": "705"
+    },
+    {
+      "id": "LZ706",
+      "name": "706 Sunkist Coral",
+      "hex": "#EC8660",
+      "group": "Lizbeth – Oranges",
+      "catalogNumber": "706"
+    },
+    {
+      "id": "LZ707",
+      "name": "707 Sky Blue Dk all (217) 379-3802 (M-F",
+      "hex": "#16409F",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "707"
+    },
+    {
+      "id": "LZ708",
+      "name": "708 River Blue Med",
+      "hex": "#6892A8",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "708"
+    },
+    {
+      "id": "LZ709",
+      "name": "709 River Blue Dk",
+      "hex": "#2E6680",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "709"
+    },
+    {
+      "id": "LZ710",
+      "name": "710 Bright Blue Lt.",
+      "hex": "#9EC0D6",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "710"
+    },
+    {
+      "id": "LZ711",
+      "name": "711 Bright Blue Dk",
+      "hex": "#0268A7",
+      "group": "Lizbeth – Blues & Teals",
+      "catalogNumber": "711"
+    },
+    {
+      "id": "LZ712",
+      "name": "712 Kelly Green Med.",
+      "hex": "#33A646",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "712"
+    },
+    {
+      "id": "LZ713",
+      "name": "713 Kelly Green",
+      "hex": "#01721A",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "713"
+    },
+    {
+      "id": "LZ714",
+      "name": "714 Seacrest Green",
+      "hex": "#61A178",
+      "group": "Lizbeth – Greens",
+      "catalogNumber": "714"
+    },
+    {
+      "id": "LZ715",
+      "name": "715 Maple Butter",
+      "hex": "#CD9E6E",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "715"
+    },
+    {
+      "id": "LZ716",
+      "name": "716 Maple Syrup",
+      "hex": "#904D25",
+      "group": "Lizbeth – Browns",
+      "catalogNumber": "716"
+    },
+    {
+      "id": "LZ340",
+      "name": "340 Gold",
+      "hex": "#BF9B57",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "340"
+    },
+    {
+      "id": "LZ341",
+      "name": "341 Silver",
+      "hex": "#999A99",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "341"
+    },
+    {
+      "id": "LZ342",
+      "name": "342 Charcoal",
+      "hex": "#242424",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "342"
+    },
+    {
+      "id": "LZ343",
+      "name": "343 Charcoal Lt",
+      "hex": "#3C3C3E",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "343"
+    },
+    {
+      "id": "LZ344",
+      "name": "344 Iridescent Snow",
+      "hex": "#DCD9D4",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "344"
+    },
+    {
+      "id": "LZ345",
+      "name": "345 Frosted Cherry",
+      "hex": "#A04B4A",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "345"
+    },
+    {
+      "id": "LZ346",
+      "name": "346 Icy Purple",
+      "hex": "#5D547C",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "346"
+    },
+    {
+      "id": "LZ347",
+      "name": "347 Icy Blue",
+      "hex": "#688EBC",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "347"
+    },
+    {
+      "id": "LZ348",
+      "name": "348 Icy Pink",
+      "hex": "#D8A9AD",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "348"
+    },
+    {
+      "id": "LZ350",
+      "name": "350 Sapphire",
+      "hex": "#02255F",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "350"
+    },
+    {
+      "id": "LZ313",
+      "name": "313 Sand Dollar",
+      "hex": "#B3A98B",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "313"
+    },
+    {
+      "id": "LZ317",
+      "name": "317 Rose",
+      "hex": "#927A85",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "317"
+    },
+    {
+      "id": "LZ319",
+      "name": "319 Turq. Blue",
+      "hex": "#6387A1",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "319"
+    },
+    {
+      "id": "LZ320",
+      "name": "320 Steel Blue",
+      "hex": "#848C9C",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "320"
+    },
+    {
+      "id": "LZ321",
+      "name": "321 Turq. Green",
+      "hex": "#57788D",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "321"
+    },
+    {
+      "id": "LZ322",
+      "name": "322 Seafoam",
+      "hex": "#859991",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "322"
+    },
+    {
+      "id": "LZ326",
+      "name": "326 Frappe",
+      "hex": "#B5ACA3",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "326"
+    },
+    {
+      "id": "LZ327",
+      "name": "327 Gold Dust",
+      "hex": "#9C956A",
+      "group": "Lizbeth – Metallic",
+      "catalogNumber": "327"
+    }
+  ],
+  "gradients": [
+    {
+      "id": "LZ100",
+      "name": "100 Falling Leaves",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D57848,10:#D57848,10:#B73155,37:#B73155,37:#CC7046,57:#CC7046,57:#70293D,80:#70293D,80:#DAB64A,100:#DAB64A",
+      "catalogNumber": "100"
+    },
+    {
+      "id": "LZ101",
+      "name": "101 Spring Flower",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D4B26C,27:#D4B26C,27:#795483,49:#795483,49:#DCC2DD,69:#DCC2DD,69:#6BB8DA,100:#6BB8DA",
+      "catalogNumber": "101"
+    },
+    {
+      "id": "LZ102",
+      "name": "102 Western Sunset",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7E6296,4:#7E6296,4:#8083B0,24:#8083B0,24:#805888,47:#805888,47:#662735,73:#662735,73:#930F2C,94:#930F2C,94:#6D1C2D,100:#6D1C2D",
+      "catalogNumber": "102"
+    },
+    {
+      "id": "LZ103",
+      "name": "103 Tutti Frutti",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#B79FB1,2:#B79FB1,2:#E7DEE3,24:#E7DEE3,24:#B45682,49:#B45682,49:#1F3472,76:#1F3472,76:#CCB464,100:#CCB464",
+      "catalogNumber": "103"
+    },
+    {
+      "id": "LZ104",
+      "name": "104 Summer Fun",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7C78A9,24:#7C78A9,24:#F0F3F4,35:#F0F3F4,35:#99D2BC,47:#99D2BC,47:#E4ABC4,57:#E4ABC4,57:#EFEAE9,69:#EFEAE9,69:#74ADC0,92:#74ADC0,92:#EDEAE8,100:#EDEAE8",
+      "catalogNumber": "104"
+    },
+    {
+      "id": "LZ105",
+      "name": "105 Confetti",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#477AA6,4:#477AA6,4:#5E2C46,29:#5E2C46,29:#446F9B,51:#446F9B,51:#DBE5D2,73:#DBE5D2,73:#E3E98D,100:#E3E98D",
+      "catalogNumber": "105"
+    },
+    {
+      "id": "LZ106",
+      "name": "106 Spring Fling",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E5E8DF,2:#E5E8DF,2:#364F76,29:#364F76,29:#C9D5C9,51:#C9D5C9,51:#B17EA3,76:#B17EA3,76:#9E5588,96:#9E5588,96:#D2A6C3,100:#D2A6C3",
+      "catalogNumber": "106"
+    },
+    {
+      "id": "LZ107",
+      "name": "107 Tropical Fruit",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#FBF9EA,2:#FBF9EA,2:#64A290,27:#64A290,27:#E9E7DC,53:#E9E7DC,53:#CC425B,73:#CC425B,73:#CA7C8A,92:#CA7C8A,92:#C2435B,100:#C2435B",
+      "catalogNumber": "107"
+    },
+    {
+      "id": "LZ108",
+      "name": "108 Sherbet Delight",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E5B993,14:#E5B993,14:#F0E3A4,32:#F0E3A4,32:#E4B58F,48:#E4B58F,48:#C492B7,72:#C492B7,72:#6D385C,100:#6D385C",
+      "catalogNumber": "108"
+    },
+    {
+      "id": "LZ109",
+      "name": "109 Wild Flower",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#C3C494,4:#C3C494,4:#77ACCA,35:#77ACCA,35:#BCBD88,51:#BCBD88,51:#E4C7D5,75:#E4C7D5,75:#F2ECF0,94:#F2ECF0,94:#E0C2CC,100:#E0C2CC",
+      "catalogNumber": "109"
+    },
+    {
+      "id": "LZ110",
+      "name": "110 Desert Bloom",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#CED7D6,29:#CED7D6,29:#733C73,69:#733C73,69:#AD5B3F,100:#AD5B3F",
+      "catalogNumber": "110"
+    },
+    {
+      "id": "LZ111",
+      "name": "111 Cotton Candy",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#A89BB8,31:#E0D5DB,52:#A8B7CF,65:#ABB3C8,81:#D3AEAE,100:#B59EB6",
+      "catalogNumber": "111"
+    },
+    {
+      "id": "LZ112",
+      "name": "112 Carousel",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E4B28F,2:#E4B28F,2:#BA6639,27:#BA6639,27:#97A1A1,45:#97A1A1,45:#A895A0,55:#A895A0,55:#7A5C7E,76:#7A5C7E,76:#898E6A,100:#898E6A",
+      "catalogNumber": "112"
+    },
+    {
+      "id": "LZ113",
+      "name": "113 Jewels",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#53346F,27:#53346F,27:#D8E5DE,37:#D8E5DE,37:#6E1E44,69:#6E1E44,69:#D6E0F3,80:#D6E0F3,80:#325C94,100:#325C94",
+      "catalogNumber": "113"
+    },
+    {
+      "id": "LZ114",
+      "name": "114 Sea Shells",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#ADA2A6,38:#D7AA9D,58:#A3999C,79:#B1A8AB,100:#C8968A",
+      "catalogNumber": "114"
+    },
+    {
+      "id": "LZ115",
+      "name": "115 Springtime",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7B8927,2:#7B8927,2:#AFB846,24:#AFB846,24:#CEBECA,49:#CEBECA,49:#897EAE,82:#897EAE,82:#749293,100:#749293",
+      "catalogNumber": "115"
+    },
+    {
+      "id": "LZ116",
+      "name": "116 Christmas Delight",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#365126,34:#365126,34:#F1EDE8,49:#F1EDE8,49:#B6202C,83:#B6202C,83:#F4F0F0,100:#F4F0F0",
+      "catalogNumber": "116"
+    },
+    {
+      "id": "LZ117",
+      "name": "117 Country Side",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#566042,27:#59664A,44:#497783,65:#4F7C8C,81:#8EA0BE,100:#8EA0BC",
+      "catalogNumber": "117"
+    },
+    {
+      "id": "LZ118",
+      "name": "118 Bubble Gum Mix",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#91C8D2,33:#91C8D2,33:#DDA6B0,63:#DDA6B0,63:#A6264E,100:#A6264E",
+      "catalogNumber": "118"
+    },
+    {
+      "id": "LZ119",
+      "name": "119 Jelly Bean",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#6B2324,2:#6B2324,2:#A02655,27:#A02655,27:#9C90B4,47:#9C90B4,47:#BD2826,80:#BD2826,80:#969020,100:#969020",
+      "catalogNumber": "119"
+    },
+    {
+      "id": "LZ120",
+      "name": "120 Denim Whisper",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#DEC4C6,20:#DEC4C6,20:#546167,51:#546167,51:#587A9F,78:#587A9F,78:#ADB9C2,100:#ADB9C2",
+      "catalogNumber": "120"
+    },
+    {
+      "id": "LZ121",
+      "name": "121 Marble",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#EEEDE4,6:#EEEDE4,6:#87927A,24:#87927A,24:#9C3825,45:#9C3825,45:#E0D8D0,57:#E0D8D0,57:#32354F,67:#32354F,67:#BD9696,100:#BD9696",
+      "catalogNumber": "121"
+    },
+    {
+      "id": "LZ122",
+      "name": "122 Caribbean",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#293D6F,2:#293D6F,2:#4A5F90,35:#4A5F90,35:#69A8C7,63:#69A8C7,63:#68558E,100:#68558E",
+      "catalogNumber": "122"
+    },
+    {
+      "id": "LZ123",
+      "name": "123 Grape Pizzaz",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#A24C7F,29:#A24C7F,29:#E8E6E7,41:#E8E6E7,41:#7E4F83,65:#7E4F83,65:#D5C6C8,76:#D5C6C8,76:#532439,100:#532439",
+      "catalogNumber": "123"
+    },
+    {
+      "id": "LZ124",
+      "name": "124 Spring Garden",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#A2A268,4:#A2A268,4:#C9C686,27:#C9C686,27:#9BA36D,45:#9BA36D,45:#B57BA1,67:#B57BA1,67:#924E7C,100:#924E7C",
+      "catalogNumber": "124"
+    },
+    {
+      "id": "LZ125",
+      "name": "125 Sea Scape",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#69B2CA,41:#69B2CA,41:#3F5772,65:#3F5772,65:#C07049,100:#C07049",
+      "catalogNumber": "125"
+    },
+    {
+      "id": "LZ126",
+      "name": "126 Paint Brush",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#C26C8F,2:#C26C8F,2:#6D6590,37:#6D6590,37:#782B3C,49:#782B3C,49:#AAC5BD,76:#AAC5BD,76:#2F3870,94:#2F3870,94:#B6C5C9,100:#B6C5C9",
+      "catalogNumber": "126"
+    },
+    {
+      "id": "LZ127",
+      "name": "127 Butterfly Breeze",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#DAE3EA,2:#DAE3EA,2:#BBC4D3,29:#BBC4D3,29:#9ABEAE,49:#9ABEAE,49:#C68CB0,78:#C68CB0,78:#E4DFA4,100:#E4DFA4",
+      "catalogNumber": "127"
+    },
+    {
+      "id": "LZ128",
+      "name": "128 March Breeze",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#CCC5C3,2:#CCC5C3,2:#314B6E,29:#314B6E,29:#A4A5B0,37:#A4A5B0,37:#8D88A9,51:#8D88A9,51:#803844,71:#803844,71:#CAD23C,92:#CAD23C,92:#DFD4BA,100:#DFD4BA",
+      "catalogNumber": "128"
+    },
+    {
+      "id": "LZ129",
+      "name": "129 Purple Splendor",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#B58DB0,27:#B58DB0,27:#562644,51:#562644,51:#9381AA,73:#9381AA,73:#443153,100:#443153",
+      "catalogNumber": "129"
+    },
+    {
+      "id": "LZ130",
+      "name": "130 Island Breeze",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#804576,24:#804576,24:#BE8298,49:#BE8298,49:#6CB6D0,78:#6CB6D0,78:#44769D,94:#44769D,94:#2F4A7F,100:#2F4A7F",
+      "catalogNumber": "130"
+    },
+    {
+      "id": "LZ131",
+      "name": "131 Vineyard Harvest",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#762F4B,2:#762F4B,2:#A53F71,20:#A53F71,20:#663152,57:#663152,57:#885A7E,80:#885A7E,80:#8C7F52,100:#8C7F52",
+      "catalogNumber": "131"
+    },
+    {
+      "id": "LZ132",
+      "name": "132 Tropical Punch",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#8E7278,2:#8E7278,2:#BA4E80,27:#BA4E80,27:#DDA3B4,51:#DDA3B4,51:#EDE19D,78:#EDE19D,78:#DFA96D,100:#DFA96D",
+      "catalogNumber": "132"
+    },
+    {
+      "id": "LZ133",
+      "name": "133 Razzle Dazzle",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E3B270,24:#E3B270,24:#422C54,57:#422C54,57:#C25788,78:#C25788,78:#2D3A5C,100:#2D3A5C",
+      "catalogNumber": "133"
+    },
+    {
+      "id": "LZ134",
+      "name": "134 Mountain Breeze",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#AB6F69,6:#AB6F69,6:#CA667C,27:#CA667C,27:#5B402E,59:#5B402E,59:#C4B6A0,80:#C4B6A0,80:#A29C62,100:#A29C62",
+      "catalogNumber": "134"
+    },
+    {
+      "id": "LZ135",
+      "name": "135 Lollipop",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#726A7E,2:#726A7E,2:#625683,37:#625683,37:#CE6F7D,71:#CE6F7D,71:#C0C377,100:#C0C377",
+      "catalogNumber": "135"
+    },
+    {
+      "id": "LZ136",
+      "name": "136 Autumn Spice",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#865226,2:#865226,2:#A6A06F,14:#A6A06F,14:#7C764D,31:#7C764D,31:#AA583C,51:#AA583C,51:#84383F,73:#84383F,73:#895D3C,100:#895D3C",
+      "catalogNumber": "136"
+    },
+    {
+      "id": "LZ137",
+      "name": "137 Berry Burst",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#3E3D61,2:#3E3D61,2:#71949D,29:#71949D,29:#76839C,45:#76839C,45:#692F59,100:#692F59",
+      "catalogNumber": "137"
+    },
+    {
+      "id": "LZ138",
+      "name": "138 Leafy Greens",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7A8258,19:#888D5A,38:#C6C37F,54:#9C9761,83:#959572,100:#82875D",
+      "catalogNumber": "138"
+    },
+    {
+      "id": "LZ139",
+      "name": "139 Fruit Fizz",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#A1768A,2:#A1768A,2:#D3909A,18:#D3909A,18:#DF947D,33:#DF947D,33:#D7B280,47:#D7B280,47:#94507B,82:#94507B,82:#9A99B8,100:#9A99B8",
+      "catalogNumber": "139"
+    },
+    {
+      "id": "LZ140",
+      "name": "140 Country Grape Swirl",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7E6271,2:#7E6271,2:#B292A2,18:#B292A2,18:#5B394A,49:#5B394A,49:#B695A5,80:#B695A5,80:#5C3B4F,100:#5C3B4F",
+      "catalogNumber": "140"
+    },
+    {
+      "id": "LZ141",
+      "name": "141 Purple Twist",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#6F537C,2:#6F537C,2:#E4E6E1,18:#E4E6E1,18:#4E325C,59:#4E325C,59:#E8E0E5,78:#E8E0E5,78:#492F59,100:#492F59",
+      "catalogNumber": "141"
+    },
+    {
+      "id": "LZ142",
+      "name": "142 Turquoise Twist",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#BFDFEF,2:#BFDFEF,2:#9AC1D5,18:#9AC1D5,18:#46789E,55:#46789E,55:#98BFD0,78:#98BFD0,78:#3B6B93,100:#3B6B93",
+      "catalogNumber": "142"
+    },
+    {
+      "id": "LZ143",
+      "name": "143 Royal Wave",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#8094BB,2:#8094BB,2:#E6E9E9,24:#E6E9E9,24:#3A5390,50:#3A5390,50:#E7E8E8,70:#E7E8E8,70:#465B9C,100:#465B9C",
+      "catalogNumber": "143"
+    },
+    {
+      "id": "LZ144",
+      "name": "144 Leaf Swirl",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D7D5AC,2:#D7D5AC,2:#797E54,27:#797E54,27:#ECE6D9,49:#ECE6D9,49:#7E805B,82:#7E805B,82:#E2DAC8,100:#E2DAC8",
+      "catalogNumber": "144"
+    },
+    {
+      "id": "LZ145",
+      "name": "145 Pink Parade",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#C8839B,44:#C47C93,62:#D6A8BB,100:#DCAEC2",
+      "catalogNumber": "145"
+    },
+    {
+      "id": "LZ146",
+      "name": "146 Mocha Swirl",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#533F2C,27:#533F2C,27:#D9D5C3,53:#D9D5C3,53:#5A422F,78:#5A422F,78:#E0D5BE,100:#E0D5BE",
+      "catalogNumber": "146"
+    },
+    {
+      "id": "LZ147",
+      "name": "147 Red Burst",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#BA1632,33:#BA1632,33:#482424,82:#482424,82:#B1112E,100:#B1112E",
+      "catalogNumber": "147"
+    },
+    {
+      "id": "LZ148",
+      "name": "148 Zebra",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#252523,27:#252523,27:#E3E3DE,49:#E3E3DE,49:#202020,82:#202020,82:#E4E5DF,100:#E4E5DF",
+      "catalogNumber": "148"
+    },
+    {
+      "id": "LZ149",
+      "name": "149 Peacock Blues",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#82ACC7,4:#82ACC7,4:#335094,31:#335094,31:#6CB0D0,54:#6CB0D0,54:#3F6B9F,73:#3F6B9F,73:#81B3D6,96:#81B3D6,96:#40629D,100:#40629D",
+      "catalogNumber": "149"
+    },
+    {
+      "id": "LZ150",
+      "name": "150 Rootbeer Float",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#B4B4B0,4:#B4B4B0,4:#604433,27:#604433,27:#9E846B,39:#9E846B,39:#C2B9B1,49:#C2B9B1,49:#886540,80:#886540,80:#D1C1AC,100:#D1C1AC",
+      "catalogNumber": "150"
+    },
+    {
+      "id": "LZ151",
+      "name": "151 Angels Love",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#F2E4E8,18:#F2E4E8,18:#B01632,57:#B01632,57:#F3EAEA,82:#F3EAEA,82:#A8142E,100:#A8142E",
+      "catalogNumber": "151"
+    },
+    {
+      "id": "LZ152",
+      "name": "152 Christmas Green Mix",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#486C46,23:#486C46,23:#CCD6AC,48:#CCD6AC,48:#F0F0E6,62:#F0F0E6,62:#D0D4B0,85:#D0D4B0,85:#466E46,100:#466E46",
+      "catalogNumber": "152"
+    },
+    {
+      "id": "LZ153",
+      "name": "153 Rainbow Taffy",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#94C8DC,8:#94C8DC,8:#8890AA,22:#8890AA,22:#8DBFCD,37:#8DBFCD,37:#D1D480,53:#D1D480,53:#F4E6A3,63:#F4E6A3,63:#D7A761,78:#D7A761,78:#DDB6BA,92:#DDB6BA,92:#D5A678,100:#D5A678",
+      "catalogNumber": "153"
+    },
+    {
+      "id": "LZ154",
+      "name": "154 Wildflower Garden",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7F7B54,18:#7F7B54,18:#9E90B2,49:#9E90B2,49:#E5AA5C,73:#E5AA5C,73:#B28496,84:#B28496,84:#AA6478,100:#AA6478",
+      "catalogNumber": "154"
+    },
+    {
+      "id": "LZ155",
+      "name": "155 Ocean Sunset",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#ACA69A,2:#ACA69A,2:#508994,18:#508994,18:#8FC2BD,33:#8FC2BD,33:#DFBE80,49:#DFBE80,49:#8E5C7E,69:#8E5C7E,69:#742E5B,92:#742E5B,92:#BD8FB5,100:#BD8FB5",
+      "catalogNumber": "155"
+    },
+    {
+      "id": "LZ156",
+      "name": "156 Juicy Watermelon",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D796A9,20:#D796A9,20:#C5547C,33:#C5547C,33:#B61C50,53:#B61C50,53:#C56E75,71:#C56E75,71:#BADD85,86:#BADD85,86:#F0EFC9,100:#F0EFC9",
+      "catalogNumber": "156"
+    },
+    {
+      "id": "LZ157",
+      "name": "157 Raspberry Frappe",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#9E5485,24:#9E5485,24:#70305A,45:#70305A,45:#E8CAD9,73:#E8CAD9,73:#D9A8C4,100:#D9A8C4",
+      "catalogNumber": "157"
+    },
+    {
+      "id": "LZ158",
+      "name": "158 Niagara Falls",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7BBACC,4:#7BBACC,4:#5597B7,18:#5597B7,18:#A0D5D7,53:#A0D5D7,53:#509499,67:#509499,67:#A6D2D3,100:#A6D2D3",
+      "catalogNumber": "158"
+    },
+    {
+      "id": "LZ159",
+      "name": "159 Easter Eggs",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#CEBCC6,17:#D4BBC9,38:#DBE1C6,62:#CCC0D1,83:#E1E5E3,100:#D9D5D6",
+      "catalogNumber": "159"
+    },
+    {
+      "id": "LZ160",
+      "name": "160 Country Kitchen",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#83827D,2:#83827D,2:#E3D3CC,12:#E3D3CC,12:#B3908A,33:#B3908A,33:#DEDAD5,45:#DEDAD5,45:#9A7D92,73:#9A7D92,73:#C5D3CD,100:#C5D3CD",
+      "catalogNumber": "160"
+    },
+    {
+      "id": "LZ161",
+      "name": "161 Sea Island Citrus",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#C6E1DB,25:#C5E3DD,52:#C2DBAF,81:#8ECAC8,100:#8CC4C7",
+      "catalogNumber": "161"
+    },
+    {
+      "id": "LZ162",
+      "name": "162 Purple Iris Fusion",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#6C4772,15:#643F6B,44:#B5A3BD,56:#BFB2C6,100:#6C4A74",
+      "catalogNumber": "162"
+    },
+    {
+      "id": "LZ163",
+      "name": "163 Blue Ice",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#F3F6F3,25:#CAE6E7,100:#F1F4F0",
+      "catalogNumber": "163"
+    },
+    {
+      "id": "LZ164",
+      "name": "164 Blue River Glades",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#86A0AE,33:#86A0AE,33:#527181,51:#527181,51:#ABB8AB,61:#ABB8AB,61:#778B7E,100:#778B7E",
+      "catalogNumber": "164"
+    },
+    {
+      "id": "LZ165",
+      "name": "165 Grape Splash",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#B28AAE,16:#B28AAE,16:#805684,53:#805684,53:#9892B4,100:#9892B4",
+      "catalogNumber": "165"
+    },
+    {
+      "id": "LZ166",
+      "name": "166 Pink Cocoa",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#A5A69E,2:#A5A69E,2:#634C30,14:#634C30,14:#8B705B,33:#8B705B,33:#C5AD98,45:#C5AD98,45:#B14073,65:#B14073,65:#C76A94,84:#C76A94,84:#C69AAE,100:#C69AAE",
+      "catalogNumber": "166"
+    },
+    {
+      "id": "LZ167",
+      "name": "167 Jungles Greens",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#5C5E3C,23:#524F31,38:#61694B,56:#475342,100:#5B6441",
+      "catalogNumber": "167"
+    },
+    {
+      "id": "LZ168",
+      "name": "168 Latte Foam",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D6CAB1,19:#C9B89B,46:#E8DFCB,67:#D5C6A4,100:#E0D6C2",
+      "catalogNumber": "168"
+    },
+    {
+      "id": "LZ169",
+      "name": "169 Autumn Apple Pie",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#C7B6A8,22:#C7B6A8,22:#C59458,45:#C59458,45:#672630,100:#672630",
+      "catalogNumber": "169"
+    },
+    {
+      "id": "LZ170",
+      "name": "170 Pineapple Parfait",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#EDE082,10:#EAD55F,27:#EBD55D,81:#F2ECA1,100:#E8D25C",
+      "catalogNumber": "170"
+    },
+    {
+      "id": "LZ171",
+      "name": "171 Green Coral Sea",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#B1595C,22:#B1595C,22:#D99A98,41:#D99A98,41:#CBAAA2,51:#CBAAA2,51:#C8CE84,100:#C8CE84",
+      "catalogNumber": "171"
+    },
+    {
+      "id": "LZ172",
+      "name": "172 Pink Marble",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#7A797A,33:#7A797A,33:#E0AEC3,65:#E0AEC3,65:#8B305C,100:#8B305C",
+      "catalogNumber": "172"
+    },
+    {
+      "id": "LZ173",
+      "name": "173 Purple Marble",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#757575,39:#757575,39:#C7B8D2,59:#C7B8D2,59:#6A4473,100:#6A4473",
+      "catalogNumber": "173"
+    },
+    {
+      "id": "LZ174",
+      "name": "174 Girly Girl",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#DCA1BE,6:#DCA1BE,6:#CF769F,29:#CF769F,29:#B43873,47:#B43873,47:#C0A1BF,63:#C0A1BF,63:#9887AB,78:#9887AB,78:#5C3465,100:#5C3465",
+      "catalogNumber": "174"
+    },
+    {
+      "id": "LZ175",
+      "name": "175 Scottish Thistle",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#A897A6,17:#9A86AC,29:#A490B6,42:#CABECF,67:#CCE7B3,100:#E1E3D0",
+      "catalogNumber": "175"
+    },
+    {
+      "id": "LZ176",
+      "name": "176 Pink Blossoms",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E4A6C8,2:#E4A6C8,2:#BD437A,41:#BD437A,41:#EBCBDD,63:#EBCBDD,63:#D590B2,100:#D590B2",
+      "catalogNumber": "176"
+    },
+    {
+      "id": "LZ177",
+      "name": "177 Elderberry Jam",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#452B4E,29:#372446,90:#835A8B,100:#6D4874",
+      "catalogNumber": "177"
+    },
+    {
+      "id": "LZ178",
+      "name": "178 Grape Pomegranate",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#77486E,17:#825484,40:#653A69,58:#B27692,83:#713654,100:#7C4C77",
+      "catalogNumber": "178"
+    },
+    {
+      "id": "LZ179",
+      "name": "179 Herbal Garden",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#545248,25:#675543,40:#8E835C,58:#5D5F48,100:#525B51",
+      "catalogNumber": "179"
+    },
+    {
+      "id": "LZ180",
+      "name": "180 Honey Drizzle",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E3C860,17:#DAB564,35:#DEAD38,100:#E3C75C",
+      "catalogNumber": "180"
+    },
+    {
+      "id": "LZ181",
+      "name": "181 Cranberry Bush",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#64262E,57:#64262E,57:#8E895A,73:#8E895A,73:#4D5935,100:#4D5935",
+      "catalogNumber": "181"
+    },
+    {
+      "id": "LZ182",
+      "name": "182 Spice Cake",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#783E34,25:#74382F,44:#453730,69:#624632,85:#78554A,100:#7A4138",
+      "catalogNumber": "182"
+    },
+    {
+      "id": "LZ183",
+      "name": "183 Orange Crush",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#C4522B,19:#B93E30,35:#CD4F1D,65:#D8753F,83:#D67821,100:#C4522E",
+      "catalogNumber": "183"
+    },
+    {
+      "id": "LZ184",
+      "name": "184 Rainbow Splash",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D8764A,2:#D8764A,2:#BB533D,20:#BB533D,20:#B54F86,37:#B54F86,37:#3C2F4D,53:#3C2F4D,53:#72B8CE,69:#72B8CE,69:#B4D279,84:#B4D279,84:#E0E252,100:#E0E252",
+      "catalogNumber": "184"
+    },
+    {
+      "id": "LZ185",
+      "name": "185 Arctic Waters",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#608AC4,15:#547CBB,42:#7B89A8,65:#ADD9E0,100:#A1BDD2",
+      "catalogNumber": "185"
+    },
+    {
+      "id": "LZ186",
+      "name": "186 Pastel Petals",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#AAB197,2:#AAB197,2:#9DB5CE,22:#9DB5CE,22:#E0CDDA,39:#E0CDDA,39:#D2E1C9,65:#D2E1C9,65:#C3AFC8,80:#C3AFC8,80:#E2D88E,100:#E2D88E",
+      "catalogNumber": "186"
+    },
+    {
+      "id": "LZ187",
+      "name": "187 Green Ice",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#D6E2B1,25:#D4E1A8,40:#E2E8C4,100:#EFF1E4",
+      "catalogNumber": "187"
+    },
+    {
+      "id": "LZ188",
+      "name": "188 Coral Splash",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#EAB7AF,2:#EAB7AF,2:#C86875,33:#C86875,33:#D07C70,57:#D07C70,57:#E9C17D,80:#E9C17D,80:#DA9E9A,100:#DA9E9A",
+      "catalogNumber": "188"
+    },
+    {
+      "id": "LZ189",
+      "name": "189 Pink Ice",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#E4D2DE,23:#CDADC2,42:#E6D5E0,100:#ECE0E4",
+      "catalogNumber": "189"
+    },
+    {
+      "id": "LZ190",
+      "name": "190 Silver Ice",
+      "group": "Lizbeth – Variegated",
+      "stops": "0:#DCDCDC,67:#D3D1D2,85:#A5A1A2,100:#B8B5B6",
+      "catalogNumber": "190"
+    },
+    {
+      "id": "LZ349-20",
+      "name": "349-20 Frosted Pastel",
+      "group": "Lizbeth – Metallic",
+      "stops": "0:#9F8192,33:#7E7992,100:#888974",
+      "catalogNumber": "349-20"
+    },
+    {
+      "id": "LZ349-40",
+      "name": "349-40 Frosted Pastel",
+      "group": "Lizbeth – Metallic",
+      "stops": "0:#7A7C7F,30:#A9807B,63:#627388,100:#B19876",
+      "catalogNumber": "349-40"
+    },
+    {
+      "id": "LZ400",
+      "name": "400 Patriotic",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#C1A1B0,33:#C1A1B0,33:#77647B,67:#77647B,67:#A44B64,100:#A44B64",
+      "catalogNumber": "400"
+    },
+    {
+      "id": "LZ405",
+      "name": "405 Bumble Bee",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#CEC08A,33:#CEC08A,33:#94855E,67:#94855E,67:#58492E,100:#58492E",
+      "catalogNumber": "405"
+    },
+    {
+      "id": "LZ401",
+      "name": "401 Candy Hearts",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#E8869C,33:#E8869C,33:#DC5C7C,67:#DC5C7C,67:#CE3357,100:#CE3357",
+      "catalogNumber": "401"
+    },
+    {
+      "id": "LZ406",
+      "name": "406 Monarch",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#C97B53,33:#C97B53,33:#965940,67:#965940,67:#633522,100:#633522",
+      "catalogNumber": "406"
+    },
+    {
+      "id": "LZ402",
+      "name": "402 Purpleberry",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#92618D,33:#92618D,33:#7A4975,67:#7A4975,67:#653662,100:#653662",
+      "catalogNumber": "402"
+    },
+    {
+      "id": "LZ407",
+      "name": "407 Midnight Mist",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#B1ADAD,33:#B1ADAD,33:#8A8687,67:#8A8687,67:#646062,100:#646062",
+      "catalogNumber": "407"
+    },
+    {
+      "id": "LZ403",
+      "name": "403 Winter Ice",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#90BCD1,33:#90BCD1,33:#6898B2,67:#6898B2,67:#467597,100:#467597",
+      "catalogNumber": "403"
+    },
+    {
+      "id": "LZ408",
+      "name": "408 Autumn Breeze",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#CA9B71,33:#CA9B71,33:#BA8264,67:#BA8264,67:#AE6E5F,100:#AE6E5F",
+      "catalogNumber": "408"
+    },
+    {
+      "id": "LZ404",
+      "name": "404 Mermaid Lagoon",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#8FAC5D,33:#8FAC5D,33:#7E9B74,67:#7E9B74,67:#678280,100:#678280",
+      "catalogNumber": "404"
+    },
+    {
+      "id": "LZ409",
+      "name": "409 Blaze",
+      "group": "Lizbeth – Twirlz",
+      "stops": "0:#DB684E,33:#DB684E,33:#BC263A,67:#BC263A,67:#B42E25,100:#B42E25",
+      "catalogNumber": "409"
+    }
+  ]
+}

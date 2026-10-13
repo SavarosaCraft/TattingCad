@@ -6,6 +6,7 @@
 // Actions included:
 //   Creation   — addRing, addSplitRing, addChain, addLine
 //   Deletion   — deleteSelected
+//   Cleanup    — findDuplicateElements, cleanupDuplicates
 //   History    — undo, redo
 //   Clipboard  — copySelected, cutSelected, pasteFromClipboard, duplicateInPlace
 //   Ordering   — bringToFront, sendToBack
@@ -359,6 +360,147 @@ export function useEditorActions(p: UseEditorActionsParams) {
       prev.filter(conn => !conn.picots.some(pt => currentSelectedIds.includes(pt.elementId)))
     );
   }, []); // reads via refs
+
+  // ── Cleanup (duplicate detection) ───────────────────────────────────────────
+  //
+  // Finds elements that are true duplicates of one another and removes all
+  // but one from each group. "Duplicate" means: same notation (+ notationB
+  // for split rings), same material (materialId + materialIdB — not the raw
+  // `color` field, which is a legacy per-element string that's always
+  // '#FFFFFF' at creation time regardless of materialId; materialId is what
+  // actually resolves to a rendered color, via the materials list), same
+  // rotation, same position.
+  //
+  // Deliberately does NOT consult picotConnections/isJoint to decide
+  // *whether* two elements are duplicates — joining a picot rewrites the
+  // joined element's notation, so two elements that still match on notation
+  // are, by construction, not meaningfully connected to anything the other
+  // copy isn't also connected to. isJoint is only used below as a
+  // tie-breaker for *which* copy to keep once a duplicate group is found.
+  //
+  // Ghosts are excluded entirely, both as candidates to delete and to keep.
+  // A ghost's identity is fully owned by its array (ghostArrays /
+  // regenerateGhostArrays elsewhere), not by this function — deleting one
+  // here without the ghostArrays.ghostIds/boundaryIds bookkeeping
+  // deleteSelected does above would leave a dangling id in the array's own
+  // records. Same reasoning for isGhostMother elements: removing one needs
+  // deleteSelected's cascade (which also drops its whole ghost array), so a
+  // mother is always kept — even if that leaves its duplicate bucket with
+  // nothing left to remove.
+  const DUPLICATE_POSITION_EPSILON = 0.05; // dsWidth units — duplicateInPlace
+                                            // clones exact floats, so this is
+                                            // a safety margin, not a real
+                                            // tolerance requirement.
+
+  const duplicateSignature = (el: any) => {
+    const bucket = (n: number) => Math.round(n / DUPLICATE_POSITION_EPSILON);
+    const rotation = ((el.rotation || 0) % 360 + 360) % 360;
+    return [
+      el.notation ?? '',
+      el.notationB ?? '',
+      el.materialId ?? '',
+      el.materialIdB ?? '',
+      bucket(rotation),
+      bucket(el.center?.x ?? 0),
+      bucket(el.center?.y ?? 0),
+    ].join('|');
+  };
+
+  const jointPicotCount = (el: any) =>
+    (el.picots || []).filter((pt: any) => pt.isJoint).length;
+
+  // Pure — no state changes. Exposed on its own (in addition to
+  // cleanupDuplicates below) so callers can get a count/preview — e.g. for
+  // deciding whether the periodic on-load/on-save check has anything to
+  // show — without triggering the confirm dialog.
+  const findDuplicateElements = (elementsOverride?: any[]) => {
+    const current = elementsOverride ?? p.elementsRef.current;
+    const buckets = new Map<string, any[]>();
+    current.forEach(el => {
+      if (el.type === 'ghost') return; // array-managed, not a candidate
+      const sig = duplicateSignature(el);
+      if (!buckets.has(sig)) buckets.set(sig, []);
+      buckets.get(sig)!.push(el);
+    });
+
+    const toDelete: string[] = [];
+    const groups: { kept: any; removed: any[] }[] = [];
+
+    for (const bucket of buckets.values()) {
+      if (bucket.length < 2) continue;
+      // Mothers are never deleted here — see comment above the function.
+      const plain = bucket.filter(el => !el.isGhostMother);
+      if (plain.length < 2) continue;
+
+      // Keep whichever copy has the most joined picots; tie-break by array
+      // order (earliest-created wins) for a stable, deterministic result.
+      let keep = plain[0];
+      for (const el of plain.slice(1)) {
+        if (jointPicotCount(el) > jointPicotCount(keep)) keep = el;
+      }
+      const removed = plain.filter(el => el !== keep);
+      groups.push({ kept: keep, removed });
+      removed.forEach(el => toDelete.push(el.id));
+    }
+
+    return { toDelete, groups };
+  };
+
+  // opts.silent: when true, does nothing (no dialog at all) if no
+  // duplicates are found — for the periodic on-load/on-save check, which
+  // shouldn't interrupt the user when the pattern is already clean. The
+  // File-menu entry should call this with silent left false, so a manual
+  // "nothing to clean up" click still gets an acknowledgement.
+  //
+  // opts.elementsOverride: check this array instead of elementsRef.current.
+  // Needed right after a project load — elementsRef only syncs from
+  // `elements` state on a later render (same lag documented for
+  // needsHistoryPushRef/isInteractingRef elsewhere in this codebase), so a
+  // caller that just called setElements with freshly-loaded data should
+  // pass that same array here rather than trust the ref to already reflect
+  // it. The actual delete on confirm still goes through `setElements(prev
+  // => ...)` below, which always sees the true current state regardless of
+  // when the user clicks confirm, so the override only affects detection.
+  const cleanupDuplicates = (opts: { silent?: boolean; elementsOverride?: any[] } = {}) => {
+    const { toDelete } = findDuplicateElements(opts.elementsOverride);
+
+    if (toDelete.length === 0) {
+      if (!opts.silent) {
+        p.setConfirmDialog({
+          title: p.t('cleanupDuplicatesTitle'),
+          message: p.t('cleanupDuplicatesNoneFound'),
+          confirmLabel: p.t('alertOk'),
+          onConfirm: () => {},
+        });
+      }
+      return;
+    }
+
+    const idsToDelete = new Set(toDelete);
+    const commit = () => {
+      p.setElements(prev => prev.filter(el => !idsToDelete.has(el.id)));
+      p.setPicotConnections(prev =>
+        prev.filter(conn => !conn.picots.some((pt: any) => idsToDelete.has(pt.elementId)))
+      );
+      p.setSelectedIds(p.selectedIdsRef.current.filter(id => !idsToDelete.has(id)));
+      // No explicit pushHistoryState/skipAutoHistoryRef here — matches
+      // deleteSelected just above, which only touches elements/
+      // picotConnections/selectedIds and relies on the auto-history effect
+      // (watches elements/picotConnections/polarGrids) to pick this up.
+    };
+
+    // {count} is a literal placeholder replaced below — matches this
+    // codebase's existing convention if there is one; verify against
+    // whatever the translations file already does for other dynamic-count
+    // strings, since `t()` here only takes a bare key (no interpolation
+    // param) and I don't have that file to confirm.
+    p.setConfirmDialog({
+      title: p.t('cleanupDuplicatesTitle'),
+      message: p.t('cleanupDuplicatesFound').replace('{count}', String(toDelete.length)),
+      confirmLabel: p.t('cleanupDuplicatesConfirm'),
+      onConfirm: commit,
+    });
+  };
 
   // ── History ───────────────────────────────────────────────────────────────
 
@@ -948,6 +1090,8 @@ export function useEditorActions(p: UseEditorActionsParams) {
     addRing, addSplitRing, addChain, addLine,
     // Deletion
     deleteSelected,
+    // Cleanup
+    findDuplicateElements, cleanupDuplicates,
     // History
     undo, redo,
     // Clipboard

@@ -531,6 +531,31 @@ const TattingDesigner = () => {
     splashTipIndex, setSplashTipIndex,
   } = useViewState();
 
+  // ── Lizbeth color-picker tab state ──────────────────────────────────────
+  // Kept local rather than added to useUIState.ts/useViewState.ts (don't
+  // have either file to edit blind) — mirrors the DMC-tab state above
+  // (dmcSearchTerm/dmcPage/dmcCategory/selectedDmcColor) but kept fully
+  // separate per tab, so switching between the DMC and Lizbeth tabs
+  // doesn't carry one tab's search text/page/category into the other.
+  const [lizbethSearchTerm, setLizbethSearchTerm] = useState('');
+  const [lizbethPage, setLizbethPage] = useState(0);
+  const [lizbethCategory, setLizbethCategory] = useState('all');
+  const [selectedLizbethColor, setSelectedLizbethColor] = useState<any>(null);
+
+  // dmcColors holds both catalogs merged (see the loader above); split
+  // here by the "Lizbeth – " group prefix so the DMC tab and the new
+  // Lizbeth tab each only ever see their own brand's entries. Gradients
+  // from both brands stay merged and untouched — the Gradients tab was
+  // already brand-agnostic (groups are just filter chips there).
+  const dmcOnlyColors = useMemo(
+    () => dmcColors.filter((c: any) => !(c.group || '').startsWith('Lizbeth')),
+    [dmcColors]
+  );
+  const lizbethOnlyColors = useMemo(
+    () => dmcColors.filter((c: any) => (c.group || '').startsWith('Lizbeth')),
+    [dmcColors]
+  );
+
   // ── Bead and picot state ─────────────────────────────────────────────────
   const {
     beadLibrary, setBeadLibrary,
@@ -1020,97 +1045,138 @@ const APP_VERSION = '1.2.0-beta';
     return () => ro.disconnect();
   }, []);
 
-  // Load DMC colors on mount (from external JSON file with validation)
+  // Load DMC + Lizbeth colors on mount (from external JSON files with
+  // validation). Both catalogs share the same { solidColors, gradients }
+  // shape and both land in the one `dmcColors` array that
+  // ColorPickerSwatchesTab/ColorPickerGradientsTab already consume.
+  // Lizbeth's own groups ("Lizbeth – Pinks", "Lizbeth – Blues & Teals",
+  // etc. — 13 of them) are pre-namespaced in the data file itself, kept
+  // visually distinct from DMC's own groups ("Reds"/"Blues"/...) rather
+  // than folded into them. No new tab, no new state: the existing
+  // group-based filtering in the Swatches tab picks this up automatically
+  // once the data's in the array — this code doesn't hardcode any
+  // specific group name, Lizbeth or otherwise.
+  // Lizbeth's `id` (e.g. "LZ601") is a namespaced key distinct from the
+  // real physical thread number — DMC and Lizbeth both use plain short
+  // numeric ids, so without the "LZ" prefix a Lizbeth color could collide
+  // with an unrelated DMC color sharing the same number once merged into
+  // one array (ids are the actual lookup key everywhere, including a
+  // saved project's materialId). The real catalog number is preserved
+  // untouched in `catalogNumber`, and also folded into `name` (e.g. "601
+  // Snow White") so it stays visible without needing
+  // ColorPickerSwatchesTab to know about the new field.
   useEffect(() => {
+    // Shared by both catalogs — was duplicated inline here before Lizbeth
+    // was added; pulled out rather than copy-pasting it a second time.
+    const validateCatalog = (data: any, label: string): any[] => {
+      // Validate JSON structure
+      if (!data.solidColors || !Array.isArray(data.solidColors)) {
+        throw new Error(`Invalid ${label} file format: missing solidColors array`);
+      }
+      if (!data.gradients || !Array.isArray(data.gradients)) {
+        throw new Error(`Invalid ${label} file format: missing gradients array`);
+      }
+
+      // Validate each solid color has required fields
+      data.solidColors.forEach((color: any, index: number) => {
+        if (!color.id || !color.name || !color.hex) {
+          throw new Error(`Invalid ${label} solid color at index ${index}: missing required fields (id, name, hex)`);
+        }
+        if (!/^#[0-9A-Fa-f]{6}$/.test(color.hex)) {
+          throw new Error(`Invalid ${label} solid color hex at index ${index}: ${color.hex}`);
+        }
+      });
+
+      // Validate and flatten gradients — supports flat array with 'group' field (current format)
+      // and legacy grouped {threadLine, items[]} format for backwards compatibility
+      const flatGradients: any[] = [];
+      data.gradients.forEach((entry: any, index: number) => {
+        if (Array.isArray(entry.items)) {
+          // Legacy grouped format: { threadLine: "...", items: [...] }
+          if (!entry.threadLine) throw new Error(`${label} gradient group at index ${index} missing threadLine`);
+          entry.items.forEach((g: any, gi: number) => {
+            if (!g.id || !g.name || !g.stops)
+              throw new Error(`Invalid ${label} gradient in group "${entry.threadLine}" at item ${gi}: missing fields`);
+            flatGradients.push({ ...g, type: 'gradient', group: g.group || entry.threadLine });
+          });
+        } else {
+          // Current flat format: { id, name, type, group, stops }
+          if (!entry.id || !entry.name || !entry.stops)
+            throw new Error(`Invalid ${label} gradient at index ${index}: missing required fields (id, name, stops)`);
+          flatGradients.push({ ...entry, type: 'gradient' });
+        }
+      });
+
+      // Merge solid colors and gradients
+      return [...data.solidColors, ...flatGradients];
+    };
+
+    const loadCatalog = async (path: string, label: string): Promise<any[]> => {
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error(`Failed to load ${label} file: ${response.status} ${response.statusText}`);
+      }
+      return validateCatalog(await response.json(), label);
+    };
+
     const loadColors = async () => {
+      let dmcLoaded: any[] | null = null;
       try {
-        // Try to load from external JSON file
-        const response = await fetch('./dmc_colors.json');
-        
-        if (!response.ok) {
-          throw new Error(`Failed to load colors file: ${response.status} ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        
-        // Validate JSON structure
-        if (!data.solidColors || !Array.isArray(data.solidColors)) {
-          throw new Error('Invalid color file format: missing solidColors array');
-        }
-        if (!data.gradients || !Array.isArray(data.gradients)) {
-          throw new Error('Invalid color file format: missing gradients array');
-        }
-        
-        // Validate each solid color has required fields
-        data.solidColors.forEach((color, index) => {
-          if (!color.id || !color.name || !color.hex) {
-            throw new Error(`Invalid solid color at index ${index}: missing required fields (id, name, hex)`);
-          }
-          if (!/^#[0-9A-Fa-f]{6}$/.test(color.hex)) {
-            throw new Error(`Invalid solid color hex at index ${index}: ${color.hex}`);
-          }
-        });
-        
-        // Validate and flatten gradients — supports flat array with 'group' field (current format)
-        // and legacy grouped {threadLine, items[]} format for backwards compatibility
-        let flatGradients = [];
-        data.gradients.forEach((entry, index) => {
-          if (Array.isArray(entry.items)) {
-            // Legacy grouped format: { threadLine: "...", items: [...] }
-            if (!entry.threadLine) throw new Error(`Gradient group at index ${index} missing threadLine`);
-            entry.items.forEach((g, gi) => {
-              if (!g.id || !g.name || !g.stops)
-                throw new Error(`Invalid gradient in group "${entry.threadLine}" at item ${gi}: missing fields`);
-              flatGradients.push({ ...g, type: 'gradient', group: g.group || entry.threadLine });
-            });
-          } else {
-            // Current flat format: { id, name, type, group, stops }
-            if (!entry.id || !entry.name || !entry.stops)
-              throw new Error(`Invalid gradient at index ${index}: missing required fields (id, name, stops)`);
-            flatGradients.push({ ...entry, type: 'gradient' });
-          }
-        });
-        
-        // Merge solid colors and gradients
-        const allColors = [...data.solidColors, ...flatGradients];
-        setDmcColors(allColors);
-        const gradientGroups = [...new Set(flatGradients.map(g => g.group).filter(Boolean))];
-        
+        dmcLoaded = await loadCatalog('./dmc_colors.json', 'DMC colors');
       } catch (error) {
         console.error('❌ Error loading DMC colors from external file:', error);
-        
-        // Fallback to minimal embedded colors if external file fails
-        const fallbackColors = [
-          {"id":"Ecru","name":"Ecru/off-white","hex":"#FFF7E7","group":"Whites & Neutrals"},
-          {"id":"Blanc","name":"White","hex":"#FCFCFF","group":"Whites & Neutrals"},
-          {"id":"B5200","name":"Snow White","hex":"#FFFFFF","group":"Whites & Neutrals"},
-          {"id":"310","name":"Black","hex":"#000000","group":"Whites & Neutrals"},
-          {"id":"321","name":"Christmas Red","hex":"#C8011F","group":"Reds"},
-          {"id":"666","name":"Christmas Red - Bright","hex":"#E0383B","group":"Reds"},
-          {"id":"3713","name":"Salmon - Very Light","hex":"#FADAD1","group":"Pinks & Mauves"},
-          {"id":"798","name":"Delft - Dark","hex":"#385E9B","group":"Blues"},
-          {"id":"3843","name":"Electric Blue","hex":"#0AAEE0","group":"Blues"},
-          {"id":"702","name":"Kelly Green","hex":"#21844E","group":"Greens"},
-          {"id":"704","name":"Chartreuse - Bright","hex":"#A6C926","group":"Greens"},
-          {"id":"726","name":"Topaz - Light","hex":"#F9D667","group":"Yellows & Golds"},
-          {"id":"742","name":"Tangerine - Light","hex":"#FEB246","group":"Oranges & Rusts"},
-          {"id":"208","name":"Lavender - Very Dark","hex":"#82558F","group":"Purples & Violets"},
-          {"id":"553","name":"Violet","hex":"#894D80","group":"Purples & Violets"},
-          {"id":"762","name":"Pearl Gray - Very Light","hex":"#E9E9E9","group":"Whites & Neutrals"},
-          {"id":"414","name":"Steel Gray - Dark","hex":"#999999","group":"Whites & Neutrals"},
-          {"id":"433","name":"Brown - Medium","hex":"#8A5638","group":"Browns & Tans"},
-          {"id":"4010","name":"Winter Sky","type":"gradient","group":"Variations","stops":"0:#c4e9f3,55:#d2d2ca,100:#bab3db"},
-          {"id":"4070","name":"Autumn Leaves","type":"gradient","group":"Variations","stops":"0:#ffd89f,67:#fbb098,77:#fea270,96:#fdd269"},
-          {"id":"4200","name":"Wild Fire","type":"gradient","group":"Variations","stops":"0:#BE0F36,33:#CF1B34,65:#ED3245,72:#F12D3B,82:#F12228,93:#F41913,100:#F61408"},
-          {"id":"93","name":"Blue Haze","type":"gradient","group":"Variegated","stops":"0:#B2C2E6,10:#9BACD8,22:#8190C7,29:#717FBC,41:#5866AD,99:#393280"},
-          {"id":"106","name":"Coral","type":"gradient","group":"Variegated","stops":"0:#F50F02,8:#FB2D20,28:#FC7766,35:#FE9381,98:#FA9579"},
-          {"id":"125","name":"Seafoam Green","type":"gradient","group":"Variegated","stops":"0:#106C43,13:#1F8A56,80:#76D790,99:#A5E6AE"}
-        ];
-        
-        setDmcColors(fallbackColors);
       }
+
+      // Lizbeth is optional — a missing/not-yet-added lizbeth_colors.json
+      // is not fatal (no fallback list, unlike DMC): the picker just has
+      // no "Lizbeth" group until the file exists. Still logged, so a file
+      // that exists but is genuinely malformed doesn't fail silently.
+      let lizbethLoaded: any[] = [];
+      try {
+        lizbethLoaded = await loadCatalog('./lizbeth_colors.json', 'Lizbeth colors');
+      } catch (error) {
+        console.error('❌ Error loading Lizbeth colors from external file:', error);
+      }
+
+      if (dmcLoaded) {
+        setDmcColors([...dmcLoaded, ...lizbethLoaded]);
+        return;
+      }
+
+      // Fallback to minimal embedded colors if the DMC file fails —
+      // unchanged from before. Lizbeth entries (if they did load) are
+      // still appended, so a broken DMC file doesn't also hide a working
+      // Lizbeth one.
+      const fallbackColors = [
+        {"id":"Ecru","name":"Ecru/off-white","hex":"#FFF7E7","group":"Whites & Neutrals"},
+        {"id":"Blanc","name":"White","hex":"#FCFCFF","group":"Whites & Neutrals"},
+        {"id":"B5200","name":"Snow White","hex":"#FFFFFF","group":"Whites & Neutrals"},
+        {"id":"310","name":"Black","hex":"#000000","group":"Whites & Neutrals"},
+        {"id":"321","name":"Christmas Red","hex":"#C8011F","group":"Reds"},
+        {"id":"666","name":"Christmas Red - Bright","hex":"#E0383B","group":"Reds"},
+        {"id":"3713","name":"Salmon - Very Light","hex":"#FADAD1","group":"Pinks & Mauves"},
+        {"id":"798","name":"Delft - Dark","hex":"#385E9B","group":"Blues"},
+        {"id":"3843","name":"Electric Blue","hex":"#0AAEE0","group":"Blues"},
+        {"id":"702","name":"Kelly Green","hex":"#21844E","group":"Greens"},
+        {"id":"704","name":"Chartreuse - Bright","hex":"#A6C926","group":"Greens"},
+        {"id":"726","name":"Topaz - Light","hex":"#F9D667","group":"Yellows & Golds"},
+        {"id":"742","name":"Tangerine - Light","hex":"#FEB246","group":"Oranges & Rusts"},
+        {"id":"208","name":"Lavender - Very Dark","hex":"#82558F","group":"Purples & Violets"},
+        {"id":"553","name":"Violet","hex":"#894D80","group":"Purples & Violets"},
+        {"id":"762","name":"Pearl Gray - Very Light","hex":"#E9E9E9","group":"Whites & Neutrals"},
+        {"id":"414","name":"Steel Gray - Dark","hex":"#999999","group":"Whites & Neutrals"},
+        {"id":"433","name":"Brown - Medium","hex":"#8A5638","group":"Browns & Tans"},
+        {"id":"4010","name":"Winter Sky","type":"gradient","group":"Variations","stops":"0:#c4e9f3,55:#d2d2ca,100:#bab3db"},
+        {"id":"4070","name":"Autumn Leaves","type":"gradient","group":"Variations","stops":"0:#ffd89f,67:#fbb098,77:#fea270,96:#fdd269"},
+        {"id":"4200","name":"Wild Fire","type":"gradient","group":"Variations","stops":"0:#BE0F36,33:#CF1B34,65:#ED3245,72:#F12D3B,82:#F12228,93:#F41913,100:#F61408"},
+        {"id":"93","name":"Blue Haze","type":"gradient","group":"Variegated","stops":"0:#B2C2E6,10:#9BACD8,22:#8190C7,29:#717FBC,41:#5866AD,99:#393280"},
+        {"id":"106","name":"Coral","type":"gradient","group":"Variegated","stops":"0:#F50F02,8:#FB2D20,28:#FC7766,35:#FE9381,98:#FA9579"},
+        {"id":"125","name":"Seafoam Green","type":"gradient","group":"Variegated","stops":"0:#106C43,13:#1F8A56,80:#76D790,99:#A5E6AE"}
+      ];
+
+      setDmcColors([...fallbackColors, ...lizbethLoaded]);
     };
-    
+
     loadColors();
   }, []); // Only run on mount
 
@@ -8883,6 +8949,18 @@ const APP_VERSION = '1.2.0-beta';
                   {t('colorDmcTab')}
                 </button>
               )}
+              {(!pickerTabsAllowed || pickerTabsAllowed.includes('lizbeth')) && (
+                <button
+                  onClick={() => setColorPickerTab('lizbeth')}
+                  className={`px-4 py-2 text-sm font-medium ${
+                    colorPickerTab === 'lizbeth'
+                      ? 'text-white border-b-2 border-blue-500'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {t('colorLizbethTab')}
+                </button>
+              )}
               {(!pickerTabsAllowed || pickerTabsAllowed.includes('gradients')) && (
                 <button
                   onClick={() => setColorPickerTab('gradients')}
@@ -8910,7 +8988,7 @@ const APP_VERSION = '1.2.0-beta';
             )}
             {colorPickerTab === 'swatches' && (
               <ColorPickerSwatchesTab
-                dmcColors={dmcColors}
+                dmcColors={dmcOnlyColors}
                 dmcSearchTerm={dmcSearchTerm}
                 setDmcSearchTerm={setDmcSearchTerm}
                 dmcPage={dmcPage}
@@ -8919,6 +8997,22 @@ const APP_VERSION = '1.2.0-beta';
                 setDmcCategory={setDmcCategory}
                 selectedDmcColor={selectedDmcColor}
                 setSelectedDmcColor={setSelectedDmcColor}
+                setPickerColor={setPickerColor}
+                categorizeColor={categorizeColor}
+                t={t}
+              />
+            )}
+            {colorPickerTab === 'lizbeth' && (
+              <ColorPickerSwatchesTab
+                dmcColors={lizbethOnlyColors}
+                dmcSearchTerm={lizbethSearchTerm}
+                setDmcSearchTerm={setLizbethSearchTerm}
+                dmcPage={lizbethPage}
+                setDmcPage={setLizbethPage}
+                dmcCategory={lizbethCategory}
+                setDmcCategory={setLizbethCategory}
+                selectedDmcColor={selectedLizbethColor}
+                setSelectedDmcColor={setSelectedLizbethColor}
                 setPickerColor={setPickerColor}
                 categorizeColor={categorizeColor}
                 t={t}

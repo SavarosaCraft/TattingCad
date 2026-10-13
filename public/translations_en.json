@@ -53,6 +53,8 @@
   "fileExportSvgTitle": "Export the current pattern as an SVG vector file",
   "fileOutputNotation": "Output notation to clipboard",
   "fileShowUnnumbered": "Show Unnumbered",
+  "fileCleanupDuplicates": "Clean Up Duplicates…",
+  "fileCleanupDuplicatesTitle": "Find and remove overlapping duplicate elements",
   "_comment_view_menu": "View menu",
   "viewFitView": "Fit View",
   "viewShowInvalidNotation": "Show Invalid Notation",
@@ -248,6 +250,7 @@
   "materialNewName": "Material",
   "colorPickerTabLabel": "Color Picker",
   "colorDmcTab": "DMC Colors",
+  "colorLizbethTab": "Lizbeth Colors",
   "colorGradientsTab": "Gradients",
   "beadSizeSmall": "Small (S)",
   "beadSizeMedium": "Medium (M)",
@@ -532,6 +535,11 @@
   "ghostArrayCount": "Count",
   "ghostArrayDir": "Direction",
   "ghostArrayGrid": "Grid",
+  "_comment_cleanup_duplicates": "Clean Up Duplicates dialog (File menu + periodic load/save check)",
+  "cleanupDuplicatesTitle": "Clean Up Duplicates",
+  "cleanupDuplicatesFound": "Found {count} overlapping duplicate element(s) — same notation, material, rotation, and position as another element. Remove the duplicates?",
+  "cleanupDuplicatesNoneFound": "No overlapping duplicate elements found.",
+  "cleanupDuplicatesConfirm": "Clean Up",
   "ghostArrayManagerEmpty": "No ghost arrays yet.",
   "ghostArrayManagerTitle": "Ghost Array Manager",
   "ghostArraySelect": "Select",
@@ -582,5 +590,6 @@
 "picotFoldAngleA": "Angle 1",
 "picotFoldAngleB": "Angle 1",
 "picotConnectionColorLabel": "Picot Color:",
-"picotConnectionColorAuto": "Auto"
+"picotConnectionColorAuto": "Auto",
+"propResetTransform": "Reset transformation"
 }

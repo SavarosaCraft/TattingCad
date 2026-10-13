@@ -96,6 +96,7 @@ export interface UseProjectFileParams {
   getPicotPosition: (el: any, picot: any, baseOnly?: boolean) => any;
   showLoadMsg: (type: 'success' | 'error', text: string) => void;
   t: (key: string) => string;
+  cleanupDuplicates: (opts?: { silent?: boolean; elementsOverride?: any[] }) => void;
 }
 
 export function useProjectFile(p: UseProjectFileParams) {
@@ -139,7 +140,13 @@ export function useProjectFile(p: UseProjectFileParams) {
     const thumbPath = await generateThumbnailPng(p.elements, p.dsWidth, filePath);
     addToRecents(displayName, filePath, thumbPath);
     p.setLastSavedHistoryIndex(p.historyIndexRef.current);
-  }, [buildProjectData, p.elements, p.dsWidth]);
+    // Silent — only the manual File-menu entry should interrupt the user;
+    // a save happening to also be a good moment to check shouldn't itself
+    // become an interruption. No elementsOverride needed here: unlike a
+    // load, this doesn't touch elements state at all (just reads it for
+    // serialization), so elementsRef.current is already accurate.
+    p.cleanupDuplicates({ silent: true });
+  }, [buildProjectData, p.elements, p.dsWidth, p.cleanupDuplicates]);
 
   const performSave = useCallback(async (nameOverride?: string) => {
     const finalName = (nameOverride ?? p.projectName).trim() || 'Untitled Pattern';
@@ -218,7 +225,7 @@ export function useProjectFile(p: UseProjectFileParams) {
         (conn.picots || []).map((cp: any) => `${cp.elementId}::${cp.picotId}`)
       )
     );
-    p.setElements((projectData.elements || []).map((el: any) => {
+    const migratedElements = (projectData.elements || []).map((el: any) => {
       let migrated = 'labelsInside' in el && !('labelOffset' in el)
         ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
         : el;
@@ -239,7 +246,8 @@ export function useProjectFile(p: UseProjectFileParams) {
         };
       }
       return migrated;
-    }));
+    });
+    p.setElements(migratedElements);
     p.setPicotConnections(projectData.picotConnections || []);
     p.setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
     p.setZoom(projectData.zoom || 1);
@@ -282,13 +290,21 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setHistoryIndex(0);
     p.setCurrentFilePath(filePath);
 
+    // Silent — a load happening to also be a good moment to check
+    // shouldn't itself interrupt opening the file. elementsOverride is
+    // required here, not optional: elementsRef.current still holds
+    // whatever was on screen *before* this load until a later render syncs
+    // it, so checking without the override would silently check the wrong
+    // (stale) elements.
+    p.cleanupDuplicates({ silent: true, elementsOverride: migratedElements });
+
     const count = (projectData.elements || []).length;
     setTimeout(() => p.showLoadMsg('success', p.t('loadSuccess').replace('{n}', String(count))), 50);
 
     const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? projectData.name ?? 'Project';
     const thumbPath = await generateThumbnailPng(projectData.elements || [], projectData.dsWidth || 10, filePath);
     addToRecents(displayName, filePath, thumbPath);
-  }, [p.t]);
+  }, [p.t, p.cleanupDuplicates]);
 
   // Shared by loadFromPath and loadProject — both need to read a project
   // file, apply it, and handle the same two error cases the same way; only
