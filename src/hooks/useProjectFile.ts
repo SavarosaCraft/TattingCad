@@ -64,6 +64,10 @@ export interface UseProjectFileParams {
   currentFilePath: string | null;
   // Refs
   historyIndexRef: React.RefObject<number>;
+  // Set true right before applyProjectData's state changes so the
+  // auto-push history effect in tattingindex.tsx skips the one spurious
+  // entry it would otherwise add on top of the fresh setHistory reset.
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
   canvasRef: React.RefObject<HTMLElement | null>;
   // Setters
   setElements: (fn: ((prev: any[]) => any[]) | any[]) => void;
@@ -174,16 +178,10 @@ export function useProjectFile(p: UseProjectFileParams) {
   }, [performSave]);
 
   const applyProjectData = useCallback(async (projectData: any, filePath: string) => {
-    console.log('[load] applyProjectData starting for', filePath);
-    console.log('[load] top-level keys:', Object.keys(projectData || {}));
-
     if (!projectData.elements || !Array.isArray(projectData.elements)) {
-      console.log('[load] REJECTED: projectData.elements missing or not an array. Got:', projectData.elements);
       p.showLoadMsg('error', p.t('loadErrMissingElements'));
       return;
     }
-    console.log('[load] elements count:', projectData.elements.length,
-      '— types present:', [...new Set(projectData.elements.map((el: any) => el?.type))]);
 
     // 'ghost' elements are a valid saved element type (ghost-array instances)
     // — they were missing from this whitelist, which meant any project using
@@ -194,20 +192,9 @@ export function useProjectFile(p: UseProjectFileParams) {
       !VALID_TYPES.has(el.type)
     );
     if (invalidElements.length > 0) {
-      console.log('[load] REJECTED:', invalidElements.length, 'invalid element(s). Details:');
-      invalidElements.forEach((el: any, i: number) => {
-        const reasons: string[] = [];
-        if (!el.id) reasons.push('missing id');
-        if (!el.type) reasons.push('missing type');
-        if (!el.paths) reasons.push('missing paths');
-        else if (!Array.isArray(el.paths)) reasons.push('paths is not an array (got ' + typeof el.paths + ')');
-        if (el.type && !VALID_TYPES.has(el.type)) reasons.push(`type "${el.type}" not in whitelist`);
-        console.log(`  [${i}] id=${el.id ?? '(none)'} type=${el.type ?? '(none)'} — ${reasons.join(', ')}`);
-      });
       p.showLoadMsg('error', p.t('loadErrInvalidElements').replace('{n}', String(invalidElements.length)));
       return;
     }
-    console.log('[load] all elements passed validation');
 
     if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
       projectData.camera = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
@@ -247,6 +234,14 @@ export function useProjectFile(p: UseProjectFileParams) {
       }
       return migrated;
     });
+    // History is reset directly below (setHistory) while elements/
+    // connections/polarGrids also change in this same batch. That second
+    // change re-triggers the auto-push effect in tattingindex.tsx, which
+    // reads stale rounds/groups refs (one render behind) — so it never
+    // matches the reset entry and pushes a spurious duplicate, leaving Undo
+    // enabled on a freshly opened file. Skip that one auto-push. Same fix
+    // as confirmNewCanvas / loadFromAutosave in tattingindex.tsx.
+    p.skipAutoHistoryRef.current = true;
     p.setElements(migratedElements);
     p.setPicotConnections(projectData.picotConnections || []);
     p.setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
@@ -286,7 +281,12 @@ export function useProjectFile(p: UseProjectFileParams) {
 
     p.setSelectedIds([]);
     p.setSelectedPicots([]);
-    p.setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [] }]);
+    // migratedElements, not the raw projectData.elements: the first
+    // history entry must match what's actually on the canvas. The raw
+    // array still has pre-migration data (legacy orderGroup field, stale
+    // isJoint flags), so undoing all the way back used to restore that
+    // unmigrated version instead of the file as loaded.
+    p.setHistory([{ elements: migratedElements, connections: projectData.picotConnections || [] }]);
     p.setHistoryIndex(0);
     p.setCurrentFilePath(filePath);
 
@@ -312,10 +312,8 @@ export function useProjectFile(p: UseProjectFileParams) {
   const readAndApplyProjectFile = useCallback(async (filePath: string) => {
     try {
       const projectData = await readProjectFile(filePath);
-      console.log('[load] readProjectFile succeeded for', filePath);
       applyProjectData(projectData, filePath);
     } catch (error: any) {
-      console.log('[load] readProjectFile/applyProjectData threw:', error);
       if (isFileNotFoundError(error)) {
         p.showLoadMsg('error', p.t('loadErrFileNotFound'));
       } else {

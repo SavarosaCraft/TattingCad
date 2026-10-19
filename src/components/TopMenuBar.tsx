@@ -1,7 +1,7 @@
 // components/TopMenuBar.tsx
 //
 // Row 1 of the two-row header: File/View dropdown triggers, Undo/Redo,
-// Copy/Cut/Paste, Send-to-back/Bring-to-front, Fit All, and the
+// Copy/Cut/Paste, Send-to-back/Bring-to-front, Delete, Fit All, and the
 // Arrange/Options/Help dropdown triggers. Extracted from tattingindex.tsx
 // (see architecture.md — properties-bar mode dispatch / charted structure).
 //
@@ -18,7 +18,7 @@ import React from 'react';
 import {
   IconMenu, IconChevronDown, IconEyeOn, IconUndo, IconRedo, IconCopy,
   IconCut, IconPaste, IconSendToBack, IconBringToFront, IconFitView,
-  IconAlignMiddle, IconSettings, IconHelp,
+  IconAlignMiddle, IconSettings, IconHelp, IconDelete,
 } from './icons';
 
 interface TopMenuBarProps {
@@ -51,6 +51,9 @@ interface TopMenuBarProps {
   bringToFront: () => void;
   arrangeDisabled: boolean;
 
+  onDelete: () => void;
+  deleteDisabled: boolean;
+
   fitAllElements: () => void;
   fitAllDisabled: boolean;
 
@@ -64,6 +67,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
   undo, redo, historyIndex, historyLength, activeMode,
   onCopy, onCut, onPaste, copyCutDisabled, pasteDisabled,
   sendToBack, bringToFront, arrangeDisabled,
+  onDelete, deleteDisabled,
   fitAllElements, fitAllDisabled,
   t,
 }) => {
@@ -177,6 +181,22 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
           disabled={arrangeDisabled}
         >
           <IconBringToFront size={20} />
+        </button>
+
+        <div className="w-px h-6 bg-gray-600 mx-0.5" />
+
+        {/* Delete — duplicate of the left-toolbar delete button (same
+            handler, title key, icon and disabled rule, passed in from
+            tattingindex.tsx) so touch/mobile users have it next to the
+            other edit actions. */}
+        <button
+          onClick={onDelete}
+          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          style={squareBtn}
+          title={t('toolDelete')}
+          disabled={deleteDisabled}
+        >
+          <IconDelete size={20} />
         </button>
       </div>{/* end centered flex */}
 

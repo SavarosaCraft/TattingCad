@@ -228,6 +228,28 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     return stitches;
   };
 
+  // Per-path total-length cache, keyed on the individual path object (not
+  // the array it's passed in) — renderWedgeSplitRingShapes wraps a single
+  // path in a fresh `[path]` literal on every call, so caching by array
+  // reference would miss every time; caching by the underlying path object
+  // (el.paths[0]/[1], stable across the whole bake) hits correctly for both
+  // the single-path (split ring) and multi-path (teardrop/chain, via
+  // el.paths) call shapes. sampleFullPathWithOffset previously recomputed
+  // this (a full sampleBezierPath + calculatePathLength pass per path) on
+  // every single call — once per rectangle, per inner/outer edge, per
+  // stitch — even though it depends only on the path's own geometry, not
+  // on the offset or stitch being rendered.
+  const pathLengthCache = new WeakMap<any, number>();
+  const getCachedPathLength = (path: any): number => {
+    const cached = pathLengthCache.get(path);
+    if (cached !== undefined) return cached;
+    const len = calculatePathLength(sampleBezierPath(path, 50));
+    pathLengthCache.set(path, len);
+    return len;
+  };
+  const getPathsTotalLength = (paths: any[]): number =>
+    paths.reduce((sum, p) => sum + getCachedPathLength(p), 0);
+
   // Calculate stitch positions for circular rings
   const calculateCircleStitches = (element) => {
     if (!element || element.shapeStyle !== 'circle') return [];
@@ -343,11 +365,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
   // Sample a segment of the path between startDist and endDist with offset perpendicular
   // Sample entire path with perpendicular offset, returning array of points
   const sampleFullPathWithOffset = (paths, offset, totalSamples) => {
-    let totalLength = 0;
-    for (const path of paths) {
-      const samples = sampleBezierPath(path, 50);
-      totalLength += calculatePathLength(samples);
-    }
+    const totalLength = getPathsTotalLength(paths);
 
     const points = [];
     for (let i = 0; i <= totalSamples; i++) {
@@ -361,6 +379,38 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     }
     
     return points;
+  };
+
+  // Cache of sampled offset curves, keyed on the identity of the first path
+  // object in the `paths` argument (stable per call site across the whole
+  // stitch loop: el.paths for teardrop/chain, a single path object — pulled
+  // from el.paths[0]/[1] — for each split-ring half), then by
+  // `(pathCount, offset, totalSamples)`.
+  //
+  // This is the main fix: the outer/inner offset curve for a given wedge
+  // rectangle depends only on (stitchType, scale, offsetAmount) — the same
+  // for every stitch of that type on an element — but renderWedgePathShapes
+  // was called once per stitch (and per sub-shape rect, and once each for
+  // outer/inner), so a ring of N same-type stitches resampled the SAME
+  // full-path curve from scratch N times over, each time just to slice out
+  // one small segment of it. Caching means each distinct curve gets sampled
+  // once per element and every other stitch just reuses it before slicing.
+  const offsetCurveCache = new WeakMap<any, Map<string, {x:number,y:number}[]>>();
+  const getCachedOffsetCurve = (paths: any[], offset: number, totalSamples: number): {x:number,y:number}[] => {
+    const key0 = paths[0];
+    if (!key0) return sampleFullPathWithOffset(paths, offset, totalSamples);
+    let byOffset = offsetCurveCache.get(key0);
+    if (!byOffset) {
+      byOffset = new Map();
+      offsetCurveCache.set(key0, byOffset);
+    }
+    const cacheKey = `${paths.length}|${offset.toFixed(6)}|${totalSamples}`;
+    let curve = byOffset.get(cacheKey);
+    if (!curve) {
+      curve = sampleFullPathWithOffset(paths, offset, totalSamples);
+      byOffset.set(cacheKey, curve);
+    }
+    return curve;
   };
 
   // Shared core for teardrop / chain / split-ring wedge rendering. All three
@@ -403,8 +453,8 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       const outerOffset = offsetAmount - yo * scale;
       const innerOffset = offsetAmount - yi * scale;
 
-      const outerCurve = sampleFullPathWithOffset(paths, outerOffset, totalSamples);
-      const innerCurve = sampleFullPathWithOffset(paths, innerOffset, totalSamples);
+      const outerCurve = getCachedOffsetCurve(paths, outerOffset, totalSamples);
+      const innerCurve = getCachedOffsetCurve(paths, innerOffset, totalSamples);
 
       // Map this rectangle's horizontal position to slice indices
       const tLeft  = (xl - ext.xMin) / xSpan;
@@ -552,7 +602,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       // paint-order="stroke": outline painted before the fill so its
       // inward half never eats into (and hides) the thin fill band —
       // matters most where the ribbon narrows near the tip.
-      return `<path d="${d}" fill="${color}" stroke="black" stroke-width="2.5" stroke-linejoin="round" paint-order="stroke"/>`;
+      return `<path d="${d}" fill="${color}" stroke="black" stroke-width="1.5" stroke-linejoin="round" paint-order="stroke"/>`;
     };
 
     // ── per-element SVG fragments ──
@@ -830,10 +880,15 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
         const cached = calculatePathStitches(el);
         const stitches = cached?.stitches ?? cached;
         if (stitches && stitches.length > 0) {
-          const allSamples = (el.paths || []).map((p: any) => sampleBezierPath(p, 50));
-          const pathLengths = allSamples.map((s: any[]) => calculatePathLength(s));
-          const totalLength = pathLengths.reduce((a: number, b: number) => a + b, 0);
-          const totalPathLength = { allSamples, pathLengths, totalLength };
+          // cached already carries allSamples/pathLengths/totalLength from
+          // calculatePathStitches above (it pre-samples once internally) —
+          // this used to redundantly resample every path a second time
+          // here and discard cached's copy instead of reusing it.
+          const totalPathLength = {
+            allSamples: cached.allSamples,
+            pathLengths: cached.pathLengths,
+            totalLength: cached.totalLength,
+          };
 
           // expand bounds from path
           for (const path of el.paths || []) {

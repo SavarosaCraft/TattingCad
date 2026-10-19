@@ -680,8 +680,6 @@ const APP_VERSION = '1.2.0-beta';
   useEffect(() => {
     historyRef.current = history;
     historyIndexRef.current = historyIndex;
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] ref-sync: historyRef.length=${history.length} historyIndexRef=${historyIndex}`);
   }, [history, historyIndex]);
 
   const lastMousePosRef = useRef(null); // was state — now ref to avoid re-render on every move
@@ -732,13 +730,9 @@ const APP_VERSION = '1.2.0-beta';
   // Track history when elements or connections change
   useEffect(() => {
     if (isUndoRedoRef.current) {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] auto-push SKIPPED: mid undo/redo, els=${elements.length}:[${elements.slice(0, 6).map(e => e?.id).join(',')}]`);
       return; // Don't add during undo/redo
     }
     if (skipAutoHistoryRef.current) {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] auto-push SKIPPED: skipAutoHistoryRef (explicit push already done), els=${elements.length}:[${elements.slice(0, 6).map(e => e?.id).join(',')}]`);
       skipAutoHistoryRef.current = false; return;
     } // Explicit push already done
     if (isInteractingRef.current) {
@@ -754,8 +748,6 @@ const APP_VERSION = '1.2.0-beta';
     // which has the same latent issue but never hits it in practice because
     // every path that changes `groups` bypasses this effect entirely via
     // skipAutoHistoryRef + an explicit push with fresh values instead).
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] auto-push COMMIT: els=${elements.length}:[${elements.slice(0, 6).map(e => e?.id).join(',')}] rounds=${(roundsRef.current ?? []).length} groups=${(groupsRef.current ?? []).length}`);
     pushHistoryState(elements, picotConnections, roundsRef.current, polarGrids, groupsRef.current, ghostArrays);
   }, [elements, picotConnections, polarGrids, ghostArrays]); // Depend on elements, connections, polarGrids, and ghostArrays
 
@@ -868,6 +860,12 @@ const APP_VERSION = '1.2.0-beta';
       if (!saved) return;
       const projectData = JSON.parse(saved);
       if (!projectData.elements || projectData.elements.length === 0) return;
+      // Same as confirmNewCanvas: history is reset directly below
+      // (setHistory) while elements/connections/polarGrids also change in
+      // this batch, which would re-trigger the auto-push effect with stale
+      // rounds/groups refs and push a spurious second entry — leaving Undo
+      // enabled right after resuming. Skip that one auto-push.
+      skipAutoHistoryRef.current = true;
       // Migrate legacy labelsInside → labelOffset
       setElements((projectData.elements || []).map(el =>
         'labelsInside' in el && !('labelOffset' in el)
@@ -1016,8 +1014,6 @@ const APP_VERSION = '1.2.0-beta';
           // roundsRef), same as every other explicit pushHistoryState call
           // site in this file, so this effect can stay mount-once ([] deps)
           // rather than rebinding a document listener on every drag tick.
-          // eslint-disable-next-line no-console
-          console.log('[HIST] safety-net pointerup: isInteractingRef was still true after mouseup handling — orphaned drag, pushing directly');
           isInteractingRef.current = false;
           pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
         }
@@ -1456,6 +1452,7 @@ const APP_VERSION = '1.2.0-beta';
     applySingleRotationDelta,
     applyMultiSelectRotationDelta,
     applyGroupRotation,
+    findDuplicateElements, cleanupDuplicates,
   } = useEditorActions({
     elements, selectedIds, dsWidth, camera, zoom, polarGrids,
     elementById, selectedIdSet,
@@ -2277,12 +2274,8 @@ const APP_VERSION = '1.2.0-beta';
   // New canvas - confirm if there are elements
   const newCanvas = () => {
     if (elements.length === 0 && historyIndex === 0) {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] newCanvas(): early-return no-op, already empty at idx 0`);
       return;
     }
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] newCanvas(): showing confirm dialog. current els=${elements.length} historyIndex=${historyIndex} historyLen=${history.length}`);
     setConfirmDialog({
       title: t('newCanvasTitle'),
       message: t('newCanvasBody'),
@@ -2292,8 +2285,6 @@ const APP_VERSION = '1.2.0-beta';
   };
 
   const confirmNewCanvas = () => {
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] === confirmNewCanvas() running === (pre-reset historyLen=${historyRef.current.length}, historyIndexRef=${historyIndexRef.current})`);
     // We're about to explicitly set `history` to a single fresh entry below —
     // but elements/picotConnections also change in this same batch, which
     // independently re-triggers the auto-push effect. That effect would read
@@ -2327,13 +2318,6 @@ const APP_VERSION = '1.2.0-beta';
     // materials/gradients the previous project had defined instead of
     // starting from the single default white thread (bug fix, session 52).
     setMaterials(DEFAULT_MATERIALS);
-    // TEMP DEBUG: check the settled state a tick after this commit + its
-    // effects have flushed, to see whether the auto-push effect added an
-    // unexpected extra entry (and what's actually in it) right after New.
-    setTimeout(() => {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] confirmNewCanvas settled: historyRef.length=${historyRef.current.length} historyIndexRef=${historyIndexRef.current} entries=${JSON.stringify(historyRef.current.map(h => ({ els: h.elements?.length ?? 0, rounds: h.rounds?.length ?? 0, groups: h.spatialGroups?.length ?? 0 })))}`);
-    }, 0);
   };
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
@@ -3185,6 +3169,8 @@ const APP_VERSION = '1.2.0-beta';
     setSelectedIds, setSelectedPicots,
     setHistory, setHistoryIndex, setCurrentFilePath, setLastSavedHistoryIndex,
     getPicotPosition, showLoadMsg, t,
+    cleanupDuplicates,
+    skipAutoHistoryRef,
   });
 
   // ── Input handlers ─────────────────────────────────────────────────────
@@ -5033,6 +5019,11 @@ const APP_VERSION = '1.2.0-beta';
     if (p.isGuidePoint) {
       if (renderMode === 'realistic') return null;
       if (!showEditingArtifacts) return null;
+      // Outside Picot Join mode the orange snap indicator (snap-point pass)
+      // now marks a guide point, so this extra dot is no longer drawn there
+      // — it was doubling up. Kept in Picot Join mode, where it's the
+      // selectable join dot and shows selected/connected state.
+      if (activeMode !== 'picotJoin') return null;
       // No offset arm, so it sits exactly on the path centerline — the
       // path's own stroke (drawn after it in DOM order) was painting
       // straight over it. Nudge it outward along perpAngle, same
@@ -5693,24 +5684,76 @@ const APP_VERSION = '1.2.0-beta';
   // effectiveElementType moved to geometry/stitchGeometry.ts (imported above).
 
 
-  // ── handleSetRenderMode: wrapper that manages baking on transition ──────
+  // ── Realistic bake cache ─────────────────────────────────────────────────
+  // The baked realistic SVG is kept across mode switches and only rebuilt
+  // when one of its inputs actually changes. All five inputs are immutable
+  // state (replaced, never mutated), so reference equality is an exact
+  // "did anything change" test — no deep comparison needed. Selection,
+  // pan/zoom, menus etc. don't touch any of them, so they never trigger a
+  // re-bake; any real edit (drag, notation, colour, undo…) does.
+  //   elements / picotConnections / dsWidth — geometry
+  //   materials — read via getElementColor (materialsById)
+  //   dmcColors — read via getGradientColorAtPosition (gradient stops)
+  // Undo restores deep-cloned snapshots, so undoing back to a previously
+  // baked state still re-bakes once (new references) — harmless, just not
+  // free.
+  const bakedInputsRef = useRef<{ elements: any; picotConnections: any; dsWidth: any; materials: any; dmcColors: any } | null>(null);
+  // Set by handleSetRenderMode when switching INTO realistic view, so the
+  // bake effect knows to blank a stale image (show the baking spinner)
+  // rather than briefly displaying an out-of-date picture. Edits made while
+  // already in realistic view (e.g. Ctrl+Z, Delete) keep the old image up
+  // until the new one is ready instead, to avoid a flash.
+  const enteringRealisticRef = useRef(false);
+
+  // ── handleSetRenderMode: switches mode only — baking is handled by the
+  // effect below. It used to bake inline here from its own closure, which
+  // could be stale when called from the mount-once keydown listener (V key),
+  // and it threw the bake away on every exit so each entry re-baked from
+  // scratch.
   const handleSetRenderMode = (next: string) => {
     if (next === 'realistic') {
       setCurrentTool('pan');
-      setBakedRealisticSVG(null);
+      enteringRealisticRef.current = true;
       setRenderMode('realistic');
-      setTimeout(() => {
-        const svg = bakeRealisticView({
-          elements, dsWidth, picotConnections,
-          getElementColor, getGradientColorAtPosition, getStitchTypes,
-        });
-        setBakedRealisticSVG(svg);
-      }, 0);
     } else {
-      setBakedRealisticSVG(null);
+      // Bake is kept (not cleared) so switching back is instant if nothing
+      // changed in between.
       setRenderMode('schematic');
     }
   };
+
+  // Bakes (or re-bakes) the realistic view whenever we're in realistic mode
+  // and the inputs differ from what the current bake was made from. Also
+  // fixes the stale-image bug: shortcuts that edit the pattern while in
+  // realistic view (Ctrl+Z, Delete, Ctrl+V…) now trigger a fresh bake.
+  useEffect(() => {
+    if (renderMode !== 'realistic') return;
+    const prev = bakedInputsRef.current;
+    const upToDate = !!prev && !!bakedRealisticSVG &&
+      prev.elements === elements &&
+      prev.picotConnections === picotConnections &&
+      prev.dsWidth === dsWidth &&
+      prev.materials === materials &&
+      prev.dmcColors === dmcColors;
+    const entering = enteringRealisticRef.current;
+    enteringRealisticRef.current = false;
+    if (upToDate) return;
+    if (entering) setBakedRealisticSVG(null); // show spinner instead of a stale image
+    const inputs = { elements, picotConnections, dsWidth, materials, dmcColors };
+    // Deferred one tick so the spinner (on entry) paints before the bake
+    // blocks the thread — same reason the old inline bake used setTimeout.
+    // Cancelled if inputs change again before it runs (e.g. a held nudge),
+    // so only the latest state gets baked.
+    const timer = setTimeout(() => {
+      const svg = bakeRealisticView({
+        elements, dsWidth, picotConnections,
+        getElementColor, getGradientColorAtPosition, getStitchTypes,
+      });
+      bakedInputsRef.current = inputs;
+      setBakedRealisticSVG(svg);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [renderMode, elements, picotConnections, dsWidth, materials, dmcColors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // picot is optional — only split-ring picot-arm rendering needs side
   // awareness (materialId vs materialIdB); the two label-color call sites
@@ -6473,6 +6516,8 @@ const APP_VERSION = '1.2.0-beta';
           arrangeDisabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           fitAllElements={fitAllElements}
           fitAllDisabled={elements.length === 0}
+          onDelete={deleteSelected}
+          deleteDisabled={renderMode === 'realistic' || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
           t={t}
         />
         
@@ -7720,16 +7765,38 @@ const APP_VERSION = '1.2.0-beta';
                   }
                   const lineWidth = firstEl?.lineWidth || 2;
                   const beadSeqForConnR = getConnectionBeadSeq(conn);
+                  // ONE element per connection, painted the same way as the
+                  // baked picots (emitPicot in render/realisticRenderer.ts):
+                  // a filled ribbon `lineWidth` wide in the thread colour,
+                  // with a 1.5 black outline on the same element and
+                  // paint-order="stroke" so the outline sits underneath the
+                  // fill (only its outer half shows). Previously a separate
+                  // black line + colour line per picot — 4 shapes for an
+                  // ordinary 2-picot join.
+                  // A 2-picot join is a single straight ribbon A→B (its two
+                  // spokes always met at the midpoint, so they were already
+                  // collinear). 3+ picots get one rectangle per spoke to the
+                  // centroid, all as subpaths of the same path: the stroke
+                  // is painted for the whole element before the fill, so
+                  // where spokes overlap the fill covers the internal
+                  // outline edges and they read as one joined shape.
+                  const ribbonHW = lineWidth / 2;
+                  const ribbon = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+                    const dx = b.x - a.x, dy = b.y - a.y;
+                    const len = Math.hypot(dx, dy);
+                    if (len < 1e-6) return '';
+                    const nx = (-dy / len) * ribbonHW, ny = (dx / len) * ribbonHW;
+                    return `M ${a.x + nx},${a.y + ny} L ${b.x + nx},${b.y + ny} L ${b.x - nx},${b.y - ny} L ${a.x - nx},${a.y - ny} Z`;
+                  };
+                  const connD = positions.length === 2
+                    ? ribbon(positions[0], positions[1])
+                    : positions.map(pos => ribbon(pos, { x: cx, y: cy })).join(' ');
                   return (
                     <g key={conn.id}>
-                      {positions.map((pos, i) => (
-                        <g key={`${conn.id}-${i}`}>
-                          <line x1={pos.x} y1={pos.y} x2={cx} y2={cy}
-                            stroke="black" strokeWidth={lineWidth + 2} strokeLinecap="round" />
-                          <line x1={pos.x} y1={pos.y} x2={cx} y2={cy}
-                            stroke={lineColor} strokeWidth={lineWidth} strokeLinecap="round" />
-                        </g>
-                      ))}
+                      {connD && (
+                        <path d={connD} fill={lineColor}
+                          stroke="black" strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
+                      )}
                       {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
                       {beadSeqForConnR
                         ? renderClusteredBeads(`conn-r-${conn.id}`, cx, cy, beadSeqForConnR)
@@ -7841,8 +7908,16 @@ const APP_VERSION = '1.2.0-beta';
                 />
               )}
 
-              {/* picotJoin/beading dim overlay wraps all path elements */}
-              <g opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.25 : renderMode === 'realistic' ? 0 : 1} style={{ pointerEvents: renderMode === 'realistic' ? 'none' : undefined }}>
+              {/* picotJoin/beading dim overlay wraps all path elements.
+                  Not rendered at all in realistic view: this used to stay
+                  mounted at opacity 0 there, so every element's schematic
+                  paths, notation labels, order badges and split-ring arrows
+                  were still built and drawn invisibly underneath the baked
+                  image. Nothing in realistic mode reads it — the baked SVG
+                  draws the stitches/picots/lines, and bead/BE picots have
+                  their own realistic overlay pass further down. */}
+              {renderMode !== 'realistic' && (
+              <g opacity={(activeMode === 'picotJoin' || activeMode === 'beading') ? 0.25 : 1}>
               {[...elements].sort((a, b) => {
                 // Rings always render on top of chains/lines.
                 // Sort: lines = 0, chains = 1, rings = 2.
@@ -8321,6 +8396,7 @@ const APP_VERSION = '1.2.0-beta';
               })}
 
               </g>
+              )}
 
               {/* ── Polar Array ghost preview ─────────────────────────────
                   Shown while the dialog is open. Renders simplified outlines
@@ -8543,7 +8619,11 @@ const APP_VERSION = '1.2.0-beta';
                 return elements
                   .filter(el => !selectedIdSet.has(el.id))
                   .map(el => {
-                    const points = getSnapPoints(el).filter(p => p.type !== 'picot-guide');
+                    // Every snap target gets the orange indicator, including
+                    // guide points (gp) and guide joined picots (jpg) — those
+                    // used to be filtered out here ('picot-guide'), so they
+                    // snapped with no visual cue.
+                    const points = getSnapPoints(el);
                     return points.map((point, i) => (
                       <g key={`snap-${el.id}-${i}`} data-ui="1" opacity={(activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder') ? 0.15 : 1}>
                         {/* Outer circle for visibility - fixed screen size */}
@@ -9513,9 +9593,21 @@ const APP_VERSION = '1.2.0-beta';
             <IconDownload size={16} />
             <span>{t('fileOutputNotation')}</span>
           </button>
+          <div className="border-t border-gray-600 my-1"></div>
+          <button
+            onClick={() => {
+              setShowFileMenu(false);
+              cleanupDuplicates();
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+            title={t('fileCleanupDuplicatesTitle')}
+          >
+            <IconDelete size={16} />
+            <span>{t('fileCleanupDuplicates')}</span>
+          </button>
       </DropdownMenu>
     )}
-    
+
     {/* Arrange dropdown menu - rendered at top level to avoid clipping */}
     {showArrangeMenu && (
       <DropdownMenu buttonRef={arrangeButtonRef} onClose={() => setShowArrangeMenu(false)} width={220}>
