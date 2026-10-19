@@ -13,12 +13,6 @@ export interface UseHistoryActionsParams {
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
 }
 
-// TEMP DEBUG (undo/history investigation) — cheap summary for console logs,
-// not for production use. Remove alongside the console.log calls below once
-// the "New + redo brings back stale content" bug is root-caused.
-const summarizeEls = (els: any[]) =>
-  `${els?.length ?? 0}:[${(els ?? []).slice(0, 6).map((e: any) => e?.id).join(',')}${(els?.length ?? 0) > 6 ? ',…' : ''}]`;
-
 export function useHistoryActions(p: UseHistoryActionsParams) {
 
   const pushHistoryState = useCallback((
@@ -74,11 +68,7 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
           ghostArrays: currentState.ghostArrays ?? [],
         })
       : null;
-    if (oldStateStr === newStateStr) {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] pushHistoryState: SKIPPED (identical to current) idx=${currentIndex} len=${currentHistory.length} els=${summarizeEls(els)}`);
-      return;
-    }
+    if (oldStateStr === newStateStr) return;
 
     const cloned = {
       elements:      JSON.parse(JSON.stringify(els)),
@@ -92,8 +82,6 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     const newHistory = currentHistory.slice(0, currentIndex + 1);
     newHistory.push(cloned);
     if (newHistory.length > 50) newHistory.shift();
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] pushHistoryState: PUSHED fromIdx=${currentIndex} toIdx=${newHistory.length - 1} prevLen=${currentHistory.length} newLen=${newHistory.length} els=${summarizeEls(els)}`);
     p.setHistory(newHistory);
     p.setHistoryIndex(newHistory.length - 1);
   }, []); // refs and state setters are stable — no deps needed

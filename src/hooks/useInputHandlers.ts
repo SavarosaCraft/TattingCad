@@ -807,8 +807,6 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       return Math.hypot((path.endX ?? path.x) - path.x, (path.endY ?? path.y) - path.y) < 12;
     })();
 
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] mouseUp explicit-push check: isInteracting=${p.isInteractingRef.current} needsPush=${p.needsHistoryPushRef.current} isNewLineTooShort=${isNewLineTooShort} newLineId=${newLineId}`);
     if (p.isInteractingRef.current && p.needsHistoryPushRef.current && !isNewLineTooShort)
       p.pushHistoryState(p.elements, p.picotConnections, p.rounds);
     p.isInteractingRef.current = false;

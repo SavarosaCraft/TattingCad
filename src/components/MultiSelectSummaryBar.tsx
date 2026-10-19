@@ -71,8 +71,7 @@ interface MultiSelectSummaryBarProps {
   setLineBeadClipboard: (v: any) => void;
   notationEscapeRef: React.RefObject<boolean>;
   parseNotation: (notation: string) => any;
-  restoreBEConfigs: (picots: any[], configs: any) => any[];
-  extractBEConfigs: (picots: any[]) => any;
+  applyNotationToMultiple: (elementIds: string[], notation: string | null, notationB?: string | null) => void;
   applyMultiSelectRotationDelta: (deg: number) => void;
   materials: Array<{ id: string; name: string }>;
   setShowMaterialsPanel: (v: boolean) => void;
@@ -117,8 +116,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   setLineBeadClipboard,
   notationEscapeRef,
   parseNotation,
-  restoreBEConfigs,
-  extractBEConfigs,
+  applyNotationToMultiple,
   applyMultiSelectRotationDelta,
   materials,
   setShowMaterialsPanel,
@@ -375,6 +373,14 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
       return nonLines.every(e => (e.notation || '') === first) ? first : null;
     })();
 
+    // Split rings' side B (stored without the "sr:" prefix) — prefilled
+    // only when every selected split ring shares the same side B.
+    const prefillNotationB = (() => {
+      if (sameType !== 'sr' || nonLines.length === 0) return null;
+      const first = nonLines[0].notationB || '';
+      return nonLines.every(e => (e.notationB || '') === first) ? first : null;
+    })();
+
     // Centroid of ALL selected (for transforms when no polar grid is linked)
     const cxAll = selEls.reduce((s, e) => s + e.center.x, 0) / selEls.length;
     const cyAll = selEls.reduce((s, e) => s + e.center.y, 0) / selEls.length;
@@ -390,6 +396,21 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
     // The grid contributes only its center as pivot — its angular offset does NOT tilt the flip axis.
     const doFlipH = () => flipElements(selectedIds, 90, flipPivotX, flipPivotY);
     const doFlipV = () => flipElements(selectedIds,  0, flipPivotX, flipPivotY);
+
+    // Δ° rotation input: evaluates the typed expression with the same
+    // parseRotationExpr the group-rotation field uses (one safe evaluator
+    // instead of two hand-rolled `new Function` copies here). Passing 0 as
+    // the "current angle" makes it a pure delta: "30", "+30", "45*2", "x+10"
+    // all mean "rotate by that much". It returns the result normalised to
+    // 0–360, so "-30" comes back as 330 — the same rotation, since turning
+    // the selection by 330° lands exactly where -30° does. Invalid input is
+    // ignored, as before.
+    const applyRotationDeltaExpr = (raw: string) => {
+      const s = raw.trim();
+      if (!s) return;
+      const delta = parseRotationExpr(s, 0);
+      if (delta !== null) applyMultiSelectRotationDelta(delta);
+    };
 
     // Type label
     const typeLabel = sameType === 'r' ? 'Rings' : sameType === 'c' ? 'Chains' : sameType === 'sc' ? 'Split Chains' : sameType === 'sr' ? 'Split Rings' : null;
@@ -445,6 +466,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
         {/* Notation input — only for non-line same-type selections */}
         {nonLines.length > 0 && (
           <div className="flex items-center gap-1 top-toolbar-scalable">
+            {sameType === 'sr' && <span className="text-xs text-gray-400">A:</span>}
             <input
               key={selectedIds.join(',')}
               type="text"
@@ -459,54 +481,44 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                 if (!notation) return;
                 const parsed = parseNotation(notation);
                 if (!parsed || parsed.stitchCount === 0) { e.target.value = prefillNotation ?? ''; return; }
-                setElements(prev => prev.map(el => {
-                  if (!selectedIdSet.has(el.id)) return el;
-                  if (getElType(el) === 'line') return el;
-                  if (el.isSplitRing) {
-                    const newParsed = parseNotation(notation);
-                    if (!newParsed) return el;
-                    const splitPos = el.splitPosition ?? 0;
-                    const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
-                    const cx = el.center.x, cy = el.center.y;
-                    const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
-                      const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-                      const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
-                      const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-                      return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                    });
-                    // Preserve side B picots (stitchesBefore > splitPos) — they belong
-                    // to notationB which is unchanged. Only side A picots are replaced.
-                    const sideBPicots = (el.picots || []).filter(p => p.stitchesBefore > splitPos);
-                    const mergedPicots = restoreBEConfigs(
-                      [...newParsed.picots, ...sideBPicots],
-                      extractBEConfigs(el.picots)
-                    );
-                    return { ...el, notation, stitchCount: newParsed.stitchCount, picots: mergedPicots, paths: scaledPaths };
-                  }
-                  const newParsed = parseNotation(notation);
-                  if (!newParsed) return el;
-                  if (el.type === 'ring') {
-                    const scaleFactor = el.stitchCount > 0 ? newParsed.stitchCount / el.stitchCount : 1;
-                    const cx = el.center.x, cy = el.center.y;
-                    const scaledPaths = Math.abs(scaleFactor - 1) < 0.001 ? el.paths : el.paths.map(path => {
-                      const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-                      if (path.type === 'cubic') {
-                        const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY);
-                        const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-                        return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-                      }
-                      const s = scPt(path.x, path.y), e2 = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
-                      return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-                    });
-                    return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, extractBEConfigs(el.picots)), paths: scaledPaths };
-                  }
-                  return { ...el, notation, stitchCount: newParsed.stitchCount, picots: restoreBEConfigs(newParsed.picots, extractBEConfigs(el.picots)), isSplitChain: newParsed.isSplitChain ?? el.isSplitChain ?? false };
-                }));
+                // Same per-element notation update a single edit uses —
+                // keeps joins where picots still match, handles split rings,
+                // chains and ghost mothers, and asks before dropping joins.
+                // See applyNotationToMultiple in tattingindex.tsx.
+                applyNotationToMultiple(nonLines.map(el => el.id), notation);
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.target.value = prefillNotation ?? ''; e.target.blur(); } }}
               className={`notation-input px-2 py-1 rounded border text-sm ${allSameType ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'}`}
               style={{ width: '140px' }}
             />
+            {/* Side B — split rings only. Applies the new side B to every
+                selected split ring while each keeps its own side A (same
+                batch path as the A box: joins kept where picots still
+                match, one confirmation if any would be lost, one undo). */}
+            {sameType === 'sr' && (
+              <>
+                <span className="text-xs text-gray-400">B:</span>
+                <input
+                  key={selectedIds.join(',') + ':B'}
+                  type="text"
+                  defaultValue={prefillNotationB ?? ''}
+                  placeholder="5ds-p-5ds"
+                  title="Apply side B notation to all selected split rings"
+                  onBlur={(e) => {
+                    if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
+                    // Side B is stored without a prefix — tolerate one typed anyway.
+                    const notationB = e.target.value.trim().replace(/^sr:\s*/i, '');
+                    if (!notationB) return;
+                    const parsed = parseNotation(`sr: ${notationB}`);
+                    if (!parsed || parsed.stitchCount === 0) { e.target.value = prefillNotationB ?? ''; return; }
+                    applyNotationToMultiple(nonLines.map(el => el.id), null, notationB);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.currentTarget.value = prefillNotationB ?? ''; e.currentTarget.blur(); } }}
+                  className="notation-input px-2 py-1 rounded border text-sm bg-gray-700 border-gray-600 text-white"
+                  style={{ width: '140px' }}
+                />
+              </>
+            )}
           </div>
         )}
 
@@ -518,29 +530,12 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             value={groupRotationInput}
             onChange={(e) => setGroupRotationInput(e.target.value)}
             onBlur={(e) => {
-              const s = e.target.value.trim();
-              if (s) {
-                if (!/^[\d\s.+\-*/()]+$/.test(s)) { setGroupRotationInput(''); return; }
-                try {
-                  // eslint-disable-next-line no-new-func
-                  const v = new Function('"use strict"; return (' + s + ')')();
-                  if (typeof v === 'number' && isFinite(v)) applyMultiSelectRotationDelta(v);
-                } catch {}
-              }
+              applyRotationDeltaExpr(e.target.value);
               setGroupRotationInput('');
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                const s = e.currentTarget.value.trim();
-                if (s) {
-                  if (/^[\d\s.+\-*/()]+$/.test(s)) {
-                    try {
-                      // eslint-disable-next-line no-new-func
-                      const v = new Function('"use strict"; return (' + s + ')')();
-                      if (typeof v === 'number' && isFinite(v)) applyMultiSelectRotationDelta(v);
-                    } catch {}
-                  }
-                }
+                applyRotationDeltaExpr(e.currentTarget.value);
                 setGroupRotationInput('');
                 e.currentTarget.blur();
               }

@@ -906,16 +906,32 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
           ? getGradientColorAtPosition(elColor.id, 0.5)
           : elColor.color;
         for (const path of el.paths || []) {
-          let d: string;
-          if (path.type === 'cubic') {
-            d = `M ${path.x},${path.y} C ${path.control1X},${path.control1Y} ${path.control2X},${path.control2Y} ${path.endX},${path.endY}`;
-          } else {
-            d = `M ${path.x},${path.y} Q ${path.controlX},${path.controlY} ${path.endX},${path.endY}`;
+          // ONE element per line (was a black stroke + colour stroke),
+          // same ribbon style as emitPicot: the centreline is offset
+          // ±lw/2 into a closed band, filled in the thread colour with a
+          // 1.5 black outline painted underneath (paint-order="stroke").
+          // Normals from central differences between neighbouring samples.
+          const hw = (el.lineWidth || 2) / 2;
+          const pts = sampleBezierPath(path, 40);
+          const left: {x:number,y:number}[] = [];
+          const right: {x:number,y:number}[] = [];
+          for (let i = 0; i < pts.length; i++) {
+            const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const nx = (-dy / len) * hw, ny = (dx / len) * hw;
+            left.push({ x: pts[i].x + nx, y: pts[i].y + ny });
+            right.push({ x: pts[i].x - nx, y: pts[i].y - ny });
           }
-          frag += `<path d="${d}" fill="none" stroke="black" stroke-width="${(el.lineWidth || 2) + 2}" stroke-linecap="round"/>`;
-          frag += `<path d="${d}" fill="none" stroke="${elStroke}" stroke-width="${el.lineWidth || 2}" stroke-linecap="round"/>`;
-          const pts = sampleBezierPath(path, 20);
-          for (const pt of pts) expand(pt.x, pt.y);
+          if (left.length >= 2) {
+            let rd = `M ${left[0].x.toFixed(2)} ${left[0].y.toFixed(2)}`;
+            for (let i = 1; i < left.length; i++) rd += ` L ${left[i].x.toFixed(2)} ${left[i].y.toFixed(2)}`;
+            for (let i = right.length - 1; i >= 0; i--) rd += ` L ${right[i].x.toFixed(2)} ${right[i].y.toFixed(2)}`;
+            rd += ' Z';
+            frag += `<path d="${rd}" fill="${elStroke}" stroke="black" stroke-width="1.5" stroke-linejoin="round" paint-order="stroke"/>`;
+          }
+          for (const pt of left) expand(pt.x, pt.y);
+          for (const pt of right) expand(pt.x, pt.y);
         }
       }
 

@@ -1,5 +1,12 @@
 # TattingCAD — Architecture
 
+Last updated: **session 56**. Sessions 54–56 were folded in during session 56
+(this doc had not been updated since session 53). Session 54/55 details come
+from their handoff docs; session 56's from the work itself. The new Rules
+sections near the end ("Realistic view", "Single-element thread ribbons",
+"Clean Up Duplicates", "Batch notation edits", "Losing window focus
+mid-gesture", "Ghost arrays — benched", "Version drift") cover the bulk of it.
+
 ## Module structure
 
 ```
@@ -84,6 +91,16 @@ src/
                           vs resetElementShape" row in Pending refactor work
                           for the one piece of follow-up DRY cleanup this
                           created.
+                          Session 56: resetElementShape is now also what
+                          ShapeAndSqueezeControls.tsx's squeeze Reset buttons call
+                          (see that entry). New internal solvePathMagnitude: the
+                          one bisection shared by both branches of
+                          applyPathPreset (verified identical output on 1,200
+                          random cases). splitRingMaxH/splitRingSolveBulge are
+                          deliberately NOT routed through it — they grow their
+                          bound first, run a fixed count with no early exit and
+                          return a bound/midpoint, so merging them would shift
+                          every existing split ring's geometry slightly.
     stitchGeometry.ts      getFlipSign, getCircleStitchAngle, effectiveElementType —
                           promoted out of tattingindex.tsx (session 52, realistic-
                           renderer extraction, Phase 2/3). Pure — no closures over
@@ -154,6 +171,21 @@ src/
                           picot is actually on (session 52 bug fix — was always
                           using materialId regardless of side; see the matching
                           fix in tattingindex.tsx's getConnectionThreadColor).
+                          Session 55 (performance): pathLengthCache /
+                          getPathsTotalLength (WeakMap on each path object) and
+                          offsetCurveCache / getCachedOffsetCurve, so each distinct
+                          offset curve is sampled once per element instead of once
+                          per stitch; the path-element branch reuses
+                          calculatePathStitches' own allSamples/pathLengths.
+                          Session 56: line elements are emitted as ONE filled
+                          ribbon (emitPicot style) instead of a black stroke + a
+                          colour stroke — see "Single-element thread ribbons" under
+                          Rules. NOT in the baked SVG (drawn live in
+                          tattingindex.tsx): picot join lines, fold arcs, beads.
+                          The split-ring direction arrow is schematic-only and does
+                          not appear in realistic view at all (by decision). When
+                          the bake runs is decided by tattingindex.tsx — see
+                          "Realistic view — what renders, and the bake cache".
 
   components/
     ScaleControls.tsx     Shared presentational Scale UI — two rows of preset buttons
@@ -302,6 +334,12 @@ src/
                           as a reminder that "looks orphaned" is not the same
                           as "is orphaned" — always check what a tag actually
                           closes via the AST before deleting it, not by eye.
+                          Session 56: both squeeze Reset buttons now call
+                          resetElementShape (paths.ts) through one local
+                          resetSqueeze, keeping the element's polarRotationGridId
+                          (the full Reset Transform clears it; a squeeze reset
+                          never did). Output verified identical for split ring,
+                          teardrop and circle.
     TopMenuBar.tsx         Row 1 of the two-row header: File/View dropdown
                           triggers, Undo/Redo, Copy/Cut/Paste,
                           Send-to-back/Bring-to-front, Fit All, and the
@@ -317,6 +355,13 @@ src/
                           separate DropdownMenu.tsx instances rendered
                           elsewhere; this only owns the trigger buttons and
                           the direct-action buttons.
+                          Session 56: Delete button added after Bring to Front
+                          (props onDelete/deleteDisabled) — a copy of the left
+                          toolbar's delete for touch users: same deleteSelected
+                          handler, t('toolDelete') title and IconDelete; disabled
+                          in picotJoin/beading/tattingOrder (as the left button)
+                          plus realistic view (where the left button is hidden).
+                          This file uses CRLF line endings — preserve them.
     SplitRingNotationInput.tsx  The split-ring "A:"/"B:" notation text field
                           (session — JSX panel extraction, batch 6). This is
                           the ORIGINAL audit's item #8 ("Notation Input with
@@ -403,6 +448,23 @@ src/
                           geometry/paths.ts in its group-rotate handlers —
                           noted in the file's own header comment since it's
                           easy to miss when only skimming the props list.
+                          Session 56:
+                          - Δ° rotation box uses the parseRotationExpr prop with
+                            currentDeg 0 (pure delta) instead of two hand-rolled
+                            `new Function` evaluators. Same resulting angle for
+                            every tested input; "x+10" now works (x = 0).
+                          - The free multi-select notation box no longer has its
+                            own inline per-type update (it gave every picot a new
+                            id — orphaning joins — set a split ring's stitchCount
+                            to side A only, never moved splitPosition, and never
+                            re-bent chains). It now calls applyNotationToMultiple
+                            (tattingindex.tsx) — see "Batch notation edits" under
+                            Rules. Props restoreBEConfigs/extractBEConfigs were
+                            removed (only that block used them); new prop
+                            applyNotationToMultiple(ids, notation|null, notationB?).
+                          - For an all-split-ring selection there is now a "B:"
+                            box next to "A:" (prefilled when all share side B;
+                            a typed "sr:" prefix is stripped).
     GradientSwatch.tsx     The gradient-stops SVG (parse stops -> linearGradient
                           -> rect) — appeared 4 times identically (swatch grid
                           item + preview, in both the Swatches and Gradients
@@ -422,6 +484,18 @@ src/
                           header/footer, tab-switch buttons) was converted to
                           Modal.tsx in the same batch — see the note under
                           Modal.tsx below for what changed and why.
+                          Sessions 54–55: a fourth tab, "Lizbeth Colors"
+                          (colorPickerTab 'lizbeth', t('colorLizbethTab')).
+                          dmc_colors.json and lizbeth_colors.json both load into
+                          the single dmcColors state (shared validateCatalog/
+                          loadCatalog; Lizbeth optional, ids prefixed "LZ", groups
+                          prefixed "Lizbeth – "). tattingindex.tsx splits them
+                          with two useMemos (dmcOnlyColors / lizbethOnlyColors, by
+                          that group prefix) and renders ColorPickerSwatchesTab
+                          twice, each with its own local search/page/category/
+                          selection state. Gradients stay merged across brands.
+                          The JSON files must live in /public (Vite dev server
+                          serves static assets from there, not /dist).
 
     ⚠ CAUTION — near-miss during this extraction: an early attempt at the
       shell+header+footer replacement was written from memory/pattern-
@@ -952,6 +1026,15 @@ src/
                           found via the same investigation arc) had the missing-reset
                           half of this same bug shape — see "Stuck modifier keys on
                           window blur" under Rules for that fix.
+                          RESOLVED (session 56) — see "Losing window focus
+                          mid-gesture" under Rules. Also: pushHistoryState now
+                          takes 6 params (els, conns, rounds, grids, spatialGroups,
+                          ghostArrays — the last two added sessions 44–46); the
+                          optional ones carry forward from the previous entry when
+                          omitted. The temporary [HIST] logging from Addenda 4–5
+                          had in fact NOT been removed from tattingindex.tsx,
+                          useEditorActions.ts, useHistoryActions.ts or
+                          useInputHandlers.ts — all of it was removed in session 56.
     useEditorActions.ts   All element-level actions: creation, deletion, clipboard,
                           ordering, grouping, alignment, rotation, undo/redo (reviewed
                           directly, later session — see "Endpoint joints across ghost
@@ -963,6 +1046,14 @@ src/
                           Returns helpers (getElementBounds, getSelectionBoundingBox,
                           moveElement, getElementPivot, getPolarPivot) still needed by
                           tattingindex for rotation and other callbacks.
+                          Session 54: findDuplicateElements / cleanupDuplicates
+                          (File menu "Clean Up Duplicates…", plus silent checks on
+                          save/load via useProjectFile.ts). Session 56: group-aware
+                          — see "Clean Up Duplicates" under Rules.
+                          Session 56: the six align* functions are one
+                          alignSelection(mode) ('left'|'right'|'top'|'bottom'|
+                          'centerX'|'centerY'); the six names remain as one-line
+                          wrappers. Output verified identical for all six.
     useInputHandlers.ts   handleMouseDown/Move/Up. Zero state-mirror ref reads.
                           Reviewed later session by an external AI (standalone, no
                           access to this doc or the checklist) plus independent
@@ -1110,6 +1201,19 @@ src/
                           skipAutoHistoryRef to this file's params interface and
                           threading it through at the tattingindex.tsx call site
                           — it wasn't previously passed in at all.
+                          CORRECTION (session 56): the above was described as done
+                          but was NOT in the files — applyProjectData had no
+                          skipAutoHistoryRef, tattingindex.tsx didn't pass one, and
+                          loadFromAutosave didn't set it either. All three fixed in
+                          session 56. Also session 56: the first history entry
+                          after a load now holds migratedElements (not the raw file
+                          elements), so undoing all the way back no longer restores
+                          pre-migration data; the temporary [load] console logging
+                          was removed. Session 54: saveToPath and applyProjectData
+                          call cleanupDuplicates({ silent: true }) (load passes
+                          elementsOverride: migratedElements). exportSVG clones the
+                          live canvas <svg>, so in realistic view it exports what's
+                          on screen (no hidden schematic layer since session 56).
 
   i18n/
     translations_en.json  Bundled English strings — canonical fallback,
@@ -1573,6 +1677,163 @@ flag against this pattern before assuming a `keydown`/`keyup` (or
 
 ---
 
+### Realistic view — what renders, and the bake cache (session 56)
+
+**What draws what in realistic view:**
+- Baked SVG (`bakeRealisticView`, render/realisticRenderer.ts): stitches,
+  picots, cjp arms, line elements.
+- Live JSX in tattingindex.tsx, on top: picot join lines, fold arcs,
+  bead/BE picots (their own "realistic overlay" pass).
+- **Not drawn:** the whole schematic element layer (the
+  picotJoin/beading dim-overlay `<g>`). It used to stay mounted at
+  opacity 0, so every element's schematic paths, notation labels, order
+  badges and split-ring arrows were still built invisibly. It is now
+  wrapped in `renderMode !== 'realistic' && (...)`. Nothing in realistic
+  mode depended on it (verified: beads, joins and folds all render from
+  outside that group). The split-ring direction arrow therefore doesn't
+  appear in realistic view — intended.
+
+**Bake cache.** `handleSetRenderMode` only switches mode; a `useEffect`
+does the baking. It re-bakes only when one of the five bake inputs has a
+new reference — `elements`, `picotConnections`, `dsWidth`, `materials`
+(read via getElementColor), `dmcColors` (gradient stops) — compared
+against `bakedInputsRef`. All five are immutable state, so `===` is an
+exact "did anything change". Consequences:
+- leaving realistic view keeps the bake; coming back with no edits is
+  instant (no spinner);
+- edits made *while* in realistic view (Ctrl+Z, Delete, Ctrl+V) now
+  re-bake — they used to leave a stale image;
+- entering with a stale bake blanks it first (spinner via
+  `enteringRealisticRef`); in-view re-bakes keep the old image until the
+  new one is ready (no flash);
+- the bake reads fresh state from the effect's closure — the old inline
+  bake ran from `handleSetRenderMode`'s closure, which was stale when
+  called from the mount-once keydown listener (V key);
+- undo restores deep clones (new references), so undoing back to a
+  previously baked state re-bakes once — harmless.
+
+If a new input ever affects the bake (e.g. a new theme value read inside
+`bakeRealisticView`), add it to both the effect's deps and the
+`bakedInputsRef` comparison, or the cache will show stale output.
+
+### Single-element thread ribbons (session 56)
+
+Convention for anything drawn as "thread with a black outline" in realistic
+view: ONE closed, filled shape — the centreline offset ±lineWidth/2 into a
+band, `fill=<thread colour>`, `stroke="black"`, `stroke-width 1.5`,
+`stroke-linejoin round`, `paint-order="stroke"` (outline painted first, so
+only its outer half shows). Started with picots (`emitPicot`,
+realisticRenderer.ts); session 56 applied it to:
+- **realistic picot joins** (tattingindex.tsx): 2-picot join = one
+  straight ribbon A→B; 3+ picots = one rectangle per spoke to the
+  centroid as subpaths of the same path (fill covers the inner outline
+  edges where spokes overlap; the existing centre dot covers the notches).
+  Was 2 `<line>`s per picot (4 shapes for a normal join).
+- **fold arcs** (tattingindex.tsx, both views — the fold code is shared):
+  one ribbon per arc via `ribbonFromPoints(sampleCubicD(d))`; the two arcs
+  stay separate elements so the smaller-under-bigger paint order still
+  works. Was 4 shapes per fold.
+- **line elements in the bake** (realisticRenderer.ts). Schematic lines
+  are unchanged (still outline + colour).
+Ends are flat (like picots), not round. Helpers in tattingindex.tsx:
+`ribbonFromPoints(points, halfWidth)` (central-difference normals) and
+`sampleCubicD(d)` (parses the single-cubic `M … C …` string
+buildFixedFeetArcD produces; returns [] for anything else).
+
+### Clean Up Duplicates (sessions 54 + 56)
+
+Logic in useEditorActions.ts (`findDuplicateElements`,
+`cleanupDuplicates`); File-menu entry and wiring in tattingindex.tsx;
+silent checks on save/load in useProjectFile.ts. Session 54 built the
+logic and the useProjectFile hooks, but the three tattingindex.tsx wiring
+points were lost and only re-applied in session 56 (from a recovered
+session-54 copy of the file — see "Version drift").
+
+- **Duplicate** = same notation, notationB, materialId, materialIdB,
+  rotation and centre position (`duplicateSignature`). groupId is not part
+  of it. Ghosts are never candidates; ghost mothers (and groups containing
+  one) are never removed.
+- **Pass 1 — whole groups (session 56):** groups whose members match
+  one-to-one by signature (a group stacked on a copy of itself) are
+  compared as units; one complete group is kept, the others removed
+  whole. Previously the per-element pass could keep members from both
+  copies and leave two half-deleted groups.
+- **Pass 2 — single elements**, over whatever pass 1 didn't remove.
+- **Which copy is kept:** most joined picots (summed for a group); tie →
+  for single elements, one inside a group beats a loose one (user
+  decision, session 56); still tied → earliest in the elements array.
+  Array order is the only proxy for "older" (ids are random UUIDs) and
+  Send to Back / Bring to Front change it.
+- **Commit (session 56):** computed from refs at confirm time, committed
+  as plain values with an explicit push (`skipAutoHistoryRef` + one
+  `pushHistoryState` incl. spatial groups) — one undo step. Groups left
+  with 0–1 members lose their groupId and registry entry (same tidy-up as
+  ungroupSelected). Picots on the far side of a removed connection have
+  isJoint cleared unless still in another connection.
+- Duplicate *arrays* are not handled — ghost arrays are benched.
+
+### Batch notation edits — applyNotationToMultiple (session 56)
+
+`applyNotationToMultiple(ids, notation | null, notationB | null = null)` in
+tattingindex.tsx applies one notation to several elements (the free
+multi-select notation box). Each target goes through
+`computeElementAfterNotationEdit` — the same per-element code as a single
+edit — so joins are kept where picots still match (by kind-sequence or
+stitchesBefore), split rings / chains / ghost mothers are handled. `null`
+for either notation keeps each element's own (B-box edits pass
+`notation = null`). If any joins would be lost, ONE confirm for the whole
+selection (`notationChangeConfirm*` keys); then exactly those connections
+are removed and the far-side picots demoted via `applyJointFlags` —
+applied after the edited elements are swapped in, so a far side that is
+itself in the selection is still reached. One commit, one undo step.
+
+Not the same as `updateNotationForMultiple` (Picot Wizard batch Scale):
+that one only accepts `preservesExistingPicots: true` edits and skips
+ghost mothers.
+
+### Losing window focus mid-gesture (session 56)
+
+Closes both "STILL OPEN" items from useHistoryActions.ts's Addendum 4
+(except one NumberStepper detail, below). In tattingindex.tsx:
+- **window `blur` → flush** (mount-once effect, after useInputHandlers):
+  1. if a canvas drag is in progress (`dragOffsetRef.active` or
+     `isInteractingRef`), finish it through `handleMouseUpRef.current(null)`
+     — the same call the touch handlers use — which commits a translate
+     drag's offset and pushes history normally;
+  2. if `isInteractingRef` is still true (e.g. a property-bar slider),
+     clear it and push directly;
+  3. if `nudgeActiveRef` is true (NumberStepper hold-to-repeat), clear it
+     and push.
+- **document `pointerup` safety net** (existing, deferred one tick): now
+  also flushes a stuck `nudgeActiveRef`, after the stepper's own final
+  commit has had its chance.
+User-tested: drag + Alt+Tab, ±1° hold + Alt+Tab, squeeze slider + Alt+Tab
+— each leaves exactly one correct undo step. Not covered:
+**NumberStepper.tsx** (never obtained) may keep auto-repeating after focus
+loss; history stays correct either way, but stopping the repeat needs that
+file.
+
+### Ghost arrays — benched (session 56)
+
+User decision: ghost arrays stay in the app as an experimental feature and
+get no further work for now. Parked because of this: the possible dropped
+connections when an array shrinks (pending-work table) and duplicate-array
+detection in Clean Up Duplicates. Code that already handles ghosts/mothers
+(regeneration, deleteSelected's cascade, applyNotationToMultiple's
+mother regen) is left as-is.
+
+### Version drift found in session 56 — check files, not docs
+
+Several fixes that handoffs/this doc described as done were not in the
+files actually in use: the session-53 debug logging was still everywhere,
+two of three `skipAutoHistoryRef` load-path fixes were missing, and the
+session-54 Clean Up Duplicates wiring had never reached tattingindex.tsx
+(its logic and translation keys had). Cause: the working tattingindex.tsx
+was built from a mid-session copy, and later sessions edited on top of it.
+Practice from now on: when picking up a "done" item, grep the actual file
+for it before trusting the doc; when handing off, state which exact file
+versions were delivered.
+
 ## What stays in tattingindex.tsx for now
 
 - `computeElementAfterNotationEdit` — extracted from `updateNotation` as a pure
@@ -1925,16 +2186,18 @@ exact trap once this session before catching it).
 | ~~Endpoint joints across ghost arrays~~ | DONE (later session) — see "Endpoint joints across ghost arrays — implemented" under Rules above for root cause and implementation details. |
 | ~~File load still opens in realistic mode~~ | FIXED (session 52). Root cause was NOT a third load path — it was a bug in the fix that session 52's handoff believed was already applied. `useProjectFile.ts`'s `applyProjectData`, the line actually in the uploaded file, was `p.setRenderMode(projectData.renderMode || 'schematic')` — using the *saved* renderMode whenever present, only falling back to schematic when the field was missing/falsy. Since a project saved while in realistic mode has `renderMode: 'realistic'` in the file, loading it reproduced exactly the reported bug. The handoff's claim that this line "forces schematic, ignores projectData.renderMode" didn't match what was actually in the file — either the real fix never got saved, or was reverted. Fixed to unconditionally `setRenderMode('schematic')`. Confirmed `loadFromAutosave()` (tattingindex.tsx ~line 864) was correct all along — hardcoded, no fallback trick, nothing to fix there. Traced both `loadFromPath`/`loadProject` (recent-projects and browse-button paths) and confirmed both route through `applyProjectData` — there was never a third path. |
 | ~~Split-ring picot color, schematic mode~~ | FIXED (later session). `armColor` in `renderOnePicot` (via `getSolidColor`) had the predicted side-blind bug — always resolved `materialId`, never `materialIdB`. Fixed by giving `getSolidColor` an optional second `picot` param, resolving via the existing `getSplitRingSide(element, picot)` helper (no new field, same single source of truth as `getConnectionThreadColor`); the one call site with a picot in scope (`renderOnePicot`) now passes it, the other two don't and are unaffected (`getSplitRingSide` returns `null` with no picot, falling back to the old behavior exactly). The two other `getSolidColor` call sites, once actually checked: one (`renderStitchLabels`, no-picots branch) can never have a picot in scope at all — not buggy, just not applicable; the other computes `solidColor` and never uses it anywhere in the function — dead code, left alone since removing it was out of scope. |
-| Ghost-array regeneration's connection remap may drop connections silently | OPEN as of session 52 — flagged but not traced deeply enough to confirm reachability. If a polar array shrinks, the ghost-ID remap (tattingindex.tsx, near `setPicotConnections(merged)`, search `oldGhostIdsSorted`/`newGhostIdsSorted`) may leave some old connections with no remap target, silently dropping them without demoting `isJoint` on the far side — the same bug pattern fixed at two other sites this session (see `applyJointFlags` note under useJoinActions.ts above). |
+| Ghost-array regeneration's connection remap may drop connections silently | PARKED (session 56) — ghost arrays are benched as experimental (see Rules). Original note: if a polar array shrinks, the ghost-ID remap may leave old connections pointing at removed ghosts without demoting `isJoint` on the far side. Never traced. |
 | Round-group assignment duplication + missing skipAutoHistoryRef | FIXED (session 52). `LineElementPropertyBar.tsx` and `GeneralElementPropertyBar.tsx` each had their own ~25-line inline RoundGroupPicker wiring, and had drifted onto two different (both broken) history strategies — see the useHistoryActions.ts addendum above for the skipAutoHistoryRef half of this; this is the duplication half. Extracted to `utils/roundGroupActions.ts`'s `createRoundGroupHandlers(...)` factory, used identically by both files now. `GeneralElementPropertyBar.tsx`'s old `pushOrderHistory`/`setTimeout(...,0)` and `needsHistoryPushRef` props are fully retired on this path; `skipAutoHistoryRef` threaded through instead (SingleSelectPropertyBar.tsx → tattingindex.tsx call site). |
 | `applyGroupRotation` negative-modulo bug + duplicated ±90° button math | FIXED (session 52). `useEditorActions.ts`'s `applyGroupRotation`: `(rotation + delta) % 360` with no second normalization pass could store e.g. `-90` instead of `270`, unlike the `((x%360)+360)%360` idiom used everywhere else `.rotation` is computed — including its own sibling `applyMultiSelectRotationDelta` right above it, which was already correct. Fixed the modulo, and redirected `MultiSelectSummaryBar.tsx`'s ±90° group-rotate buttons (which had their own hand-rolled copy of the same pivot/rotation geometry, sharing the same modulo bug) to call `applyGroupRotation(currentDeg ± 90)` instead — one geometry implementation instead of two. |
 | `loadFromPath`/`loadProject` duplication | FIXED (session 52). `useProjectFile.ts`: both were ~90% identical (same read+applyProjectData+error-handling block, differing only in how `filePath` is obtained). Extracted to a shared `readAndApplyProjectFile(filePath)` helper; both are now thin wrappers. Motivation: this is exactly the kind of split that let the file-load-realistic-mode bug's fix apply cleanly to one copy and get missed in the other (see FIXED row above). |
 | Squeeze slider undo (`ShapeAndSqueezeControls.tsx`) | FIXED (session 52) — see the useHistoryActions.ts addendum above for full detail. Short version: the only place outside `useInputHandlers.ts`'s canvas mousedown/mouseup pair that sets `isInteractingRef.current = true`. Its deferred push via `needsHistoryPushRef` was never flushed, since that flag's only consumer is scoped to the canvas SVG's own `onMouseUp`. Fixed with a direct `pushHistoryState` call on release. |
-| Six `align*` functions duplication (`useEditorActions.ts`) | OPEN. `alignLeft`/`alignRight`/`alignTop`/`alignBottom`/`alignCenterHorizontal`/`alignCenterVertical` are structurally identical — get bounding box, compute target position per aggregation, map selected elements shifting by delta — varying only in which bounds property/aggregation is used. Collapsible into one parameterized function. Note for whoever picks this up: none of the six call `pushHistoryState` or touch `skipAutoHistoryRef`/`isInteractingRef` — per the useHistoryActions.ts convention, that's correct as-is (the auto-push effect covers plain `setElements` calls with none of the four guard refs touched); don't "fix" a missing history push here, there isn't one. |
-| `paths.ts` binary-search duplication | OPEN. `splitRingMaxH`, `splitRingSolveBulge`, and both branches of `applyPathPreset` (symmetric/non-symmetric, which are themselves ~90% duplicate of each other) each hand-roll the same "grow hi until it overshoots, then bisect" idiom against a different target function. Candidate for one shared `solveForTarget(evalFn, target, tolerance, maxIters)` utility. |
-| `ShapeAndSqueezeControls.tsx` squeeze-reset buttons vs `resetElementShape` | OPEN. The two internal squeeze-reset buttons (regular ring, split ring) now duplicate exactly what `resetElementShape` (paths.ts, added session 52 for the Reset Transform feature) already does for closed/split-ring shapes. Duplication was created deliberately that session — didn't want to touch verified-working slider code while adding an unrelated feature. Worth revisiting now that `resetElementShape` is proven correct (see paths.ts entry above); output should be byte-identical, this is a pure DRY cleanup. |
-| Duplicated rotation-expression evaluators (`MultiSelectSummaryBar.tsx`) | OPEN, not yet fixed. The free multi-select rotation-delta input's `onBlur`/`onKeyDown` each hand-roll their own `new Function('"use strict"; return (' + s + ')')()` mini math-expression evaluator (regex-gated to digits/operators/parens), duplicated between the two handlers. The group-rotation text field *in the same file* already uses the existing `parseRotationExpr` prop for the identical job. Worth checking whether `parseRotationExpr` can just be reused here directly before writing a third variant. |
-| Free multi-select notation scaling vs `updateNotationForMultiple` | OPEN, needs verification before assuming it's pure duplication. `MultiSelectSummaryBar.tsx`'s free-multi-select notation `onBlur` (~50 lines) reimplements per-shape-type path scaling inline (ring/split-ring, with a `scPt` scaling helper defined twice within it) instead of delegating to `updateNotationForMultiple`. BUT: per the existing "Picot Wizard — batch update" doc section, `updateNotationForMultiple` only supports `preservesExistingPicots: true` callers and silently skips ghost-mother elements — confirm the free-multi-select scaling use case can actually satisfy that constraint before assuming this is a clean swap; it may be intentionally separate. |
-| Quadratic line control-point freezes on start/end drag (`useInputHandlers.ts`) | OPEN — design question, not a data bug. Fixed this session: dragging a quadratic line's endpoint no longer corrupts its data with stray cubic-only control1X/Y fields (see useInputHandlers.ts catalog entry above). But the safe fix was to leave `controlX`/`controlY` unchanged when start/end moves, which can make the curve look visually unbalanced relative to its new endpoint — cubic paths reposition their nearer control point proportionally (the 0.33/0.67 heuristic) when an endpoint moves; quadratic has only one shared control point, so there's no existing precedent in this file for how it should respond to an endpoint move. Needs a product/design call on the right heuristic (e.g. translate controlX/Y by the same delta the endpoint moved, vs. re-blend it proportionally) before implementing — not a "just derive it" fix. |
-| `nudgeActiveRef` — same stuck-flag shape as `isInteractingRef` (Addendum 4) | OPEN, deferred at user's request pending confirmation the `isInteractingRef`/`isShiftHeld` fixes hold up first. Gates the auto-push effect exactly like `isInteractingRef` does, set `true` while a "hold to repeat" NumberStepper button is held and cleared only by that widget's own release — if the window loses focus mid-hold, same theoretical risk of sticking `true` forever and silently disabling history. Unconfirmed whether the NumberStepper component (not yet obtained) already has its own safety net against this. Would need a proper flush (push pending state), not just a reset to `false`, same complexity as the `isInteractingRef` fix in useHistoryActions.ts Addendum 4. |
-| `isInteractingRef` — remaining gap after Addendum 4's fix | OPEN, same deferral. The `pointerup` safety net now correctly handles "mouse released elsewhere in the page," but not "mouse released outside the browser window entirely" (dragged off-screen, released over another app) — a document-level listener can't observe that. A `blur`-triggered fallback (with the same flush-not-reset requirement as the pointerup fix) would close this last gap. |
+| ~~Six `align*` functions duplication~~ | DONE (session 56) — one `alignSelection(mode)` in `useEditorActions.ts`, six one-line wrappers; output verified identical. |
+| ~~`paths.ts` binary-search duplication~~ | DONE as far as safe (session 56) — `applyPathPreset`'s two loops share `solvePathMagnitude` (verified identical). The two split-ring solvers intentionally stay separate (different algorithm shape; merging would shift existing geometry). |
+| ~~`ShapeAndSqueezeControls.tsx` squeeze-reset buttons vs `resetElementShape`~~ | DONE (session 56) — both call `resetElementShape`, keeping `polarRotationGridId` (the one real difference, which the old note missed: the outputs were NOT byte-identical). |
+| ~~Duplicated rotation-expression evaluators (`MultiSelectSummaryBar.tsx`)~~ | DONE (session 56) — uses `parseRotationExpr(s, 0)`. |
+| ~~Free multi-select notation scaling vs `updateNotationForMultiple`~~ | DONE (session 56) — turned out to be a buggy separate copy, not duplication (orphaned joins, wrong split-ring stitchCount/splitPosition, chains not re-bent). Replaced by `applyNotationToMultiple`; see Rules. |
+| ~~Quadratic line control-point freezes on start/end drag~~ | CLOSED (session 56) — not applicable: new lines/chains are always cubic; quadratic paths only exist in very old saves (and as circle internals, which aren't draggable). The data-corruption half was already fixed; nothing further needed. |
+| ~~`nudgeActiveRef` — same stuck-flag shape as `isInteractingRef`~~ | DONE (session 56) — flushed on window blur and by the pointerup safety net; see Rules "Losing window focus mid-gesture". Remaining: NumberStepper.tsx may keep auto-repeating after focus loss (history is safe). |
+| ~~`isInteractingRef` — remaining gap after Addendum 4's fix~~ | DONE (session 56) — window-blur flush; see Rules. |
+| `NumberStepper.tsx` auto-repeat after focus loss | OPEN, needs the file (never obtained). History is already safe; only the repeat itself may continue. |
+| Clean Up Duplicates — duplicate ghost arrays | PARKED with ghost arrays. |

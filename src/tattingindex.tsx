@@ -1017,6 +1017,18 @@ const APP_VERSION = '1.2.0-beta';
           isInteractingRef.current = false;
           pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
         }
+        // Same orphan check for a NumberStepper hold-to-repeat (e.g. the
+        // rotation ±1° buttons). nudgeActiveRef is set true for the whole
+        // hold and only cleared by that widget's own final commit, which
+        // runs before this deferred check in the normal case. If it's still
+        // true here, the release never reached the stepper, and the flag
+        // would otherwise stay stuck — silently disabling the auto-push
+        // history effect for every edit after it. Flush the held edit as
+        // one undo step and clear the flag.
+        if (nudgeActiveRef.current) {
+          nudgeActiveRef.current = false;
+          pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
+        }
       }, 0);
     };
     document.addEventListener('pointerup', handleDocPointerUp);
@@ -3022,6 +3034,51 @@ const APP_VERSION = '1.2.0-beta';
     };
   };
 
+  // ── Single-element thread ribbon ────────────────────────────────────────
+  // Turns a centreline (list of points) into ONE closed, filled outline
+  // `2*halfWidth` wide — the same stroke-to-fill technique the baked picots
+  // use (emitPicot in render/realisticRenderer.ts). Paired with
+  // fill=<thread colour> + stroke="black" strokeWidth=1.5 +
+  // paintOrder="stroke", it draws "black outline + coloured thread" as one
+  // element instead of two stacked strokes. Normals use central
+  // differences between neighbouring samples, so it works for any sampled
+  // curve. Ends are flat, matching picots.
+  const ribbonFromPoints = (pts: { x: number; y: number }[], halfWidth: number): string => {
+    if (pts.length < 2) return '';
+    const left: { x: number; y: number }[] = [];
+    const right: { x: number; y: number }[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = (-dy / len) * halfWidth, ny = (dx / len) * halfWidth;
+      left.push({ x: pts[i].x + nx, y: pts[i].y + ny });
+      right.push({ x: pts[i].x - nx, y: pts[i].y - ny });
+    }
+    let d = `M ${left[0].x},${left[0].y}`;
+    for (let i = 1; i < left.length; i++) d += ` L ${left[i].x},${left[i].y}`;
+    for (let i = right.length - 1; i >= 0; i--) d += ` L ${right[i].x},${right[i].y}`;
+    return d + ' Z';
+  };
+
+  // Samples a single-cubic "M x,y C c1x,c1y c2x,c2y ex,ey" path string (the
+  // exact shape buildFixedFeetArcD below produces) into points, for
+  // ribbonFromPoints. Returns [] for anything else rather than guessing.
+  const sampleCubicD = (d: string, steps = 32): { x: number; y: number }[] => {
+    const n = (d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || []).map(Number);
+    if (n.length !== 8 || n.some(v => !isFinite(v))) return [];
+    const [x0, y0, x1, y1, x2, y2, x3, y3] = n;
+    const out: { x: number; y: number }[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, u = 1 - t;
+      out.push({
+        x: u*u*u*x0 + 3*u*u*t*x1 + 3*u*t*t*x2 + t*t*t*x3,
+        y: u*u*u*y0 + 3*u*u*t*y1 + 3*u*t*t*y2 + t*t*t*y3,
+      });
+    }
+    return out;
+  };
+
   // ── Folded picot loop geometry ──────────────────────────────────────────
   // Builds a single arc between two FIXED, real points — used for the
   // fold's outer arc (revised after live in-app feedback with sketches: the
@@ -3489,6 +3546,44 @@ const APP_VERSION = '1.2.0-beta';
     skipAutoHistoryRef,
     getEndpointPseudoPicots,
   });
+
+  // Always-current handleMouseUp for the mount-once window-blur listener
+  // below (same stale-closure reason as handleMouseMoveInternalRef).
+  const handleMouseUpRef = useRef<any>(null);
+  handleMouseUpRef.current = handleMouseUp;
+
+  // Window lost focus mid-gesture (alt-tab, dragging off and releasing over
+  // another app, an OS dialog stealing focus): the matching release event
+  // never reaches this page, so neither the canvas's own mouseup nor the
+  // document-level pointerup safety net above can see it. Without this, the
+  // edit made during that gesture never got its own undo step, and a stuck
+  // flag could disable history for the rest of the session. Flushes —
+  // pushes the pending edit as one undo step — rather than just resetting
+  // the flags, which would drop the edit from history.
+  //   1. A canvas drag in progress (move, rotate handle, pivot, path
+  //      handle): finish it through handleMouseUp(null), the same call the
+  //      touch handlers already use to end a gesture. That commits a
+  //      translate-drag's pending offset and pushes history the normal way.
+  //   2. Anything still flagged after that (e.g. a property-bar slider that
+  //      set isInteractingRef itself): push directly.
+  //   3. A NumberStepper hold-to-repeat (nudgeActiveRef): push and clear.
+  useEffect(() => {
+    const flushOnBlur = () => {
+      if (dragOffsetRef.current.active || isInteractingRef.current) {
+        handleMouseUpRef.current?.(null);
+      }
+      if (isInteractingRef.current) {
+        isInteractingRef.current = false;
+        pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
+      }
+      if (nudgeActiveRef.current) {
+        nudgeActiveRef.current = false;
+        pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
+      }
+    };
+    window.addEventListener('blur', flushOnBlur);
+    return () => window.removeEventListener('blur', flushOnBlur);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -4212,6 +4307,97 @@ const APP_VERSION = '1.2.0-beta';
 
     setElements(updated);
     pushHistoryState(updated, picotConnectionsRef.current, roundsRef.current);
+  };
+
+  // Applies ONE notation to several selected elements at once — the
+  // free multi-select notation box (MultiSelectSummaryBar.tsx). Runs every
+  // target through the same computeElementAfterNotationEdit a single-element
+  // edit uses, so it gets the same handling the old inline copy in that
+  // component was missing:
+  //   - joins: picots that still match keep their ids (and their joins);
+  //     only ones that genuinely disappear lose them — the old copy gave
+  //     every picot a fresh id, silently orphaning every join;
+  //   - split rings: only side A is replaced, side B kept, with stitchCount
+  //     and splitPosition updated correctly (the old copy set stitchCount to
+  //     side A alone and never moved splitPosition);
+  //   - chains: path re-bent to the new length (the old copy left it as-is);
+  //   - ghost mothers: their arrays regenerate.
+  // Different from updateNotationForMultiple above, which is only for
+  // edits proven not to change picots (Picot Wizard Scale) and skips
+  // mothers. Like updateNotation, asks once — for the whole selection —
+  // before dropping any joins, then removes exactly those connections and
+  // un-marks the picot on the far side of each. One commit, one undo step.
+  // notation: the new notation (side A for split rings), or null to keep
+  //   each element's own current one — used when only side B is edited.
+  // notationB: new side B for split rings, or null to keep each one's own.
+  const applyNotationToMultiple = (elementIds: string[], notation: string | null, notationB: string | null = null) => {
+    const idSet = new Set(elementIds);
+    const targets = elementsRef.current.filter(el => idSet.has(el.id) && el.type !== 'line' && el.type !== 'ghost');
+    if (targets.length === 0) return;
+
+    const survivingConnKeys = new Set(
+      picotConnectionsRef.current.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
+    );
+    const results = new Map<string, any>();
+    const dropped = new Map<string, Set<string>>(); // elementId -> picot ids losing their join
+    targets.forEach(el => {
+      const computed = computeElementAfterNotationEdit(
+        el, notation ?? el.notation, el.isSplitRing ? notationB : null, 'stitchesBefore', survivingConnKeys
+      );
+      if (!computed) return; // didn't parse for this element — leave it untouched
+      results.set(el.id, computed.element);
+      if (computed.droppedJoinIds.length > 0) dropped.set(el.id, new Set(computed.droppedJoinIds));
+    });
+    if (results.size === 0) return;
+
+    const commit = () => {
+      const demoteKeys = new Map<string, boolean>();
+      if (dropped.size > 0) {
+        // Ghosts clone their mother's picot ids verbatim, so a join made on
+        // a ghost of an edited mother counts too (same rule as updateNotation).
+        const ownerOf = (elId: string): string | null => {
+          if (dropped.has(elId)) return elId;
+          const g = elementsRef.current.find(e => e.id === elId);
+          return g?.type === 'ghost' && dropped.has(g.sourceId) ? g.sourceId : null;
+        };
+        const isDroppedRef = (cp: any) => {
+          const owner = ownerOf(cp.elementId);
+          return !!owner && dropped.get(owner)!.has(cp.picotId);
+        };
+        const connsToRemove = picotConnectionsRef.current.filter(conn => conn.picots.some(isDroppedRef));
+        const newConns = picotConnectionsRef.current.filter(conn => !connsToRemove.includes(conn));
+        setPicotConnections(newConns);
+        picotConnectionsRef.current = newConns;
+        connsToRemove.forEach(conn => conn.picots.forEach(cp => {
+          if (!isDroppedRef(cp)) demoteKeys.set(`${cp.elementId}::${cp.picotId}`, false);
+        }));
+      }
+
+      // Demotion runs AFTER the edited elements are swapped in, so it also
+      // reaches a far-side picot that belongs to another element in this
+      // same selection (whose freshly computed version would otherwise
+      // overwrite it).
+      let updated = elementsRef.current.map(el => results.get(el.id) ?? el);
+      if (demoteKeys.size > 0) updated = applyJointFlags(updated, demoteKeys);
+
+      const motherIds = targets.filter(el => results.get(el.id)?.isGhostMother).map(el => el.id);
+      if (motherIds.length > 0) {
+        applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, motherIds));
+      } else {
+        setElements(updated);
+      }
+    };
+
+    if (dropped.size > 0) {
+      setConfirmDialog({
+        title: t('notationChangeConfirmTitle'),
+        message: t('notationChangeConfirmMessage'),
+        confirmLabel: t('notationChangeConfirmBtn'),
+        onConfirm: commit,
+      });
+    } else {
+      commit();
+    }
   };
 
   // Update ghosts when mother element changes (notation, rotation, shape, etc.)
@@ -6680,8 +6866,7 @@ const APP_VERSION = '1.2.0-beta';
                 setLineBeadClipboard={setLineBeadClipboard}
                 notationEscapeRef={notationEscapeRef}
                 parseNotation={parseNotation}
-                restoreBEConfigs={restoreBEConfigs}
-                extractBEConfigs={extractBEConfigs}
+                applyNotationToMultiple={applyNotationToMultiple}
                 applyMultiSelectRotationDelta={applyMultiSelectRotationDelta}
                 materials={materials}
                 setShowMaterialsPanel={setShowMaterialsPanel}
@@ -7705,17 +7890,21 @@ const APP_VERSION = '1.2.0-beta';
                   // directly (outerLength/innerLength are now the actual
                   // stored values, not something derived that needs
                   // recomputing to stay in sync).
+                  // One element per arc (was a black stroke + colour stroke
+                  // each — 4 shapes per fold), same ribbon style as picots
+                  // and realistic joins: filled band foldLineWidth wide,
+                  // 1.5 black outline underneath via paintOrder="stroke".
+                  // Arcs stay separate elements (not merged into one path)
+                  // so the smaller-under-bigger paint order below still
+                  // works.
+                  const foldHW = foldLineWidth / 2;
                   const outerArcEls = (
-                    <React.Fragment key="outer">
-                      <path d={outerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
-                      <path d={outerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
-                    </React.Fragment>
+                    <path key="outer" d={ribbonFromPoints(sampleCubicD(outerD), foldHW)} fill={foldLineColor}
+                      stroke="black" strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                   );
                   const innerArcEls = (
-                    <React.Fragment key="inner">
-                      <path d={innerD} fill="none" stroke="black" strokeWidth={foldLineWidth + 2} strokeLinecap="round" />
-                      <path d={innerD} fill="none" stroke={foldLineColor} strokeWidth={foldLineWidth} strokeLinecap="round" />
-                    </React.Fragment>
+                    <path key="inner" d={ribbonFromPoints(sampleCubicD(innerD), foldHW)} fill={foldLineColor}
+                      stroke="black" strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                   );
                   return (
                     <g key={conn.id}>

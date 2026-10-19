@@ -413,18 +413,78 @@ export function useEditorActions(p: UseEditorActionsParams) {
   // cleanupDuplicates below) so callers can get a count/preview — e.g. for
   // deciding whether the periodic on-load/on-save check has anything to
   // show — without triggering the confirm dialog.
+  //
+  // Two passes:
+  //   1. Whole groups. Two (or more) groups whose members match one-to-one
+  //      by duplicateSignature — i.e. a group stacked exactly on top of a
+  //      copy of itself — are duplicates as a unit. One complete group is
+  //      kept and the others are removed whole. Without this pass the
+  //      element-by-element pass below picks a winner per element, which
+  //      could keep some members from each copy and leave two broken,
+  //      half-deleted groups.
+  //   2. Single elements, exactly as before, over whatever pass 1 didn't
+  //      already remove.
+  //
+  // Which copy is kept (both passes): the one with more joined picots
+  // (summed over members for a group); on a tie, for single elements, one
+  // inside a group beats a loose one; then the one earliest in the
+  // elements array (for a group: its earliest member). Array order is the
+  // closest thing to "older" this data has — ids are random UUIDs with no
+  // timestamp — but note Send to Back / Bring to Front reorder the array.
+  //
+  // Groups containing a ghost mother are never removed (same reason as
+  // single mothers — see the comment above); ghosts are skipped entirely.
   const findDuplicateElements = (elementsOverride?: any[]) => {
     const current = elementsOverride ?? p.elementsRef.current;
+    const indexOf = new Map(current.map((el: any, i: number) => [el.id, i]));
+    const toDeleteSet = new Set<string>();
+    const groups: { kept: any; removed: any[] }[] = [];
+    const removedGroupIds: string[] = [];
+
+    // ── Pass 1: whole groups ──
+    const membersByGroup = new Map<string, any[]>();
+    current.forEach((el: any) => {
+      if (el.type === 'ghost' || !el.groupId) return;
+      if (!membersByGroup.has(el.groupId)) membersByGroup.set(el.groupId, []);
+      membersByGroup.get(el.groupId)!.push(el);
+    });
+    const groupsBySig = new Map<string, string[]>();
+    membersByGroup.forEach((members, gid) => {
+      if (members.length < 2) return; // a "group" of 1 is just an element
+      const sig = members.map(duplicateSignature).sort().join('\n');
+      if (!groupsBySig.has(sig)) groupsBySig.set(sig, []);
+      groupsBySig.get(sig)!.push(gid);
+    });
+    const groupJoints = (gid: string) =>
+      membersByGroup.get(gid)!.reduce((sum, el) => sum + jointPicotCount(el), 0);
+    const groupFirstIndex = (gid: string) =>
+      Math.min(...membersByGroup.get(gid)!.map(el => indexOf.get(el.id) ?? Infinity));
+    const groupRemovable = (gid: string) =>
+      !membersByGroup.get(gid)!.some(el => el.isGhostMother);
+    for (const gids of groupsBySig.values()) {
+      if (gids.length < 2) continue;
+      const ranked = [...gids].sort((a, b) =>
+        (groupJoints(b) - groupJoints(a)) || (groupFirstIndex(a) - groupFirstIndex(b))
+      );
+      const keepGid = ranked[0];
+      const removedEls: any[] = [];
+      for (const gid of ranked.slice(1)) {
+        if (!groupRemovable(gid)) continue;
+        removedGroupIds.push(gid);
+        membersByGroup.get(gid)!.forEach(el => { toDeleteSet.add(el.id); removedEls.push(el); });
+      }
+      if (removedEls.length > 0) groups.push({ kept: membersByGroup.get(keepGid), removed: removedEls });
+    }
+
+    // ── Pass 2: single elements ──
     const buckets = new Map<string, any[]>();
-    current.forEach(el => {
+    current.forEach((el: any) => {
       if (el.type === 'ghost') return; // array-managed, not a candidate
+      if (toDeleteSet.has(el.id)) return; // already removed with its group
       const sig = duplicateSignature(el);
       if (!buckets.has(sig)) buckets.set(sig, []);
       buckets.get(sig)!.push(el);
     });
-
-    const toDelete: string[] = [];
-    const groups: { kept: any; removed: any[] }[] = [];
 
     for (const bucket of buckets.values()) {
       if (bucket.length < 2) continue;
@@ -432,18 +492,23 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const plain = bucket.filter(el => !el.isGhostMother);
       if (plain.length < 2) continue;
 
-      // Keep whichever copy has the most joined picots; tie-break by array
-      // order (earliest-created wins) for a stable, deterministic result.
+      // Keep whichever copy has the most joined picots. On a tie, a copy
+      // that belongs to a group beats a loose one — otherwise a loose copy
+      // that happens to sit earlier in the list would win and quietly take
+      // a member out of its group. Still tied after that: earliest in array
+      // order wins (buckets are filled in array order, and keep only changes
+      // on a strictly better candidate).
       let keep = plain[0];
       for (const el of plain.slice(1)) {
-        if (jointPicotCount(el) > jointPicotCount(keep)) keep = el;
+        const ej = jointPicotCount(el), kj = jointPicotCount(keep);
+        if (ej > kj || (ej === kj && !!el.groupId && !keep.groupId)) keep = el;
       }
       const removed = plain.filter(el => el !== keep);
       groups.push({ kept: keep, removed });
-      removed.forEach(el => toDelete.push(el.id));
+      removed.forEach(el => toDeleteSet.add(el.id));
     }
 
-    return { toDelete, groups };
+    return { toDelete: [...toDeleteSet], groups, removedGroupIds };
   };
 
   // opts.silent: when true, does nothing (no dialog at all) if no
@@ -478,15 +543,70 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
     const idsToDelete = new Set(toDelete);
     const commit = () => {
-      p.setElements(prev => prev.filter(el => !idsToDelete.has(el.id)));
-      p.setPicotConnections(prev =>
-        prev.filter(conn => !conn.picots.some((pt: any) => idsToDelete.has(pt.elementId)))
+      // Computed from the refs at confirm time (the user may click the
+      // dialog a while after detection ran), then committed as plain
+      // values so the same arrays go into the explicit history push below.
+      const curEls = p.elementsRef.current;
+      const curConns = p.picotConnectionsRef.current;
+
+      const removedConns = curConns.filter((conn: any) =>
+        conn.picots.some((pt: any) => idsToDelete.has(pt.elementId)));
+      const nextConns = curConns.filter((conn: any) => !removedConns.includes(conn));
+
+      let nextElements = curEls.filter((el: any) => !idsToDelete.has(el.id));
+
+      // Any group that lost members and is now down to 0–1 is no longer a
+      // group: strip its groupId from the remaining member (if any) and
+      // drop its registry entry — same tidy-up ungroupSelected does, for
+      // the same reason (a stale group of 1 makes the next Group action
+      // wrongly ask to "merge an existing group"). Covers both whole
+      // duplicate groups removed in pass 1 and groups that lost a member
+      // to the single-element pass.
+      const touchedGroupIds = new Set(
+        curEls.filter((el: any) => idsToDelete.has(el.id) && el.groupId).map((el: any) => el.groupId)
       );
+      const orphanedGroupIds = new Set<string>();
+      touchedGroupIds.forEach((gid: any) => {
+        if (nextElements.filter((el: any) => el.groupId === gid).length < 2) orphanedGroupIds.add(gid);
+      });
+
+      // Picots on the far side of a removed connection would otherwise
+      // keep showing as joined with nothing behind them (the same stale
+      // isJoint problem fixed for notation edits in session 52). Demote
+      // only those not still part of some other surviving connection.
+      const stillConnected = new Set(
+        nextConns.flatMap((conn: any) => conn.picots.map((pt: any) => `${pt.elementId}::${pt.picotId}`))
+      );
+      const demote = new Set<string>();
+      removedConns.forEach((conn: any) => conn.picots.forEach((pt: any) => {
+        const key = `${pt.elementId}::${pt.picotId}`;
+        if (!idsToDelete.has(pt.elementId) && !stillConnected.has(key)) demote.add(key);
+      }));
+
+      nextElements = nextElements.map((el: any) => {
+        let out = el;
+        if (out.groupId && orphanedGroupIds.has(out.groupId)) {
+          const { groupId: _, ...rest } = out;
+          out = rest;
+        }
+        if (demote.size > 0 && out.picots?.some((pic: any) => pic.isJoint && demote.has(`${out.id}::${pic.id}`))) {
+          out = { ...out, picots: out.picots.map((pic: any) =>
+            pic.isJoint && demote.has(`${out.id}::${pic.id}`) ? { ...pic, isJoint: false } : pic) };
+        }
+        return out;
+      });
+
+      const nextGroups = (p.groupsRef.current || []).filter((g: any) => !orphanedGroupIds.has(g.id));
+
+      // Explicit push with the fresh elements/connections/groups (same
+      // pattern as groupSelected/ungroupSelected): the auto-history effect
+      // would read groupsRef one render stale and miss the registry change.
+      p.skipAutoHistoryRef.current = true;
+      p.setElements(nextElements);
+      p.setPicotConnections(nextConns);
+      if (orphanedGroupIds.size > 0) p.setGroups(nextGroups);
       p.setSelectedIds(p.selectedIdsRef.current.filter(id => !idsToDelete.has(id)));
-      // No explicit pushHistoryState/skipAutoHistoryRef here — matches
-      // deleteSelected just above, which only touches elements/
-      // picotConnections/selectedIds and relies on the auto-history effect
-      // (watches elements/picotConnections/polarGrids) to pick this up.
+      p.pushHistoryState(nextElements, nextConns, p.roundsRef.current, undefined, nextGroups);
     };
 
     // {count} is a literal placeholder replaced below — matches this
@@ -545,14 +665,10 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const undo = useCallback(() => {
     const idx = p.historyIndexRef.current;
     const history = p.historyRef.current;
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] undo() called: idx=${idx} historyLen=${history.length}`);
     if (idx > 0) {
       p.isUndoRedoRef.current = true;
       const newIdx = idx - 1;
       const state = history[newIdx];
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] undo() -> idx=${idx}->${newIdx} restoring els=${(state.elements ?? []).length}:[${(state.elements ?? []).slice(0, 6).map((e: any) => e?.id).join(',')}]`);
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
@@ -563,23 +679,16 @@ export function useEditorActions(p: UseEditorActionsParams) {
       if (state.ghostArrays) p.setGhostArrays(JSON.parse(JSON.stringify(state.ghostArrays)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
-    } else {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] undo() no-op: already at idx 0`);
     }
   }, []); // reads via refs
 
   const redo = useCallback(() => {
     const idx = p.historyIndexRef.current;
     const history = p.historyRef.current;
-    // eslint-disable-next-line no-console
-    console.log(`[HIST] redo() called: idx=${idx} historyLen=${history.length}`);
     if (idx < history.length - 1) {
       p.isUndoRedoRef.current = true;
       const newIdx = idx + 1;
       const state = history[newIdx];
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] redo() -> idx=${idx}->${newIdx} restoring els=${(state.elements ?? []).length}:[${(state.elements ?? []).slice(0, 6).map((e: any) => e?.id).join(',')}]`);
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
@@ -590,9 +699,6 @@ export function useEditorActions(p: UseEditorActionsParams) {
       if (state.ghostArrays) p.setGhostArrays(JSON.parse(JSON.stringify(state.ghostArrays)));
       reconcileGhostArraysAfterHistoryRestore(restoredConns);
       setTimeout(() => { p.isUndoRedoRef.current = false; }, 0);
-    } else {
-      // eslint-disable-next-line no-console
-      console.log(`[HIST] redo() no-op: already at end (idx=${idx}, len=${history.length})`);
     }
   }, []); // reads via refs
 
@@ -914,71 +1020,43 @@ export function useEditorActions(p: UseEditorActionsParams) {
 
   // ── Alignment ─────────────────────────────────────────────────────────────
 
-  const alignLeft = () => {
+  // One implementation for all six edge/centre alignments (they used to be
+  // six near-identical copies differing only in which bounds field they
+  // read, how the target is aggregated, and which axis they move along).
+  // Behaviour is unchanged: each alignment unit (a whole group, or a lone
+  // element) moves rigidly so its chosen edge/centre lands on the target.
+  //   left / top       → target = smallest value across units
+  //   right / bottom   → target = largest value
+  //   centerX / centerY → target = average of the units' centres
+  // No history push here — plain setElements, covered by the auto-history
+  // effect (see the useHistoryActions.ts convention in architecture.md).
+  type AlignMode = 'left' | 'right' | 'top' | 'bottom' | 'centerX' | 'centerY';
+  const alignSelection = (mode: AlignMode) => {
     if (p.selectedIds.length < 2) return;
     const units = getAlignmentUnits();
     if (units.length < 2) return;
-    const target = Math.min(...units.map(u => u.bounds.left));
+    const values = units.map(u => u.bounds[mode]);
+    const target =
+      mode === 'left' || mode === 'top' ? Math.min(...values)
+      : mode === 'right' || mode === 'bottom' ? Math.max(...values)
+      : values.reduce((s, v) => s + v, 0) / values.length;
+    const horizontal = mode === 'left' || mode === 'right' || mode === 'centerX';
     p.setElements(prev => prev.map(el => {
       const unit = units.find(u => u.ids.includes(el.id));
-      return unit ? moveElement(el, target - unit.bounds.left, 0) : el;
+      if (!unit) return el;
+      const delta = target - unit.bounds[mode];
+      return horizontal ? moveElement(el, delta, 0) : moveElement(el, 0, delta);
     }));
   };
 
-  const alignRight = () => {
-    if (p.selectedIds.length < 2) return;
-    const units = getAlignmentUnits();
-    if (units.length < 2) return;
-    const target = Math.max(...units.map(u => u.bounds.right));
-    p.setElements(prev => prev.map(el => {
-      const unit = units.find(u => u.ids.includes(el.id));
-      return unit ? moveElement(el, target - unit.bounds.right, 0) : el;
-    }));
-  };
-
-  const alignTop = () => {
-    if (p.selectedIds.length < 2) return;
-    const units = getAlignmentUnits();
-    if (units.length < 2) return;
-    const target = Math.min(...units.map(u => u.bounds.top));
-    p.setElements(prev => prev.map(el => {
-      const unit = units.find(u => u.ids.includes(el.id));
-      return unit ? moveElement(el, 0, target - unit.bounds.top) : el;
-    }));
-  };
-
-  const alignBottom = () => {
-    if (p.selectedIds.length < 2) return;
-    const units = getAlignmentUnits();
-    if (units.length < 2) return;
-    const target = Math.max(...units.map(u => u.bounds.bottom));
-    p.setElements(prev => prev.map(el => {
-      const unit = units.find(u => u.ids.includes(el.id));
-      return unit ? moveElement(el, 0, target - unit.bounds.bottom) : el;
-    }));
-  };
-
-  const alignCenterHorizontal = () => {
-    if (p.selectedIds.length < 2) return;
-    const units = getAlignmentUnits();
-    if (units.length < 2) return;
-    const target = units.reduce((s, u) => s + u.bounds.centerX, 0) / units.length;
-    p.setElements(prev => prev.map(el => {
-      const unit = units.find(u => u.ids.includes(el.id));
-      return unit ? moveElement(el, target - unit.bounds.centerX, 0) : el;
-    }));
-  };
-
-  const alignCenterVertical = () => {
-    if (p.selectedIds.length < 2) return;
-    const units = getAlignmentUnits();
-    if (units.length < 2) return;
-    const target = units.reduce((s, u) => s + u.bounds.centerY, 0) / units.length;
-    p.setElements(prev => prev.map(el => {
-      const unit = units.find(u => u.ids.includes(el.id));
-      return unit ? moveElement(el, 0, target - unit.bounds.centerY) : el;
-    }));
-  };
+  // Kept as named wrappers so every existing caller (Arrange menu) is
+  // untouched.
+  const alignLeft             = () => alignSelection('left');
+  const alignRight            = () => alignSelection('right');
+  const alignTop              = () => alignSelection('top');
+  const alignBottom           = () => alignSelection('bottom');
+  const alignCenterHorizontal = () => alignSelection('centerX');
+  const alignCenterVertical   = () => alignSelection('centerY');
 
   const alignToGridHorizontal = (gridId: string | null = null) => {
     if (p.selectedIds.length === 0 || p.polarGrids.length === 0) return;

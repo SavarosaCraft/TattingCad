@@ -273,6 +273,35 @@ export const rotatePathsAroundCenter = (
 
 // ── Path presets ──────────────────────────────────────────────────────────────
 
+// Finds the control-point magnitude t for which build(t) has the target arc
+// length, by bisection on [0, hi] starting from the guess t0. Arc length
+// grows with t here, so: too short → raise lo, too long → lower hi. Stops
+// early once within 0.5% of the target. Shared by both branches of
+// applyPathPreset below (symmetric and one-sided), which used to carry two
+// hand-written copies of exactly this loop.
+//
+// The split-ring solvers above (splitRingMaxH, splitRingSolveBulge) are
+// deliberately NOT routed through this: they first grow their upper bound
+// until it overshoots, run a fixed iteration count with no early exit, and
+// return a bound or midpoint rather than the last guess. Forcing them into
+// this shape would shift every existing split ring's geometry slightly.
+const solvePathMagnitude = (
+  build: (t: number) => any,
+  targetLength: number,
+  hi: number,
+  t0: number,
+  iterations = 24,
+): number => {
+  let lo = 0, t = t0;
+  for (let iter = 0; iter < iterations; iter++) {
+    const len = calculatePathLength(sampleBezierPath(build(t), 30));
+    if (Math.abs(len - targetLength) < targetLength * 0.005) break;
+    if (len < targetLength) lo = t; else hi = t;
+    t = (lo + hi) / 2;
+  }
+  return t;
+};
+
 // Apply a bow-angle preset to a chain path, keeping both endpoints fixed.
 // presetDeg: angle of the tangent at start/end relative to the chord (45/60/90).
 // targetLength: desired arc length — scales control-point magnitude via binary search.
@@ -295,29 +324,23 @@ export const applyPathPreset = (path: any, presetDeg: number, targetLength: numb
   const d1x = cos * ux + sin * px, d1y = cos * uy + sin * py;
 
   if (!symmetric) {
-    let lo = 0, hi = chordLen * 4, t = chordLen / 3;
-    for (let iter = 0; iter < 24; iter++) {
-      const c1x = x + t * d1x, c1y = y + t * d1y;
-      const tryPath = { type: 'cubic', x, y, endX, endY, control1X: c1x, control1Y: c1y, control2X: path.control2X, control2Y: path.control2Y };
-      const len = calculatePathLength(sampleBezierPath(tryPath, 30));
-      if (Math.abs(len - targetLength) < targetLength * 0.005) break;
-      if (len < targetLength) lo = t; else hi = t;
-      t = (lo + hi) / 2;
-    }
+    // One-sided: only control1 moves; control2 stays where it was.
+    const t = solvePathMagnitude(
+      t => ({ type: 'cubic', x, y, endX, endY,
+        control1X: x + t * d1x, control1Y: y + t * d1y,
+        control2X: path.control2X, control2Y: path.control2Y }),
+      targetLength, chordLen * 4, chordLen / 3,
+    );
     return { ...path, control1X: x + t * d1x, control1Y: y + t * d1y };
   }
 
   const d2x = cos * ux - sin * px, d2y = cos * uy - sin * py;
-  let lo = 0, hi = chordLen * 4, t = chordLen / 3;
-  for (let iter = 0; iter < 24; iter++) {
-    const c1x = x + t * d1x, c1y = y + t * d1y;
-    const c2x = endX - t * d2x, c2y = endY - t * d2y;
-    const tryPath = { type: 'cubic', x, y, endX, endY, control1X: c1x, control1Y: c1y, control2X: c2x, control2Y: c2y };
-    const len = calculatePathLength(sampleBezierPath(tryPath, 30));
-    if (Math.abs(len - targetLength) < targetLength * 0.005) break;
-    if (len < targetLength) lo = t; else hi = t;
-    t = (lo + hi) / 2;
-  }
+  const t = solvePathMagnitude(
+    t => ({ type: 'cubic', x, y, endX, endY,
+      control1X: x + t * d1x, control1Y: y + t * d1y,
+      control2X: endX - t * d2x, control2Y: endY - t * d2y }),
+    targetLength, chordLen * 4, chordLen / 3,
+  );
   return {
     ...path,
     control1X: x + t * d1x,   control1Y: y + t * d1y,

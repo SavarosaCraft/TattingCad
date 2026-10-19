@@ -14,7 +14,7 @@
 // architecture.md's elementUpdates.ts note says to leave alone.
 import React from 'react';
 import { IconShapeTeardrop, IconShapeCircle } from './icons';
-import { createTeardropPath, createCirclePath, createSplitRingPathFromEl, applyRotationToPathData } from '../geometry/paths';
+import { createTeardropPath, createCirclePath, createSplitRingPathFromEl, applyRotationToPathData, resetElementShape } from '../geometry/paths';
 
 interface ShapeAndSqueezeControlsProps {
   selectedElement: any;
@@ -53,6 +53,21 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
   //     consumer is the canvas SVG's own onMouseUp (useInputHandlers.ts),
   //     which never fires for a property-bar slider release, so the final
   //     dragged value was silently never getting its own undo entry.
+  // Squeeze "Reset" buttons (split-ring and regular-ring variants) — both
+  // produce exactly what resetElementShape (paths.ts) does for closed
+  // shapes, so they call it instead of keeping their own copies of the same
+  // defaults. One deliberate difference is preserved: resetElementShape is
+  // the full "Reset Transform" and also clears polarRotationGridId (unlinks
+  // the element from a polar grid pivot); a squeeze reset never did that,
+  // so the element's existing link is kept here.
+  const resetSqueeze = () => {
+    setElements(prev => prev.map(el => {
+      if (el.id !== selectedElement.id) return el;
+      const patch = resetElementShape(el, dsWidth);
+      return patch ? { ...el, ...patch, polarRotationGridId: el.polarRotationGridId } : el;
+    }));
+  };
+
   const squeezeSliderEvents = {
     onMouseDown: () => { isInteractingRef.current = true; },
     onTouchStart: () => { isInteractingRef.current = true; },
@@ -184,15 +199,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
           />
           <span className="text-xs text-gray-400 w-6">{(selectedElement.squeezeCB ?? 0.75).toFixed(2)}</span>
           <button
-            onClick={() => {
-              setElements(prev => prev.map(el => {
-                if (el.id !== selectedElement.id) return el;
-                return {
-                  ...el, squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0,
-                  ...createSplitRingPathFromEl(el, dsWidth, { squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75 }),
-                };
-              }));
-            }}
+            onClick={resetSqueeze}
             className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
             title={t('propResetSqueeze')}
           >{t('propResetBtn')}</button>
@@ -221,16 +228,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
           />
           <span className="text-xs text-gray-400 w-8">{(selectedElement.squeeze || 0).toFixed(1)}</span>
           <button
-            onClick={() => {
-              setElements(prev => prev.map(el => {
-                if (el.id !== selectedElement.id) return el;
-                const targetLength = el.stitchCount * dsWidth;
-                const newPathData = el.shapeStyle === 'circle'
-                  ? createCirclePath(el.center.x, el.center.y, targetLength, 0)
-                  : createTeardropPath(el.center.x, el.center.y, targetLength, 0);
-                return { ...el, squeeze: 0, rotation: 0, ...newPathData };
-              }));
-            }}
+            onClick={resetSqueeze}
             className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
             title={t('propResetSqueeze')}
             disabled={selectedElement.shapeStyle === 'circle'}
