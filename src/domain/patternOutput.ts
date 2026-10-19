@@ -29,6 +29,10 @@ export interface GeneratePatternParams {
   patternNotes: string;
   projectName: string;
   currentFilePath: string | null;
+  // Translation lookup — the copied pattern text follows the UI language.
+  // Notation tokens (ds, p, jp, r:, c: …), element-type abbreviations
+  // (R, CH, SC, SR) and RW are tatting notation and stay untranslated.
+  t: (key: string) => string;
 }
 
 export interface GeneratePatternResult {
@@ -42,7 +46,7 @@ export interface GeneratePatternResult {
 export function generatePatternText(params: GeneratePatternParams): GeneratePatternResult | null {
   const {
     elements, picotConnections, rounds, materials, beadLibrary,
-    threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
+    threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath, t,
   } = params;
 
   // Legacy-read shim (session 43 naming-collision fix): elements may still carry the
@@ -72,7 +76,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     const samNumEls = elements.filter(e => e.orderNumber?.toString().trim() === num);
     if (samNumEls.length > 1) {
       const grp = getRoundId(el) ? rounds.find(g => g.id === getRoundId(el)) : null;
-      const qualifier = grp ? `/${grp.name.replace(/\s+/g, '')}` : '/ungrouped';
+      const qualifier = grp ? `/${grp.name.replace(/\s+/g, '')}` : `/${t('tattingOrderUngrouped').toLowerCase().replace(/\s+/g, '')}`;
       return `${typeLabel}#${num}${qualifier}`;
     }
     return `${typeLabel}#${num}`;
@@ -232,7 +236,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
           ? ' (' + el.notation.replace(/^(r|c|sc|sr):\s*/i, '').slice(0, 35) + ')' : '';
         return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
       });
-      fallbackHeader = `⚠ Some elements don't have an assigned order number:\n${list.join('\n')}`;
+      fallbackHeader = `⚠ ${t('patternOutUnnumbered')}\n${list.join('\n')}`;
     } else {
       // No tatting elements at all — caller handles clipboard message
       return null;
@@ -277,8 +281,8 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     const isDup = orderedElements.filter(x =>
       (getRoundId(x.element) ?? '') + '|' + x.rawOrder === gKey
     ).length > 1;
-    const dupWarning = isDup ? ' ⚠DUPLICATE#' : '';
-    if (el.type === 'line') return `${item.rawOrder}${dupWarning}. [Line]`;
+    const dupWarning = isDup ? ` ⚠${t('patternOutDuplicateMark')}` : '';
+    if (el.type === 'line') return `${item.rawOrder}${dupWarning}. [${t('patternOutLine')}]`;
     const notationText = buildOutputNotation(el, el.id);
     const endpointSuffix = buildEndpointSuffix(el);
     return `${item.rawOrder}${dupWarning}. ${notationText}${el.rw ? ' RW' : ''}${endpointSuffix}`;
@@ -300,13 +304,13 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       !getRoundId(item.element) || !knownGroupIds.has(getRoundId(item.element))
     );
     if (ungroupedItems.length > 0) {
-      sections.push(`=== Ungrouped ===\n` + ungroupedItems.map(renderElementLine).join('\n'));
+      sections.push(`=== ${t('tattingOrderUngrouped')} ===\n` + ungroupedItems.map(renderElementLine).join('\n'));
     }
     patternBody = sections.join('\n\n');
   } else {
     const patternLines = orderedElements.map(renderElementLine);
     if (groupDupNums.length > 0) {
-      patternLines.unshift(`⚠ Warning: duplicate order numbers: ${groupDupNums.join(', ')}`);
+      patternLines.unshift(`⚠ ${t('patternOutDuplicateWarning').replace('{list}', groupDupNums.join(', '))}`);
     }
     patternBody = patternLines.join('\n');
   }
@@ -331,12 +335,12 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
             : '';
           return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
         });
-        return `\n\n⚠ Some elements don't have an assigned order number:\n${list.join('\n')}`;
+        return `\n\n⚠ ${t('patternOutUnnumbered')}\n${list.join('\n')}`;
       })()
     : '';
 
   const notesBlock = patternNotes && patternNotes.trim()
-    ? `\n\n--- Notes ---\n${patternNotes.trim()}`
+    ? `\n\n--- ${t('patternOutNotes')} ---\n${patternNotes.trim()}`
     : '';
 
   // ── Thread estimate ────────────────────────────────────────────────────
@@ -545,9 +549,9 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   }
 
   const beadEntries = [
-    beadTotals.Y > 0 ? `Y (small) × ${beadTotals.Y}` : null,
-    beadTotals.Z > 0 ? `Z (medium) × ${beadTotals.Z}` : null,
-    beadTotals.V > 0 ? `V (large) × ${beadTotals.V}` : null,
+    beadTotals.Y > 0 ? `Y (${t('patternOutBeadSmall')}) × ${beadTotals.Y}` : null,
+    beadTotals.Z > 0 ? `Z (${t('patternOutBeadMedium')}) × ${beadTotals.Z}` : null,
+    beadTotals.V > 0 ? `V (${t('patternOutBeadLarge')}) × ${beadTotals.V}` : null,
   ].filter(Boolean);
 
   const namedEntries = [...namedBeadCounts.values()]
@@ -555,9 +559,9 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     .map(({ name, count }) => `  ${name} × ${count}`);
 
   const beadBlock = beadEntries.length > 0
-    ? `\n\n--- Beads ---\n` +
+    ? `\n\n--- ${t('patternOutBeads')} ---\n` +
       beadEntries.join('\n') +
-      (namedEntries.length > 0 ? `\n\nNamed beads (BE):\n` + namedEntries.join('\n') : '')
+      (namedEntries.length > 0 ? `\n\n${t('patternOutNamedBeads')}\n` + namedEntries.join('\n') : '')
     : '';
 
   // ── Thread block ───────────────────────────────────────────────────────
@@ -567,21 +571,27 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     .filter(([, mm]) => mm > 0)
     .map(([id, mm]) => {
       const mat = materials.find(m => m.id === id);
-      const name = mat ? mat.name : id;
+      // Built-in default material: stored name is English data, shown translated.
+      const name = id === 'default' ? t('materialDefaultName') : (mat ? mat.name : id);
       return `${name} ~ ${mmToM(mm)} m`;
     });
 
   const coreM = parseFloat(mmToM(coreTotal));
   const multiMat = Object.keys(materialMm).filter(id => (materialMm[id] || 0) > 0).length > 1;
 
+  // Built-in preset keeps its translated name until the user renames it
+  // (same rule as presetDisplayName in tattingindex.tsx).
+  const presetName = activePreset.id === 'default' && activePreset.name === DEFAULT_THREAD_PRESET.name
+    ? t('threadPresetDefaultName') : activePreset.name;
+
   const threadBlock = materialLines.length > 0
-    ? `\n\n--- Thread Estimate (${activePreset.name}) ---` +
-      `\n(tie-ins and tails not included)\n` +
+    ? `\n\n--- ${t('patternOutThreadHeader').replace('{preset}', presetName)} ---` +
+      `\n${t('patternOutThreadTails')}\n` +
       materialLines.map(l => `\n${l}`).join('') +
-      `\n\nNote: core thread not included — add manually` +
-      (multiMat ? ` (multi-material pattern)` : '') +
-      `\nCore thread ~ ${coreM} m` +
-      `\n\nDS: ${countDS}  SS: ${countSS}  Picots: ${countPicots}  Joined: ${countJoined}`
+      `\n\n${t('patternOutCoreNote')}` +
+      (multiMat ? ` ${t('patternOutMultiMaterial')}` : '') +
+      `\n${t('patternOutCoreThread').replace('{m}', String(coreM))}` +
+      `\n\n${t('patternOutCounts').replace('{ds}', String(countDS)).replace('{ss}', String(countSS)).replace('{picots}', String(countPicots)).replace('{joined}', String(countJoined))}`
     : '';
 
   // ── Final assembly ─────────────────────────────────────────────────────
@@ -591,7 +601,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
 
   const text = fallbackHeader
     ? fallbackHeader + (threadBlock || '') + beadBlock + notesBlock
-    : `${displayName.trim() || 'Untitled Pattern'}\n\n` + patternBody + unnumberedBlock + notesBlock + threadBlock + beadBlock;
+    : `${displayName.trim() || t('projectUntitled')}\n\n` + patternBody + unnumberedBlock + notesBlock + threadBlock + beadBlock;
 
   return { text, elementCount: orderedElements.length };
 }

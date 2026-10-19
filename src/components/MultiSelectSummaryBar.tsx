@@ -199,7 +199,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                     const color = e.target.value;
                     const nextGroups = groups.some(g => g.id === gid)
                       ? groups.map(g => g.id === gid ? { ...g, color } : g)
-                      : [...groups, { id: gid, name: `Group`, color }];
+                      : [...groups, { id: gid, name: t('groupDefaultName'), color }];
                     setGroups(nextGroups);
                     pushHistoryState(elements, picotConnections, rounds, undefined, nextGroups);
                   }}
@@ -211,8 +211,8 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
           })()}
           <div className="text-sm text-gray-300 whitespace-nowrap flex-shrink-0">
             {isMultiGroup
-              ? `${touchedGroupIds.length} Groups Selected (${groupElements.length} elements)`
-              : `Group Selected (${groupElements.length} elements)`}
+              ? t('multiGroupsSelected').replace('{g}', String(touchedGroupIds.length)).replace('{n}', String(groupElements.length))
+              : t('multiGroupSelected').replace('{n}', String(groupElements.length))}
           </div>
         </div>
 
@@ -413,13 +413,16 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
     };
 
     // Type label
-    const typeLabel = sameType === 'r' ? 'Rings' : sameType === 'c' ? 'Chains' : sameType === 'sc' ? 'Split Chains' : sameType === 'sr' ? 'Split Rings' : null;
+    // Whole-sentence keys per type (not "{n} {type} selected" pieced
+    // together) so each language can put the count and noun in its own order.
+    const selectedLabelKey = sameType === 'r' ? 'multiSelRings' : sameType === 'c' ? 'multiSelChains'
+      : sameType === 'sc' ? 'multiSelSplitChains' : sameType === 'sr' ? 'multiSelSplitRings' : 'multiSelMixed';
 
     return (
       <>
         {/* Label */}
         <div className="text-sm text-gray-300 px-2 flex-shrink-0">
-          {selEls.length} {typeLabel ?? 'Mixed'} selected
+          {t(selectedLabelKey).replace('{n}', String(selEls.length))}
         </div>
 
         {/* Line bead paste strip — shown when all selected elements are lines */}
@@ -436,7 +439,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                   return (<>
                     {lb && <div className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-500" style={{backgroundColor: lb.color}} title={lb.name} />}
                     <span className="text-xs text-purple-300">
-                      {cbSlots.length}×{allSame ? (lb?.name ?? 'none') : 'mixed'}
+                      {cbSlots.length}×{allSame ? (lb?.name ?? t('lineBdNone')) : t('lineBdMixed')}
                     </span>
                   </>);
                 })()}
@@ -452,7 +455,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                 ><IconPaste size={12} /></button>
                 <button
                   onClick={() => setLineBeadClipboard(null)}
-                  title="Clear clipboard"
+                  title={t('lineBdClearClipboard')}
                   className="px-1.5 py-0.5 rounded text-xs border bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600"
                   style={{touchAction:'manipulation'}}
                 >✕</button>
@@ -472,8 +475,8 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
               type="text"
               defaultValue={prefillNotation ?? ''}
               disabled={!allSameType}
-              placeholder={allSameType ? (sameType === 'r' ? 'r: 5ds-p-5ds' : sameType === 'c' ? 'c: 5ds-p-5ds' : sameType === 'sc' ? 'sc: 5ds-p-5ds' : 'sr: 5ds-p-5ds') : 'Mixed types'}
-              title={allSameType ? 'Apply notation to all selected' : 'Select same-type elements to edit notation'}
+              placeholder={allSameType ? (sameType === 'r' ? 'r: 5ds-p-5ds' : sameType === 'c' ? 'c: 5ds-p-5ds' : sameType === 'sc' ? 'sc: 5ds-p-5ds' : 'sr: 5ds-p-5ds') : t('multiNotationMixedTypes')}
+              title={allSameType ? t('multiNotationApplyAll') : t('multiNotationSameTypeHint')}
               onBlur={(e) => {
                 if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
                 if (!allSameType) return;
@@ -503,7 +506,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                   type="text"
                   defaultValue={prefillNotationB ?? ''}
                   placeholder="5ds-p-5ds"
-                  title="Apply side B notation to all selected split rings"
+                  title={t('multiNotationApplyB')}
                   onBlur={(e) => {
                     if (notationEscapeRef.current) { notationEscapeRef.current = false; return; }
                     // Side B is stored without a prefix — tolerate one typed anyway.
@@ -635,7 +638,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             className="px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm text-white"
             style={{ maxWidth: '120px' }}
           >
-            {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            {materials.map(m => <option key={m.id} value={m.id}>{m.id === 'default' ? t('materialDefaultName') : m.name}</option>)}
             <option disabled>──────</option>
             <option value="__edit__">{t('editMaterials')}</option>
           </select>
@@ -693,6 +696,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                       onPctChange={setMultiScalePct}
                       clampedWarningText={anyClamped ? t('picotWizardScaleClamped') : null}
                       customLabelText={t('picotWizardScaleCustomLabel')}
+                      roundedHintText={t('scaleRoundedHint')}
                       applyLabel={t('picotWizardScaleApply')}
                       applyDisabled={multiScalePct === 100}
                       onApply={() => {

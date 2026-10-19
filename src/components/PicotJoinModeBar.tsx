@@ -223,6 +223,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
             decimals={1}
             displayScale={0.1}
             holdToRepeat
+            stepMinusTitle={t('stepperDecrease')}
+            stepPlusTitle={t('stepperIncrease')}
             onCommit={(v, { pushHistory }) => onFoldPropertyChange(activeFold.id, { outerLength: v }, pushHistory)}
           />
           <NumberStepper
@@ -232,6 +234,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
             decimals={1}
             displayScale={0.1}
             holdToRepeat
+            stepMinusTitle={t('stepperDecrease')}
+            stepPlusTitle={t('stepperIncrease')}
             onCommit={(v, { pushHistory }) => onFoldPropertyChange(activeFold.id, { innerLength: v }, pushHistory)}
           />
           <NumberStepper
@@ -241,6 +245,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
             decimals={0}
             suffix="°"
             holdToRepeat
+            stepMinusTitle={t('stepperDecrease')}
+            stepPlusTitle={t('stepperIncrease')}
             onCommit={(v, { pushHistory }) => onFoldPropertyChange(activeFold.id, { angleA: v }, pushHistory)}
           />
           <NumberStepper
@@ -250,6 +256,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
             decimals={0}
             suffix="°"
             holdToRepeat
+            stepMinusTitle={t('stepperDecrease')}
+            stepPlusTitle={t('stepperIncrease')}
             onCommit={(v, { pushHistory }) => onFoldPropertyChange(activeFold.id, { angleB: v }, pushHistory)}
           />
           <div className="ml-auto flex items-center gap-1.5 shrink-0">

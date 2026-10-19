@@ -160,7 +160,7 @@ export function GeneralElementPropertyBar({
                       if (parsedA && parsedA.stitchCount > 0) {
                         updateNotation(`sr: ${val}`, currentElement.notationB, currentElement.id);
                       } else {
-                        setAlertDialog({ message: 'Invalid notation for section A.' });
+                        setAlertDialog({ message: t('notationInvalidSideA') });
                       }
                     }}
                     getRevertValue={() => (elementById.get(selectedElement.id)?.notation || '').replace(/^sr:\s*/, '')}
@@ -182,7 +182,7 @@ export function GeneralElementPropertyBar({
                       if (parsedB && parsedB.stitchCount > 0) {
                         updateNotation(currentElement.notation, val, currentElement.id);
                       } else {
-                        setAlertDialog({ message: 'Invalid notation for section B.' });
+                        setAlertDialog({ message: t('notationInvalidSideB') });
                       }
                     }}
                     getRevertValue={() => elementById.get(selectedElement.id)?.notationB || '5ds'}
@@ -214,9 +214,9 @@ export function GeneralElementPropertyBar({
                         updateNotation(normalized, null, currentElement.id);
                       } else {
                         if (parsed && parsed.stitchCount === 0) {
-                          setAlertDialog({ message: 'Element must have at least 1 stitch.' });
+                          setAlertDialog({ message: t('notationMinOneStitch') });
                         } else if (!parsed) {
-                          setAlertDialog({ message: 'The entered notation is invalid. Please check for typos.', sub: 'More information about notation is in the Help menu.' });
+                          setAlertDialog({ message: t('notationInvalidMsg'), sub: t('notationInvalidSub') });
                         }
                         // Keep draftNotation so user sees their text on reselect
                       }
@@ -439,6 +439,7 @@ export function GeneralElementPropertyBar({
                                     clampedWarningText={scaleAnyClamped ? t('picotWizardScaleClamped') : null}
                                     customLabelText={t('picotWizardScaleCustomLabel')}
                                     applyLabel={t('picotWizardScaleApply')}
+                                    roundedHintText={t('scaleRoundedHint')}
                                     applyDisabled={!scalePreviewA || picotWizardScalePct === 100}
                                     onApply={() => {
                                       if (scalePreviewA && picotWizardScalePct !== 100) {
@@ -547,7 +548,7 @@ export function GeneralElementPropertyBar({
                     onCreateNew={roundGroupHandlers.onCreateNew}
                     ungroupedLabel={t('tattingOrderUngrouped')}
                     createNewLabel={t('tattingOrderRoundNew')}
-                    triggerTitle={t('tattingOrderGroupTitle') || 'Assign to round'}
+                    triggerTitle={t('tattingOrderAssignRound')}
                     wrapperClassName="relative flex-shrink-0 top-toolbar-scalable"
                   />
                 );

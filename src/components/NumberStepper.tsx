@@ -23,7 +23,7 @@
 // current value and select-all'd on focus; parsed and reset to null on
 // blur or Enter.
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // Generalizes tattingindex.tsx's parseRotationExpr: same absolute / leading
 // +or- relative / x-substitution / arithmetic-expression support, minus the
@@ -120,6 +120,13 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   const holdRunningValueRef = useRef(0);
   const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdTicksRef = useRef(0);
+  // While a hold is running, a window blur (alt-tab, dialog stealing focus)
+  // means mouseup/touchend will never arrive here — without this the
+  // interval would keep ticking forever. Ending the hold on blur commits the
+  // batched history entry as usual (pushHistoryState skips an identical
+  // state, so tattingindex.tsx's own blur flush of nudgeActiveRef running
+  // first can't produce a duplicate undo step).
+  const blurListenerRef = useRef<(() => void) | null>(null);
 
   const startHold = (delta: number) => {
     holdRunningValueRef.current = value;
@@ -133,10 +140,14 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
     };
     tick(); // fires immediately on press — a quick tap still commits once, holding just continues
     holdIntervalRef.current = setInterval(tick, HOLD_REPEAT_INTERVAL_MS);
+    const onBlur = () => endHold();
+    blurListenerRef.current = onBlur;
+    window.addEventListener('blur', onBlur);
   };
 
   const endHold = () => {
     if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
+    if (blurListenerRef.current) { window.removeEventListener('blur', blurListenerRef.current); blurListenerRef.current = null; }
     if (holdTicksRef.current > 0) {
       // One batched history entry for the whole press, not one per tick —
       // the entire reason holdToRepeat exists as a separate mode.
@@ -144,6 +155,13 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
     }
     holdTicksRef.current = 0;
   };
+
+  // Unmounting mid-hold (e.g. selection changed): just stop — no commit,
+  // since onCommit may now target an element that's no longer selected.
+  useEffect(() => () => {
+    if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+    if (blurListenerRef.current) window.removeEventListener('blur', blurListenerRef.current);
+  }, []);
 
   const stepButtonHandlers = (delta: number) => holdToRepeat
     ? {
@@ -173,7 +191,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           type="button"
           {...stepButtonHandlers(-step)}
           className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs leading-none select-none"
-          aria-label={stepMinusTitle ?? 'Decrease'}
+          aria-label={stepMinusTitle ?? '−'}
           title={stepMinusTitle}
         >
           −
@@ -196,7 +214,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           type="button"
           {...stepButtonHandlers(step)}
           className="px-1.5 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs leading-none select-none"
-          aria-label={stepPlusTitle ?? 'Increase'}
+          aria-label={stepPlusTitle ?? '+'}
           title={stepPlusTitle}
         >
           +

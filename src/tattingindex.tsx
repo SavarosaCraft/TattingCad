@@ -616,7 +616,9 @@ const APP_VERSION = '1.2.0-beta';
       if (!saved) return null;
       const d = JSON.parse(saved);
       if (!d.elements || d.elements.length === 0) return null;
-      return { name: d.name || 'Untitled', date: d.autoSaved ? new Date(d.autoSaved).toLocaleString() : '' };
+      // Name may be empty; the "Untitled" fallback is applied where it's
+      // displayed — this runs before `t` is declared further down.
+      return { name: d.name || '', date: d.autoSaved ? new Date(d.autoSaved).toLocaleString() : '' };
     } catch { return null; }
   })();
 
@@ -889,7 +891,7 @@ const APP_VERSION = '1.2.0-beta';
       setCustomColors(projectData.customColors || []);
       setReferenceImage(projectData.referenceImage || null);
       setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-      setProjectName(projectData.name || 'Untitled Pattern');
+      setProjectName(projectData.name || t('projectUntitled'));
       // Always load into schematic, regardless of what renderMode was
       // saved — bakedRealisticSVG isn't part of the autosave payload either,
       // same reasoning as the fix in useProjectFile.ts's file-open path
@@ -1767,7 +1769,7 @@ const APP_VERSION = '1.2.0-beta';
     if (createGhosts && newGhostIds.length > 0) {
       setGhostArrays(prev => [...prev, {
         id: arrayId,
-        name: `Polar Array ${prev.length + 1}`,
+        name: `${t('polarArrayTitle')} ${prev.length + 1}`,
         type: 'polar',
         sourceId: currentSelectedIds[0],
         instanceCount: count,
@@ -1975,7 +1977,7 @@ const APP_VERSION = '1.2.0-beta';
     if (createGhosts && newGhostIds.length > 0) {
       setGhostArrays(prev => [...prev, {
         id: arrayId,
-        name: `Linear Array ${prev.length + 1}`,
+        name: `${t('linearArrayTitle')} ${prev.length + 1}`,
         type: 'linear',
         sourceId: currentSelectedIds[0],
         instanceCount: count,
@@ -2315,7 +2317,7 @@ const APP_VERSION = '1.2.0-beta';
     setClipboard([]);
     setPicotConnections([]);
     setSelectedPicots([]);
-    setProjectName('Untitled Pattern');
+    setProjectName(t('projectUntitled'));
     setCamera({ x: 0, y: 0 });
     setZoom(1);
     setHistory([{ elements: [], connections: [], polarGrids: [] }]);
@@ -2365,16 +2367,16 @@ const APP_VERSION = '1.2.0-beta';
   const generatePattern = useCallback(() => {
     const result = generatePatternText({
       elements, picotConnections, rounds, materials, beadLibrary,
-      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath,
+      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath, t,
     });
-    const notesBlock = patternNotes?.trim() ? '\n\n--- Notes ---\n' + patternNotes.trim() : '';
-    const text = result === null ? 'No objects on canvas.' + notesBlock : result.text;
+    const notesBlock = patternNotes?.trim() ? `\n\n--- ${t('patternOutNotes')} ---\n` + patternNotes.trim() : '';
+    const text = result === null ? t('patternEmpty') + notesBlock : result.text;
     navigator.clipboard.writeText(text).then(
       () => { setLoadMsg({ type: 'success', text: t('notationCopied') }); setTimeout(() => setLoadMsg(null), 3000); },
       () => { setLoadMsg({ type: 'error', text: t('notationCopyFailed') }); setTimeout(() => setLoadMsg(null), 4000); }
     );
   }, [elements, picotConnections, rounds, materials, beadLibrary,
-      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath]);
+      threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath, t]);
   // Export as PNG
 
   // ── Endpoint pseudo-picot helpers ────────────────────────────────────────
@@ -3596,8 +3598,9 @@ const APP_VERSION = '1.2.0-beta';
         return;
       }
       
-      // Redo: Shift+Z
-      if ((e.key === 'z' || e.key === 'Z') && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      // Redo: Shift+Z, or Ctrl/Cmd+Shift+Z (the Redo button's tooltip and the
+      // usual convention in other apps — previously only Shift+Z worked).
+      if ((e.key === 'z' || e.key === 'Z') && e.shiftKey) {
         e.preventDefault();
         redo();
         return;
@@ -4546,14 +4549,14 @@ const APP_VERSION = '1.2.0-beta';
     
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      setAlertDialog({ message: 'Please upload an image file (PNG, JPG, GIF, etc.)' });
+      setAlertDialog({ message: t('refImageErrNotImage') });
       return;
     }
     
     // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB in bytes
     if (file.size > maxSize) {
-      setAlertDialog({ message: 'Image file is too large. Maximum size is 10MB.' });
+      setAlertDialog({ message: t('refImageErrTooLarge') });
       return;
     }
     
@@ -4569,7 +4572,7 @@ const APP_VERSION = '1.2.0-beta';
       }
     };
     reader.onerror = () => {
-      setAlertDialog({ message: 'Error reading image file. Please try a different file.' });
+      setAlertDialog({ message: t('refImageErrRead') });
     };
     reader.readAsDataURL(file);
   };
@@ -6049,11 +6052,11 @@ const APP_VERSION = '1.2.0-beta';
       const matId = side === 'B' ? (el.materialIdB || el.materialId || 'default') : (el.materialId || 'default');
       if (!seen.has(matId)) {
         const mat = materialsById.get(matId);
-        seen.set(matId, mat?.name || matId);
+        seen.set(matId, matId === 'default' ? t('materialDefaultName') : (mat?.name || matId));
       }
     });
     return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
-  }, [activeConnection, elementById, materialsById]);
+  }, [activeConnection, elementById, materialsById, t]);
 
   // Sets (or clears, when materialId is undefined/empty) a connection's
   // color override. Reuses updateFoldConnection — despite the name, its
@@ -6132,6 +6135,13 @@ const APP_VERSION = '1.2.0-beta';
     }));
     if (pushHistory) pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
   };
+
+  // Display name for a thread preset: the built-in default shows in the
+  // current language until the user renames it (its stored English name
+  // is data, saved in projects/localStorage, so it isn't rewritten).
+  const presetDisplayName = (preset: any) =>
+    preset?.id === 'default' && preset?.name === DEFAULT_THREAD_PRESET.name
+      ? t('threadPresetDefaultName') : (preset?.name ?? '');
 
   // Rotate ±90°, ±1° nudge, and mirror H/V buttons for the single-element
   // property bar. Shared between the line-only branch and the general
@@ -7050,7 +7060,7 @@ const APP_VERSION = '1.2.0-beta';
                       }
                     }}
                     className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
-                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
+                    title={t('pathPresetApplyTitle').replace('{angle}', preset.label).replace('{key}', preset.key)}
                   >
                     {preset.label}
                   </button>
@@ -7063,7 +7073,7 @@ const APP_VERSION = '1.2.0-beta';
                       ? 'bg-blue-700 border-blue-500 text-white'
                       : 'bg-gray-700 border-gray-600 text-gray-400 hover:border-blue-500'
                   }`}
-                  title={chainPresetSymmetric ? 'Symmetric arms (click to make asymmetric)' : 'Asymmetric arms (click to make symmetric)'}
+                  title={chainPresetSymmetric ? t('pathPresetSymmetricOn') : t('pathPresetSymmetricOff')}
                 >
                   ⇔
                 </button>
@@ -7101,7 +7111,7 @@ const APP_VERSION = '1.2.0-beta';
                       }
                     }}
                     className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 border border-gray-600 hover:border-blue-500 transition-colors"
-                    title={`Apply ${preset.label} preset (Shift+${preset.key})`}
+                    title={t('pathPresetApplyTitle').replace('{angle}', preset.label).replace('{key}', preset.key)}
                   >
                     {preset.label}
                   </button>
@@ -7238,7 +7248,7 @@ const APP_VERSION = '1.2.0-beta';
               <button onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} className="p-2 rounded pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('toolZoomIn')}>
                 <IconZoomIn size={20} />
               </button>
-              <button onClick={fitAllElements} className="p-2 rounded col-span-2 pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title="Fit All (F)">
+              <button onClick={fitAllElements} className="p-2 rounded col-span-2 pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('btnFitAll')}>
                 <IconFitView size={20} />
               </button>
               <div className="col-span-2 text-center text-gray-400 text-xs leading-tight px-1 py-0.5">
@@ -7357,7 +7367,7 @@ const APP_VERSION = '1.2.0-beta';
           <ToolbarButton onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} title={t('toolZoomIn')}>
             <IconZoomIn size={20} />
           </ToolbarButton>
-          <ToolbarButton onClick={fitAllElements} title="Fit All (F)">
+          <ToolbarButton onClick={fitAllElements} title={t('btnFitAll')}>
             <IconFitView size={20} />
           </ToolbarButton>
           <ToolbarButton
@@ -7385,7 +7395,7 @@ const APP_VERSION = '1.2.0-beta';
             colSpan2
             flexCenter
             className="gap-1 text-xs font-semibold"
-            title={notesOpen ? 'Close pattern notes' : 'Open pattern notes'}
+            title={notesOpen ? t('notesClose') : t('notesOpen')}
           >
             <IconNotes size={16} />
             <span>{t('toolNotes')}</span>
@@ -7471,7 +7481,7 @@ const APP_VERSION = '1.2.0-beta';
                           const mmPerWorldPx = (activePreset.ds20Core / 20) / dsWidth;
                           const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
                           const mm = dist * mmPerWorldPx;
-                          return `${Math.round(dist)}px  ·  ${mm.toFixed(1)} mm  ·  ${(mm/10).toFixed(2)} cm  ·  ${(mm/25.4).toFixed(3)}"  — click to reset`;
+                          return `${Math.round(dist)}px  ·  ${mm.toFixed(1)} mm  ·  ${(mm/10).toFixed(2)} cm  ·  ${(mm/25.4).toFixed(3)}"  — ${t('rulerClickToReset')}`;
                         })()
                   }
                 </span>
@@ -9022,7 +9032,7 @@ const APP_VERSION = '1.2.0-beta';
                         x={lx + boxW / 2} y={ly + boxH + 14 * S}
                         fill="rgba(148,163,184,0.7)" fontSize={10 * S}
                         fontFamily="sans-serif" textAnchor="middle"
-                      >click to reset</text>
+                      >{t('rulerClickToReset')}</text>
                     )}
                   </g>
                 );
@@ -9151,7 +9161,7 @@ const APP_VERSION = '1.2.0-beta';
                   style={{ border: 'none', minHeight: 0 }}
                   title={t('helpWindowTitle')}
                 />
-              : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
+              : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">{t('helpLoading')}</div>
             }
           </div>
         </div>
@@ -9177,7 +9187,7 @@ const APP_VERSION = '1.2.0-beta';
                   style={{ border: 'none', minHeight: 0 }}
                   title={t('helpMenuUiGuide')}
                 />
-              : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
+              : <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">{t('helpLoading')}</div>
             }
           </div>
         </div>
@@ -9655,7 +9665,7 @@ const APP_VERSION = '1.2.0-beta';
 
             {/* Special Thanks */}
             <div>
-              <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Special Thanks</div>
+              <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('aboutSpecialThanks')}</div>
               <div className="text-sm text-gray-300">Mike &amp; Tim</div>
             </div>
 
@@ -9730,7 +9740,7 @@ const APP_VERSION = '1.2.0-beta';
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <IconSave size={16} />
-            <span>{t('fileSaveAs') || 'Save As…'}</span>
+            <span>{t('fileSaveAs')}</span>
           </button>
           <button
             onClick={() => {
@@ -9940,7 +9950,7 @@ const APP_VERSION = '1.2.0-beta';
               <span>{t('arrangeCenterToPolarGrid')}</span>
             </button>
           ) : (
-            <div className="px-4 py-2 text-xs text-gray-500 italic">No polar grids</div>
+            <div className="px-4 py-2 text-xs text-gray-500 italic">{t('arrangeNoPolarGrids')}</div>
           )}
 
           <button
@@ -10066,7 +10076,7 @@ const APP_VERSION = '1.2.0-beta';
                     <div className="flex items-center gap-2">
                       <span className="text-2xl flex-shrink-0">👻</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-white text-sm font-medium capitalize">{array.type} array</div>
+                        <div className="text-white text-sm font-medium ">{array.type === 'polar' ? t('ghostArrayTypePolar') : t('ghostArrayTypeLinear')}</div>
                         <div className="text-gray-400 text-xs">{t('ghostArraySource')}: {sourceEl ? '✓' : t('ghostArraySourceDeleted')}</div>
                       </div>
                       <button
@@ -10592,7 +10602,7 @@ const APP_VERSION = '1.2.0-beta';
                 {/* Name input */}
                 <input
                   type="text"
-                  value={mat.name}
+                  value={mat.id === 'default' ? t('materialDefaultName') : mat.name}
                   disabled={mat.id === 'default'}
                   onChange={(e) => setMaterials(prev => prev.map((m, i) => i === idx ? { ...m, name: e.target.value } : m))}
                   className="flex-1 min-w-0 bg-gray-600 text-white px-2 py-1 rounded text-sm border border-gray-400 focus:border-blue-400 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -10714,7 +10724,7 @@ const APP_VERSION = '1.2.0-beta';
                   <button onClick={addBead}
                     className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('beadAdd')}</button>
                   {activeBead && beadLibrary.length > 1 && (
-                    <button onClick={() => setConfirmDialog({ message: `Delete "${activeBead.name}"?`, onConfirm: () => deleteBead(activeBead.id) })}
+                    <button onClick={() => setConfirmDialog({ message: t('confirmDeleteNamed').replace('{name}', activeBead.name), onConfirm: () => deleteBead(activeBead.id) })}
                       className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
                   )}
                 </div>
@@ -10733,7 +10743,7 @@ const APP_VERSION = '1.2.0-beta';
                         className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
                         value={activeBead.name}
                         onChange={e => updateBead(activeBead.id, { name: e.target.value })}
-                        placeholder="Bead name"
+                        placeholder={t('beadNamePlaceholder')}
                         title={t('clickToRename')}
                       />
                       <span className="text-gray-500 text-xs flex-shrink-0">✎</span>
@@ -10775,7 +10785,7 @@ const APP_VERSION = '1.2.0-beta';
                               setPickerCallback(() => (color) => updateBead(activeBead.id, { color }));
                               setShowColorPicker(true);
                             }}
-                            title="Click to change color"
+                            title={t('clickToChangeColor')}
                           />
                           <span className="text-gray-400 text-xs font-mono">{activeBead.color}</span>
                         </div>
@@ -10856,7 +10866,7 @@ const APP_VERSION = '1.2.0-beta';
       const addGrid = () => {
         const id = generateId();
         const newGrid = {
-          id, name: `Grid ${polarGrids.length + 1}`,
+          id, name: t('polarGridDefaultName').replace('{n}', String(polarGrids.length + 1)),
           center: { x: 0, y: 0 },
           angularOffset: 0,
           visible: true,
@@ -10922,7 +10932,7 @@ const APP_VERSION = '1.2.0-beta';
                   <button onClick={addGrid}
                     className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('polarGridAdd')}</button>
                   {activeGrid && (
-                    <button onClick={() => setConfirmDialog({ message: `Delete "${activeGrid.name}"?`, onConfirm: () => deleteGrid(activeGrid.id) })}
+                    <button onClick={() => setConfirmDialog({ message: t('confirmDeleteNamed').replace('{name}', activeGrid.name), onConfirm: () => deleteGrid(activeGrid.id) })}
                       className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
                   )}
                 </div>
@@ -10992,7 +11002,7 @@ const APP_VERSION = '1.2.0-beta';
                         <input type="checkbox" checked={activeGrid.visible}
                           onChange={e => updateGrid(activeGrid.id, { visible: e.target.checked })}
                           className="w-4 h-4 accent-blue-500" />
-                        Visible
+                        {t('polarGridVisible')}
                       </label>
                       {/* Angular offset */}
                       <div className="flex items-center gap-2">
@@ -11030,11 +11040,16 @@ const APP_VERSION = '1.2.0-beta';
                     {/* Ring list */}
                     <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('polarGridRingsHeader')}</div>
                     <p className="text-xs text-gray-500 mb-2 italic">
-                      Real-world sizes based on <span className="text-gray-400">{activePreset.name}</span> — change in Thread Properties.
+                      {(() => {
+                        // Sentence comes from translations with a {name}
+                        // slot, split so the preset name keeps its own style.
+                        const [pre, post = ''] = t('polarGridRealWorldHint').split('{name}');
+                        return <>{pre}<span className="text-gray-400">{presetDisplayName(activePreset)}</span>{post}</>;
+                      })()}
                     </p>
 
                     {activeGrid.rings.length === 0 && (
-                      <p className="text-gray-500 text-xs mb-3">No rings yet. Add one below.</p>
+                      <p className="text-gray-500 text-xs mb-3">{t('polarGridNoRings')}</p>
                     )}
 
                     <div className="space-y-1 mb-3">
@@ -11050,7 +11065,7 @@ const APP_VERSION = '1.2.0-beta';
                             min={1} step={5}
                             className="w-16 px-1 py-0.5 bg-gray-600 border border-gray-500 rounded text-xs text-white text-right outline-none focus:border-blue-400 flex-shrink-0"
                           />
-                          <span className="text-gray-500 text-xs flex-shrink-0" title="Approximate real-world radius">
+                          <span className="text-gray-500 text-xs flex-shrink-0" title={t('polarGridRadiusMmTitle')}>
                             ~{radiusToMm(ring.radius) < 10
                               ? radiusToMm(ring.radius).toFixed(1)
                               : Math.round(radiusToMm(ring.radius))} mm
@@ -11064,7 +11079,7 @@ const APP_VERSION = '1.2.0-beta';
                             className="w-14 px-1 py-0.5 bg-gray-600 border border-gray-500 rounded text-xs text-white text-right outline-none focus:border-blue-400 flex-shrink-0"
                           />
                           {/* Per-ring angular offset */}
-                          <span className="text-gray-400 text-xs flex-shrink-0" title="Additional angular offset for this ring only (degrees)">⟳°</span>
+                          <span className="text-gray-400 text-xs flex-shrink-0" title={t('polarGridRingOffsetTitle')}>⟳°</span>
                           <ArrayInput
                             value={ring.angularOffset || 0}
                             onChange={v => updateRing(activeGrid.id, ring.id, { angularOffset: v })}
@@ -11075,13 +11090,13 @@ const APP_VERSION = '1.2.0-beta';
                           <button
                             onClick={() => updateRing(activeGrid.id, ring.id, { visible: !ring.visible })}
                             className={`px-1 py-0.5 rounded text-xs border flex-shrink-0 ${ring.visible ? 'bg-gray-600 border-gray-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-500'}`}
-                            title="Toggle visibility"
+                            title={t('propToggleVisibility')}
                           >{ring.visible ? <IconEyeOn size={14} /> : <IconEyeOff size={14} />}</button>
                           {/* Snap toggle */}
                           <button
                             onClick={() => updateRing(activeGrid.id, ring.id, { snap: !ring.snap })}
                             className={`px-1 py-0.5 rounded text-xs border flex-shrink-0 ${ring.snap ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-500'}`}
-                            title="Toggle snap"
+                            title={t('polarGridToggleSnap')}
                           >{ring.snap ? <IconSnapOn size={14} /> : <IconSnapOff size={14} />}</button>
                           {/* Delete ring */}
                           <button
@@ -11152,14 +11167,14 @@ const APP_VERSION = '1.2.0-beta';
                       onClick={() => selectPreset(p.id)}
                       className={`w-full text-left px-3 text-sm truncate flex items-center flex-shrink-0 ${p.id === activePresetId ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
                       style={{ minHeight: '1.75rem', maxHeight: '1.75rem' }}
-                    >{p.id === activePresetId ? '▶ ' : ''}{p.name}</button>
+                    >{p.id === activePresetId ? '▶ ' : ''}{presetDisplayName(p)}</button>
                   ))}
                 </div>
                 <div className="p-2 border-t border-gray-600 flex gap-1">
                   <button onClick={addPreset}
                     className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('beadAdd')}</button>
                   {threadPresets.length > 1 && (
-                    <button onClick={() => setConfirmDialog({ message: `Delete "${activePreset.name}"?`, onConfirm: () => deletePreset(activePresetId) })}
+                    <button onClick={() => setConfirmDialog({ message: t('confirmDeleteNamed').replace('{name}', presetDisplayName(activePreset)), onConfirm: () => deletePreset(activePresetId) })}
                       className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
                   )}
                 </div>
@@ -11170,9 +11185,9 @@ const APP_VERSION = '1.2.0-beta';
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
                   <input
                     className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
-                    value={activePreset.name}
+                    value={presetDisplayName(activePreset)}
                     onChange={e => updatePreset(activePreset.id, { name: e.target.value })}
-                    placeholder="Preset name"
+                    placeholder={t('threadPresetNamePlaceholder')}
                   />
                   <button onClick={() => setShowThreadProperties(false)}
                     className="text-gray-400 hover:text-white text-xl ml-4">✕</button>
@@ -11279,7 +11294,7 @@ const APP_VERSION = '1.2.0-beta';
                 onClick={() => setShowUpdatePopup(true)}
                 className="w-full relative overflow-hidden group"
                 style={{ aspectRatio: '3/1' }}
-                title="Click to see update options"
+                title={t('splashUpdateOverlayClick')}
               >
                 <img src={logoUrl} alt="TattingCAD" className="w-full h-full object-cover opacity-30" draggable={false} />
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-900 bg-opacity-60">
@@ -11313,9 +11328,9 @@ const APP_VERSION = '1.2.0-beta';
                     ? 'bg-gray-700 hover:bg-gray-600 text-white'
                     : 'bg-gray-800 text-gray-600 cursor-not-allowed'
                 }`}
-                title={splashAutosave ? `${splashAutosave.name} — ${splashAutosave.date}` : t('splashNoAutosave')}
+                title={splashAutosave ? `${splashAutosave.name || t('projectUntitled')} — ${splashAutosave.date}` : t('splashNoAutosave')}
               >
-                {splashAutosave ? t('splashResume').replace('{name}', splashAutosave.name) : t('splashNoAutosave')}
+                {splashAutosave ? t('splashResume').replace('{name}', splashAutosave.name || t('projectUntitled')) : t('splashNoAutosave')}
               </button>
 
               <button
@@ -11442,12 +11457,12 @@ const APP_VERSION = '1.2.0-beta';
                 onChange={e => setPolarArrayCreateGhosts(e.target.checked)}
                 className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
               />
-              <label htmlFor="polar-ghosts" className="text-sm text-gray-300">Create as ghosts</label>
+              <label htmlFor="polar-ghosts" className="text-sm text-gray-300">{t('arrayCreateAsGhosts')}</label>
             </div>
 
             {/* Step preview text */}
             <div className="text-xs text-gray-400 text-center">
-              {polarArrayCount} copies · every {(polarArrayAngle / polarArrayCount).toFixed(1)}° · over {polarArrayAngle}°
+              {t('polarArraySummary').replace('{n}', String(polarArrayCount)).replace('{step}', (polarArrayAngle / polarArrayCount).toFixed(1)).replace('{angle}', String(polarArrayAngle))}
             </div>
 
             {/* Action buttons */}
@@ -11494,7 +11509,7 @@ const APP_VERSION = '1.2.0-beta';
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-400">{t('linearArrayDirection')}</label>
               <div className="flex items-center gap-2">
-                {[['H', 0], ['V', 90]].map(([label, val]) => (
+                {[[t('linearArrayDirH'), 0], [t('linearArrayDirV'), 90]].map(([label, val]) => (
                   <PresetChip key={label} onClick={() => setLinearArrayAngle(val as number)} selected={linearArrayAngle === val} className="px-3 py-1 font-semibold">{label}</PresetChip>
                 ))}
                 <ArrayInput value={linearArrayAngle} onChange={setLinearArrayAngle} min={0} max={360} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
@@ -11504,11 +11519,11 @@ const APP_VERSION = '1.2.0-beta';
 
             {/* Spacing */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-400">Spacing (100% = touching, 200% = 1 element gap)</label>
+              <label className="text-xs text-gray-400">{t('linearArraySpacingHint')}</label>
               <div className="flex items-center gap-2">
                 <ArrayInput value={linearArraySpacing} onChange={setLinearArraySpacing} min={0} max={500} step={10} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">%</span>
-                <PresetChip onClick={() => setLinearArraySpacing(100)}>100% touch</PresetChip>
+                <PresetChip onClick={() => setLinearArraySpacing(100)}>{t('linearArraySpacingTouch')}</PresetChip>
                 <PresetChip onClick={() => setLinearArraySpacing(200)}>200%</PresetChip>
               </div>
             </div>
@@ -11519,7 +11534,7 @@ const APP_VERSION = '1.2.0-beta';
               <div className="flex items-center gap-2">
                 <ArrayInput value={linearArrayRotStep} onChange={setLinearArrayRotStep} className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm" />
                 <span className="text-gray-400 text-xs">°</span>
-                <PresetChip onClick={() => setLinearArrayRotStep(0)}>Reset</PresetChip>
+                <PresetChip onClick={() => setLinearArrayRotStep(0)}>{t('propResetBtn')}</PresetChip>
               </div>
             </div>
 
@@ -11532,12 +11547,12 @@ const APP_VERSION = '1.2.0-beta';
                 onChange={e => setLinearArrayCreateGhosts(e.target.checked)}
                 className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
               />
-              <label htmlFor="linear-ghosts" className="text-sm text-gray-300">Create as ghosts</label>
+              <label htmlFor="linear-ghosts" className="text-sm text-gray-300">{t('arrayCreateAsGhosts')}</label>
             </div>
 
             {/* Summary */}
             <div className="text-xs text-gray-400 text-center">
-              {linearArrayCount} copies · {linearArrayAngle}° · {linearArraySpacing}% spacing{linearArrayRotStep !== 0 ? ` · +${linearArrayRotStep}°/step` : ''}
+              {t('linearArraySummary').replace('{n}', String(linearArrayCount)).replace('{angle}', String(linearArrayAngle)).replace('{spacing}', String(linearArraySpacing))}{linearArrayRotStep !== 0 ? t('linearArraySummaryRot').replace('{rot}', String(linearArrayRotStep)) : ''}
             </div>
 
             <div className="flex gap-2">

@@ -936,7 +936,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const existing = p.groupsRef.current || [];
       const kept = existing.filter(g => !touchedGroupIds.has(g.id));
       const [color] = ORDER_GROUP_COLORS[(kept.length + 1) % ORDER_GROUP_COLORS.length];
-      const nextGroups = [...kept, { id: groupId, name: `Group ${kept.length + 1}`, color }];
+      const nextGroups = [...kept, { id: groupId, name: `${p.t('groupDefaultName')} ${kept.length + 1}`, color }];
 
       // Explicit history push with the fresh elements+groups (mirrors the
       // addRing/addChain pattern) rather than relying on the auto-history

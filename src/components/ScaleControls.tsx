@@ -29,6 +29,8 @@ export interface ScaleControlsProps {
   /** Already-translated label placed after the "%" custom input. */
   customLabelText: string;
   applyLabel: string;
+  /** Already-translated word shown in a rounded preset's tooltip, e.g. "rounded". */
+  roundedHintText?: string;
   applyDisabled: boolean;
   onApply: () => void;
 }
@@ -46,6 +48,7 @@ export function ScaleControls({
   clampedWarningText,
   customLabelText,
   applyLabel,
+  roundedHintText,
   applyDisabled,
   onApply,
 }: ScaleControlsProps) {
@@ -63,7 +66,7 @@ export function ScaleControls({
               onClick={() => onPctChange(presetPct)}
               className={`px-2 py-1 rounded text-sm border ${isActive ? activeClass : exactClass}`}
               style={!isActive && preset.isRounded ? { backgroundColor: '#451a03', borderColor: '#92400e', color: '#fcd34d' } : undefined}
-              title={preset.isRounded ? `≈ ${preset.resultingTotalDs}ds (rounded)` : `→ ${preset.resultingTotalDs}ds`}
+              title={preset.isRounded ? `≈ ${preset.resultingTotalDs}ds${roundedHintText ? ` (${roundedHintText})` : ''}` : `→ ${preset.resultingTotalDs}ds`}
             >
               {preset.label}
               <span

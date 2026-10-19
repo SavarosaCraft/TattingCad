@@ -119,7 +119,7 @@ export const LineBeadPicker: React.FC<LineBeadPickerProps> = ({
                   className="bg-gray-700 text-white text-xs rounded px-1 py-0.5 border border-gray-600 max-w-28"
                   style={{touchAction:'manipulation'}}
                 >
-                  <option value="">— none —</option>
+                  <option value="">{t('noneOption')}</option>
                   {beadLibrary.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>

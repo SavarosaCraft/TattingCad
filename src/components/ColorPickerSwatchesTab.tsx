@@ -116,7 +116,7 @@ export const ColorPickerSwatchesTab: React.FC<ColorPickerSwatchesTabProps> = ({
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
-            {cat === 'all' ? 'All' : cat}
+            {cat === 'all' ? t('colorCategoryAll') : cat}
           </button>
         ))}
       </div>
@@ -212,7 +212,7 @@ export const ColorPickerSwatchesTab: React.FC<ColorPickerSwatchesTabProps> = ({
                   {selectedDmcColor.name}
                 </p>
                 <p className="text-gray-300 font-mono text-xs">
-                  ID: {selectedDmcColor.id} · {selectedDmcColor.type === 'gradient' ? 'Variegated' : selectedDmcColor.hex}
+                  {t('colorIdLabel')}: {selectedDmcColor.id} · {selectedDmcColor.type === 'gradient' ? t('colorVariegated') : selectedDmcColor.hex}
                 </p>
               </>
             ) : (

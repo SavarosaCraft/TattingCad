@@ -64,12 +64,14 @@ export const BeadingModeBar: React.FC<BeadingModeBarProps> = ({
   };
 
   const STRUCTURES = [
-    { id: 'core', icon: <IconBeadCore size={16} />, desc: 'Core only' },
-    { id: 'core+picot', icon: <IconBeadCorePicot size={16} />, desc: 'Core + plain picot' },
-    { id: 'core+beaded', icon: <IconBeadCoreBeaded size={16} />, desc: 'Core + beaded picot' },
-    { id: 'spike', icon: <IconBeadSuspended size={16} />, desc: 'Suspended' },
-    { id: 'suspended', icon: <IconBeadSpike size={16} />, desc: 'Beaded picot' },
+    { id: 'core', icon: <IconBeadCore size={16} />, desc: t('beStructCore') },
+    { id: 'core+picot', icon: <IconBeadCorePicot size={16} />, desc: t('beStructCorePicot') },
+    { id: 'core+beaded', icon: <IconBeadCoreBeaded size={16} />, desc: t('beStructCoreBeaded') },
+    { id: 'spike', icon: <IconBeadSuspended size={16} />, desc: t('beStructSuspended') },
+    { id: 'suspended', icon: <IconBeadSpike size={16} />, desc: t('beStructBeadedPicot') },
   ];
+  // Translated name of a stored structure id (for the Paste tooltip).
+  const structureName = (id: string) => STRUCTURES.find(s => s.id === id)?.desc ?? id;
 
   const coreBeadsEnabled = bePicot && bePicot.beStructure !== 'suspended' && bePicot.beStructure !== 'beaded';
   const picotBeadsEnabled = bePicot && (bePicot.beStructure === 'core+beaded' || bePicot.beStructure === 'spike' || bePicot.beStructure === 'suspended');
@@ -86,7 +88,7 @@ export const BeadingModeBar: React.FC<BeadingModeBarProps> = ({
           className="bg-gray-700 text-white text-xs rounded px-1 py-0.5 border border-gray-600 max-w-28"
           style={{ touchAction: 'manipulation' }}
         >
-          <option value="">— none —</option>
+          <option value="">{t('noneOption')}</option>
           {beadLibrary.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>
@@ -141,14 +143,14 @@ export const BeadingModeBar: React.FC<BeadingModeBarProps> = ({
           <button
             onClick={copyBEToClipboard}
             disabled={!bePicot}
-            title={bePicot ? t('beCopySetup') : 'Select a BE first'}
+            title={bePicot ? t('beCopySetup') : t('beSelectFirst')}
             className={`px-2 py-0.5 rounded text-xs border ${bePicot ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed'}`}
             style={{ touchAction: 'manipulation' }}
           ><IconCopy size={13} /></button>
           <button
             onClick={cutBEToClipboard}
             disabled={!bePicot}
-            title={bePicot ? t('beCutSetup') : 'Select a BE first'}
+            title={bePicot ? t('beCutSetup') : t('beSelectFirst')}
             className={`px-2 py-0.5 rounded text-xs border ${bePicot ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed'}`}
             style={{ touchAction: 'manipulation' }}
           ><IconCut size={13} /></button>
@@ -157,10 +159,10 @@ export const BeadingModeBar: React.FC<BeadingModeBarProps> = ({
             disabled={!beClipboard || selectedBEs.length === 0}
             title={
               !beClipboard
-                ? 'Paste (nothing copied yet)'
+                ? t('bePasteEmpty')
                 : selectedBEs.length === 0
-                  ? 'Select a target BE first'
-                  : `Paste: ${beClipboard.beStructure}${beClipboard.beIsJoint ? ' + joint' : ''}`
+                  ? t('bePasteSelectTarget')
+                  : t(beClipboard.beIsJoint ? 'bePasteSummaryJoint' : 'bePasteSummary').replace('{structure}', structureName(beClipboard.beStructure))
             }
             className={`px-2 py-0.5 rounded text-xs border ${beClipboard && selectedBEs.length > 0 ? 'bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700' : 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed'}`}
             style={{ touchAction: 'manipulation' }}

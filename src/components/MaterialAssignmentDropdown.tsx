@@ -25,6 +25,8 @@ export function MaterialAssignmentDropdown({
   setShowMaterialsPanel,
   t,
 }: MaterialAssignmentDropdownProps) {
+  // Built-in default material: its stored name is English; show it translated.
+  const matName = (m: any) => (m.id === 'default' ? t('materialDefaultName') : m.name);
   return (
     <>
       {/* Material assignment dropdown — end of property bar */}
@@ -44,7 +46,7 @@ export function MaterialAssignmentDropdown({
           style={{ maxWidth: '120px' }}
         >
           {materials.map(m => (
-            <option key={m.id} value={m.id}>{m.name}</option>
+            <option key={m.id} value={m.id}>{matName(m)}</option>
           ))}
           <option disabled>──────</option>
           <option value="__edit__">{t('editMaterials')}</option>
@@ -56,7 +58,7 @@ export function MaterialAssignmentDropdown({
             <div
               className="w-5 h-5 rounded border border-gray-500 flex-shrink-0 relative overflow-hidden flex items-center justify-center"
               style={{ backgroundColor: mat.isGradient ? getGradientColorAtPosition(mat.color, 0.5) : mat.color }}
-              title={mat.name}
+              title={matName(mat)}
             >
               {mat.isGradient && <span style={{ fontSize:'9px', fontWeight:'bold', color:'white', textShadow:'0 0 2px black,0 0 2px black', lineHeight:1 }}>G</span>}
             </div>
@@ -81,7 +83,7 @@ export function MaterialAssignmentDropdown({
                style={{ maxWidth: '110px' }}
              >
                {materials.map(m => (
-                 <option key={m.id} value={m.id}>{m.name}</option>
+                 <option key={m.id} value={m.id}>{matName(m)}</option>
                ))}
                <option disabled>──────────</option>
                <option value="__edit__">{t('editMaterials')}</option>
@@ -93,7 +95,7 @@ export function MaterialAssignmentDropdown({
                  <div
                    className="w-5 h-5 rounded border border-gray-500 flex-shrink-0 relative overflow-hidden flex items-center justify-center"
                    style={{ backgroundColor: matB.isGradient ? getGradientColorAtPosition(matB.color, 0.5) : matB.color }}
-                   title={matB.name}
+                   title={matName(matB)}
                  >
                    {matB.isGradient && <span style={{ fontSize:'9px', fontWeight:'bold', color:'white', textShadow:'0 0 2px black,0 0 2px black', lineHeight:1 }}>G</span>}
                  </div>

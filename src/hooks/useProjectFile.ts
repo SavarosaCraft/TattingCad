@@ -153,7 +153,7 @@ export function useProjectFile(p: UseProjectFileParams) {
   }, [buildProjectData, p.elements, p.dsWidth, p.cleanupDuplicates]);
 
   const performSave = useCallback(async (nameOverride?: string) => {
-    const finalName = (nameOverride ?? p.projectName).trim() || 'Untitled Pattern';
+    const finalName = (nameOverride ?? p.projectName).trim() || p.t('projectUntitled');
     try {
       const filePath = await showSaveDialog(finalName);
       if (!filePath) return;
@@ -163,7 +163,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     } catch (err) {
       console.error('Save failed:', err);
     }
-  }, [p.projectName, saveToPath]);
+  }, [p.projectName, saveToPath, p.t]);
 
   const saveProject = useCallback(() => {
     if (p.currentFilePath) {
@@ -252,7 +252,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setCustomColors(projectData.customColors || []);
     p.setReferenceImage(projectData.referenceImage || null);
     p.setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-    p.setProjectName(projectData.name || 'Untitled Pattern');
+    p.setProjectName(projectData.name || p.t('projectUntitled'));
     // Always load into schematic mode, regardless of what was saved.
     // bakedRealisticSVG is derived/computed (not persisted), so loading
     // straight into 'realistic' leaves the canvas blank until the user
