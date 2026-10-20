@@ -10871,7 +10871,10 @@ const APP_VERSION = '1.2.0-beta';
           angularOffset: 0,
           visible: true,
           color: '#4B9FE1',
-          rings: []
+          // Starts with one ring so a new grid is visible on the canvas
+          // straight away (an empty grid drew nothing, which read as
+          // "nothing happened"). Same defaults as + Add Ring's first ring.
+          rings: [{ id: generateId(), radius: 75, divisions: 8, visible: true, snap: true, angularOffset: 0 }]
         };
         setPolarGrids(prev => [...prev, newGrid]);
         setSelectedPolarGridId(id);
@@ -10900,220 +10903,295 @@ const APP_VERSION = '1.2.0-beta';
         updateGrid(gridId, { rings: grid.rings.filter(r => r.id !== ringId) });
       };
 
+      // Shared input styling for the editor's number fields.
+      const numCls = "px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm text-white text-right outline-none focus:border-blue-400";
+      const sectionLabel = "text-xs text-gray-400 uppercase tracking-wider mb-2";
+
+      // Layout (session 56 redesign — same controls, regrouped):
+      //   Left:  grid list → "+ Add Grid" right under it.
+      //   Right: header (name + ✕) → Appearance → Position → Rings
+      //          (column headers + rows + "+ Add Ring") → footer
+      //          (peek · delete grid · close).
+      //   No grid yet: the right side explains what a grid is and offers
+      //   the same Add Grid action instead of a bare "select a grid".
       return (
         <Modal show peek={polarGridPeek} onClose={() => setShowPolarGridPanel(false)} backdropZIndex={2147483644} wrapperZIndex={2147483645}
           backdropClassName="bg-black bg-opacity-50"
-          contentClassName="flex flex-col sm:flex-row" contentStyle={{ width: 'min(820px, 95vw)', height: 'min(540px, 90vh)' }}>
+          contentClassName="flex flex-col sm:flex-row" contentStyle={{ width: 'min(820px, 95vw)', height: 'min(560px, 90vh)' }}>
 
-              {/* Left: Grid list */}
-              <div className="sm:w-48 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
+              {/* ── Left: grid list ── */}
+              <div className="sm:w-52 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-600 flex flex-col" style={{ minWidth: 0 }}>
                 <div className="px-3 py-3 border-b border-gray-600">
                   <span className="text-gray-100 font-semibold text-sm flex items-center gap-2"><IconPolarGrid size={16} /> {t('polarGridTitle')}</span>
                 </div>
-                <div className="flex-1 overflow-y-auto flex sm:flex-col flex-row">
+                <div className="flex-1 overflow-y-auto">
+                 <div className="flex sm:flex-col flex-row overflow-x-auto sm:overflow-x-visible">
                   {polarGrids.map(g => (
-                    <button key={g.id}
+                    // A div (not a <button>) so the eye toggle inside can be
+                    // a real button — buttons can't nest.
+                    <div key={g.id}
+                      role="button" tabIndex={0}
                       onClick={() => setSelectedPolarGridId(g.id)}
-                      className={`w-full text-left px-3 text-sm flex items-center gap-2 truncate flex-shrink-0 ${g.id === selectedPolarGridId ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                      style={{ minHeight: '1.75rem', maxHeight: '1.75rem' }}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPolarGridId(g.id); } }}
+                      className={`w-auto sm:w-full text-left px-2 text-sm flex items-center gap-2 truncate flex-shrink-0 cursor-pointer ${g.id === selectedPolarGridId ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
+                      style={{ minHeight: '2rem', maxHeight: '2rem' }}
                     >
-                      <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-500"
-                        style={{ backgroundColor: g.color, opacity: g.visible ? 1 : 0.4 }} />
+                      {/* Visibility toggle in the grid's own color (replaces
+                          the plain color dot); same as the editor's Visible box. */}
+                      <button
+                        onClick={e => { e.stopPropagation(); updateGrid(g.id, { visible: !g.visible }); }}
+                        className="flex-shrink-0 rounded p-0.5 bg-gray-900 bg-opacity-60 hover:bg-opacity-90"
+                        style={{ color: g.color, opacity: g.visible ? 1 : 0.5 }}
+                        title={t('propToggleVisibility')}
+                        aria-pressed={g.visible}
+                      >{g.visible ? <IconEyeOn size={16} /> : <IconEyeOff size={16} />}</button>
                       <span className="truncate">{g.name}</span>
-                      <span className="text-xs text-gray-500 flex-shrink-0">{g.rings.length}r</span>
-                    </button>
+                      <span className="text-xs text-gray-400 flex-shrink-0 ml-auto">
+                        {t(g.rings.length === 1 ? 'polarGridRingCountOne' : 'polarGridRingCount').replace('{n}', String(g.rings.length))}
+                      </span>
+                    </div>
                   ))}
-                </div>
-                <div className="p-2 border-t border-gray-600">
-                  <button onClick={() => setShowPolarGridPanel(false)}
-                    className="w-full py-1.5 rounded text-xs bg-blue-700 hover:bg-blue-600 text-white font-medium">{t('aboutClose')}</button>
-                </div>
-                <div className="p-2 border-t border-gray-600 flex gap-1">
-                  <button onClick={addGrid}
-                    className="flex-1 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-white">{t('polarGridAdd')}</button>
-                  {activeGrid && (
-                    <button onClick={() => setConfirmDialog({ message: t('confirmDeleteNamed').replace('{name}', activeGrid.name), onConfirm: () => deleteGrid(activeGrid.id) })}
-                      className="flex-1 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('confirmDelete')}</button>
-                  )}
+                 </div>
+                  <div className="p-2">
+                    <button onClick={addGrid}
+                      className="w-full py-1.5 rounded border-2 border-dashed border-gray-600 text-gray-300 hover:border-white hover:text-white text-xs">{t('polarGridAdd')}</button>
+                  </div>
                 </div>
               </div>
 
-              {/* Right: Grid editor */}
+              {/* ── Right: editor ── */}
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                {/* Header: name + close */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
+                {/* Header: grid name + close */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
                   {activeGrid ? (
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {/* Color swatch */}
-                      <div
-                        className="w-5 h-5 rounded-full flex-shrink-0 border-2 border-gray-500 cursor-pointer hover:border-white"
-                        style={{ backgroundColor: activeGrid.color }}
-                        onClick={() => {
-                          setPickerColor(activeGrid.color);
-                          setColorPickerTab('picker');
-                          setPickerTabsAllowed(['picker']);
-                          setPickerCallback(() => (color) => updateGrid(activeGrid.id, { color }));
-                          setShowColorPicker(true);
-                        }}
-                        title={t('infoColorPrefix')}
-                      />
-                      {/* Opacity slider */}
-                      <input
-                        type="range" min={0.05} max={1} step={0.05}
-                        value={activeGrid.opacity ?? 0.5}
-                        onChange={e => updateGrid(activeGrid.id, { opacity: parseFloat(e.target.value) })}
-                        className="w-20 accent-blue-400"
-                        title={t('polarGridOpacityLabel')}
-                      />
-                      <span className="text-xs text-gray-400 w-7 text-right flex-shrink-0">
-                        {Math.round((activeGrid.opacity ?? 0.5) * 100)}%
-                      </span>
-                      <input
-                        className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
-                        value={activeGrid.name}
-                        onChange={e => updateGrid(activeGrid.id, { name: e.target.value })}
-                        placeholder={t('polarGridNamePlaceholder')}
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-gray-400 text-sm">{t('polarGridSelectPrompt')}</span>
-                  )}
+                    <input
+                      className="bg-transparent text-white font-semibold text-base flex-1 min-w-0 px-2 py-0.5 rounded border border-gray-500 focus:border-purple-400 focus:bg-gray-700 outline-none transition-colors"
+                      value={activeGrid.name}
+                      onChange={e => updateGrid(activeGrid.id, { name: e.target.value })}
+                      placeholder={t('polarGridNamePlaceholder')}
+                      title={t('polarGridNamePlaceholder')}
+                    />
+                  ) : <span className="flex-1" />}
                   <button onClick={() => setShowPolarGridPanel(false)}
-                    className="text-gray-400 hover:text-white text-xl ml-4">✕</button>
+                    className="text-gray-400 hover:text-white text-xl ml-2" title={t('aboutClose')}>✕</button>
+                </div>
+
+                {/* Body */}
+                {activeGrid ? (
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+
+                    {/* Appearance */}
+                    <div>
+                      <div className={sectionLabel}>{t('polarGridSectionAppearance')}</div>
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
+                          <input type="checkbox" checked={activeGrid.visible}
+                            onChange={e => updateGrid(activeGrid.id, { visible: e.target.checked })}
+                            className="w-4 h-4 accent-blue-500" />
+                          {t('polarGridVisible')}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-300">{t('infoColorPrefix')}</span>
+                          <div
+                            className="w-6 h-6 rounded-full flex-shrink-0 border-2 border-gray-500 cursor-pointer hover:border-white"
+                            style={{ backgroundColor: activeGrid.color }}
+                            onClick={() => {
+                              setPickerColor(activeGrid.color);
+                              setColorPickerTab('picker');
+                              setPickerTabsAllowed(['picker']);
+                              setPickerCallback(() => (color) => updateGrid(activeGrid.id, { color }));
+                              setShowColorPicker(true);
+                            }}
+                            title={t('infoColorPrefix')}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-300">{t('polarGridOpacityLabel')}</span>
+                          <input
+                            type="range" min={0.05} max={1} step={0.05}
+                            value={activeGrid.opacity ?? 0.5}
+                            onChange={e => updateGrid(activeGrid.id, { opacity: parseFloat(e.target.value) })}
+                            className="w-24 accent-blue-400"
+                            title={t('polarGridOpacityLabel')}
+                          />
+                          <span className="text-xs text-gray-400 w-8 text-right flex-shrink-0">
+                            {Math.round((activeGrid.opacity ?? 0.5) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Position */}
+                    <div>
+                      <div className={sectionLabel}>{t('polarGridSectionPosition')}</div>
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-gray-300 mr-1">{t('polarGridCenterLabel')}</span>
+                          <span className="text-xs text-gray-400">{t('polarGridCenterX')}</span>
+                          <ArrayInput
+                            value={Math.round(activeGrid.center.x)}
+                            onChange={x => updateGrid(activeGrid.id, { center: { ...activeGrid.center, x } })}
+                            step={1}
+                            className={`w-16 ${numCls}`}
+                          />
+                          <span className="text-xs text-gray-400 ml-1">{t('polarGridCenterY')}</span>
+                          <ArrayInput
+                            value={Math.round(activeGrid.center.y)}
+                            onChange={y => updateGrid(activeGrid.id, { center: { ...activeGrid.center, y } })}
+                            step={1}
+                            className={`w-16 ${numCls}`}
+                          />
+                          <button
+                            onClick={() => updateGrid(activeGrid.id, { center: { x: 0, y: 0 } })}
+                            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded border border-gray-600"
+                            title={t('polarGridResetCenter')}
+                          >⌖</button>
+                        </div>
+                        <div className="flex items-center gap-2" title={t('polarGridRotateAllTitle')}>
+                          <span className="text-sm text-gray-300">{t('polarGridRotateAll')}</span>
+                          <ArrayInput
+                            value={activeGrid.angularOffset || 0}
+                            onChange={v => updateGrid(activeGrid.id, { angularOffset: v })}
+                            min={0} max={359} step={1}
+                            className={`w-16 ${numCls}`}
+                          />
+                          <span className="text-xs text-gray-400">°</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rings */}
+                    <div>
+                      <div className={sectionLabel}>{t('polarGridRingsHeader')}</div>
+                      <p className="text-xs text-gray-500 mb-2 italic">
+                        {(() => {
+                          // Sentence comes from translations with a {name}
+                          // slot, split so the preset name keeps its own style.
+                          const [pre, post = ''] = t('polarGridRealWorldHint').split('{name}');
+                          return <>{pre}<span className="text-gray-400">{presetDisplayName(activePreset)}</span>{post}</>;
+                        })()}
+                      </p>
+
+                      {activeGrid.rings.length === 0 ? (
+                        <p className="text-gray-400 text-xs mb-3">{t('polarGridNoRings')}</p>
+                      ) : (
+                        <div className="overflow-x-auto mb-2">
+                          <table className="w-full text-xs border-separate" style={{ borderSpacing: '0 4px' }}>
+                            <thead>
+                              <tr className="text-gray-400 text-left">
+                                <th className="font-normal px-2 w-6">#</th>
+                                <th className="font-normal px-1" title={t('polarGridColRadiusTitle')}>{t('polarGridColRadius')}</th>
+                                <th className="font-normal px-1" title={t('polarGridColPointsTitle')}>{t('polarGridColPoints')}</th>
+                                <th className="font-normal px-1" title={t('polarGridRingOffsetTitle')}>{t('polarGridColOffset')}</th>
+                                <th className="font-normal px-1 text-center">{t('polarGridColShow')}</th>
+                                <th className="font-normal px-1 text-center">{t('polarGridColSnap')}</th>
+                                <th className="w-8" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {activeGrid.rings.map((ring, idx) => (
+                                <tr key={ring.id} className="bg-gray-700">
+                                  <td className="px-2 py-1.5 rounded-l text-gray-400">{idx + 1}</td>
+                                  <td className="px-1 py-1.5 whitespace-nowrap">
+                                    <ArrayInput
+                                      value={ring.radius}
+                                      onChange={v => updateRing(activeGrid.id, ring.id, { radius: v })}
+                                      min={1} step={5}
+                                      className={`w-16 ${numCls}`}
+                                    />
+                                    <span className="text-gray-400 ml-1.5" title={t('polarGridRadiusMmTitle')}>
+                                      ~{radiusToMm(ring.radius) < 10
+                                        ? radiusToMm(ring.radius).toFixed(1)
+                                        : Math.round(radiusToMm(ring.radius))} mm
+                                    </span>
+                                  </td>
+                                  <td className="px-1 py-1.5">
+                                    <ArrayInput
+                                      value={ring.divisions}
+                                      onChange={v => updateRing(activeGrid.id, ring.id, { divisions: v })}
+                                      min={1} max={360} step={1} integer
+                                      className={`w-14 ${numCls}`}
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1.5 whitespace-nowrap">
+                                    <ArrayInput
+                                      value={ring.angularOffset || 0}
+                                      onChange={v => updateRing(activeGrid.id, ring.id, { angularOffset: v })}
+                                      min={-359} max={359} step={1}
+                                      className={`w-14 ${numCls}`}
+                                    />
+                                    <span className="text-gray-400 ml-1">°</span>
+                                  </td>
+                                  <td className="px-1 py-1.5 text-center">
+                                    <button
+                                      onClick={() => updateRing(activeGrid.id, ring.id, { visible: !ring.visible })}
+                                      className={`px-1 py-0.5 rounded text-xs border ${ring.visible ? 'bg-gray-600 border-gray-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-500'}`}
+                                      title={t('propToggleVisibility')}
+                                    >{ring.visible ? <IconEyeOn size={14} /> : <IconEyeOff size={14} />}</button>
+                                  </td>
+                                  <td className="px-1 py-1.5 text-center">
+                                    <button
+                                      onClick={() => updateRing(activeGrid.id, ring.id, { snap: !ring.snap })}
+                                      className={`px-1 py-0.5 rounded text-xs border ${ring.snap ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-500'}`}
+                                      title={t('polarGridToggleSnap')}
+                                    >{ring.snap ? <IconSnapOn size={14} /> : <IconSnapOff size={14} />}</button>
+                                  </td>
+                                  <td className="px-1 py-1.5 rounded-r text-right">
+                                    <button
+                                      onClick={() => deleteRing(activeGrid.id, ring.id)}
+                                      className="px-1.5 py-0.5 rounded text-xs bg-red-900 hover:bg-red-800 text-red-300 border border-red-800"
+                                      title={t('polarGridDeleteRing')}
+                                    >✕</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => addRing(activeGrid.id)}
+                        className="w-full py-1.5 rounded border-2 border-dashed border-gray-600 text-gray-300 hover:border-white hover:text-white text-xs"
+                      >{t('polarGridAddRing')}</button>
+                    </div>
+                  </div>
+                ) : (
+                  /* No grid selected / none exist yet */
+                  <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-3">
+                    <IconPolarGrid size={40} />
+                    <p className="text-gray-200 text-sm font-semibold">
+                      {polarGrids.length === 0 ? t('polarGridEmptyTitle') : t('polarGridSelectPrompt')}
+                    </p>
+                    {polarGrids.length === 0 && (
+                      <>
+                        <p className="text-gray-400 text-xs max-w-sm">{t('polarGridEmptyBody')}</p>
+                        <button onClick={addGrid}
+                          className="mt-1 px-4 py-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-medium">{t('polarGridAdd')}</button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Footer: peek · delete grid · close */}
+                <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-600">
                   <button
                     onMouseDown={() => setPolarGridPeek(true)}
                     onMouseUp={() => setPolarGridPeek(false)}
                     onMouseLeave={() => setPolarGridPeek(false)}
                     onTouchStart={() => setPolarGridPeek(true)}
                     onTouchEnd={() => setPolarGridPeek(false)}
-                    className="px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300 ml-1"
+                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300"
                     title={t('polarGridPeekHint')}
                   >👁 {t('polarGridPeekHint')}</button>
+                  <span className="flex-1" />
+                  {activeGrid && (
+                    <button onClick={() => setConfirmDialog({ message: t('confirmDeleteNamed').replace('{name}', activeGrid.name), onConfirm: () => deleteGrid(activeGrid.id) })}
+                      className="px-3 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white">{t('polarGridDeleteGrid')}</button>
+                  )}
+                  <button onClick={() => setShowPolarGridPanel(false)}
+                    className="px-4 py-1 rounded text-xs bg-blue-700 hover:bg-blue-600 text-white font-medium">{t('aboutClose')}</button>
                 </div>
-
-                {/* Body */}
-                {activeGrid && (
-                  <div className="flex-1 overflow-y-auto px-4 py-3">
-
-                    {/* Grid-level settings */}
-                    <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
-                      {/* Visibility */}
-                      <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
-                        <input type="checkbox" checked={activeGrid.visible}
-                          onChange={e => updateGrid(activeGrid.id, { visible: e.target.checked })}
-                          className="w-4 h-4 accent-blue-500" />
-                        {t('polarGridVisible')}
-                      </label>
-                      {/* Angular offset */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400 text-xs">{t('polarGridOffsetLabel')}</span>
-                        <ArrayInput
-                          value={activeGrid.angularOffset || 0}
-                          onChange={v => updateGrid(activeGrid.id, { angularOffset: v })}
-                          min={0} max={359} step={1}
-                          className="w-16 px-2 py-0.5 bg-gray-600 border border-gray-500 rounded text-sm text-white text-right outline-none focus:border-blue-400"
-                        />
-                      </div>
-                      {/* Center X/Y */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-gray-400 text-xs">{t('polarGridCenterLabel')}</span>
-                        <ArrayInput
-                          value={Math.round(activeGrid.center.x)}
-                          onChange={x => updateGrid(activeGrid.id, { center: { ...activeGrid.center, x } })}
-                          step={1}
-                          className="w-16 px-2 py-0.5 bg-gray-600 border border-gray-500 rounded text-sm text-white text-right outline-none focus:border-blue-400"
-                        />
-                        <ArrayInput
-                          value={Math.round(activeGrid.center.y)}
-                          onChange={y => updateGrid(activeGrid.id, { center: { ...activeGrid.center, y } })}
-                          step={1}
-                          className="w-16 px-2 py-0.5 bg-gray-600 border border-gray-500 rounded text-sm text-white text-right outline-none focus:border-blue-400"
-                        />
-                        <button
-                          onClick={() => updateGrid(activeGrid.id, { center: { x: 0, y: 0 } })}
-                          className="px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded border border-gray-600"
-                          title={t('polarGridResetCenter')}
-                        >⌖</button>
-                      </div>
-                    </div>
-
-                    {/* Ring list */}
-                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{t('polarGridRingsHeader')}</div>
-                    <p className="text-xs text-gray-500 mb-2 italic">
-                      {(() => {
-                        // Sentence comes from translations with a {name}
-                        // slot, split so the preset name keeps its own style.
-                        const [pre, post = ''] = t('polarGridRealWorldHint').split('{name}');
-                        return <>{pre}<span className="text-gray-400">{presetDisplayName(activePreset)}</span>{post}</>;
-                      })()}
-                    </p>
-
-                    {activeGrid.rings.length === 0 && (
-                      <p className="text-gray-500 text-xs mb-3">{t('polarGridNoRings')}</p>
-                    )}
-
-                    <div className="space-y-1 mb-3">
-                      {activeGrid.rings.map((ring, idx) => (
-                        <div key={ring.id} className="flex items-center gap-2 bg-gray-700 rounded px-2 py-1.5">
-                          {/* Ring index */}
-                          <span className="text-gray-500 text-xs w-4 flex-shrink-0">{idx + 1}</span>
-                          {/* Radius */}
-                          <span className="text-gray-400 text-xs flex-shrink-0">{t('polarGridRadiusLabel')}</span>
-                          <ArrayInput
-                            value={ring.radius}
-                            onChange={v => updateRing(activeGrid.id, ring.id, { radius: v })}
-                            min={1} step={5}
-                            className="w-16 px-1 py-0.5 bg-gray-600 border border-gray-500 rounded text-xs text-white text-right outline-none focus:border-blue-400 flex-shrink-0"
-                          />
-                          <span className="text-gray-500 text-xs flex-shrink-0" title={t('polarGridRadiusMmTitle')}>
-                            ~{radiusToMm(ring.radius) < 10
-                              ? radiusToMm(ring.radius).toFixed(1)
-                              : Math.round(radiusToMm(ring.radius))} mm
-                          </span>
-                          {/* Divisions */}
-                          <span className="text-gray-400 text-xs flex-shrink-0">{t('polarGridDivisionsLabel')}</span>
-                          <ArrayInput
-                            value={ring.divisions}
-                            onChange={v => updateRing(activeGrid.id, ring.id, { divisions: v })}
-                            min={1} max={360} step={1} integer
-                            className="w-14 px-1 py-0.5 bg-gray-600 border border-gray-500 rounded text-xs text-white text-right outline-none focus:border-blue-400 flex-shrink-0"
-                          />
-                          {/* Per-ring angular offset */}
-                          <span className="text-gray-400 text-xs flex-shrink-0" title={t('polarGridRingOffsetTitle')}>⟳°</span>
-                          <ArrayInput
-                            value={ring.angularOffset || 0}
-                            onChange={v => updateRing(activeGrid.id, ring.id, { angularOffset: v })}
-                            min={-359} max={359} step={1}
-                            className="w-14 px-1 py-0.5 bg-gray-600 border border-gray-500 rounded text-xs text-white text-right outline-none focus:border-blue-400 flex-shrink-0"
-                          />
-                          {/* Visible toggle */}
-                          <button
-                            onClick={() => updateRing(activeGrid.id, ring.id, { visible: !ring.visible })}
-                            className={`px-1 py-0.5 rounded text-xs border flex-shrink-0 ${ring.visible ? 'bg-gray-600 border-gray-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-500'}`}
-                            title={t('propToggleVisibility')}
-                          >{ring.visible ? <IconEyeOn size={14} /> : <IconEyeOff size={14} />}</button>
-                          {/* Snap toggle */}
-                          <button
-                            onClick={() => updateRing(activeGrid.id, ring.id, { snap: !ring.snap })}
-                            className={`px-1 py-0.5 rounded text-xs border flex-shrink-0 ${ring.snap ? 'bg-blue-700 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-500'}`}
-                            title={t('polarGridToggleSnap')}
-                          >{ring.snap ? <IconSnapOn size={14} /> : <IconSnapOff size={14} />}</button>
-                          {/* Delete ring */}
-                          <button
-                            onClick={() => deleteRing(activeGrid.id, ring.id)}
-                            className="ml-auto px-1.5 py-0.5 rounded text-xs bg-red-900 hover:bg-red-800 text-red-300 border border-red-800 flex-shrink-0"
-                          >✕</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      onClick={() => addRing(activeGrid.id)}
-                      className="w-full py-1.5 rounded border-2 border-dashed border-gray-600 text-gray-400 hover:border-white hover:text-white text-xs"
-                    >{t('polarGridAddRing')}</button>
-
-                  </div>
-                )}
               </div>
         </Modal>
       );
