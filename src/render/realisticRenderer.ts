@@ -11,7 +11,10 @@ import {
   getPointAndAngleAtDistanceFast,
   getPointAndAngleAtDistance,
 } from '../geometry/bezier';
-import { getCircleStitchAngle, effectiveElementType } from '../geometry/stitchGeometry';
+import {
+  getCircleStitchAngle, effectiveElementType,
+  getEndAllowance, elementStitchFraction, splitRingSideFraction,
+} from '../geometry/stitchGeometry';
 import { STITCH_WIDTH_DS } from '../domain/parser';
 
 // ============================================================================
@@ -156,13 +159,16 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       }
       if (type === 'rds-cont') continue; // second/third half-step of RDS/BDS — skip
 
-      // RDS/BDS spans 1.5 DS slots: sample at midpoint of the full span
-      const position = type === 'rds' ? (i + 0.75) / stitchCount : (i + step * 0.5) / stitchCount;
-      const distance = position * totalLength;
+      // RDS/BDS spans 1.5 DS slots: sample at midpoint of the full span.
+      // `position` is stitch progress — used for gradient colour below; the
+      // place on the path goes through the shared stitch → path mapping.
+      const midS = type === 'rds' ? i + 0.75 : i + step * 0.5;
+      const position = midS / stitchCount;
+      const distance = elementStitchFraction(element, midS) * totalLength;
       const { x, y, angle } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, distance);
-      
-      const startDist = (i / stitchCount) * totalLength;
-      const endDist = ((i + (type === 'rds' ? 1.5 : step)) / stitchCount) * totalLength;
+
+      const startDist = elementStitchFraction(element, i) * totalLength;
+      const endDist = elementStitchFraction(element, i + (type === 'rds' ? 1.5 : step)) * totalLength;
       const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, startDist);
       const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(allSamples, pathLengths, endDist);
       
@@ -201,10 +207,10 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     const ecB = getElementColor({ ...element, materialId: element.materialIdB || element.materialId });
 
     for (let i = 0; i < stitchCountA; i++) {
-      const distance = ((i + 0.5) / stitchCountA) * lengthA;
+      const distance = splitRingSideFraction(element, i + 0.5, stitchCountA) * lengthA;
       const { x, y, angle } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, distance);
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, (i / stitchCountA) * lengthA);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, ((i + 1) / stitchCountA) * lengthA);
+      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, splitRingSideFraction(element, i, stitchCountA) * lengthA);
+      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, splitRingSideFraction(element, i + 1, stitchCountA) * lengthA);
       const color = ecA.isGradient ? getGradientColorAtPosition(ecA.id, i / stitchCountA) : ecA.color;
       const type = stitchTypeMapA[i] || 'ds';
       stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
@@ -216,10 +222,10 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     const lengthB = lengthsB[0];
     
     for (let i = 0; i < stitchCountB; i++) {
-      const distance = ((i + 0.5) / stitchCountB) * lengthB;
+      const distance = splitRingSideFraction(element, i + 0.5, stitchCountB) * lengthB;
       const { x, y, angle } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, distance);
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, (i / stitchCountB) * lengthB);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, ((i + 1) / stitchCountB) * lengthB);
+      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, splitRingSideFraction(element, i, stitchCountB) * lengthB);
+      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, splitRingSideFraction(element, i + 1, stitchCountB) * lengthB);
       const color = ecB.isGradient ? getGradientColorAtPosition(ecB.id, i / stitchCountB) : ecB.color;
       const type = stitchTypeMapB[i] || 'ds';
       stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
@@ -436,10 +442,15 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     scale: number,
     offsetAmount: number,
     stitchType: string,
+    endAllowance = 0,
   ): string[] => {
     const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
     const samplesPerDS = 10;
-    const totalSamples = stitchCountForSampling * samplesPerDS;
+    // The offset curves span the whole path, end allowances included, so
+    // sample over (count + 2·allowance) ds and start each stitch's slice
+    // one allowance in — the same stitch → path model as
+    // stitchRunFraction (geometry/stitchGeometry.ts). allowance 0 = as before.
+    const totalSamples = (stitchCountForSampling + 2 * endAllowance) * samplesPerDS;
 
     // DS-equivalent width for this stitch type (SS is half of DS, RDS/BDS are wider)
     const stitchWidth = STITCH_WIDTH_DS[stitchType] || 1.0;
@@ -460,7 +471,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       const tLeft  = (xl - ext.xMin) / xSpan;
       const tRight = (xr - ext.xMin) / xSpan;
 
-      const stitchSliceStart = stitchOffset * samplesPerDS;
+      const stitchSliceStart = (stitchOffset + endAllowance) * samplesPerDS;
       const rectStart = Math.round(stitchSliceStart + tLeft  * samplesForThisStitch);
       const rectEnd   = Math.round(stitchSliceStart + tRight * samplesForThisStitch);
 
@@ -484,7 +495,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
   // Render closed path stitches (teardrops / squeezed rings) using two
   // parallel offset curves sampled across the element's full path set.
   const renderWedgeTeardropShapes = (el, scale, offsetAmount, stitchType, stitchIndex) =>
-    renderWedgePathShapes(el.paths, el.stitchCount, stitchIndex, scale, offsetAmount, stitchType);
+    renderWedgePathShapes(el.paths, el.stitchCount, stitchIndex, scale, offsetAmount, stitchType, getEndAllowance(el));
 
   // Render split ring stitches using two parallel offset curves per path
   // half. Each half (pathA / pathB) is treated independently, like a mini
@@ -496,13 +507,13 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     if (!path) return (WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds']).map(() => '');
     const localCount = inA ? splitPos : el.stitchCount - splitPos;
     const localIndex = inA ? globalIndex : globalIndex - splitPos;
-    return renderWedgePathShapes([path], localCount, localIndex, scale, offsetAmount, stitchType);
+    return renderWedgePathShapes([path], localCount, localIndex, scale, offsetAmount, stitchType, getEndAllowance(el));
   };
 
   // Render open-path (chain) stitches — same curve-slicing approach as
   // teardrops, just over an unclosed path set.
   const renderWedgeChainShapes = (el, scale, offsetAmount, stitchType, stitchIndex) =>
-    renderWedgePathShapes(el.paths, el.stitchCount, stitchIndex, scale, offsetAmount, stitchType);
+    renderWedgePathShapes(el.paths, el.stitchCount, stitchIndex, scale, offsetAmount, stitchType, getEndAllowance(el));
 
   const scale = dsWidth / 0.4; // calculateStitchScale inlined (see extraction plan) — 0.4 normalized units = 1 DS width, see WEDGE_SHAPES comment above
   const offsetAmount = dsWidth * OFFSET_DS_FRACTION + OFFSET_BASE_PADDING;
@@ -620,9 +631,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
         for (const picot of el.picots) {
           // cjp: core join with picot arm — render arm in realistic mode
           if (picot.isJoint && picot.isCoreJoin && picot.hasPicotArm) {
-            const tMid   = picot.stitchesBefore / N;
-            const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_GAP_HALF_WIDTH_DS) / N);
-            const tRight = Math.min(1, (picot.stitchesBefore + PICOT_GAP_HALF_WIDTH_DS) / N);
+            const tMid   = picot.stitchesBefore / N; // stitch progress — gradient colour
             const tipH   = (PICOT_TIP_LENGTH_DS[picot.length] || PICOT_TIP_LENGTH_DEFAULT) * dsWidth;
             const ptAt = (frac: number) =>
               getPointAndAngleAtDistanceFast(
@@ -630,9 +639,9 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
                 totalPathLength.pathLengths,
                 frac * totalPathLength.totalLength
               );
-            const ptMid   = ptAt(tMid);
-            const ptLeft  = ptAt(tLeft);
-            const ptRight = ptAt(tRight);
+            const ptMid   = ptAt(elementStitchFraction(el, picot.stitchesBefore));
+            const ptLeft  = ptAt(elementStitchFraction(el, Math.max(0, picot.stitchesBefore - PICOT_GAP_HALF_WIDTH_DS)));
+            const ptRight = ptAt(elementStitchFraction(el, Math.min(N, picot.stitchesBefore + PICOT_GAP_HALF_WIDTH_DS)));
             let nx: number, ny: number;
             const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
             if (isHalfway) {
@@ -656,11 +665,13 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
             continue;
           }
           if (shouldSkipPicot(picot, el.id)) continue;
-          const tMid   = picot.stitchesBefore / N;
-          const tLeft  = Math.max(0, (picot.stitchesBefore - PICOT_GAP_HALF_WIDTH_DS) / N);
-          const tRight = Math.min(1, (picot.stitchesBefore + PICOT_GAP_HALF_WIDTH_DS) / N);
+          const tMid   = picot.stitchesBefore / N; // stitch progress — gradient colour
           const tipH   = (PICOT_TIP_LENGTH_DS[picot.length] || PICOT_TIP_LENGTH_DEFAULT) * dsWidth;
 
+          // ptAt takes a fraction of the PATH; stitch positions are mapped
+          // through elementStitchFraction. The gap is clamped in stitch
+          // space (0..N), so it never reaches into the end allowance.
+          // ptAt(0) below is the true path start (the ring's tip/join).
           const ptAt = (frac: number) =>
             getPointAndAngleAtDistanceFast(
               totalPathLength.allSamples,
@@ -668,9 +679,9 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
               frac * totalPathLength.totalLength
             );
 
-          const ptMid   = ptAt(tMid);
-          const ptLeft  = ptAt(tLeft);
-          const ptRight = ptAt(tRight);
+          const ptMid   = ptAt(elementStitchFraction(el, picot.stitchesBefore));
+          const ptLeft  = ptAt(elementStitchFraction(el, Math.max(0, picot.stitchesBefore - PICOT_GAP_HALF_WIDTH_DS)));
+          const ptRight = ptAt(elementStitchFraction(el, Math.min(N, picot.stitchesBefore + PICOT_GAP_HALF_WIDTH_DS)));
 
           let nx: number, ny: number;
           const isHalfway = el.isClosed && Math.abs(picot.stitchesBefore - N / 2) < 1.5;
@@ -852,13 +863,12 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
             const localSb = inA ? picot.stitchesBefore : picot.stitchesBefore - splitPos;
             const samples = inA ? samplesA : samplesB;
             const pathLen = inA ? lenA : lenB;
-            const tMid   = localSb / localCount;
-            const tLeft  = Math.max(0, (localSb - PICOT_GAP_HALF_WIDTH_DS) / localCount);
-            const tRight = Math.min(1, (localSb + PICOT_GAP_HALF_WIDTH_DS) / localCount);
+            const tMid   = localSb / localCount; // stitch progress — gradient colour
             const tipH   = (PICOT_TIP_LENGTH_DS[picot.length] || PICOT_TIP_LENGTH_DEFAULT) * dsWidth;
-            const ptMid   = ptAtFrac(samples, pathLen, tMid);
-            const ptLeft  = ptAtFrac(samples, pathLen, tLeft);
-            const ptRight = ptAtFrac(samples, pathLen, tRight);
+            const sideFrac = (sLocal: number) => splitRingSideFraction(el, sLocal, localCount);
+            const ptMid   = ptAtFrac(samples, pathLen, sideFrac(localSb));
+            const ptLeft  = ptAtFrac(samples, pathLen, sideFrac(Math.max(0, localSb - PICOT_GAP_HALF_WIDTH_DS)));
+            const ptRight = ptAtFrac(samples, pathLen, sideFrac(Math.min(localCount, localSb + PICOT_GAP_HALF_WIDTH_DS)));
             const nx =  Math.sin(ptMid.angle) * picotSideDir;
             const ny = -Math.cos(ptMid.angle) * picotSideDir;
             const bL  = { x: ptLeft.x,  y: ptLeft.y  };

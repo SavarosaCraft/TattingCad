@@ -24,7 +24,7 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
-import { getCircleStitchAngle, effectiveElementType } from './geometry/stitchGeometry';
+import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction } from './geometry/stitchGeometry';
 import { bakeRealisticView } from './render/realisticRenderer';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
@@ -2979,7 +2979,9 @@ const APP_VERSION = '1.2.0-beta';
     }
     
     const _sb2 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
-    const targetDist = (_sb2 / element.stitchCount) * totalLength;
+    // Shared stitch → path mapping (geometry/stitchGeometry.ts). Split rings
+    // go through it too: their two paths are concatenated here, side A then B.
+    const targetDist = elementStitchFraction(element, _sb2) * totalLength;
     let accum = 0;
     let pathIndex = 0;
     let localT = 0;
@@ -5323,7 +5325,9 @@ const APP_VERSION = '1.2.0-beta';
       return element.picots.map(p => {
         const sb = beadSb(p);
         const inA = p.stitchesBefore <= splitPos;
-        const localFrac = inA ? sb / countA : (sb - splitPos) / countB;
+        const localFrac = inA
+          ? splitRingSideFraction(element, sb, countA)
+          : splitRingSideFraction(element, sb - splitPos, countB);
         const samples = inA ? samplesA : samplesB;
         const path = inA ? pathA : pathB;
         const pathLen = inA ? lenA : lenB;
@@ -5360,7 +5364,7 @@ const APP_VERSION = '1.2.0-beta';
     }
 
     return element.picots.map(p => {
-      const targetDist = (beadSb(p) / element.stitchCount) * totalLength;
+      const targetDist = elementStitchFraction(element, beadSb(p)) * totalLength;
       let accum = 0, pathIndex = 0, localT = 0;
       for (let i = 0; i < pathLengths.length; i++) {
         if (accum + pathLengths[i] >= targetDist) { pathIndex = i; localT = (targetDist - accum) / pathLengths[i]; break; }
@@ -5456,7 +5460,7 @@ const APP_VERSION = '1.2.0-beta';
           const lenSet = [calculatePathLength(sampleSet[0])];
           const totalLen = lenSet[0];
           runs.forEach((run, j) => {
-            const dist = (run.midDS / sectionStitchCount) * totalLen;
+            const dist = splitRingSideFraction(element, run.midDS, sectionStitchCount) * totalLen;
             const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
             const perpAngle = angle - Math.PI / 2;
             labels.push(
@@ -5496,7 +5500,7 @@ const APP_VERSION = '1.2.0-beta';
 
         const runs = getSegmentRuns(element.notation || '', 0, element.stitchCount);
         return runs.map((run, j) => {
-          const targetDist = (run.midDS / element.stitchCount) * totalLengthNP;
+          const targetDist = elementStitchFraction(element, run.midDS) * totalLengthNP;
           const { x, y, angle: rawAngle } = getPointAndAngleAtDistanceFast(allSamplesNP, pathLengthsNP, targetDist);
           const perpAngle = rawAngle - Math.PI / 2;
           return (
@@ -5607,7 +5611,7 @@ const APP_VERSION = '1.2.0-beta';
         segs.forEach((seg, i) => {
           const runs = getSegmentRuns(sectionNotation, seg.start, seg.start + seg.count);
           runs.forEach((run, j) => {
-            const dist = (run.midDS / sectionStitchCount) * totalLen;
+            const dist = splitRingSideFraction(element, run.midDS, sectionStitchCount) * totalLen;
             const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
             const perpAngle = angle - Math.PI / 2;
             labels.push(
@@ -5649,7 +5653,7 @@ const APP_VERSION = '1.2.0-beta';
     return segments.flatMap((seg, i) => {
       const runs = getSegmentRuns(element.notation || '', seg.start, seg.start + seg.count);
       return runs.map((run, j) => {
-        const targetDist = (run.midDS / element.stitchCount) * totalLength;
+        const targetDist = elementStitchFraction(element, run.midDS) * totalLength;
         const { x, y, angle: rawAngle } = getPointAndAngleAtDistanceFast(allSamplesL, pathLengths, targetDist);
         const perpAngle = rawAngle - Math.PI / 2;
         return (
@@ -5993,6 +5997,9 @@ const APP_VERSION = '1.2.0-beta';
   // formula the baked realistic renderer uses for regular picots' gradient
   // sampling (tMid = picot.stitchesBefore / N), including the split-ring
   // adjustment (N is the local half's stitch count, not the whole element's).
+  // This is a COLOUR position (stitch progress), not a place on the path —
+  // deliberately not routed through elementStitchFraction: the end
+  // allowance is bare thread and must not shift where a gradient falls.
   const getPicotPositionFraction = (element, picot) => {
     if (!element || !picot) return 0;
     let localCount = element.stitchCount || 1;
