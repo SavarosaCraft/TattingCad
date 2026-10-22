@@ -21,6 +21,7 @@
 import { useCallback } from 'react';
 import { generateId } from '../utils/id';
 import { sampleBezierPath } from '../geometry/bezier';
+import { SPLIT_RING_END_ALLOWANCE_FACTOR } from '../geometry/stitchGeometry';
 import {
   createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths,
@@ -63,6 +64,8 @@ export interface UseEditorActionsParams {
   needsHistoryPushRef: React.RefObject<boolean>;
   skipAutoHistoryRef: React.RefObject<boolean>;
   lastUsedMaterialIdRef: React.RefObject<string>;
+  // ds of bare thread at each end of NEW chains/rings (active thread preset).
+  defaultEndAllowanceRef: React.RefObject<number>;
   beadLibrary: any[];
   // Setters
   setElements: (fn: ((prev: any[]) => any[]) | any[]) => void;
@@ -214,9 +217,12 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const addRing = useCallback(() => {
     const center = getViewportCenter();
     const squeeze = 0;
-    const pathData = createTeardropPath(center.x, center.y, 12 * p.dsWidth, squeeze);
+    // End allowance is stamped on the element and its path built that much
+    // longer at the same time — see getEndAllowance (stitchGeometry.ts).
+    const endAllowance = p.defaultEndAllowanceRef.current ?? 0;
+    const pathData = createTeardropPath(center.x, center.y, (12 + 2 * endAllowance) * p.dsWidth, squeeze);
     const newEl = {
-      id: generateId(), type: 'ring',
+      id: generateId(), type: 'ring', endAllowance,
       materialId: p.lastUsedMaterialIdRef.current,
       center: { x: center.x, y: center.y },
       rotation: 0, stitchCount: 12, color: '#FFFFFF',
@@ -236,9 +242,12 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const addSplitRing = useCallback(() => {
     const center = getViewportCenter();
     const stitchCountA = 6, stitchCountB = 6;
-    const pathData = createSplitRingPath(center.x, center.y, stitchCountA, stitchCountB, p.dsWidth, 0.25, 0.75, 0.75);
+    // Split rings take a fixed fraction of the preset value (see
+    // SPLIT_RING_END_ALLOWANCE_FACTOR) — four ends meet at their two points.
+    const endAllowance = (p.defaultEndAllowanceRef.current ?? 0) * SPLIT_RING_END_ALLOWANCE_FACTOR;
+    const pathData = createSplitRingPath(center.x, center.y, stitchCountA, stitchCountB, p.dsWidth, 0.25, 0.75, 0.75, endAllowance);
     const newEl = {
-      id: generateId(), type: 'ring',
+      id: generateId(), type: 'ring', endAllowance,
       materialId: p.lastUsedMaterialIdRef.current,
       center: { x: center.x, y: center.y },
       rotation: 0, stitchCount: stitchCountA + stitchCountB, color: '#FFFFFF',
@@ -262,7 +271,10 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const addChain = useCallback(() => {
     const center = getViewportCenter();
     const stitchCount = 12;
-    const chord = stitchCount * p.dsWidth * 0.92;
+    const endAllowance = p.defaultEndAllowanceRef.current ?? 0;
+    // Thread length includes the bare ends (same as elementPathLength /
+    // resetElementShape's chain branch).
+    const chord = (stitchCount + 2 * endAllowance) * p.dsWidth * 0.92;
     const halfChord = chord / 2;
     // chord/3 (not /5): a shallower bulge sits right on top of the
     // isTooShort 0.92 ratio threshold — chord/5 measures out to a ratio of
@@ -275,7 +287,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
     const startX = center.x - halfChord, startY = center.y;
     const endX = center.x + halfChord, endY = center.y;
     const newEl = {
-      id: generateId(), type: 'chain',
+      id: generateId(), type: 'chain', endAllowance,
       materialId: p.lastUsedMaterialIdRef.current,
       center: { x: center.x, y: center.y },
       isClosed: false, shapeStyle: 'chain',
@@ -403,6 +415,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
       bucket(rotation),
       bucket(el.center?.x ?? 0),
       bucket(el.center?.y ?? 0),
+      // Same notation at a different end allowance is a different length of
+      // thread, not a duplicate. Absent = 0, so old patterns compare as before.
+      el.endAllowance ?? 0,
     ].join('|');
   };
 

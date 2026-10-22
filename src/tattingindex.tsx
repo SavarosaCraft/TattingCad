@@ -24,10 +24,11 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
-import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction } from './geometry/stitchGeometry';
+import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, SPLIT_RING_END_ALLOWANCE_FACTOR } from './geometry/stitchGeometry';
 import { bakeRealisticView } from './render/realisticRenderer';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
+  scalePathsAboutPoint, rebendChainPathToLength, resizeElementForAllowance, rebuildSplitRingInPlace,
   rotatePaths, mirrorPaths, applyRotationToPathData, rotatePathsAroundCenter,
   applyPathPreset, applyLinePreset, isChainTooShort,
 } from './geometry/paths';
@@ -277,6 +278,7 @@ const DEFAULT_THREAD_PRESET = {
   ds20Core: 35,       // mm — core thread per 20 DS
   picotRegular: 8,    // mm
   picotJoined: 5,     // mm
+  endAllowance: DEFAULT_END_ALLOWANCE, // ds, from DEFAULT_TENSION (stitchGeometry.ts) — bare thread at each path end of NEW elements; the UI shows tension
   // Alternative inputs (null = not used)
   sample20DS10Regular: null,  // mm — 20DS + 10 regular picots total
   sample20DS10Short: null,    // mm — 20DS + 10 short picots total
@@ -630,6 +632,14 @@ const APP_VERSION = '1.2.0-beta';
   const [chainPresetSymmetric, setChainPresetSymmetric] = React.useState(true);
 
   const lastUsedMaterialIdRef = useRef('default');
+  // Default end allowance (ds) stamped on NEW chains/rings by
+  // useEditorActions' add* functions — from the active thread preset. A ref
+  // (synced every render, below) because those callbacks are memoised on
+  // [dsWidth, camera, zoom] and would otherwise see a stale value.
+  const defaultEndAllowanceRef = useRef(DEFAULT_END_ALLOWANCE);
+  defaultEndAllowanceRef.current = presetEndAllowance(
+    threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0]
+  );
 
 
   const t = React.useCallback((key: string): string => {
@@ -1474,7 +1484,7 @@ const APP_VERSION = '1.2.0-beta';
     canvasRef, elementsRef, selectedIdsRef, picotConnectionsRef, roundsRef,
     groupsRef,
     clipboardRef, historyRef, historyIndexRef,
-    isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef,
+    isUndoRedoRef, needsHistoryPushRef, skipAutoHistoryRef, lastUsedMaterialIdRef, defaultEndAllowanceRef,
     setElements, setSelectedIds, setPicotConnections, setRounds,
     setGroups,
     setClipboard, setGhostArrays, setHistoryIndex,
@@ -1620,6 +1630,9 @@ const APP_VERSION = '1.2.0-beta';
         isSplitRing: sourceEl.isSplitRing,
         splitPosition: sourceEl.splitPosition,
         lineWidth: sourceEl.lineWidth,
+        // Field list is explicit here, so anything that changes path length
+        // must be copied or the ghost draws at the wrong length.
+        endAllowance: sourceEl.endAllowance,
       };
     } else {
       // Build real copy element
@@ -2318,7 +2331,16 @@ const APP_VERSION = '1.2.0-beta';
     setPicotConnections([]);
     setSelectedPicots([]);
     setProjectName(t('projectUntitled'));
-    setCamera({ x: 0, y: 0 });
+    // Put world (0,0) — where a new polar grid appears — in the middle of
+    // the canvas, as app start does (usePatternState). {x:0,y:0} here put
+    // the origin in the canvas's top-left corner, so a grid turned on in a
+    // new project was off screen (session 57).
+    {
+      const rect = (canvasRef.current as any)?.getBoundingClientRect(); // cast: canvasRef is useRef(null)
+      setCamera(rect
+        ? { x: Math.round(rect.width / 2), y: Math.round(rect.height / 2) }
+        : { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
+    }
     setZoom(1);
     setHistory([{ elements: [], connections: [], polarGrids: [] }]);
     setHistoryIndex(0);
@@ -2616,7 +2638,7 @@ const APP_VERSION = '1.2.0-beta';
     // stored paths. A large mismatch on an element that has isFlippedH or
     // isFlippedV set is the fingerprint of the old "flip never applied" bug.
     if (!el.isFlippedH && !el.isFlippedV) return false; // old bug only ever produced wrong output for flipped elements
-    const targetLength = (el.stitchCount || 0) * dsWidth;
+    const targetLength = elementPathLength(el, dsWidth);
     const canonical = el.shapeStyle === 'circle'
       ? createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze ?? 0)
       : createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze ?? 0);
@@ -2747,6 +2769,17 @@ const APP_VERSION = '1.2.0-beta';
         return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
           isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
           notation: `sr: ${reversedB}`, notationB: reversedA,
+          // Side squeezes travel with their arcs, like the notations: new
+          // side A is the mirror of old arc B, so it takes old B's squeeze.
+          // (Before session 57 these stayed put, so the next rebuild bent
+          // each side with the other side's value.)
+          squeezeCA: el.squeezeCB, squeezeCB: el.squeezeCA,
+          // Colours travel with their arcs too (user decision, session 57):
+          // paths[0] is drawn in materialId, and after the flip paths[0] is
+          // the old B arc. materialIdB unset means "same as A", so only swap
+          // when the two sides really differ.
+          ...(el.materialIdB && el.materialIdB !== el.materialId
+            ? { materialId: el.materialIdB, materialIdB: el.materialId } : {}),
           stitchCount: sca + scb, picots: allPicots, splitPosition: sca };
       }
 
@@ -3680,7 +3713,7 @@ const APP_VERSION = '1.2.0-beta';
           if (sel.length === 1 && sel[0].type === 'chain' && sel[0].paths && sel[0].paths.length > 0) {
             const el = sel[0];
             const path = el.paths[0];
-            const targetLength = el.stitchCount * dsWidth;
+            const targetLength = elementPathLength(el, dsWidth);
             if (path.type === 'cubic' && path.control1X !== undefined && path.control2X !== undefined) {
               const newPath = applyPathPreset(path, presetDeg, targetLength, true); // presets always symmetric
               if (newPath !== path) {
@@ -4052,12 +4085,15 @@ const APP_VERSION = '1.2.0-beta';
         // correctly bulges), and is exactly what the geometry-repair
         // tooling's own comments point to for split-ring geometry — it was
         // imported but never actually called anywhere in this file.
-        const candidateEl = { ...el, stitchCount: totalStitches, splitPosition: stitchCountA };
-        const regenerated = createSplitRingPathFromEl(candidateEl, dsWidth, { cx: el.center.x, cy: el.center.y });
-        if (Array.isArray(regenerated?.paths)) {
-          finalPaths = regenerated.paths;
+        // Session 57: rebuilt IN PLACE (rebuildSplitRingInPlace, paths.ts) —
+        // the old call used the canonical, unrotated arcs directly, so a
+        // rotated or flipped split ring snapped back upright/unmirrored on
+        // any stitch-count change.
+        const rebuilt = rebuildSplitRingInPlace(el, dsWidth, { stitchCount: totalStitches, splitPosition: stitchCountA });
+        if (Array.isArray(rebuilt) && rebuilt.length === 2) {
+          finalPaths = rebuilt;
         } else {
-          console.error('[TATCAD] createSplitRingPathFromEl returned an unexpected shape; keeping prior paths', regenerated);
+          console.error('[TATCAD] rebuildSplitRingInPlace returned an unexpected shape; keeping prior paths', rebuilt);
         }
       }
 
@@ -4083,23 +4119,16 @@ const APP_VERSION = '1.2.0-beta';
     if (!parsed) return null;
 
     let newPathData = {};
+    // Lengths include the end allowance (elementPathLength). newLength is
+    // measured on the element as it will be after the edit, so a notation
+    // that changes eligibility (e.g. to jk:) gets the matching length.
+    const elAfterEdit = { ...el, notation, stitchCount: parsed.stitchCount };
     if (el.isClosed) {
-      const oldLength = el.stitchCount * dsWidth;
-      const newLength = parsed.stitchCount * dsWidth;
+      const oldLength = elementPathLength(el, dsWidth);
+      const newLength = elementPathLength(elAfterEdit, dsWidth);
       if (Math.abs(oldLength - newLength) > 0.01) {
-        const cx = el.center.x, cy = el.center.y;
-        const scaleFactor = newLength / oldLength;
-        const scaledPaths = el.paths.map(path => {
-          const scPt = (px, py) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
-          if (path.type === 'cubic') {
-            const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
-            const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
-            return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          }
-          const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
-          return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
-        });
-        newPathData = { paths: scaledPaths };
+        // Shared with "apply end allowance" — geometry/paths.ts.
+        newPathData = { paths: scalePathsAboutPoint(el.paths, el.center.x, el.center.y, newLength / oldLength) };
       }
     } else {
       // Only regenerate the curve when the notation edit actually changes the
@@ -4112,41 +4141,13 @@ const APP_VERSION = '1.2.0-beta';
       // slightly from that nominal value, any subsequent edit would silently
       // snap it back, which is what was resetting manually-adjusted curves
       // (and tripping the live isTooShort check) on a same-length reversal.
-      const oldLength = el.stitchCount * dsWidth;
-      const newLength = parsed.stitchCount * dsWidth;
+      const oldLength = elementPathLength(el, dsWidth);
+      const newLength = elementPathLength(elAfterEdit, dsWidth);
       if (el.paths && el.paths.length > 0 && Math.abs(oldLength - newLength) > 0.01) {
-        const tolerance = newLength * 0.005;
-        const adjustedPaths = el.paths.map(path => {
-          if (path.type !== 'cubic') {
-            const startX = path.x, startY = path.y;
-            const scaleFactor = newLength / oldLength;
-            return { ...path,
-              endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
-              controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
-          }
-          const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
-          const midX=(sx+ex)/2,midY=(sy+ey)/2;
-          const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
-          const perpLen=Math.hypot(perpX,perpY);
-          const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
-          const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
-          const straightLen=Math.hypot(ex-sx,ey-sy);
-          let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
-          for (let iter=0;iter<20;iter++) {
-            const tryDepth=(minDepth+maxDepth)/2;
-            const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
-            const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
-            const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
-            const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
-            const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
-            const tryLen=calculatePathLength(sampleBezierPath(tryPath,20));
-            bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
-            if(Math.abs(tryLen-newLength)<tolerance)break;
-            if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
-          }
-          return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
-        });
-        newPathData = { paths: adjustedPaths };
+        // Every path re-bent to the full new length (unchanged behaviour —
+        // multi-path chains are a known pre-existing gap; see handoff).
+        // Shared with "apply end allowance" — geometry/paths.ts.
+        newPathData = { paths: el.paths.map(path => rebendChainPathToLength(path, oldLength, newLength)) };
       }
     }
 
@@ -4405,6 +4406,44 @@ const APP_VERSION = '1.2.0-beta';
     }
   };
 
+  // ── Apply end allowance to selected (session 57, step 5) ──────────────
+  // Gives each eligible element the CURRENT Thread Properties allowance
+  // (split rings: × SPLIT_RING_END_ALLOWANCE_FACTOR, same as addSplitRing)
+  // and rebuilds it at the new length via resizeElementForAllowance
+  // (geometry/paths.ts). Works both ways — with the setting at 0 it removes
+  // the allowance. Skips circles, JKs, lines, ghosts and elements already at
+  // the target. One plain commit → one undo step via the auto-history
+  // effect (no explicit push, so no skipAutoHistoryRef needed); ghost
+  // mothers regenerate their arrays through the usual funnel.
+  const endAllowanceTargetFor = (el: any): number =>
+    el.isSplitRing
+      ? defaultEndAllowanceRef.current * SPLIT_RING_END_ALLOWANCE_FACTOR
+      : defaultEndAllowanceRef.current;
+  // Cheap check for enabling the button (no geometry work).
+  const canApplyEndAllowance = (ids: string[]): boolean => ids.some(id => {
+    const el = elementById.get(id);
+    return !!el && el.type !== 'ghost' && !el.isGhost && allowsEndAllowance(el)
+      && (el.endAllowance ?? 0) !== endAllowanceTargetFor(el);
+  });
+  const applyEndAllowanceToIds = (ids: string[]) => {
+    const idSet = new Set(ids);
+    const patches = new Map<string, any>();
+    for (const el of elementsRef.current as any[]) {
+      if (!idSet.has(el.id)) continue;
+      const patch = resizeElementForAllowance(el, endAllowanceTargetFor(el), dsWidth);
+      if (patch) patches.set(el.id, patch);
+    }
+    if (patches.size === 0) return;
+    const updated = (elementsRef.current as any[]).map(el =>
+      patches.has(el.id) ? { ...el, ...patches.get(el.id) } : el);
+    const motherIds = updated.filter(e => patches.has(e.id) && e.isGhostMother).map(e => e.id);
+    if (motherIds.length > 0) {
+      applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, motherIds));
+    } else {
+      setElements(updated);
+    }
+  };
+
   // Update ghosts when mother element changes (notation, rotation, shape, etc.)
   const toggleShape = () => {
     if (selectedIds.length !== 1) return;
@@ -4415,16 +4454,17 @@ const APP_VERSION = '1.2.0-beta';
     const updated = elementsRef.current.map(el => {
       if (el.id === selectedIds[0] && el.isClosed) {
         const newStyle = el.shapeStyle === 'circle' ? 'teardrop' : 'circle';
-        const targetLength = el.stitchCount * dsWidth;
-        const squeeze = el.squeeze || 0;
-        const tempPathData = newStyle === 'circle'
-          ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
-          : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-
         // If the element was a Josephine Knot (jk:), toggling back to a
         // teardrop or circle shape means it's no longer a JK — rewrite the
         // notation prefix to r: so the element is treated as a normal ring.
         const notation = el.notation?.replace(/^jk:/i, 'r:') ?? el.notation;
+        // Length for the NEW shape: a teardrop gets its end allowance, a
+        // circle never does (so the ring grows/shrinks by 2a ds — intended).
+        const targetLength = elementPathLength({ ...(el as any), notation, shapeStyle: newStyle }, dsWidth); // cast: elementsRef is typed never[] (see architecture.md)
+        const squeeze = el.squeeze || 0;
+        const tempPathData = newStyle === 'circle'
+          ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
+          : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
 
         return { ...el, notation, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
       }
@@ -4496,6 +4536,7 @@ const APP_VERSION = '1.2.0-beta';
           picots: [],
           shapeStyle: 'circle',
           paths: rotatedPaths,
+          endAllowance: 0, // a JK has no bare ends; dropped so toggling back to a teardrop doesn't regrow it
         };
 
         // Wipe all picot connections that reference this element
@@ -6802,6 +6843,9 @@ const APP_VERSION = '1.2.0-beta';
           ) : selectedElement ? (
             <SingleSelectPropertyBar
               selectedElement={selectedElement}
+              applyEndAllowanceToIds={applyEndAllowanceToIds}
+              canApplyEndAllowance={canApplyEndAllowance}
+              defaultTension={presetTension(threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0])}
               selectedIds={selectedIds}
               selectedIdSet={selectedIdSet}
               elements={elements}
@@ -6862,6 +6906,9 @@ const APP_VERSION = '1.2.0-beta';
             <>
               <MultiSelectSummaryBar
                 selectedIds={selectedIds}
+                applyEndAllowanceToIds={applyEndAllowanceToIds}
+                canApplyEndAllowance={canApplyEndAllowance}
+                defaultTension={presetTension(threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0])}
                 elementById={elementById}
                 elements={elements}
                 selectedIdSet={selectedIdSet}
@@ -7060,7 +7107,7 @@ const APP_VERSION = '1.2.0-beta';
                     onClick={() => {
                       const el = chain;
                       const path = el.paths[0];
-                      const targetLength = el.stitchCount * dsWidth;
+                      const targetLength = elementPathLength(el, dsWidth);
                       const newPath = applyPathPreset(path, preset.deg, targetLength, true); // presets always symmetric
                       if (newPath !== path) {
                         commitSinglePathUpdate(el.id, newPath);
@@ -8044,7 +8091,10 @@ const APP_VERSION = '1.2.0-beta';
               )}
 
               {/* ── Polar Grids ─────────────────────────────────────────── */}
-              {polarGrids.filter(g => g.visible).map(grid => {
+              {/* Guides only — hidden in realistic view like the square grid
+                  (session 57). Also keeps them out of a realistic SVG export,
+                  which clones this canvas. */}
+              {renderMode !== 'realistic' && polarGrids.filter(g => g.visible).map(grid => {
                 const color = grid.color || '#4B9FE1';
                 const opacity = grid.opacity ?? 0.5; // 0–1 user-controlled opacity
                 const gridOffsetRad = (grid.angularOffset || 0) * Math.PI / 180;
@@ -11300,6 +11350,22 @@ const APP_VERSION = '1.2.0-beta';
                       onChange={v => updatePreset(activePreset.id, { picotJoined: v })} />
                     <ThreadPropertiesNumInput label={t('threadLongPicotLabel')} value={activePreset.picotRegular * 2} readOnly hint={t('threadLongPicotHint')} />
                     <ThreadPropertiesNumInput label={t('threadShortPicotLabel')} value={activePreset.picotShort ?? activePreset.picotRegular * 0.5} readOnly hint={activePreset.picotShort ? t('threadShortPicotHintSample') : t('threadShortPicotHintAuto')} />
+                  </div>
+
+                  <div className="border-t border-gray-600 my-3" />
+
+                  {/* Tension 1–5 (decimals ok) — shown to the user instead of the
+                      end allowance it sets (stored in ds as preset.endAllowance;
+                      tension 1 = 0 ds, 5 = 1.5 ds). Default for NEW chains /
+                      teardrops / split rings (¼ for split rings); existing
+                      elements keep theirs until "Tension" is applied to them.
+                      See tensionToAllowance in geometry/stitchGeometry.ts. */}
+                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadEndAllowanceHeader')}</div>
+                  <div className="grid grid-cols-2 gap-x-4">
+                    <ThreadPropertiesNumInput label={t('threadEndAllowance')} unit=""
+                      value={presetTension(activePreset)}
+                      hint={t('threadEndAllowanceHint')}
+                      onChange={v => updatePreset(activePreset.id, { endAllowance: tensionToAllowance(v) })} />
                   </div>
 
                   <div className="border-t border-gray-600 my-3" />

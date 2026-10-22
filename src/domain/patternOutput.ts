@@ -6,6 +6,8 @@
 // TODO: DEFAULT_THREAD_PRESET is also defined in tattingindex.tsx for other
 // use sites. Consolidate both into useBeadState.ts when that hook is extended.
 
+import { DEFAULT_END_ALLOWANCE } from '../geometry/stitchGeometry';
+
 const DEFAULT_THREAD_PRESET = {
   id: 'default',
   name: 'Pearl Cotton Size 10, Needle Tat',
@@ -13,6 +15,7 @@ const DEFAULT_THREAD_PRESET = {
   ds20Core: 35,
   picotRegular: 8,
   picotJoined: 5,
+  endAllowance: DEFAULT_END_ALLOWANCE, // ds, from DEFAULT_TENSION (geometry/stitchGeometry.ts)
   sample20DS10Regular: null,
   sample20DS10Short: null,
 };
@@ -618,7 +621,7 @@ export function serializeProject(data: {
   threadPresets: any[]; activePresetId: string;
 }, isAutoSave = false) {
   return {
-    version: 90,
+    version: 91, // 91 (session 57): elements may carry endAllowance (ds); absent = 0
     name: data.name,
     ...(isAutoSave
       ? { autoSaved: new Date().toISOString() }

@@ -29,6 +29,7 @@ import {
 } from '../domain/picotTools';
 import { updateSelected, updateElement } from '../utils/elementUpdates';
 import { resetElementShape } from '../geometry/paths';
+import { elementTension } from '../geometry/stitchGeometry';
 import { createRoundGroupHandlers } from '../utils/roundGroupActions';
 
 // Extracted from tattingindex.tsx (single-select property bar, general/non-line branch:
@@ -42,6 +43,10 @@ import { createRoundGroupHandlers } from '../utils/roundGroupActions';
 
 interface GeneralElementPropertyBarProps {
   selectedElement: any;
+  // End allowance (session 57, step 5) — see applyEndAllowanceToIds in tattingindex.tsx.
+  applyEndAllowanceToIds: (ids: string[]) => void;
+  canApplyEndAllowance: (ids: string[]) => boolean;
+  defaultTension: number; // active preset's tension (1–5), for the tooltip
   selectedIdSet: Set<any>;
   elements: any[];
   elementsRef: React.MutableRefObject<any[]>;
@@ -93,6 +98,9 @@ interface GeneralElementPropertyBarProps {
 
 export function GeneralElementPropertyBar({
   selectedElement,
+  applyEndAllowanceToIds,
+  canApplyEndAllowance,
+  defaultTension,
   selectedIdSet,
   elements,
   elementsRef,
@@ -508,6 +516,18 @@ export function GeneralElementPropertyBar({
                       className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs disabled:opacity-40 disabled:pointer-events-none"
                       title={t('propResetTransform')}
                     >{t('propResetBtn')}</button>
+                    {/* Apply end allowance — gives this element the current
+                        Thread Properties allowance and rebuilds it at the new
+                        length (applyEndAllowanceToIds, tattingindex.tsx).
+                        Disabled for circles/JKs/lines/ghosts and when it
+                        already has that value. */}
+                    <button
+                      onClick={() => applyEndAllowanceToIds([selectedElement.id])}
+                      disabled={!canApplyEndAllowance([selectedElement.id])}
+                      className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs disabled:opacity-40 disabled:pointer-events-none"
+                      title={t('propApplyEndAllowance').replace('{n}', String(defaultTension))
+                        + (elementTension(selectedElement) != null ? ` ${t('propEndAllowanceCurrent').replace('{n}', String(elementTension(selectedElement)))}` : '')}
+                    >{t('propApplyEndAllowanceBtn')}</button>
                   </div>
                 );
               })()}

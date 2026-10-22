@@ -1,6 +1,7 @@
 // useBeadState.ts — Bead library, polar grids, picot connections, thread presets
 
 import { useState } from 'react';
+import { DEFAULT_END_ALLOWANCE } from '../geometry/stitchGeometry';
 
 export const DEFAULT_BEAD_LIBRARY = [
   { id: 'bead1', name: 'Small seed',             size: 'Y', color: '#ef4444', shape: 'circle' },
@@ -19,6 +20,7 @@ const DEFAULT_THREAD_PRESET = {
   ds20Core: 45,
   picotRegular: 7,
   picotJoined: 5,
+  endAllowance: DEFAULT_END_ALLOWANCE, // ds, from DEFAULT_TENSION (geometry/stitchGeometry.ts)
   sample20DS10Regular: null,
   sample20DS10Short: null,
 };

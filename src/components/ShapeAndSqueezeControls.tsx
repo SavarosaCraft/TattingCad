@@ -14,7 +14,8 @@
 // architecture.md's elementUpdates.ts note says to leave alone.
 import React from 'react';
 import { IconShapeTeardrop, IconShapeCircle } from './icons';
-import { createTeardropPath, createCirclePath, createSplitRingPathFromEl, applyRotationToPathData, resetElementShape } from '../geometry/paths';
+import { createTeardropPath, createCirclePath, applyRotationToPathData, resetElementShape, rebuildSplitRingInPlace } from '../geometry/paths';
+import { elementPathLength } from '../geometry/stitchGeometry';
 
 interface ShapeAndSqueezeControlsProps {
   selectedElement: any;
@@ -90,7 +91,9 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
                   const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
                   setElements(prev => prev.map(el => {
                     if (el.id !== selectedElement.id) return el;
-                    const targetLength = el.stitchCount * dsWidth;
+                    // Length for the shape it becomes (a teardrop uses its stored end
+                    // allowance — 0 after Convert to JK, which clears it).
+                    const targetLength = elementPathLength({ ...el, notation, shapeStyle: 'teardrop' }, dsWidth);
                     const paths = applyRotationToPathData(el, createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
                     return { ...el, notation, shapeStyle: 'teardrop', paths };
                   }));
@@ -115,7 +118,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
                   const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
                   setElements(prev => prev.map(el => {
                     if (el.id !== selectedElement.id) return el;
-                    const targetLength = el.stitchCount * dsWidth;
+                    const targetLength = elementPathLength({ ...el, notation, shapeStyle: 'circle' }, dsWidth); // circle: always 0 allowance
                     const paths = applyRotationToPathData(el, createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
                     return { ...el, notation, shapeStyle: 'circle', paths };
                   }));
@@ -162,7 +165,8 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
               const squeeze = parseFloat(e.target.value);
               setElements(prev => prev.map(el => {
                 if (el.id !== selectedElement.id) return el;
-                return { ...el, squeeze, paths: applyRotationToPathData({ ...el, squeeze }, createSplitRingPathFromEl(el, dsWidth, { squeeze })).paths };
+                // In place (keeps position/rotation/flip — see rebuildSplitRingInPlace)
+                return { ...el, squeeze, paths: rebuildSplitRingInPlace(el, dsWidth, { squeeze }) };
               }));
             }}
             className="w-14"
@@ -177,7 +181,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
               const squeezeCA = parseFloat(e.target.value);
               setElements(prev => prev.map(el => {
                 if (el.id !== selectedElement.id) return el;
-                return { ...el, squeezeCA, paths: applyRotationToPathData({ ...el, squeezeCA }, createSplitRingPathFromEl(el, dsWidth, { squeezeCA })).paths };
+                return { ...el, squeezeCA, paths: rebuildSplitRingInPlace(el, dsWidth, { squeezeCA }) };
               }));
             }}
             className="w-14"
@@ -192,7 +196,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
               const squeezeCB = parseFloat(e.target.value);
               setElements(prev => prev.map(el => {
                 if (el.id !== selectedElement.id) return el;
-                return { ...el, squeezeCB, paths: applyRotationToPathData({ ...el, squeezeCB }, createSplitRingPathFromEl(el, dsWidth, { squeezeCB })).paths };
+                return { ...el, squeezeCB, paths: rebuildSplitRingInPlace(el, dsWidth, { squeezeCB }) };
               }));
             }}
             className="w-14"
@@ -216,7 +220,7 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
               const squeeze = parseFloat(e.target.value);
               setElements(prev => prev.map(el => {
                 if (el.id !== selectedElement.id) return el;
-                const targetLength = el.stitchCount * dsWidth;
+                const targetLength = elementPathLength(el, dsWidth); // incl. end allowance (0 for circles)
                 const newPathData = el.shapeStyle === 'circle'
                   ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
                   : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);

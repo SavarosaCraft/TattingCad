@@ -7,7 +7,8 @@
 
 import { generateId } from '../utils/id';
 import { sampleBezierPath, calculatePathLength } from '../geometry/bezier';
-import { rotatePaths, createSplitRingPathFromEl } from '../geometry/paths';
+import { rotatePaths, rebuildSplitRingInPlace } from '../geometry/paths';
+import { elementPathLength } from '../geometry/stitchGeometry';
 import { getFoldPartner } from './useJoinActions';
 
 // How far a chain's rendered curve (arc length) may stretch or compress away
@@ -379,8 +380,11 @@ export function useInputHandlers(p: UseInputHandlersParams) {
         const newCenterY = pivotY + relX * sin + relY * cos;
         const newRotation = (el.rotation || 0) + delta;
         if (el.isSplitRing && el.splitPosition != null) {
+          // Rotate the ring's real arcs, then re-tidy them in place — the old
+          // canonical-rebuild-then-rotate here ignored flips, so dragging the
+          // rotation handle on a flipped split ring un-mirrored it.
           return { ...el, center: { x: newCenterX, y: newCenterY }, rotation: newRotation,
-            paths: rotatePaths(createSplitRingPathFromEl(el, p.dsWidth, { cx: newCenterX, cy: newCenterY }).paths, newCenterX, newCenterY, newRotation) };
+            paths: rebuildSplitRingInPlace({ ...el, paths: rotatePaths(el.paths, pivotX, pivotY, delta) }, p.dsWidth) };
         }
         return { ...el, center: { x: newCenterX, y: newCenterY }, rotation: newRotation,
           paths: rotatePaths(el.paths, pivotX, pivotY, delta) };
@@ -431,7 +435,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       p.setElements(prev => prev.map(el => {
         if (el.id !== handleInfo.elementId || el.type !== 'chain' || !el.paths?.length) return el;
         const path = el.paths[0];
-        const targetLength = el.stitchCount * p.dsWidth;
+        const targetLength = elementPathLength(el, p.dsWidth); // incl. end allowance
         const tolerance = targetLength * 0.07;
 
         const smartEndpointDrag = (isStart: boolean) => {

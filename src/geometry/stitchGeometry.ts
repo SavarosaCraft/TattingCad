@@ -53,11 +53,102 @@ export const getCircleStitchAngle = (element: any, stitchesBefore: number): numb
 // run. Circles (incl. Josephine knots) have no allowance and keep their own
 // angle formula (getCircleStitchAngle above).
 
-// End allowance, in ds, at each path end of this element. Always 0 in step 1
-// — no element carries one yet. Step 2 adds a stored per-element value;
-// step 3 returns it here for chains, split chains, teardrop rings and split
-// rings (circle-shaped rings, Josephine knots and lines stay 0).
-export const getEndAllowance = (_element: any): number => 0;
+// End allowance, in ds, at each path end of this element.
+//
+// Stored per element as `el.endAllowance` (session 57, step 2) — NOT a global
+// setting, because paths are saved as geometry: a global value would make
+// every saved path the wrong length the moment it changed. Absent = 0, so
+// every element saved before this field existed keeps its exact geometry.
+// Copy/paste/duplicate/undo carry it (they deep-clone elements); polar ghost
+// instances copy it explicitly (createPolarInstance).
+//
+// Live since step 3. Which shapes get it (design, handoff-session56.md):
+//   chains and split chains ............ yes
+//   teardrop rings (incl. fr:/mock) ...... yes
+//   split rings ......................... yes (each side has two ends)
+//   circle-shaped rings, Josephine knots, lines ... never (always 0)
+// A circle keeps any stored value; it applies again if toggled back to a
+// teardrop (the "size jumps 2 ds" case — intended).
+//
+// INVARIANT: an element's paths must have been built (count + 2a) ds long
+// for the `a` this returns. Every place that builds or resizes a path from
+// the stitch count uses elementPathLength / createSplitRingPath's allowance
+// argument for exactly this reason.
+export const allowsEndAllowance = (element: any): boolean => {
+  const type = effectiveElementType(element);
+  if (type === 'chain') return true;
+  if (type !== 'ring') return false;
+  if (element.isSplitRing) return true;
+  if (element.shapeStyle === 'circle') return false;
+  if (/^jk:/i.test(element.notation || '')) return false;
+  return true;
+};
+
+export const getEndAllowance = (element: any): number => {
+  if (!element || !allowsEndAllowance(element)) return 0;
+  const v = Number(element.endAllowance ?? 0);
+  return isFinite(v) && v > 0 ? v : 0;
+};
+
+// Path length (canvas units) the element's paths should have: its stitches
+// plus the allowance at each end. For a split ring this is both sides
+// together (each side is built separately by createSplitRingPath).
+export const elementPathLength = (element: any, dsWidth: number): number => {
+  const a = getEndAllowance(element);
+  const n = element.stitchCount || 0;
+  return (n + (element.isSplitRing ? 4 : 2) * a) * dsWidth;
+};
+
+// ── Tension (what the user sees) ↔ end allowance (what geometry uses) ──
+// The UI never shows "end allowance" or ds: it shows TENSION, 1–5, because
+// how much bare thread is left at the ends depends on how tight the person
+// tats (user decision, session 57). Decimals allowed. Linear:
+//   tension 1 (tightest) = 0 ds  ...  tension 5 (loosest) = MAX_END_ALLOWANCE ds
+// Internally everything — elements, presets, files — stays in ds
+// (`endAllowance`), so changing this mapping never alters saved geometry.
+export const MIN_TENSION = 1;
+export const MAX_TENSION = 5;
+export const MAX_END_ALLOWANCE = 1.5; // ds at tension 5
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+export const tensionToAllowance = (tension: number): number =>
+  (clamp(Number(tension) || MIN_TENSION, MIN_TENSION, MAX_TENSION) - MIN_TENSION)
+    / (MAX_TENSION - MIN_TENSION) * MAX_END_ALLOWANCE;
+// Rounded to 2 decimals for display (avoids 3.3000000000000003).
+export const allowanceToTension = (allowance: number): number =>
+  Math.round((MIN_TENSION + clamp(Number(allowance) || 0, 0, MAX_END_ALLOWANCE)
+    / MAX_END_ALLOWANCE * (MAX_TENSION - MIN_TENSION)) * 100) / 100;
+
+// Default for NEW elements, from the active thread preset (Thread
+// Properties). Presets saved before this setting existed have no field and
+// get the default. Default tension 3 = 0.75 ds (user decision, session 57).
+// The built-in DEFAULT_THREAD_PRESET copies (tattingindex.tsx,
+// useBeadState.ts, patternOutput.ts) all read DEFAULT_END_ALLOWANCE, so this
+// is the one place to change it.
+export const DEFAULT_TENSION = 3;
+export const DEFAULT_END_ALLOWANCE = tensionToAllowance(DEFAULT_TENSION);
+// Split rings have FOUR ends (two per side) meeting at their two points, so
+// the full allowance leaves a much bigger gap there than on a teardrop. User
+// decision (session 57, after comparing 0 / 0.25 / 0.5 / 0.75 / 1 ds side by
+// side): a new split ring gets this fraction of the preset value — 0.25 ds
+// per side end at the default of 1. Applied when the element is created and
+// stored on it like any other value, so changing this later never alters
+// existing split rings.
+export const SPLIT_RING_END_ALLOWANCE_FACTOR = 0.25;
+export const presetEndAllowance = (preset: any): number => {
+  const v = Number(preset?.endAllowance ?? DEFAULT_END_ALLOWANCE);
+  if (!isFinite(v)) return DEFAULT_END_ALLOWANCE;
+  return clamp(v, 0, MAX_END_ALLOWANCE);
+};
+// The preset's value as a tension (for Thread Properties and tooltips).
+export const presetTension = (preset: any): number => allowanceToTension(presetEndAllowance(preset));
+// An element's own tension, as it was applied: split rings store ¼ of the
+// preset value (SPLIT_RING_END_ALLOWANCE_FACTOR), so undo that first.
+// null for shapes that never have one (circles, JKs, lines).
+export const elementTension = (element: any): number | null => {
+  if (!element || !allowsEndAllowance(element)) return null;
+  const a = Number(element.endAllowance ?? 0) || 0;
+  return allowanceToTension(element.isSplitRing ? a / SPLIT_RING_END_ALLOWANCE_FACTOR : a);
+};
 
 // Fraction (0..1) of one stitched run's path at stitch position s.
 export const stitchRunFraction = (s: number, count: number, allowance = 0): number =>

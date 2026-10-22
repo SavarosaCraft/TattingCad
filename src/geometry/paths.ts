@@ -7,10 +7,12 @@
 // require dsWidth as an explicit parameter (previously closed over component state).
 
 import { sampleBezierPath, calculatePathLength } from '../geometry/bezier';
+import { getEndAllowance, elementPathLength, allowsEndAllowance } from '../geometry/stitchGeometry';
 
 // ── Chain length guard ───────────────────────────────────────────────────────
 
-// How far past its physical thread length (stitchCount * dsWidth) a chain's
+// How far past its physical thread length (stitchCount * dsWidth, plus the
+// end allowance at each end — elementPathLength) a chain's
 // endpoints are allowed to be dragged before it's flagged "too short". A
 // chain can always bulge (endpoints close together) or flatten out toward a
 // straight line (endpoints near the physical length apart) to span whatever
@@ -30,7 +32,7 @@ const TOO_SHORT_OVERSTRETCH_TOLERANCE = 1.10;
 export const isChainTooShort = (el: any, dsWidth: number): boolean => {
   if (el.isClosed || el.type !== 'chain' || el.paths?.length !== 1) return false;
   const p = el.paths[0];
-  const physicalLength = (el.stitchCount || 0) * dsWidth;
+  const physicalLength = elementPathLength(el, dsWidth);
   if (physicalLength <= 0) return false;
   const endpointDist = Math.hypot(p.endX - p.x, p.endY - p.y);
   return endpointDist > physicalLength * TOO_SHORT_OVERSTRETCH_TOLERANCE;
@@ -145,9 +147,10 @@ export const createSplitRingPath = (
   stitchCountA: number, stitchCountB: number,
   dsWidth: number,
   hFrac = 0, squeezeCA = 0.75, squeezeCB = 0.75,
+  endAllowance = 0, // ds of bare thread at EACH end of EACH side (both points)
 ) => {
-  const arcA = stitchCountA * dsWidth;
-  const arcB = stitchCountB * dsWidth;
+  const arcA = (stitchCountA + 2 * endAllowance) * dsWidth;
+  const arcB = (stitchCountB + 2 * endAllowance) * dsWidth;
   const hA = splitRingMaxH(arcA, squeezeCA);
   const hB = splitRingMaxH(arcB, squeezeCB);
   const hMax = Math.min(hA, hB);
@@ -191,6 +194,7 @@ export const createSplitRingPathFromEl = (
     opts.squeeze   ?? el.squeeze   ?? 0.25,
     opts.squeezeCA ?? el.squeezeCA ?? 0.75,
     opts.squeezeCB ?? el.squeezeCB ?? 0.75,
+    getEndAllowance(el),
   );
 };
 
@@ -261,12 +265,13 @@ export const rotatePathsAroundCenter = (
 ): any[] => {
   if (!paths || deltaDeg === 0) return paths;
   if (el?.isSplitRing && el?.splitPosition !== undefined && absoluteRot !== undefined) {
-    const mockEl = { ...el, center: { x: cx, y: cy }, rotation: absoluteRot };
-    return applyRotationToPathData(mockEl, createSplitRingPathFromEl(mockEl, dsWidth)).paths;
+    // Rotate the real arcs, then re-tidy in place (session 57) — rebuilding
+    // from rotation/flip fields mis-mirrored flipped split rings.
+    return rebuildSplitRingInPlace({ ...el, paths: rotatePaths(paths, cx, cy, deltaDeg) }, dsWidth);
   }
   if (el?.type === 'ring' && (el?.shapeStyle === 'teardrop' || (el?.squeeze !== undefined && el?.squeeze > 0)) && absoluteRot !== undefined) {
     const mockEl = { ...el, center: { x: cx, y: cy }, rotation: absoluteRot };
-    return applyRotationToPathData(mockEl, createTeardropPath(cx, cy, el.stitchCount * dsWidth, el.squeeze ?? 0)).paths;
+    return applyRotationToPathData(mockEl, createTeardropPath(cx, cy, elementPathLength(el, dsWidth), el.squeeze ?? 0)).paths;
   }
   return rotatePaths(paths, cx, cy, deltaDeg);
 };
@@ -381,14 +386,18 @@ export const resetElementShape = (el: any, dsWidth: number): any | null => {
   if (el.type === 'ghost' || el.isGhost) return null;
 
   if (el.isSplitRing) {
+    // Reset = upright, unmirrored canonical ring at its centre, so the flip
+    // flags are cleared too (session 57) — they'd otherwise describe a
+    // mirror the paths no longer have.
     return {
       squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75, rotation: 0, polarRotationGridId: null,
+      isFlippedH: false, isFlippedV: false,
       ...createSplitRingPathFromEl(el, dsWidth, { squeeze: 0.25, squeezeCA: 0.75, squeezeCB: 0.75 }),
     };
   }
 
   if (el.isClosed) {
-    const targetLength = el.stitchCount * dsWidth;
+    const targetLength = elementPathLength(el, dsWidth); // circles: allowance is always 0
     const newPathData = el.shapeStyle === 'circle'
       ? createCirclePath(el.center.x, el.center.y, targetLength, 0)
       : createTeardropPath(el.center.x, el.center.y, targetLength, 0);
@@ -397,7 +406,7 @@ export const resetElementShape = (el: any, dsWidth: number): any | null => {
 
   if (el.type === 'chain' && !el.isSplitChain && el.paths?.length === 1) {
     const cx = el.center.x, cy = el.center.y;
-    const chord = el.stitchCount * dsWidth * 0.92; // same ratio addChain uses
+    const chord = elementPathLength(el, dsWidth) * 0.92; // same ratio addChain uses (allowance included, as there)
     const halfChord = chord / 2;
     const arcLift = chord / 3; // same divisor addChain uses (see its own comment re: isTooShort margin)
     const startX = cx - halfChord, startY = cy;
@@ -414,6 +423,146 @@ export const resetElementShape = (el: any, dsWidth: number): any | null => {
   }
 
   return null;
+};
+
+// ── Resizing an existing element to a new thread length ──────────────────────
+// Shared by notation edits (computeElementAfterNotationEdit, tattingindex.tsx)
+// and "apply end allowance to selected" (resizeElementForAllowance below).
+// Moved here verbatim from computeElementAfterNotationEdit (session 57) —
+// verified identical output on random inputs before and after the move.
+
+// Uniformly scale paths about (cx, cy). Closed rings use this so a resize
+// keeps the ring's own squeeze / rotation / flip / Path Edit shaping.
+export const scalePathsAboutPoint = (paths: any[], cx: number, cy: number, scaleFactor: number): any[] =>
+  paths.map(path => {
+    const scPt = (px: number, py: number) => ({ x: cx + (px - cx) * scaleFactor, y: cy + (py - cy) * scaleFactor });
+    if (path.type === 'cubic') {
+      const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY);
+      const c1 = scPt(path.control1X, path.control1Y), c2 = scPt(path.control2X, path.control2Y);
+      return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+    }
+    const s = scPt(path.x, path.y), e = scPt(path.endX, path.endY), c = scPt(path.controlX, path.controlY);
+    return { ...path, x: s.x, y: s.y, endX: e.x, endY: e.y, controlX: c.x, controlY: c.y };
+  });
+
+// Re-bend one open-chain path to `newLength` keeping BOTH endpoints fixed
+// (cubic: bisection on the bow depth, bowing to the side it already bows
+// to; quadratic: scaled from its start by newLength / oldLength, as before).
+export const rebendChainPathToLength = (path: any, oldLength: number, newLength: number): any => {
+  const tolerance = newLength * 0.005;
+  if (path.type !== 'cubic') {
+    const startX = path.x, startY = path.y;
+    const scaleFactor = newLength / oldLength;
+    return { ...path,
+      endX: startX+(path.endX-startX)*scaleFactor, endY: startY+(path.endY-startY)*scaleFactor,
+      controlX: startX+(path.controlX-startX)*scaleFactor, controlY: startY+(path.controlY-startY)*scaleFactor };
+  }
+  const sx=path.x,sy=path.y,ex=path.endX,ey=path.endY;
+  const midX=(sx+ex)/2,midY=(sy+ey)/2;
+  const axisX=ex-sx,axisY=ey-sy,perpX=-axisY,perpY=axisX;
+  const perpLen=Math.hypot(perpX,perpY);
+  const oldMidX=(path.control1X+path.control2X)/2,oldMidY=(path.control1Y+path.control2Y)/2;
+  const sideSign=perpLen>0?(Math.sign(((oldMidX-midX)*perpX+(oldMidY-midY)*perpY))||1):1;
+  let minDepth=0,maxDepth=newLength,bestC1X=path.control1X,bestC1Y=path.control1Y,bestC2X=path.control2X,bestC2Y=path.control2Y;
+  for (let iter=0;iter<20;iter++) {
+    const tryDepth=(minDepth+maxDepth)/2;
+    const offX=perpLen>0?(perpX/perpLen)*tryDepth*sideSign:0;
+    const offY=perpLen>0?(perpY/perpLen)*tryDepth*sideSign:0;
+    const c1x=sx+axisX*0.33+offX,c1y=sy+axisY*0.33+offY;
+    const c2x=sx+axisX*0.67+offX,c2y=sy+axisY*0.67+offY;
+    const tryPath={type:'cubic',x:sx,y:sy,endX:ex,endY:ey,control1X:c1x,control1Y:c1y,control2X:c2x,control2Y:c2y};
+    const tryLen=calculatePathLength(sampleBezierPath(tryPath as any,20));
+    bestC1X=c1x;bestC1Y=c1y;bestC2X=c2x;bestC2Y=c2y;
+    if(Math.abs(tryLen-newLength)<tolerance)break;
+    if(tryLen<newLength)minDepth=tryDepth;else maxDepth=tryDepth;
+  }
+  return {...path,x:sx,y:sy,endX:ex,endY:ey,control1X:bestC1X,control1Y:bestC1Y,control2X:bestC2X,control2Y:bestC2Y};
+};
+
+// Rebuild a split ring's two arcs (new counts / squeeze / allowance via
+// `overrides`) while keeping it exactly where and how it currently sits.
+// Position, orientation AND mirror state are read from its existing side-A
+// arc — chord midpoint, chord direction, and which side it bulges to — not
+// from the rotation / isFlippedH / isFlippedV fields. (Session 57 found that
+// rebuilding a FLIPPED split ring from those fields via
+// applyRotationToPathData — what the squeeze sliders, Reset and notation
+// edits do today — reflects it the wrong way; see handoff-session57.md.)
+// Falls back to that field-based rebuild only if the element has no paths.
+export const rebuildSplitRingInPlace = (el: any, dsWidth: number, overrides: any = {}): any[] => {
+  const next = { ...el, ...overrides };
+  const A = el.paths?.[0];
+  if (!A) return applyRotationToPathData(next, createSplitRingPathFromEl(next, dsWidth)).paths;
+  const canon = createSplitRingPathFromEl(next, dsWidth, { cx: 0, cy: 0 }).paths;
+  // Frame = side A's chord (middle + direction) and which side the ring
+  // bulges to. Side A can be dead straight (overall squeeze 0 makes the
+  // shorter side straight), so the bulge side is taken from whichever arc
+  // bulges more — side B bulges the opposite way, hence the minus.
+  const frame = (pa: any, pb: any) => {
+    const l = Math.hypot(pa.endX - pa.x, pa.endY - pa.y) || 1;
+    const u = { x: (pa.endX - pa.x) / l, y: (pa.endY - pa.y) / l };
+    const n = { x: -u.y, y: u.x };
+    const c = { x: (pa.x + pa.endX) / 2, y: (pa.y + pa.endY) / 2 };
+    const off = (p: any) => { const m = sampleBezierPath(p, 2)[1]; return (m.x - c.x) * n.x + (m.y - c.y) * n.y; }; // t = 0.5
+    const oa = off(pa), ob = pb ? off(pb) : 0;
+    const side = Math.sign(Math.abs(oa) >= Math.abs(ob) ? oa : -ob) || 1;
+    return { u, n, c, side };
+  };
+  const fc = frame(canon[0], canon[1]), fe = frame(A, el.paths[1]);
+  const refl = fc.side === fe.side ? 1 : -1;
+  const map = (x: number, y: number) => {
+    const dx = x - fc.c.x, dy = y - fc.c.y;
+    const a = dx * fc.u.x + dy * fc.u.y;
+    const b = (dx * fc.n.x + dy * fc.n.y) * refl;
+    return { x: fe.c.x + a * fe.u.x + b * fe.n.x, y: fe.c.y + a * fe.u.y + b * fe.n.y };
+  };
+  return canon.map((p: any) => {
+    const s = map(p.x, p.y), e = map(p.endX, p.endY);
+    const c1 = map(p.control1X, p.control1Y), c2 = map(p.control2X, p.control2Y);
+    return { ...p, x: s.x, y: s.y, endX: e.x, endY: e.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+  });
+};
+
+// "Apply end allowance" (session 57, step 5): the patch that gives `el` a
+// new end allowance `allowance` (ds) and rebuilds its paths at the matching
+// length, or null when the element can't take one (circle rings, JKs, lines,
+// ghosts) or already has exactly that value.
+//   teardrop ring  — scaled about its centre (keeps squeeze/rotation/flips
+//                    and any Path Edit shaping), like a notation edit;
+//   split ring     — rebuilt from its own squeeze/split fields, in place
+//                    (rebuildSplitRingInPlace — correct for flipped rings);
+//   chain          — re-bent with both endpoints fixed, like a notation
+//                    edit: a single path targets the nominal new length; a
+//                    multi-path chain gives each path its share of it.
+// Joins are by picot id and survive; join lines stretch as with any resize.
+export const resizeElementForAllowance = (el: any, allowance: number, dsWidth: number): any | null => {
+  if (!el || el.type === 'ghost' || el.isGhost || !allowsEndAllowance(el)) return null;
+  const a = Math.max(0, Number(allowance) || 0);
+  if (getEndAllowance(el) === a && (el.endAllowance ?? 0) === a) return null;
+  const next = { ...el, endAllowance: a };
+  if (!el.paths?.length) return { endAllowance: a };
+
+  if (el.isSplitRing) {
+    return { endAllowance: a, paths: rebuildSplitRingInPlace(el, dsWidth, { endAllowance: a }) };
+  }
+
+  const oldLength = elementPathLength(el, dsWidth);
+  const newLength = elementPathLength(next, dsWidth);
+  if (!(oldLength > 0) || Math.abs(oldLength - newLength) <= 0.01) return { endAllowance: a };
+
+  if (el.isClosed) {
+    return { endAllowance: a, paths: scalePathsAboutPoint(el.paths, el.center.x, el.center.y, newLength / oldLength) };
+  }
+
+  if (el.paths.length === 1) {
+    return { endAllowance: a, paths: [rebendChainPathToLength(el.paths[0], oldLength, newLength)] };
+  }
+  const lens = el.paths.map((p: any) => calculatePathLength(sampleBezierPath(p, 20)));
+  const total = lens.reduce((s: number, x: number) => s + x, 0) || 1;
+  return {
+    endAllowance: a,
+    paths: el.paths.map((p: any, i: number) =>
+      rebendChainPathToLength(p, lens[i], lens[i] * newLength / total)),
+  };
 };
 
 // Apply an angle preset to a line element (presetDeg = 0 → horizontal).
