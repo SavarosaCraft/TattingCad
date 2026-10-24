@@ -84,19 +84,53 @@ const STITCH_X_EXTENTS: Record<string, { xMin: number; xMax: number }> = {
 // a flat padding term that doesn't scale with thread thickness. Both terms
 // were previously inlined as bare numbers (`dsWidth * 0.125 + 5`) at the one
 // call site; named here since their roles (proportional vs. flat) differ.
+//
+// Session 57 (user decision, after mock-ups): the stitches sit INSIDE the
+// schematic line — the line is the OUTER edge of the tatting (the stitch
+// heads), and picots, whose bases are on the line, grow straight out of it.
+// The outermost edge of every stitch symbol is WEDGE_SHAPES' smallest
+// y_outer = 0.05 normalized units = 0.05 × (dsWidth / 0.4) = 0.125 × dsWidth
+// inward of the offset, so an offset of exactly 0.125 × dsWidth (padding 0)
+// puts that edge on the line. It was 5 px further out before, which left the
+// stitches roughly centred on the line. Inward = away from the picots, for
+// rings and chains alike (Flip reverses a chain's direction along with its
+// picots, so this holds for flipped chains too).
+//
+// Matched to what the user SEES (session 57 follow-up — "realistic is
+// smaller than the schematic"): the schematic draws the line as a
+// SCHEMATIC_STROKE_WIDTH-wide stroke centred on it, so its visible outer
+// edge is half that outside the line; the stitch symbols have their own
+// black outline (STITCH_OUTLINE_DS_FRACTION × dsWidth wide, also centred),
+// whose outer half is visible. The padding below puts the two visible outer
+// edges on top of each other: half the schematic stroke minus half the
+// stitch outline (1.875 − 0.625 = 1.25 at dsWidth 10).
 const OFFSET_DS_FRACTION = 0.125;
-const OFFSET_BASE_PADDING = 5;
+// Keep in step with the strokeWidth="3.75" ring/chain paths in
+// tattingindex.tsx's schematic layer.
+const SCHEMATIC_STROKE_WIDTH = 3.75;
+// = the stitch outline width used in stitchesToSVG (0.05 * scale, with
+// scale = dsWidth / 0.4).
+const STITCH_OUTLINE_DS_FRACTION = 0.125;
+const offsetBasePadding = (dsWidth: number): number =>
+  SCHEMATIC_STROKE_WIDTH / 2 - (STITCH_OUTLINE_DS_FRACTION * dsWidth) / 2;
 
 // Picot tip length, in DS-width units (multiplied by dsWidth to get the
 // drawn length). Two keyword forms map to the same three sizes — sp/p/lp
 // (tatting's small/medium/large picot shorthand) and small/medium/large
 // (their full-word equivalents) — both appear in saved notation/UI, so both
 // need an entry here rather than normalizing to one form at this layer.
+//
+// Session 57: shortened one size after the stitches moved inside the line
+// (picots now start at the stitch heads, so the old lengths stuck out too
+// far). User decision: old regular → large, old small → regular, and small
+// made smaller again (0.7, keeping roughly the old small:regular ratio).
+// Was sp 1.2 / p 2.0 / lp 3.2. Schematic picot arms (PICOT_SIZE in
+// tattingindex.tsx) are unchanged.
 const PICOT_TIP_LENGTH_DS: Record<string, number> = {
-  sp: 1.2, p: 2.0, lp: 3.2,
-  small: 1.2, medium: 2.0, large: 3.2,
+  sp: 0.7, p: 1.2, lp: 2.0,
+  small: 0.7, medium: 1.2, large: 2.0,
 };
-const PICOT_TIP_LENGTH_DEFAULT = 2.0; // used when picot.length is missing/unrecognized
+const PICOT_TIP_LENGTH_DEFAULT = 1.2; // = regular; used when picot.length is missing/unrecognized
 
 // Half-width, in DS-stitch-count units, of the gap left in the stitch fill
 // on either side of a picot's stitch position (picot.stitchesBefore) — the
@@ -516,7 +550,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     renderWedgePathShapes(el.paths, el.stitchCount, stitchIndex, scale, offsetAmount, stitchType, getEndAllowance(el));
 
   const scale = dsWidth / 0.4; // calculateStitchScale inlined (see extraction plan) — 0.4 normalized units = 1 DS width, see WEDGE_SHAPES comment above
-  const offsetAmount = dsWidth * OFFSET_DS_FRACTION + OFFSET_BASE_PADDING;
+  const offsetAmount = dsWidth * OFFSET_DS_FRACTION + offsetBasePadding(dsWidth);
 
     // ── bounds tracking ──
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

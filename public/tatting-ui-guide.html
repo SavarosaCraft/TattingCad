@@ -206,7 +206,7 @@
 <!-- ═══════════════════════════ MENUS ═══════════════════════════ -->
 <section id="tab-menus" class="tab-panel active">
   <h2>Menu Bar</h2>
-  <p class="light" style="margin-bottom:1.25rem;">Four menus at the top of the screen: <strong>File</strong>, <strong>Arrange</strong>, <strong>Options</strong>, and <strong>Help</strong>. All menus are scrollable if the window is short.</p>
+  <p class="light" style="margin-bottom:1.25rem;">Five menus at the top of the screen: <strong>File</strong>, <strong>View</strong>, <strong>Arrange</strong>, <strong>Options</strong>, and <strong>Help</strong>. All menus are scrollable if the window is short.</p>
 
   <!-- FILE -->
   <div class="card">
@@ -224,8 +224,8 @@
     <div class="menu-item">
       <div class="menu-item-icon">💾</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Save Project <span class="shortcut-badge">Ctrl+S</span></div>
-        <div class="menu-item-desc">Opens the Save dialog to name the project, then saves a <code class="code-inline">.json</code> file. Generates a prveiw for the loader.</div>
+        <div class="menu-item-name">Save As…</div>
+        <div class="menu-item-desc">Saves the project under a new name or location.</div>
       </div>
     </div>
     <div class="menu-item">
@@ -255,8 +255,15 @@
     <div class="menu-item">
       <div class="menu-item-icon">📄</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Output Notation</div>
-        <div class="menu-item-desc">Generates written pattern text onto the clipboard. Elements with order number will be listed in order. Uses thread properties to estimate needed thread length. Also if pattern has any beads it will summarize them by type.</div>
+        <div class="menu-item-name">Output notation to clipboard</div>
+	<div class="menu-item-desc">Generates written pattern text onto the clipboard. Elements with order number will be listed in order. Uses thread properties to estimate needed thread length. Also if pattern has any beads it will summarize them by type. The text follows the app's language; the notation itself stays the same.</div>
+      </div>
+    </div>
+	<div class="menu-item">
+      <div class="menu-item-icon">🧹</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Clean Up Duplicates…</div>
+        <div class="menu-item-desc">Finds elements stacked exactly on top of each other (same notation, material, rotation and position) and offers to remove them. Also runs automatically after saving and after opening a file — it always asks first. One Undo brings everything back.</div>
       </div>
     </div>
   </div>
@@ -302,6 +309,13 @@
       <div class="menu-item-body">
         <div class="menu-item-name">Show Invalid notation</div>
         <div class="menu-item-desc">Shows or hides an indicator glow for objects with invalid notation.</div>
+      </div>	    
+    </div>
+	<div class="menu-item">
+      <div class="menu-item-icon">👁</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Show / Hide Editing Artifacts</div>
+        <div class="menu-item-desc">Hides the construction markers — joint picot dots and arms, guide points and connection lines — so you can see the pattern on its own.</div>
       </div>
     </div>
 
@@ -382,12 +396,36 @@
 
     <div class="menu-header">Polar Grid</div>
     <div class="menu-item">
+      <div class="menu-item-icon">🕸️</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Grid:</div>
+        <div class="menu-item-desc">Picks which polar grid the three actions below use. Shows "No polar grids" if none exist.</div>
+      </div>
+    </div>
+    <div class="menu-item">
       <div class="menu-item-icon">🎯</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Center to Polar Grid</div>
-        <div class="menu-item-desc">Moves selected elements so their bounding box center sits on the active polar grid's origin point.</div>
+        <div class="menu-item-desc">Moves selected elements so their bounding box center sits on the grid's origin point.</div>
       </div>
     </div>
+    <div class="menu-item">
+      <div class="menu-item-icon">↔</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Align to PolarGrid Horizontally</div>
+        <div class="menu-item-desc">Moves the selection left or right only, until its center lines up with the grid's center.</div>
+      </div>
+    </div>
+    <div class="menu-item">
+      <div class="menu-item-icon">↕</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Align to PolarGrid Vertically</div>
+        <div class="menu-item-desc">Moves the selection up or down only, until its center lines up with the grid's center.</div>
+      </div>
+    </div>
+	
+	
+	
 
     <div class="menu-header">Array <span class="disabled-note">(requires selection)</span></div>
     <div class="menu-item">
@@ -418,6 +456,13 @@
         <div class="menu-item-desc">Creates a linked array of ghost copies that follow the source element — edits to the original propagate automatically to all copies. Useful for patterns with repeating motifs that need to stay in sync.</div>
       </div>
     </div>
+	<div class="menu-item">
+      <div class="menu-item-icon">🕸️</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Polar Grids…</div>
+        <div class="menu-item-desc">Opens the Polar Grids panel (also in the Options menu).</div>
+      </div>
+    </div>
   </div>
 <!-- Optons -->
   <div class="card">
@@ -442,14 +487,14 @@
       <div class="menu-item-icon">🪩</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Bead Library</div>
-        <div class="menu-item-desc">>Opens the Bead Library panel.</div>
+        <div class="menu-item-desc">Opens the Bead Library panel.</div>
       </div>
     </div>
 	<div class="menu-item">
       <div class="menu-item-icon">🕸️</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Polar grids</div>
-        <div class="menu-item-desc">>Opens the Polar grid panel.</div>
+        <div class="menu-item-desc">Opens the Polar grid panel.</div>
       </div>
     </div>
 	<div class="menu-item">
@@ -469,11 +514,18 @@
 		<div class="menu-item">
       <div class="menu-item-icon">🧲</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Snap</div>
+		<div class="menu-item-name">Snap to Grid</div>
         <div class="menu-item-desc">Toggles Snap.</div>
       </div>
     </div>
 		<div class="menu-item">
+	<div class="menu-item">
+      <div class="menu-item-icon">🌐</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Language</div>
+        <div class="menu-item-desc">Switches the app language. Menus, panels and the copied pattern text follow it; notation stays the same.</div>
+      </div>
+    </div>
       <div class="menu-item-icon">⏫</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Load Theme</div>
@@ -505,13 +557,6 @@
       <div class="menu-item-body">
         <div class="menu-item-name">UI Reference Guide</div>
         <div class="menu-item-desc">This document — a complete reference for every menu, toolbar, panel, dialog, and splash screen item.</div>
-      </div>
-    </div>
-    <div class="menu-item">
-      <div class="menu-item-icon">⛯</div>
-      <div class="menu-item-body">
-        <div class="menu-item-name">GitHub</div>
-        <div class="menu-item-desc">Opens the TattingCAD GitHub repository. Check releases, follow development, or report issues.</div>
       </div>
     </div>
     <div class="menu-item">
@@ -549,7 +594,7 @@
     <div class="menu-item">
       <div class="menu-item-icon">✋</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Pan <span class="shortcut-badge">Tab / Space</span></div>
+        <div class="menu-item-name">Pan <span class="shortcut-badge">Tab / Space (hold)</span></div>
         <div class="menu-item-desc">Drag the canvas to scroll the view. Middle-click drag always pans regardless of the active tool.</div>
       </div>
     </div>
@@ -563,14 +608,14 @@
     <div class="menu-item">
       <div class="menu-item-icon">🔄</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Rotate mode<span class="shortcut-badge">Tab / Space</span></div>
+        <div class="menu-item-name">Rotate mode <span class="shortcut-badge">Shift (hold)</span></div>
         <div class="menu-item-desc">Toggle to see rotation handles.</div>
       </div>
     </div>
     <div class="menu-item">
       <div class="menu-item-icon">↔️</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Ortho Lock<span class="shortcut-badge">Tab</span></div>
+        <div class="menu-item-name">Ortho Lock <span class="shortcut-badge">Shift (hold, while dragging)</span></div>
         <div class="menu-item-desc">Toggle to constrain movement to horizontal or vertical only.</div>
       </div>
     </div>	
@@ -585,7 +630,7 @@
       <div class="menu-item-icon">📐</div>
       <div class="menu-item-body">
         <div class="menu-item-name">Ruler</div>
-        <div class="menu-item-desc">Click two points to measure the distance between them in canvas units and approximate mm. Press Escape to clear.</div>
+        <div class="menu-item-desc">Click two points to measure the distance between them in canvas units and approximate mm. Click again, or press Escape, to clear.</div>
       </div>
     </div>
 	<div class="menu-header">Editor modes</div>	
@@ -670,6 +715,15 @@
         <div class="menu-item-desc">Decreases the canvas zoom level by one step.</div>
       </div>
     </div>
+	
+	<div class="menu-item">
+      <div class="menu-item-icon">⬚</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Zoom to Rectangle <span class="shortcut-badge">Z</span></div>
+        <div class="menu-item-desc">Drag a box on the canvas to zoom into that area. Holding Z and dragging does the same with any tool (Schematic view).</div>
+      </div>
+    </div>
+		
 	<div class="menu-header">Reference Image</div>
     <div class="menu-item">
       <div class="menu-item-icon">🖼</div>
@@ -704,7 +758,7 @@
     <div class="menu-item">
       <div class="menu-item-icon">↪</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Redo <span class="shortcut-badge">Shift+Z</span></div>
+        <div class="menu-item-name">Redo <span class="shortcut-badge">Shift+Z / Ctrl+Shift+Z</span></div>
         <div class="menu-item-desc">Steps forward after an undo.</div>
       </div>
     </div>
@@ -729,14 +783,35 @@
         <div class="menu-item-desc">Pastes elements onto the canvas with a small offset. In Beading mode pastes the bead configuration to the selected element.</div>
       </div>
     </div>
+	    <div class="menu-item">
+      <div class="menu-item-icon">⤓</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Send to Back <span class="shortcut-badge">Home</span></div>
+        <div class="menu-item-desc">Moves the selected elements behind everything else.</div>
+      </div>
+    </div>
+    <div class="menu-item">
+      <div class="menu-item-icon">⤒</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Bring to Front <span class="shortcut-badge">End</span></div>
+        <div class="menu-item-desc">Moves the selected elements in front of everything else.</div>
+      </div>
+    </div>
+    <div class="menu-item">
+      <div class="menu-item-icon">🗑</div>
+      <div class="menu-item-body">
+        <div class="menu-item-name">Delete <span class="shortcut-badge">Del / Backspace</span></div>
+        <div class="menu-item-desc">Same as the left toolbar's Delete — handy on touch screens. Greyed out in Realistic view and in Picot Join, Beading and Tatting Order modes.</div>
+      </div>
+    </div>	
   <div class="menu-item">
       <div class="menu-item-icon">⬛</div>
       <div class="menu-item-body">
-        <div class="menu-item-name">Fit View <span class="shortcut-badge">F</span></div>
+        <div class="menu-item-name">Fit All Elements <span class="shortcut-badge">F</span></div>
         <div class="menu-item-desc">Zooms and pans so all elements are visible at once.</div>
       </div>
     </div>
- </section>
+ </div>
 </section>
 <!-- ═══════════════════════════ PROPERTY BAR ═══════════════════════════ -->
 <section id="tab-propbar" class="tab-panel">
@@ -757,19 +832,19 @@
       <div class="field-desc">Adds "RW" to the end of notation output. When you need to tat on the other side.</div>
     </div>
     <div class="field-row">
-      <div class="field-label">Rotatie 90 Degree CCW</div>
+      <div class="field-label">Rotate 90 Degree CCW</div>
       <div class="field-desc">Rotates 90 degree CCW. Works for single elements and groups.</div>
     </div>
     	<div class="field-row">
       <div class="field-label">Rotation angle</div>
-      <div class="field-desc">Type any angle and press Enter to rotate to that angle precisely. Works for single elements and groups.</div>
+      <div class="field-desc">Type any angle and press Enter to rotate to that angle precisely. Works for single elements and groups. Also accepts calculations: <code class="code-inline">+15</code> / <code class="code-inline">-15</code> (relative), <code class="code-inline">x*2</code> (<code class="code-inline">x</code> = current value), <code class="code-inline">90/4</code>.</div>
     </div>    	
 	<div class="field-row">
       <div class="field-label">Rotation Nudge</div>
       <div class="field-desc">Use the arrows to fine-tune the rotation to your liking.</div>
     </div>
 	<div class="field-row">
-      <div class="field-label">Rotatie 90 Degree CW</div>
+      <div class="field-label">Rotate 90 Degree CW</div>
       <div class="field-desc">Rotates 90 degree CW. Works for single elements and groups.</div>
     </div>	
 	<div class="field-row">
@@ -789,24 +864,45 @@
       <div class="field-desc">Toggles notation visibility.</div>
     </div>
 	<div class="field-row">
-      <div class="field-label">Transformation Axis</div>
-      <div class="field-desc">Links/unlinks element(s) to a polar grid so rotation and flip operations pivot around the grid center instead of the element center.</div>
+      <div class="field-label">Polar rotation center</div>
+      <div class="field-desc">Dropdown: pick a polar grid so rotation and flip pivot around the grid's center, or <em>Own center</em> to use the element's own center. Only visible grids are listed.</div>
     </div>
 	    <div class="field-row">
       <div class="field-label">Material</div>
       <div class="field-desc">Dropdown to assign a thread material. Color comes from Material properties. Materials are defined in the Materials panel.</div>
     </div>
+      <div class="field-row">
+      <div class="field-label">Picot Tools (wand)</div>
+      <div class="field-desc">Next to the notation box (rings and chains, not split rings). Reverse notation, clear unjoined picots, add picots, fill density, compact repeats and scale — see Help → Features.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Reset</div>
+      <div class="field-desc">Puts the shape back to default (chain curve / ring squeeze) and sets rotation to 0. Not available for ghosts, lines, or split chains.</div>
+    </div>
+	    <div class="field-row">
+      <div class="field-label">Tension</div>
+      <div class="field-desc">The ring's tension, 1 (tight) – 5 (loose). Use −/+ (steps of 0.5) or type a value. Changing it resizes the ring (one undo step) and becomes your default for new rings. Split rings get a quarter of it; chains, circles, Josephine knots and lines get none.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Round</div>
+      <div class="field-desc">Dropdown next to Order # — assign the element to a round without entering Tatting Order mode. Lines have it too.</div>
+    </div>
+  
   </div>
   <div class="card">
     <div class="modal-title">Ring</div>
     <div class="field-row">
       <div class="field-label">Shape</div>
-      <div class="field-desc">Toggle between <strong>Circle</strong> and <strong>Teardrop</strong>. Teardrop has a pointed end for depicting folded rings.</div>
+            <div class="field-desc">Toggle between <strong>Circle</strong> and <strong>Teardrop</strong>. Teardrop has a pointed end for depicting folded rings. The third button, <strong>Convert to Josephine Knot</strong>, asks for confirmation first — all picots and connections are removed and the stitches change from ds to ss.</div>
     </div>
     <div class="field-row">
       <div class="field-label">Squeeze</div>
       <div class="field-desc">Stretches or compresses the ring vertically without changing stitch count. Positive = taller, negative = flatter.</div>
     </div>
+    <div class="field-row">
+      <div class="field-label">Reset (squeeze)</div>
+      <div class="field-desc">Resets squeeze and rotation to 0. Keeps the element's polar rotation center.</div>
+    </div>  
   </div>
   <div class="card">
     <div class="modal-title">Split Ring</div>
@@ -819,12 +915,12 @@
       <div class="field-desc">Stitch notation for the second half.</div>
     </div>
     <div class="field-row">
-      <div class="field-label">Squeeze</div>
-      <div class="field-desc">Stretches or compresses the ring vertically without changing stitch count.</div>
-    </div>   
+      <div class="field-label">Sq / CA / CB</div>
+      <div class="field-desc">Three squeeze sliders for split rings. Changing them never changes the stitch count. A Reset button sets them back to 0.</div>
+    </div> 
 	<div class="field-row">
       <div class="field-label">Material A / B</div>
-      <div class="field-desc">Independent materials for each half.</div>
+      <div class="field-desc">Independent materials for each half. Flipping a split ring keeps each color on its own half.</div>
     </div>
   </div>
   <div class="card">
@@ -837,19 +933,67 @@
       <div class="field-label">=</div>
       <div class="field-desc">Toggle if all beads are the same or different.</div>
     </div>
-	    <div class="field-row">
+	<div class="field-row">
       <div class="field-label">Dropdowns</div>
       <div class="field-desc">Select the beads from the Bead Library</div>
     </div>
-	    <div class="field-row">
+	<div class="field-row">
       <div class="field-label">Copy/cut/paste Beads</div>
       <div class="field-desc">Copies, cuts or Pastes the beads on the string.</div>
+	  </div>
     <div class="field-row">
       <div class="field-label">Order #</div>
       <div class="field-desc">Lines can carry a tatting order number just like rings and chains. The number displays at the arc midpoint of the line on canvas and is included in SVG export and pattern output.</div>
     </div>
   </div>
-</section>
+   <div class="card">
+    <div class="modal-title">Multiple elements selected</div>
+    <div class="field-row">
+      <div class="field-label">Group name / color</div>
+      <div class="field-desc">Shown when groups are selected: rename the group and pick its color.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Notation</div>
+      <div class="field-desc">One box that applies to all selected elements. Only available when they're the same type. If any joins would be lost, you're asked once for the whole selection.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">A: / B:</div>
+      <div class="field-desc">For a selection of split rings: one box per side, each applied to every selected split ring.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Rotate / Flip</div>
+      <div class="field-desc">±90° buttons, a Δ° box (accepts calculations, like the single rotation box) and Flip H / V.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Label offset / Hide label</div>
+      <div class="field-desc">Same as for a single element, applied to all.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Polar rotation center</div>
+      <div class="field-desc">Same as for a single element, applied to all.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Material</div>
+      <div class="field-desc">Assigns one material to every selected element.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Line beads</div>
+      <div class="field-desc">When lines are selected: paste a copied bead setup to all of them.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Scale</div>
+      <div class="field-desc">Scales the notation of every element that can be scaled; shows how many of the selection can be.</div>
+    </div>
+	    <div class="field-row">
+      <div class="field-label">Tension</div>
+      <div class="field-desc">Shows the selected rings' tension, or <strong>–</strong> when they differ. Setting it applies to every ring and split ring in the selection (one undo step) and becomes your default. Also in the group bar.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Reset</div>
+      <div class="field-desc">Reset transformation for every selected element.</div>
+    </div>
+  </div>
+  
 </section>
 <!-- ═══════════════════════════ PANELS ═══════════════════════════ -->
 <section id="tab-panels" class="tab-panel">
@@ -863,47 +1007,53 @@
     <div class="field-row"><div class="field-label">+ Add Material</div><div class="field-desc">Creates a new blank material entry.</div></div>
 	<div class="field-row"><div class="field-label">Select All</div><div class="field-desc">Selects all elements with the same material.</div></div>
     <div class="field-row"><div class="field-label">Delete</div><div class="field-desc">Removes the material. Elements using it revert to the default color.</div></div>
+	<div class="field-row"><div class="field-label">Default Thread</div><div class="field-desc">The built-in material. It can't be renamed or deleted.</div></div>	
   </div>
 
   <div class="card">
     <div class="modal-title">🧵 Thread Properties Panel</div>
     <div class="modal-subtitle">Thread settings that drive stitch size calculations project-wide. All calculations are based on these data points. More info in Help.</div>
-    <div class="field-row"><div class="field-label">Thread name</div><div class="field-desc">Name your thread weight, and type and tatting style.</div></div>
-    <div class="field-row"><div class="field-label">Measurements</div><div class="field-desc">Fill out the fields according the Help UI to make personalized sizing for your project.</div></div>
-	<div class="field-row"><div class="field-label">Alternative calculation</div><div class="field-desc">An other way to fill out the needed fields for picot length.</div></div>
-	<div class="field-row"><div class="field-label">+Add</div><div class="field-desc">Add a new thread to your library. With custom measurements.</div></div>
-  </div>
+    <div class="field-row"><div class="field-label">Preset name</div><div class="field-desc">Name your thread weight, type and tatting style. The panel title is <strong>Thread Presets</strong>.</div></div>
+    <div class="field-row"><div class="field-label">Measurements</div><div class="field-desc">20 DS working thread and 20 DS core thread — measure them as described in Help → Quick Start.</div></div>
+    <div class="field-row"><div class="field-label">Picot Lengths</div><div class="field-desc">Regular and Joined picot. Long picot is automatic (2 × regular); Short picot is automatic (½ × regular) unless you enter the short-picot sample below.</div></div>
+	<div class="field-row"><div class="field-label">Tatting Tension</div><div class="field-desc">How tightly you close your rings: 1 = tight, 5 = loose (decimals OK, default 3). Saved with the preset and used for new rings; existing rings keep theirs. The Tension box in the property bar changes this value too.</div></div>
+    <div class="field-row"><div class="field-label">Alternative Calculation</div><div class="field-desc">Measure a test sample of 20 DS + 10 picots and enter the total length used: "20 DS + 10 regular picots sample", and optionally "20 DS + 10 short picots sample".</div></div>
+    <div class="field-row"><div class="field-label">Per-Stitch Summary</div><div class="field-desc">Read-only results: working thread per DS and per SS, core per DS, long and short picot.</div></div>
+    <div class="field-row"><div class="field-label">+Add</div><div class="field-desc">Add a new thread preset with its own measurements.</div></div>
+	</div>
+  
+  
   <div class="card">
     <div class="modal-title">🪩 Bead Library Panel</div>
     <div class="modal-subtitle">Define custom bead types with names, size keys, and colors.</div>
     <div class="field-row"><div class="field-label">Bead name</div><div class="field-desc">A label for the bead type (e.g. "Seed bead 11/0 gold").</div></div>
-    <div class="field-row"><div class="field-label">Size key</div><div class="field-desc">Maps to Y (small), Z (medium), or V (large). The size of the beads are based on your Double stitch width - only 3 sizes are available.</div></div>
+    <div class="field-row"><div class="field-label">Size key</div><div class="field-desc">Small (S), Medium (M) or Large (L). The same sizes appear as Y / Z / V in bead notation and in the pattern text.</div></div>
 	<div class="field-row"><div class="field-label">+Add</div><div class="field-desc">Create a new custom bead.</div></div>
     <div class="field-row"><div class="field-label">Size</div><div class="field-desc">Choose one of the available sizes S/M/L.</div></div>
-	<div class="field-row"><div class="field-label">Shape</div><div class="field-desc">Choose the shape of your bead.</div></div>
+	<div class="field-row"><div class="field-label">Shape</div><div class="field-desc">Circle, Square, Rectangle, Diamond, Tip Out or Tip In.</div></div>
 	<div class="field-row"><div class="field-label">Color</div><div class="field-desc">Display color for this bead in the canvas preview.</div></div>
 	<div class="field-row"><div class="field-label">Delete</div><div class="field-desc">Remove selected Bead from library.</div></div>
-		  </div>
+	<div class="field-row"><div class="field-label">Size Class Settings</div><div class="field-desc">Controls how each size class (S/M/L) renders — the "× DS width" multiplier sets the bead's diameter on canvas, and the color is the default for new beads of that size.</div></div>
+	</div>
   
 
-  <div class="card">
+    <div class="card">
     <div class="modal-title">🕸️ Polar Grid Panel</div>
     <div class="modal-subtitle">Create concentric snap grids for radial patterns. Grids are saved globally across all projects.</div>
-    <div class="field-row"><div class="field-label">Grid list</div><div class="field-desc">Left column showing all grids. Click to select. Rename by editing the name field at the top of the editor.</div></div>
-    <div class="field-row"><div class="field-label">+ Add Grid</div><div class="field-desc">Creates a new empty polar grid with default settings.</div></div>
-    <div class="field-row"><div class="field-label">Grid name</div><div class="field-desc">Editable label. Use descriptive names like "Round 1" or "Outer" when working with multiple grids.</div></div>
-    <div class="field-row"><div class="field-label">Visible (master)</div><div class="field-desc">Hides or shows the entire grid. Hidden grids still snap if snap is enabled.</div></div>
-    <div class="field-row"><div class="field-label">Center X / Y</div><div class="field-desc">Canvas coordinates of the grid's center. The ⌖ button resets to origin (0, 0).</div></div>
-    <div class="field-row"><div class="field-label">Color swatch</div><div class="field-desc">Display color for this grid's lines and dots. Useful to tell multiple grids apart.</div></div>
-    <div class="field-row"><div class="field-label">Opacity</div><div class="field-desc">How visible the grid is on canvas. Reduce when it's distracting while working.</div></div>
-    <div class="field-row"><div class="field-label">Global offset°</div><div class="field-desc">Rotates all spokes for this grid by a fixed number of degrees.</div></div>
-    <div class="field-row"><div class="field-label">+ Add Ring</div><div class="field-desc">Adds a concentric ring. Each ring has radius, division count, visibility, snap, and per-ring offset.</div></div>
-    <div class="field-row"><div class="field-label">Ring: radius</div><div class="field-desc">Distance from center in canvas units. An approximate mm value is shown based on thread settings.</div></div>
-    <div class="field-row"><div class="field-label">Ring: divisions</div><div class="field-desc">Number of equally-spaced snap dots. 6 = hexagon, 8 = octagon, 12 = clock face.</div></div>
-    <div class="field-row"><div class="field-label">Ring: 👁 visible</div><div class="field-desc">Shows/hides this specific ring's circle and dots.</div></div>
-    <div class="field-row"><div class="field-label">Ring: 🧲 snap</div><div class="field-desc">When active (blue), elements snap to this ring's dots when dragged nearby.</div></div>
-    <div class="field-row"><div class="field-label">Ring: offset°</div><div class="field-desc">Rotates this ring's spokes independently — combine with global offset to stagger rings.</div></div>
-	<div class="field-row"><div class="field-label">Delete</div><div class="field-desc">Delete the selected elements. Grids or rings.</div></div>
+    <div class="menu-header">Grid list (left)</div>
+    <div class="field-row"><div class="field-label">Grid rows</div><div class="field-desc">Click a grid to edit it. Each row shows the number of rings.</div></div>
+    <div class="field-row"><div class="field-label">👁 Eye</div><div class="field-desc">In the grid's own color. Shows or hides that grid without selecting it.</div></div>
+    <div class="field-row"><div class="field-label">+ Add Grid</div><div class="field-desc">Right under the list. A new grid starts with one ring so it's visible straight away.</div></div>
+    <div class="menu-header">Editor (right)</div>
+    <div class="field-row"><div class="field-label">Grid name</div><div class="field-desc">At the top. Use descriptive names like "Round 1" or "Outer" when working with multiple grids.</div></div>
+    <div class="field-row"><div class="field-label">Appearance</div><div class="field-desc"><strong>Visible</strong> (whole grid — hidden grids still snap if snap is on), <strong>Color</strong>, <strong>Opacity</strong>.</div></div>
+    <div class="field-row"><div class="field-label">Position</div><div class="field-desc"><strong>Center X / Y</strong> (the ⌖ button resets to 0, 0) and <strong>Rotate grid</strong> — turns every ring's points by that many degrees.</div></div>
+    <div class="field-row"><div class="field-label">Rings table</div><div class="field-desc">One row per ring: <strong>Radius</strong> (canvas units, with approximate mm), <strong>Points</strong> (6 = hexagon, 8 = octagon, 12 = clock face), <strong>Offset</strong> (extra rotation for this ring only), <strong>Show</strong>, <strong>Snap</strong> (blue = on), and ✕ to delete the ring.</div></div>
+    <div class="field-row"><div class="field-label">+ Add Ring</div><div class="field-desc">Under the table. Each new ring starts a step further out than the last.</div></div>
+    <div class="menu-header">Footer</div>
+    <div class="field-row"><div class="field-label">Hold to peek</div><div class="field-desc">Hold to see the canvas through the panel.</div></div>
+    <div class="field-row"><div class="field-label">Delete grid</div><div class="field-desc">Deletes the selected grid (asks first).</div></div>
+    <div class="field-row"><div class="field-label">Close</div><div class="field-desc">Closes the panel; all settings are kept.</div></div>
   </div>
 </section>
 <!-- ═══════════════════════════ MODES ═══════════════════════════ -->
@@ -929,7 +1079,8 @@
         <li>Circle markers indicate where joining points is possible.</li>
         <li>Click to select, or drag to multi-select. Purple colors indicate selected points.</li>
         <li>Yellow circles and dashed lines indicate existing connections.</li>
-		<li>If the selected elements have different materials (colors), then the first selected picot will determine the color of the joints.</li>
+		<li>A join's color follows the original picot's element (<em>Auto</em>). To change it, select the join and use the <strong>Picot Color</strong> dropdown.</li>
+		<li>The first time you enter the mode, a short tip explains how to join; tick <em>Don't show again</em> to hide it.</li>
       </ul>
     </div></div>
 
@@ -943,9 +1094,32 @@
       <div class="field-desc">Selecting already connected picots, this button will remove their existing connections. <br>Shortcut: <code class="code-inline">C</code> or <code class="code-inline">DELETE</code></div>
     </div>
 	<div class="field-row">
+      <div class="field-label">Fold Picots</div>
+      <div class="field-desc">A toggle. While it's on, JOIN (and <code class="code-inline">J</code>) makes a folded picot instead of a regular join. Works on two plain picots only.</div>
+    </div>
+	<div class="field-row">
+      <div class="field-label">Picot Color</div>
+      <div class="field-desc">Shown when a join is selected. <em>Auto</em>, or one of the materials involved in that join.</div>
+    </div>
+	<div class="field-row">
       <div class="field-label">✕ Exit Mode</div>
       <div class="field-desc">Exits Mode and returns to the normal property bar. <br>Shortcut: <code class="code-inline">ESC</code></div>
     </div>
+	
+	<div class="menu-header">Fold Row (appears when a fold is selected)</div>
+	<div class="field-row">
+      <div class="field-label">Outer / Inside Length</div>
+      <div class="field-desc">How much thread is on each side of the fold. Hold the − / + buttons to repeat.</div>
+    </div>
+	<div class="field-row">
+      <div class="field-label">Angle 1 / Angle 2</div>
+      <div class="field-desc">The direction each end leaves its picot, as an angle off that picot's perpendicular (−100° to 100°).</div>
+    </div>
+	<div class="field-row">
+      <div class="field-label">Copy / Paste</div>
+      <div class="field-desc">Copy one fold's settings and paste them onto another. The copy is kept until you close the app.</div>
+    </div>
+	</div>
     </div>
 <!-- Bead Edit Mode -->
 <div class="card" style="margin-bottom:0.75rem; border-left:4px solid #9b5fa5;">
@@ -973,15 +1147,15 @@
 	 <div class="menu-item-name">Core only</div><div class="field-desc">A bead threaded onto the core thread at this picot. No picot loop.</div>
      <div class="menu-item-name">Core + plain picot</div><div class="field-desc">Core bead(s) plus a standard un-beaded picot loop above.</div>	  
      <div class="menu-item-name">Core + beaded picot</div><div class="field-desc">Core bead(s) plus a picot loop that itself carries beads.</div>
-     <div class="menu-item-name">Suspended</div><div class="field-desc">Beads string hang from the pico, held up by a closing bead.</div>
-     <div class="menu-item-name">Beaded picot</div><div class="field-desc">Only the picots has beads.</div>
+     <div class="menu-item-name">Suspended</div><div class="field-desc">Beads string hang from the picot, held up by a closing bead.</div>
+     <div class="menu-item-name">Beaded picot</div><div class="field-desc">Only the picot has beads.</div>
 	</div>
 
   
     <!-- section -->
     <div class="card" style="margin-top:1rem;">
 	  <div><h4 class="yellow">Connectable join point TOGGLE</h4></div>
-     <div class="field-desc">A toggle to let a <code class="code-inline">BE</code>  (Beaded Element) behave like a Join picot. In Join Picot mode these will be selectable, and can nonnect to one or more other joined picots.</div>
+     <div class="field-desc">A toggle to let a <code class="code-inline">BE</code>  (Beaded Element) behave like a Join picot. In Join Picot mode these will be selectable, and can connect to one or more other joined picots.</div>
     </div>
 	
 	<div class="card" style="margin-top:1rem;">
@@ -1023,6 +1197,10 @@
     <div class="field-row">
       <div class="field-label">✕ Exit Mode</div>
       <div class="field-desc">Exits Tatting Order Mode and returns to the normal property bar.</div>
+	  </div>
+	      <div class="field-row">
+      <div class="field-label">Exit warning</div>
+      <div class="field-desc">If any elements are still unnumbered when you exit, a message tells you how many.</div>
     </div>
 
     <div class="menu-header">Number Assignment Row (appears when an element is selected)</div>
@@ -1083,6 +1261,15 @@
       <div class="field-label"><kbd>Delete</kbd> / <kbd>Backspace</kbd></div>
       <div class="field-desc">Clears the order assignment from the selected element (number or repeat mark). Same as clicking the Clear button.</div>
     </div>
+	<div class="field-row">
+      <div class="field-label"><kbd>PgUp</kbd></div>
+      <div class="field-desc">Switches to the next round. On the last round, creates a new one.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label"><kbd>PgDn</kbd></div>
+      <div class="field-desc">Switches to the previous round; from the first round, back to Ungrouped.</div>
+    </div>
+	
 
     <div class="menu-header">Conflict Popup (amber border)</div>
     <div class="modal-subtitle" style="margin-bottom:0.5rem;">Appears when you try to assign a number that is already in use by another element.</div>
@@ -1105,6 +1292,26 @@
       <div class="field-desc">When any element has an order number, SVG export adds a dedicated <strong>Order Numbers</strong> layer (Inkscape/Illustrator compatible). Each number is a gold text element with a black outline, positioned at the element midpoint. The layer can be hidden or deleted in a vector editor without affecting the pattern artwork.</div>
     </div>
   </div>
+  
+  <!-- Realistic View (grey insert) -->
+<div class="card" style="margin-bottom:0.75rem; border-left:4px solid #6b7280;">
+    <h4 style="color:#9ca3af;">Realistic View</h4>
+    <p style="font-size:0.875rem; margin-top:0.4rem; margin-bottom:0.75rem;">Entered with <code class="code-inline">V</code> or View → Switch to Realistic. The property bar shows <strong>REALISTIC VIEW — Editing disabled — pan and zoom only</strong>.</p>
+    <div class="field-row">
+      <div class="field-label">Switch to Schematic</div>
+      <div class="field-desc">Returns to the editable view. <code class="code-inline">V</code> does the same.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Instant switching</div>
+      <div class="field-desc">If nothing changed since the last time, switching back to Realistic is instant. Edits made while in this view (Undo, Delete, Paste) update it automatically.</div>
+    </div>
+	    <div class="field-row">
+      <div class="field-label">Stitch placement</div>
+      <div class="field-desc">Stitches are drawn inside the schematic line, so the schematic outline is the outer edge of the real piece.</div>
+    </div>
+
+</div>
+  
 </section>
 <!-- ═══════════════════════════ DIALOGS ═══════════════════════════ -->
 <section id="tab-dialogs" class="tab-panel">
@@ -1118,6 +1325,8 @@
     <div class="field-row"><div class="field-label">Browse for file…</div><div class="field-desc">Opens the OS file picker for any <code class="code-inline">.json</code> not in the recents list. Loading it adds it to recents automatically.</div></div>
     <div class="field-row"><div class="field-label">Empty state</div><div class="field-desc">If no recents exist yet, a message prompts you to save your first project. Browse is still available.</div></div>
     <div class="field-row"><div class="field-label">Load confirm</div><div class="field-desc">If the canvas has unsaved elements, a confirmation overlay appears before loading to prevent accidental loss.</div></div>
+	<div class="field-row"><div class="field-label">File missing</div><div class="field-desc">A project whose file was moved or deleted is labelled "File missing".</div></div>
+    <div class="field-row"><div class="field-label">Clear unavailable</div><div class="field-desc">Removes every entry whose file can no longer be found.</div></div>
     <div class="card card-yellow" style="margin-top:0.5rem;">
       <p style="font-size:0.82rem;">💡 Save all your projects in one dedicated folder — TattingCAD builds the visual browser automatically as you save. No setup needed.</p>
     </div>
@@ -1135,6 +1344,8 @@
     <div class="field-row"><div class="field-label">Count</div><div class="field-desc">Total copies including the original. Quick-picks: 4, 6, 8, 12.</div></div>
     <div class="field-row"><div class="field-label">Fill angle</div><div class="field-desc">Arc to fill in degrees. 360° = full circle. Copies are spaced evenly across this angle.</div></div>
     <div class="field-row"><div class="field-label">Pivot</div><div class="field-desc">Rotation center — a specific polar grid, or the center of the selection itself.</div></div>
+	<div class="field-row"><div class="field-label">Create as ghosts</div><div class="field-desc">Makes linked ghost copies instead of independent ones (experimental).</div></div>
+    <div class="field-row"><div class="field-label">Summary line</div><div class="field-desc">E.g. "6 copies · every 60° · over 360°", updated live.</div></div>
     <div class="field-row"><div class="field-label">Peek</div><div class="field-desc">Hold to fade the dialog and see the live blue ghost preview on the canvas clearly.</div></div>
     <div class="field-row"><div class="field-label">Apply</div><div class="field-desc">Creates all copies as a single undoable step.</div></div>
   </div>
@@ -1144,8 +1355,9 @@
     <div class="modal-subtitle">Triggered by Arrange → Array → Linear Array…</div>
     <div class="field-row"><div class="field-label">Count</div><div class="field-desc">Total copies including the original. Quick-picks: 3, 4, 6, 8.</div></div>
     <div class="field-row"><div class="field-label">Direction</div><div class="field-desc">Angle in degrees for the array direction. H (0°) and V (90°) presets, or type a custom angle.</div></div>
-    <div class="field-row"><div class="field-label">Spacing</div><div class="field-desc">Distance between each copy in canvas units.</div></div>
+    <div class="field-row"><div class="field-label">Spacing</div><div class="field-desc">A percentage of the element's size: 100% = copies touching, 200% = a one-element gap. The <strong>100% touch</strong> button sets it back to touching.</div></div>
     <div class="field-row"><div class="field-label">Rotation/step</div><div class="field-desc">Extra rotation added to each copy cumulatively. 0 = none. 15 = each copy 15° more than the previous. Reset button clears to 0.</div></div>
+	<div class="field-row"><div class="field-label">Create as ghosts</div><div class="field-desc">Makes linked ghost copies instead of independent ones (experimental).</div></div>
     <div class="field-row"><div class="field-label">Summary line</div><div class="field-desc">Plain-language description of the current settings updated live.</div></div>
     <div class="field-row"><div class="field-label">Peek</div><div class="field-desc">Hold to fade the dialog and see the live green ghost preview on the canvas clearly.</div></div>
     <div class="field-row"><div class="field-label">Apply</div><div class="field-desc">Creates all copies as a single undoable step.</div></div>    
@@ -1155,13 +1367,40 @@
     <div class="modal-title">🌀 Spiral Array Dialog</div>
     <div class="modal-subtitle">Triggered by Arrange → Array → Spiral Array…</div>
     <div class="field-row"><div class="field-label">Count</div><div class="field-desc">Total copies including the original. Quick-picks: 4, 6, 8, 12.</div></div>
+	<div class="field-row"><div class="field-label">Angle per copy</div><div class="field-desc">How far around the spiral each copy sits. Quick-picks: 15°, 30°, 45°, 60°.</div></div>
     <div class="field-row"><div class="field-label">Type</div><div class="field-desc"><strong>Archimedean</strong> — uniform gap between turns. <strong>Geometric</strong> — gap grows by a multiplier each step.</div></div>
     <div class="field-row"><div class="field-label">Gap</div><div class="field-desc">(Archimedean) Distance added to the radius per step in canvas units.</div></div>
     <div class="field-row"><div class="field-label">Growth factor</div><div class="field-desc">(Geometric) Multiplier applied to the radius each step. 1.2 = grows 20% per copy.</div></div>
     <div class="field-row"><div class="field-label">Rotate elements</div><div class="field-desc">When checked, each copy is rotated to face outward along the spiral. Uncheck to keep the original orientation.</div></div>
     <div class="field-row"><div class="field-label">Peek</div><div class="field-desc">Hold to fade the dialog and see the live pink ghost preview on the canvas clearly.</div></div>
     <div class="field-row"><div class="field-label">Apply</div><div class="field-desc">Creates all copies as a single undoable step.</div></div>    
+  </div>
+<div class="card">
+    <div class="modal-title">🧹 Clean Up Duplicates</div>
+    <div class="modal-subtitle">Triggered by File → Clean Up Duplicates…, and automatically after saving or opening a file.</div>
+    <p style="font-size:0.875rem;color:#9ca3af;">Shows how many overlapping duplicates were found (same notation, material, rotation and position) and asks whether to remove them. <strong>Clean Up</strong> removes them as one undoable step; Cancel leaves everything as it is. When run from the menu and nothing is found, it says so.</p>
+  </div>
 
+  <div class="card">
+    <div class="modal-title">💍 Convert to Josephine Knot</div>
+    <div class="modal-subtitle">Triggered by the third Shape button on a ring.</div>
+    <p style="font-size:0.875rem;color:#9ca3af;">Warns that all picots and connections will be removed and the stitches will change from ds to ss. <strong>Convert to JK</strong> or Cancel.</p>
+  </div>
+
+  <div class="card">
+    <div class="modal-title">✏ Notation Change</div>
+    <div class="modal-subtitle">Appears when a notation edit would remove joined picots.</div>
+    <p style="font-size:0.875rem;color:#9ca3af;">Some joined picots will no longer exist after the change, so their connections would be removed. <strong>Change Notation</strong> or Cancel. For a multi-selection you're asked once.</p>
+  </div>
+
+  <div class="card">
+    <div class="modal-title">🚀 Splash Screen</div>
+    <div class="modal-subtitle">Shown when the app starts.</div>
+    <div class="field-row"><div class="field-label">New Project</div><div class="field-desc">Starts with an empty canvas.</div></div>
+    <div class="field-row"><div class="field-label">Load Project</div><div class="field-desc">Opens the Recent Projects dialog.</div></div>
+    <div class="field-row"><div class="field-label">Resume</div><div class="field-desc">"Resume: {name}" reopens the last autosave. Shows "No Autosave" when there isn't one.</div></div>
+    <div class="field-row"><div class="field-label">Getting Started</div><div class="field-desc">Tips, with arrows for the previous and next tip.</div></div>
+    <div class="field-row"><div class="field-label">Update check</div><div class="field-desc">"Have you checked for updates?" — click it for <strong>Open Releases Page</strong> or <strong>Dismiss for this version</strong>.</div></div>
   </div>
 
   <div class="card">
@@ -1173,9 +1412,11 @@
   <div class="card">
     <div class="modal-title">🎨 Color Picker</div>
     <div class="modal-subtitle">Used for element colors, material colors, background color, and polar grid colors.</div>
-    <div class="field-row"><div class="field-label">Picker tab</div><div class="field-desc">Freeform HSL/RGB color wheel and hex input.</div></div>
-    <div class="field-row"><div class="field-label">DMC tab</div><div class="field-desc">Searchable DMC thread color database. Filter by name, number, or category.</div></div>
-    <div class="field-row"><div class="field-label">Gradient tab</div><div class="field-desc">Browse and search the gradient library for material.</div></div>
+<div class="field-row"><div class="field-label">Color Picker tab</div><div class="field-desc">Saturation / brightness square, hue slider, base swatches and hex input.</div></div>
+    <div class="field-row"><div class="field-label">DMC Colors tab</div><div class="field-desc">Searchable DMC thread color database. Search by name or number, or filter by category (All, or a color group).</div></div>
+    <div class="field-row"><div class="field-label">Lizbeth Colors tab</div><div class="field-desc">The same browser for Lizbeth thread colors.</div></div>
+    <div class="field-row"><div class="field-label">Gradients tab</div><div class="field-desc">Browse and search the gradient (variegated) library for materials.</div></div>
+
   </div>
 </section>
 

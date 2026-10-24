@@ -82,6 +82,11 @@ export interface NumberStepperProps {
   jumpPlusTitle?: string;
   stepMinusTitle?: string;
   stepPlusTitle?: string;
+  // Session 57 (tension stepper): shown in the field instead of the number
+  // while idle — e.g. "–" when a multi-selection has differing values. The
+  // −/+ buttons and typing still work from `value`.
+  mixedText?: string;
+  title?: string; // tooltip on the whole control
 }
 
 export const NumberStepper: React.FC<NumberStepperProps> = ({
@@ -90,13 +95,14 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   wrap = false, holdToRepeat = false,
   jump, jumpMinusContent, jumpPlusContent, jumpMinusTitle, jumpPlusTitle,
   stepMinusTitle, stepPlusTitle,
+  mixedText, title,
 }) => {
   const toDisplay = (raw: number) => raw * displayScale;
   const toRaw = (display: number) => display / displayScale;
   const formatDisplay = (raw: number) => toDisplay(raw).toFixed(decimals);
 
   const [draft, setDraft] = useState<string | null>(null);
-  const displayText = draft !== null ? draft : formatDisplay(value);
+  const displayText = draft !== null ? draft : (mixedText ?? formatDisplay(value));
 
   const commitDraft = (text: string) => {
     const parsedDisplay = parseNumberExpr(text, toDisplay(value));
@@ -174,7 +180,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
     : { onClick: () => commitDiscrete(delta) };
 
   return (
-    <div className="flex items-center gap-1.5 text-xs text-gray-300 whitespace-nowrap">
+    <div className="flex items-center gap-1.5 text-xs text-gray-300 whitespace-nowrap" title={title}>
       {label && <span className="w-20 shrink-0">{label}</span>}
       {jump !== undefined && (
         <button

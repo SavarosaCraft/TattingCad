@@ -24,7 +24,7 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
-import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, SPLIT_RING_END_ALLOWANCE_FACTOR } from './geometry/stitchGeometry';
+import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, endAllowanceFactor, elementTension } from './geometry/stitchGeometry';
 import { bakeRealisticView } from './render/realisticRenderer';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
@@ -594,7 +594,7 @@ const TattingDesigner = () => {
   // Linear array state
 
   // Spiral array state
-const APP_VERSION = '1.2.0-beta';
+const APP_VERSION = '1.3.0';
 
 
   // Update reminder: only after 90 days since install — evaluated once, stored here for the splash to read.
@@ -3622,6 +3622,104 @@ const APP_VERSION = '1.2.0-beta';
     return () => window.removeEventListener('blur', flushOnBlur);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Arrow-key nudge (session 57) ────────────────────────────────────────
+  // Arrow = 1 canvas unit; Shift+Arrow = 1 ds (dsWidth). Moves the whole
+  // selection exactly like a mouse drag does (moveElement for the path
+  // shift; if a ghost-array mother or a ghost is involved, its arrays are
+  // regenerated through the usual applyGhostRegenResult funnel). No
+  // snapping — a nudge is meant to be precise.
+  //
+  // Holding a key repeats; the whole hold is ONE undo step, using the same
+  // nudgeActiveRef mechanism as the ±1° hold-to-repeat buttons: it's set
+  // before the first move (so the auto-history effect skips every repeat)
+  // and cleared on keyup with one explicit push. If the key-up is lost
+  // (window loses focus, etc.), the existing window-blur flush and
+  // document-pointerup safety net release it — same as a stuck stepper.
+  // No skipAutoHistoryRef before that push: nothing changes state after it,
+  // so the flag would wrongly swallow the user's NEXT edit (the blur flush
+  // follows the same rule).
+  //
+  // Own listener, calling through refs reassigned every render (the
+  // handleMouseUpRef pattern), so it always sees current state — the main
+  // keydown handler below is only rebound when saveProject changes, and
+  // there is no ghostArrays ref mirror elsewhere. Skipped while typing or
+  // when focus is on any form control (a focused slider uses arrows itself),
+  // in realistic view, in picot-join / beading / tatting-order modes, and
+  // during a mouse drag.
+  const ghostArraysLatestRef = useRef(ghostArrays);
+  ghostArraysLatestRef.current = ghostArrays;
+  const arrowNudgeRef = useRef<(dirX: number, dirY: number, big: boolean) => boolean>(() => false);
+  arrowNudgeRef.current = (dirX, dirY, big) => {
+    if (renderMode === 'realistic') return false;
+    const mode = activeModeRef.current;
+    if (mode === 'picotJoin' || mode === 'beading' || mode === 'tattingOrder') return false;
+    if (dragOffsetRef.current.active || isInteractingRef.current) return false;
+    const ids = new Set(selectedIdsRef.current as string[]);
+    if (ids.size === 0) return false;
+    const current = elementsRef.current as any[];
+    if (!current.some(el => ids.has(el.id))) return false;
+    const step = big ? dsWidth : 1;
+    const dx = dirX * step, dy = dirY * step;
+    nudgeActiveRef.current = true; // before any state change — see above
+    const moved = current.map(el => (ids.has(el.id) && el.center && el.paths) ? moveElement(el, dx, dy) : el);
+    const touchesArrays = moved.some(el => ids.has(el.id) && (el.isGhostMother || el.type === 'ghost'));
+    if (touchesArrays) {
+      // Same call the mouse drag makes (all selected ids).
+      const result = regenerateGhostArrays(moved, ghostArraysLatestRef.current, [...ids]);
+      applyGhostRegenResult(result);
+      (elementsRef as any).current = result.elements;
+      ghostArraysLatestRef.current = result.ghostArrays;
+    } else {
+      setElements(moved);
+      (elementsRef as any).current = moved; // next repeat may arrive before the re-render
+    }
+    return true;
+  };
+  const arrowNudgeEndRef = useRef<() => void>(() => {});
+  arrowNudgeEndRef.current = () => {
+    if (!nudgeActiveRef.current) return; // already flushed (window blur / pointerup)
+    nudgeActiveRef.current = false;
+    pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current,
+      polarGrids, groupsRef.current, ghostArraysLatestRef.current);
+  };
+  useEffect(() => {
+    const DIRS: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const held = new Set<string>();
+    let nudging = false;
+    const isFormControl = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (isTypingTarget(el) || el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const dir = DIRS[e.key];
+      if (!dir || e.ctrlKey || e.metaKey || e.altKey || isFormControl(e.target)) return;
+      if (arrowNudgeRef.current(dir[0], dir[1], e.shiftKey)) {
+        e.preventDefault(); // don't scroll the page
+        held.add(e.key);
+        nudging = true;
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!DIRS[e.key]) return;
+      held.delete(e.key);
+      if (nudging && held.size === 0) {
+        nudging = false;
+        arrowNudgeEndRef.current();
+      }
+    };
+    const onBlur = () => { held.clear(); nudging = false; }; // the blur flush pushes history
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (isTypingTarget(e.target)) return;
@@ -4406,31 +4504,52 @@ const APP_VERSION = '1.2.0-beta';
     }
   };
 
-  // ── Apply end allowance to selected (session 57, step 5) ──────────────
-  // Gives each eligible element the CURRENT Thread Properties allowance
-  // (split rings: × SPLIT_RING_END_ALLOWANCE_FACTOR, same as addSplitRing)
-  // and rebuilds it at the new length via resizeElementForAllowance
-  // (geometry/paths.ts). Works both ways — with the setting at 0 it removes
-  // the allowance. Skips circles, JKs, lines, ghosts and elements already at
-  // the target. One plain commit → one undo step via the auto-history
-  // effect (no explicit push, so no skipAutoHistoryRef needed); ghost
-  // mothers regenerate their arrays through the usual funnel.
-  const endAllowanceTargetFor = (el: any): number =>
-    el.isSplitRing
-      ? defaultEndAllowanceRef.current * SPLIT_RING_END_ALLOWANCE_FACTOR
-      : defaultEndAllowanceRef.current;
-  // Cheap check for enabling the button (no geometry work).
-  const canApplyEndAllowance = (ids: string[]): boolean => ids.some(id => {
-    const el = elementById.get(id);
-    return !!el && el.type !== 'ghost' && !el.isGhost && allowsEndAllowance(el)
-      && (el.endAllowance ?? 0) !== endAllowanceTargetFor(el);
-  });
-  const applyEndAllowanceToIds = (ids: string[]) => {
+  // ── Tension stepper (session 57) ───────────────────────────────────────
+  // The "Tension" stepper in the property bars (components/TensionStepper.tsx)
+  // replaced the step-5 "apply" button. Two functions:
+  //
+  // tensionInfoForIds — what the stepper shows: the selected rings' tension
+  // (elementTension; chains/circles/lines/ghosts don't count), "mixed" when
+  // they differ, else the active preset's tension (the user's default).
+  //
+  // setTensionForIds — what changing it does:
+  //   1. the value becomes the default for NEW elements: written to the
+  //      active thread preset (state + localStorage, same as Thread
+  //      Properties), like the last-picked material becomes the default.
+  //      defaultEndAllowanceRef is set right away so an add* in the same
+  //      tick already uses it.
+  //   2. every eligible selected element is resized to it via
+  //      resizeElementForAllowance — allowance × endAllowanceFactor (rings 1,
+  //      split rings ¼, chains 0, so a selected chain loses any old
+  //      allowance). One plain commit → one undo step through the
+  //      auto-history effect; ghost mothers regenerate through the usual
+  //      funnel. (The preset change is a setting, not pattern data — it's
+  //      not in undo history, same as the material default.)
+  const activeThreadPreset = () => threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0];
+  const tensionInfoForIds = (ids: string[]): { value: number; mixed: boolean } => {
+    const vals = ids.map(id => elementById.get(id))
+      .filter(el => el && el.type !== 'ghost' && !el.isGhost)
+      .map(el => elementTension(el))
+      .filter((v): v is number => v !== null);
+    const def = presetTension(activeThreadPreset());
+    if (vals.length === 0) return { value: def, mixed: false };
+    return vals.every(v => v === vals[0]) ? { value: vals[0], mixed: false } : { value: def, mixed: true };
+  };
+  const setTensionForIds = (ids: string[], tension: number) => {
+    const allowance = tensionToAllowance(tension);
+    const preset = activeThreadPreset();
+    if (preset) {
+      const nextPresets = threadPresets.map(pr => pr.id === preset.id ? { ...pr, endAllowance: allowance } : pr);
+      setThreadPresets(nextPresets);
+      try { localStorage.setItem('tcad_thread_presets', JSON.stringify(nextPresets)); } catch {}
+    }
+    defaultEndAllowanceRef.current = allowance;
+
     const idSet = new Set(ids);
     const patches = new Map<string, any>();
     for (const el of elementsRef.current as any[]) {
       if (!idSet.has(el.id)) continue;
-      const patch = resizeElementForAllowance(el, endAllowanceTargetFor(el), dsWidth);
+      const patch = resizeElementForAllowance(el, allowance * endAllowanceFactor(el), dsWidth);
       if (patch) patches.set(el.id, patch);
     }
     if (patches.size === 0) return;
@@ -6843,9 +6962,8 @@ const APP_VERSION = '1.2.0-beta';
           ) : selectedElement ? (
             <SingleSelectPropertyBar
               selectedElement={selectedElement}
-              applyEndAllowanceToIds={applyEndAllowanceToIds}
-              canApplyEndAllowance={canApplyEndAllowance}
-              defaultTension={presetTension(threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0])}
+              tensionInfoForIds={tensionInfoForIds}
+              setTensionForIds={setTensionForIds}
               selectedIds={selectedIds}
               selectedIdSet={selectedIdSet}
               elements={elements}
@@ -6906,9 +7024,8 @@ const APP_VERSION = '1.2.0-beta';
             <>
               <MultiSelectSummaryBar
                 selectedIds={selectedIds}
-                applyEndAllowanceToIds={applyEndAllowanceToIds}
-                canApplyEndAllowance={canApplyEndAllowance}
-                defaultTension={presetTension(threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0])}
+                tensionInfoForIds={tensionInfoForIds}
+                setTensionForIds={setTensionForIds}
                 elementById={elementById}
                 elements={elements}
                 selectedIdSet={selectedIdSet}

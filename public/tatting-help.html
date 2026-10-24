@@ -409,7 +409,7 @@
         <div class="step-num">6</div>
         <div class="step-body">
           <h5>Sharing Your Pattern</h5>
-          <p>Click <span class="blue">File → Output notation to clipboard</span> to get all your notation in one place. You can enhance the results by assigning the order of tatting using <span class="blue">View → Tatting order</span> and by assigning real world values to the program under <span class="blue">Options → Thread Properties</span>. </p>
+		         <p>Click <span class="blue">File → Output notation to clipboard</span> to get all your notation in one place. The text follows the app's language — only the notation itself (<code class="code-inline">ds</code>, <code class="code-inline">p</code>, <code class="code-inline">r:</code> …) stays the same. You can enhance the results by assigning the order of tatting using <span class="blue">View → Tatting order</span> and by assigning real world values to the program under <span class="blue">Options → Thread Properties</span>.</p>
         </div>
       </div>
     </div>
@@ -431,11 +431,12 @@
           <li>Measure the ball thread in millimeters.</li>
         </ol>
         <p style="font-size:0.85rem; color:#d1d5db; margin-bottom:0.75rem;">Enter both measurements in <span class="blue">Options → Thread properties</span>.</p>
+		<p style="font-size:0.85rem; color:#d1d5db; margin-bottom:0.75rem;">While you're there, set <strong>Tatting Tension</strong> (1 tight – 5 loose, default 3) to match how tightly you close your rings.</p>
         <div class="card card-blue" style="margin-bottom:0.75rem;">
           <p style="font-size:0.82rem; color:#d1d5db;">For a more accurate measurement, make two more rings:</p>
           <ul style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.82rem; color:#d1d5db; line-height:1.8;">
             <li><strong>Ring B:</strong> 20 DS with 10 regular picots</li>
-            <li><strong>Ring C:</strong> 20 DS with 10 construction picots</li>
+            <li><strong>Ring C:</strong> 20 DS with 10 short picots</li>
           </ul>
           <p style="margin-top:0.5rem; font-size:0.82rem; color:#d1d5db;">Measure both threads the same way. This lets you calculate exactly how much extra thread each picot type consumes.</p>
         </div>
@@ -457,7 +458,7 @@
 
   <div class="card card-blue" style="margin-top:1rem;">
     <h4 class="blue">Auto-Save</h4>
-    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to browser storage. Use the Save button to download a permanent copy!</p>
+    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to the app's local storage (only when the canvas isn't empty). Use <span class="blue">File → Save Project</span> to keep a permanent <code class="code-inline">.json</code> copy.</p>
   </div>
 </section>
 
@@ -472,7 +473,7 @@
       <div><kbd>Ctrl+N</kbd> New canvas</div>
       <div><kbd>Ctrl+S</kbd> Save project</div>
       <div><kbd>Ctrl+Z</kbd> Undo</div>
-      <div><kbd>Shift+Z</kbd> Redo</div>
+      <div><kbd>Shift+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> Redo</div>
     </div>
   </div>
 
@@ -484,9 +485,13 @@
       <div><kbd>Ctrl+X</kbd> Cut selected (or cut BE config in Beading mode)</div>
       <div><kbd>Ctrl+V</kbd> Paste (or paste BE config in Beading mode)</div>
       <div><kbd>D</kbd> Duplicate in place</div>
+	  <div><kbd>Arrow keys</kbd> Nudge selected (1 unit)</div>
+	  <div><kbd>Shift+Arrow keys</kbd> Nudge selected (1 ds)</div>
       <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> Delete selected</div>
       <div><kbd>Ctrl+G</kbd> Group selected</div>
       <div><kbd>Shift+G</kbd> Ungroup selected</div>
+	  <div><kbd>Home</kbd> Send selected to back</div>
+      <div><kbd>End</kbd> Bring selected to front</div>
     </div>
   </div>
 
@@ -499,6 +504,10 @@
       <div><kbd>-</kbd> Zoom out</div>
       <div><kbd>V</kbd> Toggle Schematic / Realistic render</div>
       <div><kbd>Shift (hold)</kbd> Show rotation handles on selected</div>
+	  <div><kbd>Shift (hold)</kbd> While dragging: lock movement to horizontal / vertical</div>
+      <div><kbd>Space (hold)</kbd> Temporary Pan</div>
+      <div><kbd>Z (hold)</kbd> + drag Zoom to a rectangle (Schematic view)</div>
+      <div><kbd>Shift</kbd> + mouse wheel Zoom toward the cursor</div>
     </div>
   </div>
 
@@ -512,10 +521,20 @@
     </div>
   </div>
   <div class="shortcut-group">
-    <div class="shortcut-group-title">Picot Join Mode</span></div>
+    <div class="shortcut-group-title">Picot Join Mode</div>
     <div class="shortcut-grid">
       <div><kbd>J</kbd> Join selected picots</div>
+	  <div><kbd>J</kbd> Join selected picots (makes a fold instead when <strong>Fold Picots</strong> toggle is on)</div>
       <div><kbd>C</kbd> or &nbsp<kbd>Delete</kbd> Cut connection between selected picots</div>
+    </div>
+  </div>
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Path presets <span style="font-weight:400; color:#6b7280;">(Path Edit with a chain selected, or Line tool with a line selected)</span></div>
+    <div class="shortcut-grid">
+      <div><kbd>Shift+1</kbd> 90° curve</div>
+      <div><kbd>Shift+2</kbd> 60° curve</div>
+      <div><kbd>Shift+3</kbd> 45° curve</div>
+      <div><kbd>Shift+0</kbd> Straight (lines only)</div>
     </div>
   </div>
   <div class="shortcut-group">
@@ -525,7 +544,16 @@
       <div><kbd>Shift+B</kbd> Toggle Beading mode</div>
     </div>
   </div>
-
+  <div class="shortcut-group">
+    <div class="shortcut-group-title">Tatting Order Mode <span style="font-weight:400; color:#6b7280;">(element selected)</span></div>
+    <div class="shortcut-grid">
+      <div><kbd>N</kbd> Assign next available number</div>
+      <div><kbd>R</kbd> Mark as Repeat</div>
+      <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> Clear the order assignment</div>
+      <div><kbd>PgUp</kbd> Next round (creates one if you're on the last)</div>
+      <div><kbd>PgDn</kbd> Previous round (back to Ungrouped from the first)</div>
+    </div>
+  </div>
   <div class="shortcut-group">
     <div class="shortcut-group-title">Escape — closes / exits</div>
   </div>
@@ -545,7 +573,7 @@
       <div><code class="code-inline">c:</code> &nbsp;Chain</div>
 	        <div><code class="code-inline">sc:</code> &nbsp;Split Chain<span class="muted">(parsed as chain, reserved prefix)</span></div>
       <div><code class="code-inline">sr:</code> &nbsp;Split Ring</div>
-      <div><code class="code-inline">jk:</code> &nbsp;Josephine Knot <span class="muted">(parsed as ring, reserved prefix)</span></div>
+      <div><code class="code-inline">jk:</code> &nbsp;Josephine Knot <span class="muted">ring with only single stitches</span></div>
       <div><code class="code-inline">fr:</code> &nbsp;Floating Ring <span class="muted">(parsed as ring, reserved prefix)</span></div>
     </div>
     <div class="codeblock" style="margin-top:0.5rem;">r: 5ds-p-5ds</div>
@@ -587,7 +615,7 @@
       <div><code class="code-inline">jpg</code> &nbsp;Guide join picot — rendered as a green arm; selectable in join tool and acts as snap point</div>
 	  <div><code class="code-inline">cj</code> &nbsp;Core join, when the core thread is used to connect to an other join picot.</div>
 	  <div><code class="code-inline">cjp</code> &nbsp;Core join with a picot.</div>
-      <div><code class="code-inline">gp</code> &nbsp;Guide point — yellow-green diamond on path, snap anchor, no arm rendered</div>
+      <div><code class="code-inline">gp</code> &nbsp;Guide point — snap anchor on the path. Shown by the orange snap marker; it only gets its own dot in Picot Join mode. Hidden in Realistic view and when editing artifacts are hidden.</div>
     </div>
   </div>
 
@@ -630,11 +658,15 @@
     <div class="notation-label">Pattern export format</div>
     <p style="font-size:0.82rem; color:#9ca3af; margin-bottom:0.5rem;">When exported, notation is rebuilt from picot data. Join picots include inline connection references:</p>
     <div class="codeblock">
-      r: 3ds-<span class="hl">jp//r3//</span>-3ds &nbsp;<span class="dim">← connected to ring 3</span><br>
-      r: 3ds-<span class="hl">jp//r3//r11//r15//</span>-3ds &nbsp;<span class="dim">← connected to rings 3, 11 and 15</span><br>
-      r: 3ds-<span class="hl">jp(?)</span>-3ds &nbsp;<span class="dim">← join picot with no connection yet</span><br>
-      r: 3ds-<span class="hl">bjp//r3//</span>-3ds &nbsp;<span class="dim">← beaded join picot with connection</span>
+      r: 3ds-<span class="hl">jp//r3//</span>-3ds &nbsp;<span class="dim">← connected to ring #3</span><br>
+      r: 3ds-<span class="hl">jp//r3//r11//r15//</span>-3ds &nbsp;<span class="dim">← connected to rings #3, #11 and #15</span><br>
+      r: 3ds-<span class="hl">bjp//r3//</span>-3ds &nbsp;<span class="dim">← beaded join picot with connection</span><br>
+      c: 3ds-<span class="hl">p//r3//</span>-3ds &nbsp;<span class="dim">← a plain picot that is joined (also sp, lp - small/long picot)</span><br>
+      r: 3ds-<span class="hl">fp//r5//</span>-3ds &nbsp;<span class="dim">← folded picot (always exactly one partner)</span><br>
+      c: 4ds-<span class="hl">cj//r2//</span>-4ds &nbsp;<span class="dim">← core join (cjp works the same way)</span><br>
+      c: 6ds-p-6ds <span class="hl">//r1//</span> &nbsp;<span class="dim">← the chain's start/end point is joined to ring 1</span>
     </div>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-top:0.5rem;">References use <code class="code-inline">r</code> for rings, <code class="code-inline">ch</code> for chains and <code class="code-inline">sc</code> for split chains, followed by the order number. If two elements share an order number, the round name is added (e.g. <code class="code-inline">r3/Round1</code>) and the line is marked <code class="code-inline">⚠DUPLICATE#</code>.</p>
   </div>
 
   <!-- Examples -->
@@ -733,7 +765,7 @@
     <div class="feature-body">
       <strong>Desktop:</strong> Hold Shift to show rotation handles at corners of bounding box. Drag to rotate.<br>
       <strong>Mobile:</strong> Click the rotation button to toggle handles on/off.<br>
-      <strong>Fine Control:</strong> Type any angle in the rotation input (45°, 30°, 7.5°…) and press Enter. Works for single elements and groups.<br>
+      <strong>Fine Control:</strong> Type any angle in the rotation input (45°, 30°, 7.5°…) and press Enter. Works for single elements and groups. The box also accepts calculations: <code class="code-inline">+15</code> / <code class="code-inline">-15</code> rotate relative to the current angle, <code class="code-inline">x</code> stands for the current value (<code class="code-inline">x*2</code>), and plain arithmetic works (<code class="code-inline">90/4</code>).<br>
       Use ↶ ↷ buttons for quick 90° rotations.
     </div>
   </div>
@@ -747,7 +779,11 @@
     <div class="feature-name">Arrange Menu</div>
     <div class="feature-body">
       • <strong>Duplicate in Place (D)</strong> — copy at exact same position, ideal for radial patterns<br>
-      • <strong>Align</strong> — align 2+ elements: Left, Center H, Right, Top, Center V, Bottom
+      • <strong>Align</strong> — align 2+ elements: Left, Center H, Right, Top, Center V, Bottom<br>
+      • <strong>Polar Grid</strong> — pick a grid with <em>Grid:</em>, then <strong>Center to Polar Grid</strong>, or <strong>Align to PolarGrid Horizontally / Vertically</strong> (moves the selection sideways / up-down only, until its center lines up with the grid's center)<br>
+      • <strong>Array</strong> — Polar, Linear and Spiral Array…<br>
+      • <strong>Ghost Array Manager</strong> <span class="muted">(experimental)</span><br>
+      • <strong>Polar Grids…</strong> — opens the Polar Grids panel
     </div>
   </div>
 
@@ -755,11 +791,13 @@
     <div class="feature-name">Options Menu</div>
     <div class="feature-body">
       • <strong>Materials…</strong> — create/manage thread materials<br>
-      • <strong>Thread Properties…</strong> — adjust thread weight and sizing<br>
+      • <strong>Thread Properties…</strong> — adjust thread weight and sizing, sizing and tatting tension<br>
+      • <strong>Bead Library…</strong> — beads, and the S/M/L size settings<br>
+      • <strong>Polar Grids…</strong> — opens the Polar Grids panel<br>
       • <strong>Notation Size</strong> — Small / Medium / Large label size<br>
       • <strong>UI Scale</strong> — Normal / Large toolbar size<br>
-      • <strong>Snap</strong> — toggle snap-to-points<br>
-      • <strong>Bead Sizes</strong> — configure Y/Z/V bead diameters<br>
+      • <strong>Snap to Grid</strong> — toggle snapping<br>
+      • <strong>Language</strong> — switch the app language<br>
       • <strong>Load / Reset Theme</strong> — customise indicator colors
     </div>
   </div>
@@ -799,6 +837,49 @@
     <div class="feature-name">Order Numbers</div>
     <div class="feature-body">Enter a number in the "Order #" field to label rings and chains for pattern instructions. Use  <span class="blue"> View → Tatting order</span> for more in-depth editing.</div>
   </div>
+  
+  <div class="feature">
+    <div class="feature-name">Picot Tools</div>
+    <div class="feature-body">
+      Click the <strong>magic-wand</strong> button next to the notation box (single ring or chain). Each action rewrites the notation for you:<br>
+      • <strong>Reverse notation</strong><br>
+      • <strong>Clear unjoined picots</strong><br>
+      • <strong>Add picots</strong> — Symmetric or Asymmetric, added to every run<br>
+      • <strong>Fill density</strong> — slider from Dense to Sparse, with a preview of how many picots will be added<br>
+      • <strong>Compact repeats</strong> — groups repeated picots, e.g. <code class="code-inline">4*(2ds-p)</code><br>
+      • <strong>Scale</strong> — presets (amber ones are rounded, marked ~) or a % of the original length<br>
+      If an element's notation can't be handled, the panel says so.
+    </div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">Clean Up Duplicates</div>
+    <div class="feature-body">Use <span class="blue">File → Clean Up Duplicates…</span> to find elements stacked exactly on top of each other (same notation, material, rotation and position). It also checks automatically after saving and after opening a file, and always asks before removing anything. Whole duplicated groups are handled as one unit. One Undo brings everything back.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">Reset</div>
+    <div class="feature-body">The <strong>Reset</strong> button in the property bar puts the element's shape back to default (chain curve / ring squeeze) and sets rotation to 0.</div>
+  </div>
+  <div class="feature">
+    <div class="feature-name">Tatting Tension</div>
+    <div class="feature-body">Real rings never close perfectly — the thread needs a little room where the ring closes, and loose tatters need more of it. <strong>Tension</strong> adds that room, so the drawn ring matches your real one.<br>
+      • Scale: <strong>1</strong> = tight (no extra room) to <strong>5</strong> = loose. Decimals are fine. Default is <strong>3</strong>.<br>
+      • Set your default in <span class="blue">Options → Thread Properties → Tatting Tension</span>. It is saved with the thread preset and is used for <em>new</em> rings.<br>
+      • To change existing rings, select them and use the <strong>Tension</strong> box in the property bar. It shows <strong>–</strong> when the selected rings have different tensions. Changing it resizes them in one undo step and also becomes your default for new rings.<br>
+      • Rings get the full amount, split rings a quarter of it. Chains get none. Circles, Josephine knots and lines are not affected.<br>
+      • Each ring keeps its own tension. Older projects open unchanged (tension 1).</div>
+  </div>
+  <div class="feature">
+    <div class="feature-name">Editing Artifacts</div>
+    <div class="feature-body"><span class="blue">View → Show / Hide Editing Artifacts</span> hides the construction markers — joint picot dots and arms, guide points and connection lines — so you can see the pattern on its own.</div>
+  </div>
+
+  <div class="feature">
+    <div class="feature-name">Realistic View</div>
+<div class="feature-body">Press <kbd>V</kbd> to switch. If nothing changed since the last time, switching back is instant. Edits made while in Realistic view (Undo, Delete, Paste) update it automatically. The stitches are drawn inside the schematic line, so the outer edge of the schematic is the outer edge of the real piece. Polar grids are hidden in this view.</div>
+  </div>
+  
 </section>
 
 <!-- ══════════════════════════════ TIPS ══════════════════════════════ -->
@@ -810,7 +891,7 @@
     <li><strong>Fast rotation:</strong> Use ↶ and ↷ buttons for instant 90° rotations instead of typing angles.</li>
     <li><strong>Symmetry with flipping:</strong> Duplicate elements and use Flip H or Flip V to create perfectly mirrored patterns.</li>
     <li><strong>Alignment:</strong> Use Arrange menu alignment options to quickly organise multiple elements (requires 2+ selected).</li>
-    <li><strong>Joint picot connections:</strong> Joint picots appear as green dots on paths — yellow once connected. Click them directly to select use buttons or shortcuts: J/C.</li>
+	<li><strong>Joint picot connections:</strong> In Picot Join mode, joint picots appear as dots — green when free, yellow once connected. Click them to select, then use the buttons or shortcuts J / C. Outside that mode the picot arms are drawn instead.</li>
     <li><strong>Gradient search:</strong> Use the search bar in the gradient picker to find gradients by name or ID.</li>
     <li><strong>Auto-save:</strong> Your work is automatically saved every 3 minutes to browser storage.</li>
     <li><strong>Undo safety:</strong> Undo/Redo tracks up to 50 states — experiment freely.</li>
@@ -819,6 +900,7 @@
     <li><strong>Multi-select:</strong> Hold Shift while clicking to add elements to your selection.</li>
     <li><strong>Box selection:</strong> Drag in empty space to create a selection box around multiple elements.</li>
     <li><strong>Group workflow:</strong> Group related elements <strong>Ctrl+G</strong> to rotate and move them as one unit. Ungroup with <strong>Shift+G</strong>.</li>
+	<li><strong>Crowded rosette?</strong> If rings around a center overlap in Realistic view, raise their <strong>Tension</strong> in the property bar and squeeze instead of moving them by hand.</li>
   </ul>
 
   <h3>Customising Indicator Colors</h3>
@@ -844,7 +926,6 @@
     <div class="k">handleControl1 / 2</div><div class="v">Bezier control handles</div>
     <div class="k">connectionLine / Dot</div><div class="v">Picot connection visuals</div>
     <div class="k">jpgArm / jpgArmSelected</div><div class="v">Guide joined picot arm</div>
-    <div class="k">gpDiamond</div><div class="v">Guide point diamond</div>
   </div>
 </section>
 
@@ -868,7 +949,7 @@
 
   <h2>Bead Notation - not recommended</h2>
   <p style="margin-bottom:1rem; font-size:0.875rem;">Inline bead notation was the initial idea for bead placement, but it got too complicated. The notation is still available from code - because in some cases it can be faster than visual editor.</p>
-    <p style="margin-bottom:1rem; font-size:0.875rem;">Beads can be added inline in the notation string. Three size keys: <code class="code-inline">Y</code> (small), <code class="code-inline">Z</code> (medium), <code class="code-inline">V</code> (large). Sizes are configurable in <strong>Options → Bead Library</strong>.</p>
+	    <p style="margin-bottom:1rem; font-size:0.875rem;">Beads can be added inline in the notation string. Three size keys: <code class="code-inline">Y</code> (small), <code class="code-inline">Z</code> (medium), <code class="code-inline">V</code> (large) — the same as S / M / L in the Bead Library. Their sizes are set in <strong>Options → Bead Library… → Size Class Settings</strong>.</p>
 
   <!-- bc -->
   <div class="card">
@@ -1005,9 +1086,9 @@
   <!-- Step 1 -->
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="green">Step 1 — Open the Polar Grids panel</h4>
-    <p style="margin-top:0.4rem; font-size:0.875rem;">
-      Click the <strong>Polar Grid button</strong> in the right-side toolbar (looks like concentric circles 🔵), or find it in the <strong>Arrange menu → Polar Grid</strong>.
-      A panel opens with a grid list on the left and the editor on the right.
+<p style="margin-top:0.4rem; font-size:0.875rem;">
+      Open <strong>Options → Polar Grids…</strong>.
+      A panel opens with your grids listed on the left and the editor on the right. If you have no grids yet, the editor shows a short explanation and an <span class="pg-field">+ Add Grid</span> button.
     </p>
   </div>
 
@@ -1015,7 +1096,10 @@
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="green">Step 2 — Create a grid</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
-      Click <span class="pg-field">+ Add Grid</span>. A new grid appears in the list with a default name. Click the name field at the top of the editor and type something meaningful — e.g. <em>"Round 1"</em> or <em>"Main rosette"</em>.
+      Click <span class="pg-field">+ Add Grid</span> (under the list). A new grid appears with a default name and <strong>one ring</strong> already in it, so you see it on the canvas straight away. Click the name field at the top of the editor and type something meaningful — e.g. <em>"Round 1"</em> or <em>"Main rosette"</em>.
+    </p>
+    <p style="margin-top:0.4rem; font-size:0.82rem; color:#9ca3af;">
+      The <strong>eye</strong> next to each grid in the list (in the grid's own color) shows or hides that grid without selecting it.
     </p>
   </div>
 
@@ -1023,7 +1107,7 @@
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="green">Step 3 — Position the center</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
-      The <strong>Center X / Y</strong> fields set where the middle of the grid sits on your canvas.
+      In the <strong>Position</strong> section, the <strong>Center X / Y</strong> fields set where the middle of the grid sits on your canvas.
       For most patterns, leave it at <code class="code-inline">0, 0</code> (the canvas origin). Click the <span class="pg-field">⌖</span> button to reset it back to origin at any time.
     </p>
     <p style="margin-top:0.4rem; font-size:0.82rem; color:#9ca3af;">
@@ -1031,20 +1115,21 @@
     </p>
   </div>
 
+
   <!-- Step 4 -->
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="green">Step 4 — Add rings</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
-      Click <span class="pg-field">+ Add Ring</span>. Each ring has two settings:
+      Rings are listed in a table. Click <span class="pg-field">+ Add Ring</span> under it for more. The two main columns:
     </p>
     <div style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.5rem; padding-left:0.5rem;">
       <div class="pg-row">
-        <span class="pg-field">r</span>
-        <span><strong>Radius</strong> — how far this circle is from the center, in canvas units. The panel shows the approximate real-world size in mm next to it (based on your thread settings). Start with something like <strong>100</strong> for a first ring, then <strong>200</strong> for a second.</span>
+        <span class="pg-field">Radius</span>
+        <span>How far this circle is from the center, in canvas units. The approximate real-world size in mm is shown next to it (based on your thread settings). Each new ring starts a step further out than the last.</span>
       </div>
       <div class="pg-row">
-        <span class="pg-field">÷</span>
-        <span><strong>Divisions</strong> — how many equally-spaced snap points sit on this ring. <strong>6</strong> gives you a hexagon, <strong>8</strong> an octagon, <strong>12</strong> a clock face. The spokes and dots update live on the canvas as you type.</span>
+        <span class="pg-field">Points</span>
+        <span>How many equally-spaced snap points sit on this ring. <strong>6</strong> gives you a hexagon, <strong>8</strong> an octagon, <strong>12</strong> a clock face. The spokes and dots update live on the canvas as you type.</span>
       </div>
     </div>
     <p style="margin-top:0.6rem; font-size:0.82rem; color:#9ca3af;">
@@ -1056,8 +1141,8 @@
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="green">Step 5 — Adjust color and opacity</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
-      In the header of the editor, the <strong>color swatch</strong> (circle) lets you pick a grid color — handy if you have multiple grids and want to tell them apart at a glance.
-      The <strong>opacity slider</strong> next to it controls how faint or vivid the grid lines appear. Slide it down if the grid is distracting while you work.
+      In the <strong>Appearance</strong> section, <strong>Color</strong> (the circle) lets you pick a grid color — handy if you have multiple grids and want to tell them apart at a glance.
+      The <strong>Opacity</strong> slider controls how faint or vivid the grid lines appear. Slide it down if the grid is distracting while you work.
     </p>
   </div>
 
@@ -1065,11 +1150,11 @@
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="green">Step 6 — Snap and visibility per ring</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
-      Each ring row has two small toggle buttons on the right:
+      Each ring row has two toggles, in the <strong>Show</strong> and <strong>Snap</strong> columns:
     </p>
     <div style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.4rem; padding-left:0.5rem; font-size:0.875rem;">
-      <div><span class="pg-icon-btn"></span> &nbsp;<strong>Visible</strong> — shows or hides this specific ring's circle and dots on the canvas. Hidden rings still snap if snap is on.</div>
-      <div><span class="pg-icon-btn"></span> &nbsp;<strong>Snap</strong> — when active (blue), elements will snap to this ring's dots when you drag them nearby. Turn it off for rings you only want as a visual guide.</div>
+      <div><span class="pg-icon-btn"></span> &nbsp;<p style="margin-top:0.5rem; font-size:0.82rem; color:#9ca3af;">The <strong>Visible</strong> checkbox in the Appearance section (or the eye in the grid list) hides or shows the entire grid at once.</p></div>
+	  <div><span class="pg-icon-btn"></span> &nbsp;<strong>Snap</strong> — when active (blue), elements will snap to this ring's dots when you drag them nearby. Turn it off for rings you only want as a visual guide.</div>
     </div>
     <p style="margin-top:0.5rem; font-size:0.82rem; color:#9ca3af;">
       The <strong>Visible</strong> checkbox at the top of the editor hides or shows the entire grid at once.
@@ -1080,8 +1165,8 @@
   <div class="card" style="margin-bottom:0.75rem;">
     <h4 class="yellow">Angular offset (optional)</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
-      The <span class="pg-field">Offset°</span> field rotates all spokes of the grid by that many degrees. Useful when your pattern's first element doesn't sit at 12 o'clock.
-      Each individual ring also has its own <span class="pg-field">⟳°</span> offset that is <em>added on top</em> of the global one — so you can stagger rings relative to each other (e.g. offset ring 2 by 15° so its snap points fall between ring 1's).
+      <span class="pg-field">Rotate grid</span> (Position section) turns all spokes of the grid by that many degrees. Useful when your pattern's first element doesn't sit at 12 o'clock.
+      Each ring also has its own <span class="pg-field">Offset</span> column that is <em>added on top</em> of the grid's rotation — so you can stagger rings relative to each other (e.g. offset ring 2 by 15° so its snap points fall between ring 1's).
     </p>
   </div>
 
@@ -1090,7 +1175,7 @@
     <h4 class="blue">Assigning a grid to elements (Polar Grid pivot)</h4>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
       Once you've created grids, you can tell each element which grid to use as its <strong>rotation and flip center</strong>.
-      Select an element, open the properties bar, and look for the <strong>Polar Grid</strong> dropdown — pick your grid from the list.
+      Select an element and use the <strong>Polar rotation center</strong> dropdown in the property bar — pick your grid, or <em>Own center</em> to go back. Only visible grids are listed.
     </p>
     <p style="margin-top:0.4rem; font-size:0.875rem;">
       When a grid is assigned, rotating or flipping that element will pivot around the grid's center instead of the element's own center.
@@ -1112,6 +1197,8 @@
       <li><span class="check">✓</span><span>The <strong>mm size hint</strong> next to each radius updates if you change thread settings in Thread Properties — use it to match a real-world pattern size.</span></li>
       <li><span class="check">✓</span><span>If snap feels "too sticky", lower the number of divisions on a ring or turn snap off for rings you're not actively working with.</span></li>
       <li><span class="check">✓</span><span>Press <strong>Escape</strong> or click outside the panel to close it without losing any settings.</span></li>
+	  <li><span class="check">✓</span><span>Hold <strong>Hold to peek at canvas</strong> (bottom of the panel) to see your pattern through the panel.</span></li>
+      <li><span class="check">✓</span><span><strong>Delete grid</strong> is at the bottom of the editor; each ring has its own ✕ in the table.</span></li>
     </ul>
   </div>
 

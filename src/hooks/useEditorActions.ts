@@ -21,7 +21,7 @@
 import { useCallback } from 'react';
 import { generateId } from '../utils/id';
 import { sampleBezierPath } from '../geometry/bezier';
-import { SPLIT_RING_END_ALLOWANCE_FACTOR } from '../geometry/stitchGeometry';
+import { SPLIT_RING_END_ALLOWANCE_FACTOR, CHAIN_END_ALLOWANCE_FACTOR } from '../geometry/stitchGeometry';
 import {
   createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   rotatePaths,
@@ -271,7 +271,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
   const addChain = useCallback(() => {
     const center = getViewportCenter();
     const stitchCount = 12;
-    const endAllowance = p.defaultEndAllowanceRef.current ?? 0;
+    // Chains get no tension allowance (CHAIN_END_ALLOWANCE_FACTOR = 0 —
+    // see stitchGeometry.ts); kept as a factor so it's one place to change.
+    const endAllowance = (p.defaultEndAllowanceRef.current ?? 0) * CHAIN_END_ALLOWANCE_FACTOR;
     // Thread length includes the bare ends (same as elementPathLength /
     // resetElementShape's chain branch).
     const chord = (stitchCount + 2 * endAllowance) * p.dsWidth * 0.92;

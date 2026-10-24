@@ -108,7 +108,10 @@ export const elementPathLength = (element: any, dsWidth: number): number => {
 // (`endAllowance`), so changing this mapping never alters saved geometry.
 export const MIN_TENSION = 1;
 export const MAX_TENSION = 5;
-export const MAX_END_ALLOWANCE = 1.5; // ds at tension 5
+// Session 57, retuned after realistic-view testing: doubled from 1.5, so the
+// amount that used to be tension 5 is now tension 3 (the default) — 0.75 ds
+// per tension step. Only the mapping changed; stored values are ds.
+export const MAX_END_ALLOWANCE = 3; // ds at tension 5
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 export const tensionToAllowance = (tension: number): number =>
   (clamp(Number(tension) || MIN_TENSION, MIN_TENSION, MAX_TENSION) - MIN_TENSION)
@@ -120,7 +123,8 @@ export const allowanceToTension = (allowance: number): number =>
 
 // Default for NEW elements, from the active thread preset (Thread
 // Properties). Presets saved before this setting existed have no field and
-// get the default. Default tension 3 = 0.75 ds (user decision, session 57).
+// get the default. Default tension 3 = 1.5 ds (user decision, session 57;
+// was 0.75 ds before the scale was doubled).
 // The built-in DEFAULT_THREAD_PRESET copies (tattingindex.tsx,
 // useBeadState.ts, patternOutput.ts) all read DEFAULT_END_ALLOWANCE, so this
 // is the one place to change it.
@@ -134,6 +138,20 @@ export const DEFAULT_END_ALLOWANCE = tensionToAllowance(DEFAULT_TENSION);
 // stored on it like any other value, so changing this later never alters
 // existing split rings.
 export const SPLIT_RING_END_ALLOWANCE_FACTOR = 0.25;
+// Chains get NO allowance (user decision, session 57, after mock-ups of
+// chain–ring–chain joins): the stitches of a chain run right up to the ring
+// it meets — the bare thread at that join is the ring closing, i.e. the
+// ring's own tension. Chains stay ELIGIBLE (allowsEndAllowance) so chains
+// made earlier with an allowance keep consistent geometry, and the
+// "Tension" button can take it off (factor 0 → target 0).
+export const CHAIN_END_ALLOWANCE_FACTOR = 0;
+// Fraction of the preset value a NEW element of this shape gets (and what
+// the "Tension" button applies): rings 1, split rings ¼, chains 0.
+export const endAllowanceFactor = (element: any): number => {
+  if (element?.isSplitRing) return SPLIT_RING_END_ALLOWANCE_FACTOR;
+  if (effectiveElementType(element) === 'chain') return CHAIN_END_ALLOWANCE_FACTOR;
+  return 1;
+};
 export const presetEndAllowance = (preset: any): number => {
   const v = Number(preset?.endAllowance ?? DEFAULT_END_ALLOWANCE);
   if (!isFinite(v)) return DEFAULT_END_ALLOWANCE;
@@ -142,12 +160,14 @@ export const presetEndAllowance = (preset: any): number => {
 // The preset's value as a tension (for Thread Properties and tooltips).
 export const presetTension = (preset: any): number => allowanceToTension(presetEndAllowance(preset));
 // An element's own tension, as it was applied: split rings store ¼ of the
-// preset value (SPLIT_RING_END_ALLOWANCE_FACTOR), so undo that first.
-// null for shapes that never have one (circles, JKs, lines).
+// preset value (endAllowanceFactor), so undo that first. null for shapes
+// with no tension: circles, JKs, lines — and chains (factor 0).
 export const elementTension = (element: any): number | null => {
   if (!element || !allowsEndAllowance(element)) return null;
+  const f = endAllowanceFactor(element);
+  if (f <= 0) return null;
   const a = Number(element.endAllowance ?? 0) || 0;
-  return allowanceToTension(element.isSplitRing ? a / SPLIT_RING_END_ALLOWANCE_FACTOR : a);
+  return allowanceToTension(a / f);
 };
 
 // Fraction (0..1) of one stitched run's path at stitch position s.

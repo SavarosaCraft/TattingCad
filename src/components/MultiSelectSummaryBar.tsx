@@ -27,6 +27,7 @@
 // group-rotate handlers, matching the original inline code exactly — import
 // it alongside the other geometry helpers when wiring this file in.
 import React from 'react';
+import { TensionStepper } from './TensionStepper';
 import {
   IconRotateCCW, IconRotateCW, IconFlipH, IconFlipV,
   IconNotationM, IconNotationOn, IconNotationOff, IconPaste, IconMagicWand,
@@ -49,10 +50,9 @@ const fallbackGroupColor = (existingGroups: Array<{ id: string }>, groupId: stri
 };
 
 interface MultiSelectSummaryBarProps {
-  // End allowance (session 57, step 5) — see applyEndAllowanceToIds in tattingindex.tsx.
-  applyEndAllowanceToIds: (ids: string[]) => void;
-  canApplyEndAllowance: (ids: string[]) => boolean;
-  defaultTension: number; // active preset's tension (1–5), for the tooltip
+  // Tension stepper (session 57) — see setTensionForIds in tattingindex.tsx.
+  tensionInfoForIds: (ids: string[]) => { value: number; mixed: boolean };
+  setTensionForIds: (ids: string[], tension: number) => void;
   selectedIds: string[];
   elementById: Map<string, any>;
   elements: any[];
@@ -140,9 +140,8 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   rounds,
   pushHistoryState,
   t,
-  applyEndAllowanceToIds,
-  canApplyEndAllowance,
-  defaultTension,
+  tensionInfoForIds,
+  setTensionForIds,
 }) => {
   if (selectedIds.length === 0) return null;
 
@@ -328,14 +327,9 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             }`}
             title={t('propHideLabel')}
           >{groupElements.every(e => e.hideLabel) ? <IconNotationOff size={16} /> : <IconNotationOn size={16} />}</button>
-          {/* Apply end allowance (group bar) — applyEndAllowanceToIds in
-              tattingindex.tsx; skips elements it can't apply to. */}
-          <button
-            onClick={() => applyEndAllowanceToIds(selectedIds as string[])}
-            disabled={!canApplyEndAllowance(selectedIds as string[])}
-            className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs disabled:opacity-40 disabled:pointer-events-none"
-            title={t('propApplyEndAllowance').replace('{n}', String(defaultTension))}
-          >{t('propApplyEndAllowanceBtn')}</button>
+          {/* Tension (group bar) — see TensionStepper.tsx / setTensionForIds. */}
+          <TensionStepper ids={selectedIds as string[]} tensionInfoForIds={tensionInfoForIds}
+            setTensionForIds={setTensionForIds} t={t} />
           {/* Polar rotation center — group bar */}
           {polarGrids.length > 0 && (
             <>
@@ -584,14 +578,9 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs"
             title={t('propResetTransform')}
           >{t('propResetBtn')}</button>
-          {/* Apply end allowance (free multi-select) — applyEndAllowanceToIds in
-              tattingindex.tsx; skips elements it can't apply to. */}
-          <button
-            onClick={() => applyEndAllowanceToIds(selectedIds as string[])}
-            disabled={!canApplyEndAllowance(selectedIds as string[])}
-            className="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 text-xs disabled:opacity-40 disabled:pointer-events-none"
-            title={t('propApplyEndAllowance').replace('{n}', String(defaultTension))}
-          >{t('propApplyEndAllowanceBtn')}</button>
+          {/* Tension (free multi-select) — see TensionStepper.tsx / setTensionForIds. */}
+          <TensionStepper ids={selectedIds as string[]} tensionInfoForIds={tensionInfoForIds}
+            setTensionForIds={setTensionForIds} t={t} />
 
           {/* Notation label offset */}
           <div className="w-px h-6 bg-gray-600 mx-1" />

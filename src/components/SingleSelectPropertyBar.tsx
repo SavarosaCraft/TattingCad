@@ -10,10 +10,9 @@ import { MaterialAssignmentDropdown } from './MaterialAssignmentDropdown';
 
 interface SingleSelectPropertyBarProps {
   selectedElement: any;
-  // End allowance (session 57, step 5) — see applyEndAllowanceToIds in tattingindex.tsx.
-  applyEndAllowanceToIds: (ids: string[]) => void;
-  canApplyEndAllowance: (ids: string[]) => boolean;
-  defaultTension: number; // active preset's tension (1–5), for the tooltip
+  // Tension stepper (session 57) — see setTensionForIds in tattingindex.tsx.
+  tensionInfoForIds: (ids: string[]) => { value: number; mixed: boolean };
+  setTensionForIds: (ids: string[], tension: number) => void;
   selectedIds: (string | number)[];
   selectedIdSet: Set<any>;
   elements: any[];
@@ -106,9 +105,8 @@ export function SingleSelectPropertyBar(props: SingleSelectPropertyBarProps) {
       ) : (
         <GeneralElementPropertyBar
           selectedElement={props.selectedElement}
-          applyEndAllowanceToIds={props.applyEndAllowanceToIds}
-          canApplyEndAllowance={props.canApplyEndAllowance}
-          defaultTension={props.defaultTension}
+          tensionInfoForIds={props.tensionInfoForIds}
+          setTensionForIds={props.setTensionForIds}
           selectedIdSet={props.selectedIdSet}
           elements={props.elements}
           elementsRef={props.elementsRef}
