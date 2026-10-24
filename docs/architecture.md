@@ -1,6 +1,7 @@
 # TattingCAD — Architecture
 
-Last updated: **session 56**. Sessions 54–56 were folded in during session 56
+Last updated: **session 57** (end-allowance steps 1–5 — see "Stitch → path
+position" under Rules). Before that: **session 56**. Sessions 54–56 were folded in during session 56
 (this doc had not been updated since session 53). Session 54/55 details come
 from their handoff docs; session 56's from the work itself. The new Rules
 sections near the end ("Realistic view", "Single-element thread ribbons",
@@ -109,6 +110,14 @@ src/
                           renderer (render/realisticRenderer.ts) and by schematic-
                           mode picot positioning in tattingindex.tsx, which is why
                           it lives here rather than folding into render/.
+                          Session 57 (end allowance, step 1): the shared
+                          stitch → path-position helpers — getEndAllowance
+                          (always 0 until step 3), stitchRunFraction,
+                          elementStitchFraction, splitRingSideFraction,
+                          getSplitRingSplitPos. Every place that turns a stitch
+                          position into a place along a chain / teardrop /
+                          split-ring path now calls these. See "Stitch → path
+                          position" under Rules.
 
   domain/
     parser.ts             parseNotation, reverseNotation, buildSegmentLabel,
@@ -1684,6 +1693,9 @@ flag against this pattern before assuming a `keydown`/`keyup` (or
   picots, cjp arms, line elements.
 - Live JSX in tattingindex.tsx, on top: picot join lines, fold arcs,
   bead/BE picots (their own "realistic overlay" pass).
+- Hidden in realistic view (`renderMode !== 'realistic'` guards): square
+  grid, polar grid guides (since session 57), reference image, snap
+  indicators, group boxes.
 - **Not drawn:** the whole schematic element layer (the
   picotJoin/beading dim-overlay `<g>`). It used to stay mounted at
   opacity 0, so every element's schematic paths, notation labels, order
@@ -1833,6 +1845,192 @@ was built from a mid-session copy, and later sessions edited on top of it.
 Practice from now on: when picking up a "done" item, grep the actual file
 for it before trusting the doc; when handing off, state which exact file
 versions were delivered.
+
+### End allowance — stored per element (session 57, steps 2–3)
+
+- `el.endAllowance` (ds) is stored per element; absent = 0. It is not a
+  global setting, because paths are stored as geometry. Saved and copied
+  with the element. **Any code that builds an element from an explicit
+  field list must copy it** (today only `createPolarInstance`'s ghost
+  branch).
+- The default for new elements comes from the active thread preset:
+  `presetEndAllowance(preset)` (stitchGeometry.ts) gives 1 when missing,
+  clamped 0–5. It's edited in Thread Properties → "Element Ends".
+- File `version` 91 marks files that may carry the field (not read on load).
+- `duplicateSignature` includes it.
+- **Live since step 3.** `getEndAllowance` returns the stored value for
+  chains, split chains, teardrop rings and split rings (0 for circles, JKs,
+  lines — `allowsEndAllowance`). addRing/addSplitRing/addChain stamp it
+  from the preset (`defaultEndAllowanceRef`) and build the longer path.
+  Split rings get `SPLIT_RING_END_ALLOWANCE_FACTOR` (0.25) × the preset
+  value. It's applied at creation and stored, so it never changes existing
+  elements.
+- **INVARIANT: any code that builds or resizes a path from the stitch
+  count must use `elementPathLength(el, dsWidth)` (or pass the allowance
+  to `createSplitRingPath`), never `stitchCount * dsWidth`.** The only
+  remaining raw `stitchCount * dsWidth` are circle radii (allowance always
+  0) and Convert to JK (sets `endAllowance: 0`). When toggling shape or
+  editing notation, measure on the element as it will be *after* the
+  change (eligibility can change).
+
+### Stitch → path position — shared helpers (session 57, end allowance step 1)
+
+Groundwork for the element end allowance (design in handoff-session56.md:
+bare, unstitched thread at each path end of chains, teardrops and split
+rings). All "where along the path is stitch position s?" maths goes through
+geometry/stitchGeometry.ts:
+
+- `stitchRunFraction(s, count, a)` = (s + a) / (count + 2a): the fraction of
+  one stitched run's path at stitch position s, with `a` ds of allowance at
+  each end. a = 0 gives the old s / count bit-for-bit.
+- `elementStitchFraction(el, s, onSideA?)`: fraction of the element's whole
+  path (all `el.paths` end to end). For split rings, side B is offset by
+  side A's two allowances: (s + a or 3a) / (N + 4a).
+- `splitRingSideFraction(el, localS, count)`: fraction of one split-ring
+  side's own path.
+- `getEndAllowance(el)`: the stored per-element value for chains, split
+  chains, teardrop rings and split rings (circles, JKs and lines always 0)
+  — live since step 3; see the next section.
+
+They return a fraction of the path, not a point. Each call site keeps its
+own fraction → point method, because those differ and unifying them would
+move things (see "Known differences" below).
+
+**Routed through the helpers:**
+- tattingindex.tsx: getPicotPosition (snap, hit-test, join lines, fold
+  feet), renderPicots (split ring + path branches; beads ride on it),
+  renderStitchLabels (all four non-circle branches).
+- realisticRenderer.ts: calculatePathStitches, calculateSplitRingStitches,
+  renderWedgePathShapes (new `endAllowance` param: samples (count + 2a) ds,
+  slices start a ds in), picotSVG (regular + cjp), split-ring picots.
+  The picot gap is clamped in stitch space (0..N) before mapping, so it
+  never reaches into the allowance.
+
+**Deliberately NOT routed through them:**
+- Gradient colour positions (`position`, `tMid`, getPicotPositionFraction).
+  These are stitch progress (s / N), and the allowance must not shift
+  colour.
+- Circles / JKs: they keep getCircleStitchAngle and never get an allowance.
+- Stitch count → path LENGTH (`stitchCount * dsWidth`). These sites need
+  step 3 decisions, listed in handoff-session57.md.
+
+**Verified:** old vs new realistic bake was byte-identical on 210 bakes
+(random chains, teardrops, split rings, circles, beads, cjp, joins, flips,
+3 dsWidths). getPicotPosition, renderPicots and renderStitchLabels were
+extracted by AST from old and new tattingindex.tsx and compared on the same
+elements: 1,954 results, 0 differences. Mutation check (allowance forced to
+1): 174/210 bakes and ~78% of schematic results change, so the harness can
+see the helper. The tsc error set is unchanged.
+
+**Known differences that already existed (not changed):**
+- getPicotPosition and schematic renderPicots (chain/teardrop branch) map a
+  path-length fraction straight onto bezier `t` within the segment. Labels
+  and the whole realistic renderer walk true arc length. So schematic and
+  realistic picot bases can sit slightly apart on strongly curved segments.
+- For split rings, getPicotPosition uses the concatenated A+B path while
+  renderPicots uses each side's own path. They agree to within the split-ring
+  solver's tolerance. With the helpers both stay consistent once the
+  allowance is on.
+
+### Tension — the user-facing name (session 57)
+
+The UI never says "end allowance" or "ds". It shows **Tension 1–5**
+(decimals OK; 1 = 0 ds tightest, 5 = 3 ds loosest, linear — doubled
+from 1.5 late in session 57;
+`tensionToAllowance` / `allowanceToTension` in stitchGeometry.ts). Storage
+stays in ds (`endAllowance` on presets and elements), so the scale can be
+re-tuned without touching saved geometry. Default tension 3 (1.5 ds): `DEFAULT_TENSION` is the single
+source; all three DEFAULT_THREAD_PRESET copies read DEFAULT_END_ALLOWANCE.
+The button is "Tension"; translation key names still say EndAllowance.
+
+### Apply end allowance, and resizing helpers (session 57, step 5)
+
+- "Ends" button (single, multi, group bars) → `applyEndAllowanceToIds`
+  (tattingindex.tsx) → `resizeElementForAllowance` (paths.ts, pure).
+  Teardrop: `scalePathsAboutPoint`. Chain: `rebendChainPathToLength`
+  (multi-path: proportional share). Split ring: `rebuildSplitRingInPlace`.
+  One commit/undo step; ghost mothers regenerate.
+- `scalePathsAboutPoint` and `rebendChainPathToLength` are THE resize code
+  for notation edits too (moved verbatim out of
+  computeElementAfterNotationEdit, verified identical).
+- **`rebuildSplitRingInPlace` is the correct way to rebuild a split ring
+  that already exists.** It takes frame and mirror state from the existing
+  side-A arc. The older field-based rebuild
+  (`applyRotationToPathData(el, createSplitRingPathFromEl(el))`, used by
+  squeeze sliders / rotatePathsAroundCenter; Reset and notation edits apply
+  no rotation at all) was wrong for flipped split rings. **FIXED end of
+  session 57:** squeeze sliders, notation edit, rotation handle and
+  rotatePathsAroundCenter all use it now; flipElements also swaps
+  squeezeCA/CB; Reset clears isFlippedH/V for split rings. **Rule: never
+  rebuild an existing split ring with
+  `applyRotationToPathData(createSplitRingPathFromEl(...))`.** The only
+  remaining direct `createSplitRingPathFromEl` use on an existing ring is
+  Reset (upright by design). Flip also swaps materialId/materialIdB (when
+  they differ), so colours stay with their arcs (user decision).
+
+### Realistic stitches inside the line; chains have no tension (session 57)
+
+- (Refined later in session 57: the realistic stitches' *visible* outer
+  edge, outline included, is matched to the *visible* outer edge of the
+  3.75-wide schematic stroke via `offsetBasePadding(dsWidth)`, not to the
+  line's centre. Keep `SCHEMATIC_STROKE_WIDTH` in realisticRenderer.ts in
+  step with the schematic strokeWidth="3.75".)
+- Realistic view: the schematic line is the OUTER edge of the stitches
+  (`OFFSET_BASE_PADDING` = 0 in realisticRenderer.ts; the symbol's outer
+  edge is exactly 0.125 × dsWidth inside the offset). Stitches lie on the
+  side away from the picots. Don't reintroduce an outward padding without
+  re-checking rosettes and chain–ring–chain joins (mock-ups listed in
+  handoff-session57.md).
+- `endAllowanceFactor(el)` (stitchGeometry.ts): the fraction of the preset
+  allowance a shape gets: rings 1, split rings ¼, chains 0. It's used when
+  creating elements and by the "Tension" button. Chains remain *eligible* in
+  `allowsEndAllowance`, so older chains with a stored value stay geometrically
+  consistent.
+- Polishing items (narrow rings, teardrop tip, rosette hole) are in
+  handoff-session57.md.
+
+### Tension stepper (session 57, replaces the step-5 apply button)
+
+`components/TensionStepper.tsx` (single, multi and group bars) shows the
+selection's tension and calls `setTensionForIds` (tattingindex.tsx). That
+writes the active thread preset (becomes the default, like the last-picked
+material) AND resizes the eligible selected elements via
+`resizeElementForAllowance` × `endAllowanceFactor`: one commit, one undo
+step. `tensionInfoForIds` gives the value shown or "mixed". NumberStepper has
+`mixedText` and `title` props for it.
+
+### Realistic picot lengths (session 57)
+
+`PICOT_TIP_LENGTH_DS` (realisticRenderer.ts): sp 0.7 · p 1.2 · lp 2.0 ds
+(was 1.2 / 2.0 / 3.2; shortened after the stitches moved inside the line).
+These are realistic view only; the schematic uses `PICOT_SIZE`.
+
+### Arrow-key nudge (session 57)
+
+Arrow = 1 canvas unit, Shift+Arrow = 1 ds. It has its own listener in
+tattingindex.tsx (after the window-blur flush), calling through
+`arrowNudgeRef`/`arrowNudgeEndRef`, which are reassigned every render. A
+hold = one undo step via nudgeActiveRef (set before the first move, cleared
+plus one explicit push on key-up; no skipAutoHistoryRef because nothing
+changes after that push). It moves like a mouse drag, incl. ghost-array
+regeneration. Skipped for form-control focus, realistic view, the special
+modes and mid-drag.
+
+### Release checklist — version number (user's notes, session 57)
+
+A release changes the version in ALL of these, to the same value:
+1. `src/tattingindex.tsx`: `const APP_VERSION = '…'` (shown in the About
+   panel and the splash update messages)
+2. `src-tauri/tauri.conf.json`
+3. `src-tauri/Cargo.toml`
+4. `package.json`
+
+(There is no root `tauri.conf.json` — the only Tauri config is
+`src-tauri/tauri.conf.json`. Confirmed by the user, session 57.)
+
+Not to be confused with `version` in `serializeProject`
+(domain/patternOutput.ts). That is the project FILE format version (91 as of
+session 57); change it only when the saved data changes.
 
 ## What stays in tattingindex.tsx for now
 
