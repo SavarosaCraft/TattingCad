@@ -24,7 +24,7 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
-import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, endAllowanceFactor, elementTension } from './geometry/stitchGeometry';
+import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, endAllowanceFactor, elementTension, withChordCenter } from './geometry/stitchGeometry';
 import { bakeRealisticView } from './render/realisticRenderer';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
@@ -355,6 +355,38 @@ const ArrayDialogShell = ({
     {children}
   </Modal>
 );
+
+// Where a tatting-order badge (number or "R") sits on an open element (chain
+// or line): halfway along its drawn path, by arc length. Session 58: the "R"
+// badge used el.center, which can be stale for chains (Path Edit endpoint
+// drags never updated it before session 58), so it could float far from the
+// chain. Numbers already used this midpoint; both now share it. `samples` is
+// per path segment (chains 40, lines 20 — the values each site always used).
+const orderLabelPosOnPath = (el: any, samples: number): { x: number; y: number } => {
+  let ox = el.center.x, oy = el.center.y;
+  if (!el.paths || el.paths.length === 0) return { x: ox, y: oy };
+  const allPts: { x: number; y: number }[] = [];
+  el.paths.forEach((p: any) => {
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples, u = 1 - t;
+      if (p.type === 'cubic') {
+        allPts.push({ x: u*u*u*p.x+3*u*u*t*p.control1X+3*u*t*t*p.control2X+t*t*t*p.endX, y: u*u*u*p.y+3*u*u*t*p.control1Y+3*u*t*t*p.control2Y+t*t*t*p.endY });
+      } else {
+        allPts.push({ x: u*u*p.x+2*u*t*p.controlX+t*t*p.endX, y: u*u*p.y+2*u*t*p.controlY+t*t*p.endY });
+      }
+    }
+  });
+  let total = 0;
+  for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
+  let acc = 0;
+  const half = total / 2;
+  for (let i = 1; i < allPts.length; i++) {
+    const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
+    if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
+    acc += seg;
+  }
+  return { x: ox, y: oy };
+};
 
 const TattingDesigner = () => {
   // ── UI state (dialogs, menus, toggles) ──────────────────────────────────
@@ -878,12 +910,13 @@ const APP_VERSION = '1.3.0';
       // rounds/groups refs and push a spurious second entry — leaving Undo
       // enabled right after resuming. Skip that one auto-push.
       skipAutoHistoryRef.current = true;
-      // Migrate legacy labelsInside → labelOffset
-      setElements((projectData.elements || []).map(el =>
+      // Migrate legacy labelsInside → labelOffset; put stale chain/line
+      // centers back on the chord midpoint (session 58, same as file open).
+      setElements((projectData.elements || []).map(el => withChordCenter(
         'labelsInside' in el && !('labelOffset' in el)
           ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
           : el
-      ));
+      )));
       setPicotConnections(projectData.picotConnections || []);
       setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
       setZoom(projectData.zoom || 1);
@@ -3550,7 +3583,9 @@ const APP_VERSION = '1.3.0';
   // Computes the updated array once and reuses it for both setElements and
   // pushHistoryState, rather than recomputing the same .map() twice.
   const commitSinglePathUpdate = (elId: string, newPath: any) => {
-    const updated = elementsRef.current.map(e => e.id === elId ? { ...e, paths: [newPath] } : e);
+    // center follows the chord midpoint (line angle presets move the end
+    // point; chain presets keep both ends, so this is a no-op for them).
+    const updated = elementsRef.current.map(e => e.id === elId ? withChordCenter({ ...e, paths: [newPath] }) : e);
     setElements(updated);
     pushHistoryState(updated, picotConnectionsRef.current, roundsRef.current);
   };
@@ -8505,31 +8540,14 @@ const APP_VERSION = '1.3.0';
                         })()}
                         {/* Order number label for lines */}
                         {(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && el.paths?.length > 0 && (() => {
-                          const allPts: {x:number,y:number}[] = [];
-                          el.paths.forEach(p => {
-                            for (let i = 0; i <= 20; i++) {
-                              const t = i / 20, u = 1 - t;
-                              if (p.type === 'cubic') {
-                                allPts.push({ x: u*u*u*p.x+3*u*u*t*p.control1X+3*u*t*t*p.control2X+t*t*t*p.endX, y: u*u*u*p.y+3*u*u*t*p.control1Y+3*u*t*t*p.control2Y+t*t*t*p.endY });
-                              } else {
-                                allPts.push({ x: u*u*p.x+2*u*t*p.controlX+t*t*p.endX, y: u*u*p.y+2*u*t*p.controlY+t*t*p.endY });
-                              }
-                            }
-                          });
-                          let total = 0;
-                          for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                          let acc = 0, half = total / 2, ox = el.center.x, oy = el.center.y;
-                          for (let i = 1; i < allPts.length; i++) {
-                            const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                            if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
-                            acc += seg;
-                          }
+                          const { x: ox, y: oy } = orderLabelPosOnPath(el, 20);
                           const [_f3, _s3] = getRoundBadgeColor(el);
                           return <text data-layer="order" x={ox} y={oy} fill={_f3} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s3} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                         })()}
-                        {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && el.paths?.length > 0 && (
-                          <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
-                        )}
+                        {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && el.paths?.length > 0 && (() => {
+                          const { x: ox, y: oy } = orderLabelPosOnPath(el, 20);
+                          return <text data-layer="order" x={ox} y={oy} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>;
+                        })()}
                       </>
                     ) : (
                     /* Chains and teardrops */
@@ -8729,35 +8747,18 @@ const APP_VERSION = '1.3.0';
                           </g>
                         )}
                         <g key={`${el.id}-labels`} data-layer="notation">{(el.hideLabel || hideNotationInMode || isGhost) ? null : renderStitchLabels(el)}</g>
-{(showUnnumbered || activeMode === 'tattingOrder') && el.orderNumber && (() => {
-                          let ox = el.center.x, oy = el.center.y;
-                          if (el.type === 'chain' && el.paths && el.paths.length > 0) {
-                            const allPts: {x:number,y:number}[] = [];
-                            el.paths.forEach(p => {
-                              for (let i = 0; i <= 40; i++) {
-                                const t = i / 40, u = 1 - t;
-                                if (p.type === 'cubic') {
-                                  allPts.push({ x: u*u*u*p.x+3*u*u*t*p.control1X+3*u*t*t*p.control2X+t*t*t*p.endX, y: u*u*u*p.y+3*u*u*t*p.control1Y+3*u*t*t*p.control2Y+t*t*t*p.endY });
-                                } else {
-                                  allPts.push({ x: u*u*p.x+2*u*t*p.controlX+t*t*p.endX, y: u*u*p.y+2*u*t*p.controlY+t*t*p.endY });
-                                }
-                              }
-                            });
-                            let total = 0;
-                            for (let i = 1; i < allPts.length; i++) total += Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                            let acc = 0, half = total / 2;
-                            for (let i = 1; i < allPts.length; i++) {
-                              const seg = Math.hypot(allPts[i].x-allPts[i-1].x, allPts[i].y-allPts[i-1].y);
-                              if (acc + seg >= half) { const f=(half-acc)/seg; ox=allPts[i-1].x+(allPts[i].x-allPts[i-1].x)*f; oy=allPts[i-1].y+(allPts[i].y-allPts[i-1].y)*f; break; }
-                              acc += seg;
-                            }
+{(showUnnumbered || activeMode === 'tattingOrder') && (el.orderNumber || el.isRepeat) && (() => {
+                          // Chains: halfway along the path (el.center can be stale
+                          // for chains). Rings: their centre, as before.
+                          const { x: ox, y: oy } = el.type === 'chain'
+                            ? orderLabelPosOnPath(el, 40)
+                            : { x: el.center.x, y: el.center.y };
+                          if (el.orderNumber) {
+                            const [_f5, _s5] = getRoundBadgeColor(el);
+                            return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                           }
-                          const [_f5, _s5] = getRoundBadgeColor(el);
-                          return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
+                          return <text data-layer="order" x={ox} y={oy} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>;
                         })()}
-                        {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (
-                          <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
-                        )}
                         {/* Per-element "G" badge removed — superseded by the
                             dashed-box group overlay + corner badge. */}
                       </>

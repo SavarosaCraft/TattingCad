@@ -12,6 +12,7 @@ import {
 import { serializeProject } from '../domain/patternOutput';
 import { prepareSvgForExport } from '../render/svgExport';
 import { sampleBezierPath } from '../geometry/bezier';
+import { withChordCenter } from '../geometry/stitchGeometry';
 
 const DEFAULT_MATERIALS = [
   { id: 'default', name: 'Default Thread', color: '#FFFFFF', type: 'solid' },
@@ -232,6 +233,9 @@ export function useProjectFile(p: UseProjectFileParams) {
           ),
         };
       }
+      // Session 58: stale chain/line centers from before the Path Edit fix
+      // are put back on the chord midpoint (no-op when already correct).
+      migrated = withChordCenter(migrated);
       return migrated;
     });
     // History is reset directly below (setHistory) while elements/

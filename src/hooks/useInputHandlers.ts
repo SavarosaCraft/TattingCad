@@ -8,7 +8,7 @@
 import { generateId } from '../utils/id';
 import { sampleBezierPath, calculatePathLength } from '../geometry/bezier';
 import { rotatePaths, rebuildSplitRingInPlace } from '../geometry/paths';
-import { elementPathLength } from '../geometry/stitchGeometry';
+import { elementPathLength, withChordCenter } from '../geometry/stitchGeometry';
 import { getFoldPartner } from './useJoinActions';
 
 // How far a chain's rendered curve (arc length) may stretch or compress away
@@ -519,8 +519,14 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           }
         };
 
-        if (handleInfo.type === 'start') return smartEndpointDrag(true);
-        if (handleInfo.type === 'end')  return smartEndpointDrag(false);
+        // Keep el.center on the chord midpoint (what addChain sets and what a
+        // line's endpoint drag above already does) via withChordCenter
+        // (stitchGeometry.ts). Before session 58 a chain's center stayed where
+        // it was, so anything reading it (the tatting-order "R" badge,
+        // rotation pivot, array pivots) pointed at empty space after the
+        // chain had been reshaped.
+        if (handleInfo.type === 'start') return withChordCenter(smartEndpointDrag(true));
+        if (handleInfo.type === 'end')  return withChordCenter(smartEndpointDrag(false));
 
         if (handleInfo.type === 'control' || handleInfo.type === 'control1' || handleInfo.type === 'control2') {
           const newCX = world.x, newCY = world.y;
@@ -637,7 +643,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
               if (diff < tolerance * 0.5) break;
               if (tryLen < targetLength) minD = d; else maxD = d;
             }
-            return { ...el, paths: [{ ...path, controlX: newCX, controlY: newCY, endX: bestEX, endY: bestEY }] };
+            return withChordCenter({ ...el, paths: [{ ...path, controlX: newCX, controlY: newCY, endX: bestEX, endY: bestEY }] });
           }
         }
         return el;

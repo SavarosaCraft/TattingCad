@@ -205,3 +205,21 @@ export const splitRingSideFraction = (element: any, localS: number, count: numbe
 // of, via sourceType (see createPolarInstance), for the rendering branches
 // that need to know whether to draw it as a chain/ring/line.
 export const effectiveElementType = (el: any): string => el.type === 'ghost' ? (el.sourceType ?? el.type) : el.type;
+
+// A single-path chain's or line's `center` is the midpoint of its chord (what
+// addChain / addLine set, and what rotation, flips and moves preserve). Before
+// session 58, Path Edit endpoint drags on chains and line angle presets moved
+// an end without updating center, so older files can carry a stale one.
+// Returns the element with center on the chord midpoint, or the SAME object
+// when nothing needs changing (rings, ghosts, multi-path chains, already
+// correct, or bad data), so callers can map over everything cheaply. Used on
+// file open / autosave resume, and by the Path Edit endpoint drag.
+export const withChordCenter = (el: any): any => {
+  if (!el || (el.type !== 'chain' && el.type !== 'line')) return el;
+  const p = el.paths?.length === 1 ? el.paths[0] : null;
+  if (!p) return el;
+  const x = (p.x + p.endX) / 2, y = (p.y + p.endY) / 2;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return el;
+  if (el.center && Math.abs(el.center.x - x) < 1e-9 && Math.abs(el.center.y - y) < 1e-9) return el;
+  return { ...el, center: { x, y } };
+};
