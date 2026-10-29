@@ -6,7 +6,10 @@ import { useState } from 'react';
 export function useProjectState() {
   const [projectName, setProjectName] = useState('Untitled Pattern');
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
-  const [lastSavedHistoryIndex, setLastSavedHistoryIndex] = useState(0);
+  // rev (useHistoryActions.ts) of the history entry that was last saved or
+  // opened; -1 = this content was never saved (resumed autosave). Session 58:
+  // replaced lastSavedHistoryIndex, which compared array indices.
+  const [lastSavedRev, setLastSavedRev] = useState(0);
 
   const [renderMode, setRenderMode] = useState('schematic');
   const [bakedRealisticSVG, setBakedRealisticSVG] = useState<string | null>(null);
@@ -17,7 +20,7 @@ export function useProjectState() {
   return {
     projectName, setProjectName,
     currentFilePath, setCurrentFilePath,
-    lastSavedHistoryIndex, setLastSavedHistoryIndex,
+    lastSavedRev, setLastSavedRev,
     renderMode, setRenderMode,
     bakedRealisticSVG, setBakedRealisticSVG,
     notationError, setNotationError,

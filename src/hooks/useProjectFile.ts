@@ -96,13 +96,24 @@ export interface UseProjectFileParams {
   setHistory: (v: any[]) => void;
   setHistoryIndex: (v: number) => void;
   setCurrentFilePath: (v: string | null) => void;
-  setLastSavedHistoryIndex: (v: number) => void;
+  setLastSavedRev: (v: number) => void;
+  /** rev of the current history entry (0 when it has none). */
+  getCurrentHistoryRev: () => number;
   // Utilities
   getPicotPosition: (el: any, picot: any, baseOnly?: boolean) => any;
   showLoadMsg: (type: 'success' | 'error', text: string) => void;
   t: (key: string) => string;
   cleanupDuplicates: (opts?: { silent?: boolean; elementsOverride?: any[] }) => void;
 }
+
+// Fallback camera when a file has none: world (0,0) in the middle of the
+// canvas (it sits right of the tool rail and under the header, session 58).
+const canvasCenterOf = (canvasRef: any) => {
+  const rect = canvasRef?.current?.getBoundingClientRect();
+  return rect && rect.width > 0
+    ? { x: Math.round(rect.width / 2), y: Math.round(rect.height / 2) }
+    : { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
+};
 
 export function useProjectFile(p: UseProjectFileParams) {
 
@@ -140,11 +151,15 @@ export function useProjectFile(p: UseProjectFileParams) {
   useEffect(() => { buildProjectDataRef.current = buildProjectData; });
 
   const saveToPath = useCallback(async (filePath: string, finalName: string) => {
+    // Remember which history entry is being written BEFORE the awaits below:
+    // an edit made while the file/thumbnail are being written isn't in the
+    // file, so it must still count as unsaved (session 58).
+    const savedRev = p.getCurrentHistoryRev();
     await writeProjectFile(filePath, buildProjectData(finalName));
     const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? finalName;
     const thumbPath = await generateThumbnailPng(p.elements, p.dsWidth, filePath);
     addToRecents(displayName, filePath, thumbPath);
-    p.setLastSavedHistoryIndex(p.historyIndexRef.current);
+    p.setLastSavedRev(savedRev);
     // Silent — only the manual File-menu entry should interrupt the user;
     // a save happening to also be a good moment to check shouldn't itself
     // become an interruption. No elementsOverride needed here: unlike a
@@ -198,7 +213,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     }
 
     if (projectData.camera && (typeof projectData.camera.x !== 'number' || typeof projectData.camera.y !== 'number')) {
-      projectData.camera = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
+      projectData.camera = canvasCenterOf(p.canvasRef);
     }
     if (projectData.zoom && (typeof projectData.zoom !== 'number' || projectData.zoom <= 0)) {
       projectData.zoom = 1;
@@ -248,7 +263,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.skipAutoHistoryRef.current = true;
     p.setElements(migratedElements);
     p.setPicotConnections(projectData.picotConnections || []);
-    p.setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
+    p.setCamera(projectData.camera || canvasCenterOf(p.canvasRef));
     p.setZoom(projectData.zoom || 1);
     p.setDsWidth(projectData.dsWidth || 10);
     p.setBgColor(projectData.bgColor || '#1F2937');
@@ -293,6 +308,8 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setHistory([{ elements: migratedElements, connections: projectData.picotConnections || [] }]);
     p.setHistoryIndex(0);
     p.setCurrentFilePath(filePath);
+    // Just opened = matches the file on disk (that entry has no rev → 0).
+    p.setLastSavedRev(0);
 
     // Silent — a load happening to also be a good moment to check
     // shouldn't itself interrupt opening the file. elementsOverride is

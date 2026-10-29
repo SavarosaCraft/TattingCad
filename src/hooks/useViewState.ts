@@ -30,6 +30,25 @@ export const SPLASH_TIP_KEYS = [
   'splashTip11', 'splashTip12', 'splashTip13', 'splashTip14', 'splashTip15',
 ];
 
+// Left toolbar layout, session 58. Decided once and stored: a fresh install
+// starts in 'simple'; anyone who already used the app (any of our keys
+// present) keeps the 'full' toolbar they know. Written on first decision so
+// it can't flip on the next launch once other keys exist. Also read by
+// useCanvasInteraction (which runs first) to pick the starting tool: Select
+// in simple mode, Pan in full mode.
+export const getInitialToolbarMode = (): 'simple' | 'full' => {
+  try {
+    const saved = localStorage.getItem('tcad_toolbar_mode');
+    if (saved === 'simple' || saved === 'full') return saved;
+    const existingUser = ['tcad_install_date', 'tcad_thread_presets', 'tcad_recent_projects',
+      'tatting-designer-autosave', 'tcad_ui_scale', 'tcad_language']
+      .some(k => localStorage.getItem(k) !== null);
+    const mode = existingUser ? 'full' : 'simple';
+    localStorage.setItem('tcad_toolbar_mode', mode);
+    return mode;
+  } catch { return 'full'; }
+};
+
 export function useViewState() {
   // ── Canvas appearance ──────────────────────────────────────────────────
   const [bgColor, setBgColor] = useState<string>(() => {
@@ -56,6 +75,14 @@ export function useViewState() {
     try { return localStorage.getItem('tcad_ui_scale') || 'normal'; } catch { return 'normal'; }
   });
 
+  // ── Left toolbar: 'simple' (one labelled column) or 'full' (all tools) ──
+  // See getInitialToolbarMode (top of this file).
+  const [toolbarMode, setToolbarModeState] = useState<'simple' | 'full'>(getInitialToolbarMode);
+  const setToolbarMode = (mode: 'simple' | 'full') => {
+    try { localStorage.setItem('tcad_toolbar_mode', mode); } catch { /* storage unavailable */ }
+    setToolbarModeState(mode);
+  };
+
   // ── Clipboard ──────────────────────────────────────────────────────────
   const [clipboard, setClipboard] = useState<any[]>([]);
 
@@ -76,6 +103,7 @@ export function useViewState() {
     dmcColors, setDmcColors,
     notationFontSize, setNotationFontSize,
     uiScale, setUiScale,
+    toolbarMode, setToolbarMode,
     clipboard, setClipboard,
     splashTipIndex, setSplashTipIndex,
   };

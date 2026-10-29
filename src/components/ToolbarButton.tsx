@@ -26,6 +26,9 @@ interface ToolbarButtonProps {
   flexCenter?: boolean;
   /** Extra classes appended verbatim (e.g. the Notes button's label styling). */
   className?: string;
+  /** Simple-toolbar mode (session 58): text shown to the right of the icon.
+   *  When set the button lays out as a full-width icon + label row. */
+  label?: string;
   children: React.ReactNode;
 }
 
@@ -38,6 +41,7 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   colSpan2 = false,
   flexCenter = false,
   className = '',
+  label,
   children,
 }) => (
   <button
@@ -49,10 +53,14 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
       active ? activeColor : 'bg-gray-700 active:bg-gray-600',
       colSpan2 ? 'col-span-2' : '',
       flexCenter ? 'flex items-center justify-center' : '',
+      // tb-labelled / tb-label: phone portrait restacks these (label under
+      // the icon) via CSS in tattingindex.tsx — see .simple-toolbar there.
+      label ? 'tb-labelled flex items-center gap-2 w-full text-left text-xs font-semibold leading-tight' : '',
       className,
     ].filter(Boolean).join(' ')}
     style={{ touchAction: 'manipulation' }}
   >
     {children}
+    {label && <span className="tb-label">{label}</span>}
   </button>
 );

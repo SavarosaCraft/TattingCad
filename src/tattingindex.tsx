@@ -42,7 +42,7 @@ import { useUIState } from './hooks/useUIState';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useTattingOrder } from './hooks/useTattingOrder';
 import { useProjectState } from './hooks/useProjectState';
-import { useViewState, DEFAULT_THEME, SPLASH_TIP_COUNT } from './hooks/useViewState';
+import { useViewState, DEFAULT_THEME, SPLASH_TIP_COUNT, getInitialToolbarMode } from './hooks/useViewState';
 import { useBeadState, DEFAULT_BEAD_LIBRARY } from './hooks/useBeadState';
 import { usePatternState, DEFAULT_MATERIALS, LANGUAGES_FALLBACK } from './hooks/usePatternState';
 import {
@@ -73,6 +73,8 @@ import {
 import { ScaleControls, WIZARD_BUTTON_CLASS } from './components/ScaleControls';
 import { DropdownMenu } from './components/DropdownMenu';
 import { ToolbarButton } from './components/ToolbarButton';
+import { GettingStartedHint } from './components/GettingStartedHint';
+import { PhoneToolBar, PhoneTool } from './components/PhoneToolBar';
 import { PresetChip } from './components/PresetChip';
 import { updateElement, updateSelected, updateWhere } from './utils/elementUpdates';
 import { Modal } from './components/Modal';
@@ -541,7 +543,7 @@ const TattingDesigner = () => {
   const {
     projectName, setProjectName,
     currentFilePath, setCurrentFilePath,
-    lastSavedHistoryIndex, setLastSavedHistoryIndex,
+    lastSavedRev, setLastSavedRev,
     renderMode, setRenderMode,
     bakedRealisticSVG, setBakedRealisticSVG,
     notationError, setNotationError,
@@ -561,6 +563,7 @@ const TattingDesigner = () => {
     dmcColors, setDmcColors,
     notationFontSize, setNotationFontSize,
     uiScale, setUiScale,
+    toolbarMode, setToolbarMode,
     clipboard, setClipboard,
     splashTipIndex, setSplashTipIndex,
   } = useViewState();
@@ -629,17 +632,29 @@ const TattingDesigner = () => {
 const APP_VERSION = '1.3.0';
 
 
-  // Update reminder: only after 90 days since install — evaluated once, stored here for the splash to read.
-  const updateReminderDue = (() => {
-    if (!localStorage.getItem('tcad_install_date')) {
-      localStorage.setItem('tcad_install_date', String(Date.now()));
-      return false;
-    }
-    const installDate = parseInt(localStorage.getItem('tcad_install_date') || '0', 10);
-    const daysSinceInstall = (Date.now() - installDate) / (1000 * 60 * 60 * 24);
-    if (daysSinceInstall < 90) return false;
-    return localStorage.getItem('tcad_update_seen') !== APP_VERSION;
-  })();
+  // Update reminder: only after 90 days with THIS version — evaluated once
+  // (useState initializer), for the splash to read.
+  // Session 58 fix: the clock (tcad_install_date) used to start at the very
+  // first run and never restart. localStorage survives updates and
+  // reinstalls, so after 90 days every newly installed version asked to
+  // "check for updates" right away. Now the clock restarts whenever the
+  // installed version changes (tcad_install_version). tcad_install_date is
+  // kept as the key name: getInitialToolbarMode (useViewState.ts) uses its
+  // presence to recognise an existing user.
+  const [updateReminderDue] = useState(() => {
+    try {
+      if (!localStorage.getItem('tcad_install_date')
+          || localStorage.getItem('tcad_install_version') !== APP_VERSION) {
+        localStorage.setItem('tcad_install_date', String(Date.now()));
+        localStorage.setItem('tcad_install_version', APP_VERSION);
+        return false;
+      }
+      const installDate = parseInt(localStorage.getItem('tcad_install_date') || '0', 10);
+      const daysSinceInstall = (Date.now() - installDate) / (1000 * 60 * 60 * 24);
+      if (daysSinceInstall < 90) return false;
+      return localStorage.getItem('tcad_update_seen') !== APP_VERSION;
+    } catch { return false; }
+  });
 
   // Splash screen — shown on every launch
 
@@ -725,6 +740,48 @@ const APP_VERSION = '1.3.0';
     historyRef.current = history;
     historyIndexRef.current = historyIndex;
   }, [history, historyIndex]);
+
+  // Camera that puts world (0,0) in the middle of the CANVAS (not the window:
+  // the canvas sits right of the tool rail and under the header). Falls back
+  // to the window when the canvas isn't mounted yet. Session 58.
+  const canvasCenterCamera = () => {
+    const rect = (canvasRef.current as any)?.getBoundingClientRect(); // cast: canvasRef is useRef(null)
+    return rect && rect.width > 0
+      ? { x: Math.round(rect.width / 2), y: Math.round(rect.height / 2) }
+      : { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
+  };
+  // App start: usePatternState can only use the window size, so re-centre on
+  // the canvas once it exists (before any file/autosave sets its own camera).
+  useEffect(() => { setCamera(canvasCenterCamera()); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Unsaved changes + window title (session 58) ─────────────────────────
+  // One check for both the title star and the close warning. Each history
+  // entry carries an ever-increasing `rev` (useHistoryActions.ts); the
+  // pattern is unsaved when the current entry isn't the one last saved or
+  // opened. Undo back to the saved state → clean again. A brand-new, still
+  // empty, never-saved pattern doesn't count as unsaved.
+  const currentHistoryRev = (history[historyIndex] as any)?.rev ?? 0;
+  const hasUnsavedChanges = currentHistoryRev !== lastSavedRev
+    && (elements.length > 0 || currentFilePath !== null);
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+
+  // Window title: "*Snowflake.json — TattingCAD" (star = unsaved changes).
+  // File name only (no folder); "Untitled" before the first save. Needs the
+  // Tauri permission core:window:allow-set-title (capabilities/default.json);
+  // without it the call fails quietly and the title stays "TattingCAD".
+  // document.title too, so a browser tab shows the same.
+  const windowTitleFileName = currentFilePath
+    ? (currentFilePath.split(/[\\/]/).pop() || currentFilePath)
+    : t('windowTitleUntitled');
+  const windowTitle = `${hasUnsavedChanges ? '*' : ''}${windowTitleFileName} — TattingCAD`;
+  useEffect(() => {
+    document.title = windowTitle;
+    if (!(window as any).__TAURI_INTERNALS__) return;
+    try {
+      getCurrentWindow().setTitle(windowTitle).catch(() => { /* permission missing */ });
+    } catch { /* not running in Tauri */ }
+  }, [windowTitle]);
 
   const lastMousePosRef = useRef(null); // was state — now ref to avoid re-render on every move
   // PERFORMANCE: During element translate-drag, accumulate offset in a ref instead of
@@ -918,7 +975,7 @@ const APP_VERSION = '1.3.0';
           : el
       )));
       setPicotConnections(projectData.picotConnections || []);
-      setCamera(projectData.camera || { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
+      setCamera(projectData.camera || canvasCenterCamera());
       setZoom(projectData.zoom || 1);
       setDsWidth(projectData.dsWidth || 10);
       if (projectData.beadLibrary) setBeadLibrary(projectData.beadLibrary);
@@ -958,6 +1015,9 @@ const APP_VERSION = '1.3.0';
       }
       setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [], polarGrids: projectData.polarGrids || [] }]);
       setHistoryIndex(0);
+      // A resumed autosave isn't in any file yet → unsaved (title star,
+      // close warning) until it is saved.
+      setLastSavedRev(-1);
     } catch (error) {
       console.error('Error loading auto-save:', error);
     }
@@ -973,8 +1033,9 @@ const APP_VERSION = '1.3.0';
     if (!(window as any).__TAURI__) return;
     let unlisten: (() => void) | null = null;
     listen('close-requested', async () => {
-      const hasUnsaved = elements.length > 0 && historyIndexRef.current !== lastSavedHistoryIndex;
-      if (hasUnsaved) {
+      // Same check as the title star (session 58; was an index comparison
+      // that missed edits once the 50-step undo history was full).
+      if (hasUnsavedChangesRef.current) {
         const confirmed = await ask(t('exitConfirmMessage'), {
           title: t('exitConfirmTitle'),
           kind: 'warning',
@@ -985,7 +1046,7 @@ const APP_VERSION = '1.3.0';
       }
     }).then(fn => { unlisten = fn; });
     return () => { if (unlisten) unlisten(); };
-  }, [elements.length, lastSavedHistoryIndex]);
+  }, [t]); // reads hasUnsavedChangesRef; re-registers only for a language change (dialog text)
 
   // Prevent browser zoom (Ctrl+wheel on desktop, pinch on touchpad)
   // Also handles Shift+wheel → zoom in/out
@@ -2331,9 +2392,14 @@ const APP_VERSION = '1.3.0';
     inputEl?.blur();
   };
 
-  // New canvas - confirm if there are elements
+  // New canvas — asks only when there are unsaved changes (session 58; it
+  // used to ask whenever the canvas wasn't empty, even right after a save).
   const newCanvas = () => {
-    if (elements.length === 0 && historyIndex === 0) {
+    if (elements.length === 0 && historyIndex === 0 && currentFilePath === null) {
+      return; // already a fresh, empty, untitled canvas
+    }
+    if (!hasUnsavedChanges) {
+      confirmNewCanvas();
       return;
     }
     setConfirmDialog({
@@ -2368,15 +2434,11 @@ const APP_VERSION = '1.3.0';
     // the canvas, as app start does (usePatternState). {x:0,y:0} here put
     // the origin in the canvas's top-left corner, so a grid turned on in a
     // new project was off screen (session 57).
-    {
-      const rect = (canvasRef.current as any)?.getBoundingClientRect(); // cast: canvasRef is useRef(null)
-      setCamera(rect
-        ? { x: Math.round(rect.width / 2), y: Math.round(rect.height / 2) }
-        : { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
-    }
+    setCamera(canvasCenterCamera());
     setZoom(1);
     setHistory([{ elements: [], connections: [], polarGrids: [] }]);
     setHistoryIndex(0);
+    setLastSavedRev(0); // fresh and empty = nothing unsaved
     // Hide (don't delete) all polar grids — user can re-enable in the Polar Grid panel
     setPolarGrids(prev => prev.map(g => ({ ...g, visible: false })));
     setCurrentFilePath(null);
@@ -2736,6 +2798,34 @@ const APP_VERSION = '1.3.0';
     });
     setElements(newEls);
     pushHistoryState(newEls, picotConnectionsRef.current, roundsRef.current);
+  };
+
+  // Picot Join on/off — the left toolbar button (both toolbar layouts) and
+  // the getting-started hint share this. Same behaviour the toolbar button
+  // always had inline (Shift+J has its own variant that also clears fold
+  // state; left as it was).
+  const togglePicotJoinMode = () => {
+    if (activeMode === 'picotJoin') {
+      setActiveMode(null);
+    } else {
+      setActiveMode('picotJoin');
+      setCurrentTool('select');
+      if (localStorage.getItem('tcad_seen_join_tip') !== '1') setShowJoinTip(true);
+      setSelectedIds([]);
+    }
+  };
+
+  // Beading mode on/off — rail (Full mode) and the phone bar's More panel.
+  const toggleBeadingMode = () => {
+    if (activeMode === 'beading') {
+      setActiveMode(null);
+      setSelectedBEs([]);
+    } else {
+      setActiveMode('beading');
+      setCurrentTool('select');
+      setSelectedIds([]);
+      setSelectedBEs([]);
+    }
   };
 
   const flipElements = (ids, axisAngleDeg, pivotX, pivotY) => {
@@ -3294,7 +3384,8 @@ const APP_VERSION = '1.3.0';
     setRounds, setActiveRoundId, setPolarGrids, setSelectedPolarGridId,
     setThreadPresets, setActivePresetId,
     setSelectedIds, setSelectedPicots,
-    setHistory, setHistoryIndex, setCurrentFilePath, setLastSavedHistoryIndex,
+    setHistory, setHistoryIndex, setCurrentFilePath, setLastSavedRev,
+    getCurrentHistoryRev: () => (historyRef.current[historyIndexRef.current] as any)?.rev ?? 0,
     getPicotPosition, showLoadMsg, t,
     cleanupDuplicates,
     skipAutoHistoryRef,
@@ -6107,6 +6198,10 @@ const APP_VERSION = '1.3.0';
       // Bake is kept (not cleared) so switching back is instant if nothing
       // changed in between.
       setRenderMode('schematic');
+      // Realistic view forced Pan; the simple toolbar's home tool is Select.
+      // Read from storage, not toolbarMode: the V-key listener can call this
+      // from an older render (see the note above).
+      if (getInitialToolbarMode() === 'simple') setCurrentTool('select');
     }
   };
 
@@ -6412,6 +6507,51 @@ const APP_VERSION = '1.3.0';
     </>
   );
 
+  // ── Phone (upright) bottom tool bar — button lists (session 58) ─────────
+  // Same actions as the left rail, as plain descriptors for PhoneToolBar.
+  // Main row: Select · Pan · Ring · Split ring · Chain · Picot Join (+ More).
+  // More panel: the rest of the Simple tools, plus every Full-mode tool when
+  // the toolbar is in Full mode. Realistic view: Pan + zoom only, no More.
+  // (The rail still has its own JSX; unifying both on these descriptors is a
+  // possible later clean-up.)
+  const phoneBusyMode = activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder';
+  const ptool = (key: string, label: string, title: string, icon: React.ReactNode, onClick: () => void,
+    extra: Partial<PhoneTool> = {}): PhoneTool => ({ key, label, title, icon, onClick, ...extra });
+  const phoneTools = {
+    select: ptool('select', t('toolLabelSelect'), t('toolSelect'), <IconSelect size={20} />, () => setCurrentTool('select'), { active: currentTool === 'select' }),
+    pan: ptool('pan', t('toolLabelPan'), t('toolPan'), <IconPan size={20} />, () => setCurrentTool('pan'), { active: currentTool === 'pan' }),
+    ring: ptool('ring', t('toolLabelRing'), t('toolAddRing'), <IconAddRing size={20} />, addRing, { disabled: phoneBusyMode }),
+    splitRing: ptool('splitRing', t('toolLabelSplitRing'), t('toolAddSplitRing'), <IconAddSplitRing size={20} />, addSplitRing, { disabled: phoneBusyMode }),
+    chain: ptool('chain', t('toolLabelChain'), t('toolAddChain'), <IconAddChain size={20} />, addChain, { disabled: phoneBusyMode }),
+    join: ptool('join', t('toolLabelJoin'), t('toolPicotJoin'), <IconJoinPicots size={20} />, togglePicotJoinMode, { active: activeMode === 'picotJoin' }),
+    del: ptool('delete', t('toolLabelDelete'), t('toolDelete'), <IconDelete size={20} />, deleteSelected, { disabled: phoneBusyMode || selectedIds.length === 0 }),
+    fit: ptool('fit', t('toolLabelFitAll'), t('btnFitAll'), <IconFitView size={20} />, fitAllElements),
+    zoomOut: ptool('zoomOut', t('toolLabelZoomOut'), t('toolZoomOut'), <IconZoomOut size={20} />, () => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)),
+    zoomIn: ptool('zoomIn', t('toolLabelZoomIn'), t('toolZoomIn'), <IconZoomIn size={20} />, () => zoomToCenter(ZOOM_STEP_BUTTON_IN)),
+    refImage: ptool('refImage', t('toolLabelRefImage'), t('toolRefImage'), <IconImage size={20} />, () => setCurrentTool(currentTool === 'image' ? 'select' : 'image'), { active: currentTool === 'image' }),
+    notes: ptool('notes', t('toolNotes'), notesOpen ? t('notesClose') : t('notesOpen'), <IconNotes size={20} />, () => setNotesOpen(v => !v), { active: notesOpen, activeColor: 'bg-amber-600' }),
+    rotate: ptool('rotate', t('toolLabelRotate'), showRotationHandles ? t('toolRotationHandlesHide') : t('toolRotationHandlesShow'), <IconRotateMode size={20} />, () => setShowRotationHandles(!showRotationHandles), { active: showRotationHandles }),
+    ortho: ptool('ortho', t('toolLabelOrtho'), t('toolOrthoLock'), <IconOrtho size={20} />, () => setOrthoLock(v => !v), { active: orthoLock, activeColor: 'bg-orange-600' }),
+    path: ptool('path', t('toolLabelPathEdit'), t('toolPathEdit'), <IconPathEdit size={20} />, () => setCurrentTool('path'), { active: currentTool === 'path' }),
+    ruler: ptool('ruler', t('toolLabelRuler'), t('toolRuler'), <IconRuler size={20} />, () => setCurrentTool('ruler'), { active: currentTool === 'ruler' }),
+    beading: ptool('beading', t('toolLabelBeading'), t('toolBeadingMode'), <IconBeadMode size={20} />, toggleBeadingMode, { active: activeMode === 'beading', activeColor: 'bg-purple-600' }),
+    line: ptool('line', t('toolLabelLine'), t('toolLineTool'), <IconAddLine size={20} />, () => setCurrentTool('line'), { active: currentTool === 'line', disabled: phoneBusyMode }),
+    group: ptool('group', t('toolLabelGroup'), t('toolGroup'), <IconGroup size={20} />, groupSelected, { disabled: selectedIds.length < 2 || phoneBusyMode }),
+    ungroup: ptool('ungroup', t('toolLabelUngroup'), t('toolUngroup'), <IconUngroup size={20} />, ungroupSelected, { disabled: selectedIds.length === 0 || phoneBusyMode }),
+    zoomRect: ptool('zoomRect', t('toolLabelZoomRect'), t('toolZoomRect'), <IconZoomRect size={20} />, () => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect'), { active: currentTool === 'zoomRect', activeColor: 'bg-yellow-600' }),
+    toFull: ptool('toFull', t('toolbarMoreTools'), t('toolbarMoreToolsTip'), <span className="text-lg leading-none">⋯</span>, () => setToolbarMode('full')),
+    toSimple: ptool('toSimple', t('toolbarSimple'), t('toolbarSimpleTip'), <span className="text-lg leading-none">‹</span>, () => setToolbarMode('simple')),
+  };
+  const P = phoneTools;
+  const phoneMainTools: PhoneTool[] = renderMode === 'realistic'
+    ? [{ ...P.pan, active: true }, P.zoomOut, P.zoomIn, P.fit]
+    : [P.select, P.pan, P.ring, P.splitRing, P.chain, P.join];
+  const phoneMoreTools: PhoneTool[] = renderMode === 'realistic' ? []
+    : toolbarMode === 'simple'
+      ? [P.del, P.fit, P.zoomOut, P.zoomIn, P.refImage, P.notes, P.toFull]
+      : [P.del, P.fit, P.zoomOut, P.zoomIn, P.refImage, P.notes,
+         P.rotate, P.ortho, P.path, P.ruler, P.line, P.beading, P.group, P.ungroup, P.zoomRect, P.toSimple];
+
   // ── Polar grid snap candidates ───────────────────────────────────────────
   // Injected after element snap: polar ring×spoke intersections are candidates
   // only when snapEnabled. Uses same nearestDist so element snaps still win.
@@ -6513,12 +6653,6 @@ const APP_VERSION = '1.3.0';
             padding-right: 0.5rem !important;
           }
           
-          .mobile-toolbar-compact {
-            left: 1.5rem !important; /* Was 0.25rem - moved away from unclickable edge */
-            top: 0.25rem !important;
-            padding: 0.25rem !important;
-          }
-
           .mobile-gap-small {
             gap: 0.25rem !important;
           }
@@ -6659,28 +6793,6 @@ const APP_VERSION = '1.3.0';
           }
         }
         
-        /* Scale down the left floating toolbar on narrow screens (mobile width) */
-        @media (max-width: 768px) {
-          .toolbar-scalable-left {
-            transform: scale(0.75) !important;
-            transform-origin: top left !important;
-          }
-        }
-        
-        @media (max-width: 480px) {
-          .toolbar-scalable-left {
-            transform: scale(0.65) !important;
-            transform-origin: top left !important;
-          }
-        }
-        
-        @media (max-width: 380px) {
-          .toolbar-scalable-left {
-            transform: scale(0.55) !important;
-            transform-origin: top left !important;
-          }
-        }
-        
         /* Scale down the left toolbar + Row 1 when not enough vertical space
            (unchanged, out of scope). Row 2 gets real reflow instead of
            transform: scale() here too — see comment above. */
@@ -6701,10 +6813,6 @@ const APP_VERSION = '1.3.0';
             gap: 0.15rem !important;
           }
           
-          .toolbar-scalable-left {
-            transform: scale(0.68) !important;
-            transform-origin: top left !important;
-          }
 
           .top-row-properties button,
           .top-row-properties input[type="text"],
@@ -6740,10 +6848,6 @@ const APP_VERSION = '1.3.0';
             gap: 0.1rem !important;
           }
           
-          .toolbar-scalable-left {
-            transform: scale(0.6) !important;
-            transform-origin: top left !important;
-          }
 
           .top-row-properties button,
           .top-row-properties input[type="text"],
@@ -6775,10 +6879,6 @@ const APP_VERSION = '1.3.0';
             height: 14px !important;
           }
           
-          .toolbar-scalable-left {
-            transform: scale(0.5) !important;
-            transform-origin: top left !important;
-          }
 
           .top-row-properties button,
           .top-row-properties input[type="text"],
@@ -6815,7 +6915,6 @@ const APP_VERSION = '1.3.0';
            a bug fix — flagging rather than deciding it here.
         ── */
         .ui-large { font-size: 17.6px; } /* 16px default → ~1.1×; rem-based Tailwind classes (text-xs/sm/base…) scale with this */
-        .ui-large .toolbar-scalable-left  { transform: scale(1.25) !important; transform-origin: top left   !important; }
         /* Row 1 real growth under ui-large — box-model sizing (not transform),
            same fix as Row 2. Row 1's button dimensions are set as fixed px
            via inline style in TopMenuBar.tsx (squareBtn/wideBtn = 44px), so
@@ -6873,16 +6972,96 @@ const APP_VERSION = '1.3.0';
           gap: 0.75rem;
         }
 
-        /* On narrow screens, reduce the large-scale factor so toolbars still fit */
-        @media (max-width: 768px) {
-          .ui-large .toolbar-scalable-left  { transform: scale(0.95) !important; }
+        /* ── Tool rail (session 58) ───────────────────────────────────────
+           The left toolbar is a fixed, full-height strip OUTSIDE the canvas
+           (logo on top, tools below, scrolling only if the screen is too
+           short). Everything else is pushed right by --rail-w via
+           .app-root's padding. Width per toolbar mode (rail-simple /
+           rail-full) and screen shape; the rail itself is never scaled with
+           transform any more (that is what made it overflow before). */
+        .app-root { --rail-w: calc(100px + env(safe-area-inset-left, 0px)); padding-left: var(--rail-w); }
+        .app-root.rail-simple { --rail-w: calc(150px + env(safe-area-inset-left, 0px)); }
+        .tool-rail {
+          position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
+          width: var(--rail-w);
+          display: flex; flex-direction: column;
+          background: #1f2937; border-right: 1px solid #374151;
+          padding-top: env(safe-area-inset-top, 0px);
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+          padding-left: env(safe-area-inset-left, 0px);
         }
+        .tool-rail-logo { display: flex; justify-content: center; padding: 10px 0 6px; flex-shrink: 0; }
+        .tool-rail-logo img { width: 48px; height: 48px; object-fit: contain; }
+        .tool-rail-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0.5rem; scrollbar-width: thin; }
+
+        /* ── Phone toolbar (bottom bar) — hidden except on upright phones ── */
+        .phone-toolbar { display: none; }
+        .phone-toolbar-row {
+          position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+          display: flex; align-items: stretch; gap: 2px;
+          height: calc(58px + env(safe-area-inset-bottom, 0px));
+          padding: 3px 4px env(safe-area-inset-bottom, 0px);
+          background: #1f2937; border-top: 1px solid #374151;
+        }
+        .phone-toolbar-btn { flex: 1 1 0; min-width: 0; gap: 3px; padding: 4px 0; }
+        .phone-toolbar-label { font-size: 10px; font-weight: 600; line-height: 1.1; text-align: center;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; padding: 0 1px; }
+        .phone-toolbar-backdrop { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.35); }
+        .phone-toolbar-more {
+          position: fixed; left: 6px; right: 6px; z-index: 31;
+          bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+          display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+          padding: 8px; border-radius: 12px;
+          background: #1f2937; border: 1px solid #4b5563; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+          max-height: 60vh; overflow-y: auto;
+        }
+        .phone-toolbar-tile { gap: 4px; padding: 10px 2px; min-height: 60px; }
+        .phone-toolbar-tile .phone-toolbar-label { white-space: normal; }
+
+        /* Phone held upright: the bottom bar replaces the rail; the app is
+           padded at the bottom instead of the left. */
+        @media (max-width: 768px) and (min-height: 501px) {
+          .app-root, .app-root.rail-simple { --rail-w: 0px; padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+          .tool-rail { display: none; }
+          .phone-toolbar { display: block; }
+          /* Fixed-height property bar so selecting / deselecting doesn't make
+             the canvas jump; longer contents scroll inside it. */
+          .app-root .prop-bar { height: 6.5rem; min-height: 6.5rem !important; overflow-y: auto !important; }
+        }
+        /* Phones (either way round): no status bar — it overlaps the canvas
+           and the bottom bar, and isn't needed on a small screen. */
+        @media (max-width: 768px), (max-height: 500px) {
+          .app-root .info-bar { display: none; }
+        }
+        /* Phone on its side (short screen): compact rail, labels beside icons. */
         @media (max-height: 500px) {
-          .ui-large .toolbar-scalable-left  { transform: scale(0.85) !important; }
+          .app-root { --rail-w: calc(84px + env(safe-area-inset-left, 0px)); }
+          .app-root.rail-simple { --rail-w: calc(124px + env(safe-area-inset-left, 0px)); }
+          .tool-rail-logo { padding: 4px 0 2px; }
+          .tool-rail-logo img { width: 30px; height: 30px; }
+          .tool-rail-body { padding: 0.25rem; }
+          .tool-rail-body button { padding: 0.3rem !important; }
+          .rail-simple .tb-labelled { font-size: 11px !important; gap: 0.4rem !important; }
+          .rail-simple .tb-more { padding: 0.2rem 0.3rem !important; }
+          /* Top row on one line (icons only, scrolls sideways if needed) and
+             a short, fixed-height property bar — together they took half
+             the height before. */
+          .top-row-buttons { flex-wrap: nowrap !important; overflow-x: auto !important; gap: 0.2rem !important; }
+          .top-row-buttons .w-px, .top-row-buttons .ml-auto { display: none !important; }
+          .hide-label-mobile { display: none !important; }
+          .app-root .prop-bar { height: 4.5rem; min-height: 4.5rem !important; overflow-y: auto !important; padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+        }
+        /* Large UI (Options → size): a wider rail with everything 1.25× —
+           desktop-sized screens only, as before. */
+        @media (min-width: 769px) and (min-height: 501px) {
+          .ui-large.app-root { --rail-w: calc(125px + env(safe-area-inset-left, 0px)); }
+          .ui-large.app-root.rail-simple { --rail-w: calc(188px + env(safe-area-inset-left, 0px)); }
+          .ui-large .tool-rail-body > .rail-grid { zoom: 1.25; }
+          .ui-large .tool-rail-body { padding: 0.4rem; }
         }
         @keyframes tattingBakeSpin { to { transform: rotate(360deg); } }
       `}</style>
-      <div className={`w-full h-screen flex flex-col select-none${uiScale === 'large' ? ' ui-large' : ''}`} style={{ backgroundColor: bgColor }}>
+      <div className={`app-root ${toolbarMode === 'simple' ? 'rail-simple' : 'rail-full'} w-full h-screen flex flex-col select-none${uiScale === 'large' ? ' ui-large' : ''}`} style={{ backgroundColor: bgColor }}>
       {/* Two-row header — paddingTop pushes content below the Android status bar on edge-to-edge WebViews */}
       <div className="bg-gray-800 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         {/* Row 1: Main Commands */}
@@ -6920,7 +7099,7 @@ const APP_VERSION = '1.3.0';
         />
         
         {/* Row 2: Properties (always visible) */}
-        <div className="top-row-properties flex flex-wrap items-center content-start px-4 mobile-no-padding gap-0.5 md:gap-3 bg-gray-750 py-1 md:py-2 justify-start" style={{
+        <div className="top-row-properties prop-bar flex flex-wrap items-center content-start px-4 mobile-no-padding gap-0.5 md:gap-3 bg-gray-750 py-1 md:py-2 justify-start" style={{
           minHeight: '6.5rem',
         }}>
           {renderMode === 'realistic' ? (
@@ -7104,11 +7283,21 @@ const APP_VERSION = '1.3.0';
                 t={t}
               />
             
-            {/* Empty-state placeholder: keeps bar visually non-blank and stabilises layout */}
+            {/* Empty-state: "what next" hint for newcomers (session 58), with
+                the real tool buttons inline. Falls back to the old placeholder
+                text once the pattern has joins. See GettingStartedHint.tsx. */}
             {!selectedElement && selectedIds.length === 0 && currentTool !== 'image' && (
-              <span style={{color:'#4b5563', fontSize:'0.75rem', padding:'0.25rem 0.5rem', userSelect:'none'}}>
-                {t('propEmptyState')}
-              </span>
+              <GettingStartedHint
+                elementCount={elements.reduce((n, e) => e.type === 'ghost' ? n : n + 1, 0)}
+                hasConnections={picotConnections.length > 0}
+                onAddRing={addRing}
+                onAddSplitRing={addSplitRing}
+                onAddChain={addChain}
+                onRefImage={() => setCurrentTool('image')}
+                onSelectTool={() => setCurrentTool('select')}
+                onPicotJoin={togglePicotJoinMode}
+                t={t}
+              />
             )}
             
             {currentTool === 'image' && (
@@ -7434,7 +7623,28 @@ const APP_VERSION = '1.3.0';
             </div>
           </div>
         )}
-        <div className="absolute left-4 top-4 mobile-toolbar-compact toolbar-scalable-left bg-gray-800 text-white p-2 rounded z-10 grid grid-cols-2 gap-1 pointer-events-none" style={{ width: '100px', touchAction: 'none' }}>
+        {/* Left tool rail (session 58): fixed full-height strip outside the
+            canvas, logo on top — see .tool-rail CSS. Two layouts in schematic view —
+            'simple' (default for new installs): one column, bigger, labelled,
+            only the everyday tools, with "More tools" to switch; 'full': the
+            original 2-column grid of every tool, with "Simple" to switch back.
+            Saved in localStorage (tcad_toolbar_mode, see useViewState.ts).
+            Hidden tools keep their keyboard shortcuts. Realistic view keeps
+            its own pan/zoom set in the original grid. */}
+        {(() => { const simpleToolbar = toolbarMode === 'simple' && renderMode !== 'realistic'; return (
+        <aside className="tool-rail text-white" style={{ touchAction: 'none' }}>
+        <div className="tool-rail-logo">
+          {/* public/app-icon_sm.png (~200 px square). Hidden if missing. */}
+          <img
+            src="/app-icon_sm.png"
+            alt="TattingCAD"
+            title={`TattingCAD ${APP_VERSION}`}
+            draggable={false}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        </div>
+        <div className="tool-rail-body">
+        <div className={`rail-grid grid ${simpleToolbar ? 'grid-cols-1' : 'grid-cols-2'} gap-1`}>
           {renderMode === 'realistic' && (
             <>
               {/* Realistic mode: Pan only — editing disabled. Zoom/Fit are
@@ -7462,7 +7672,68 @@ const APP_VERSION = '1.3.0';
               </div>
             </>
           )}
-          {renderMode !== 'realistic' && <>
+          {simpleToolbar && <>
+          {/* ── Simple toolbar (one labelled column) ── */}
+          <ToolbarButton onClick={() => setCurrentTool('select')} active={currentTool === 'select'} title={t('toolSelect')} label={t('toolLabelSelect')}>
+            <IconSelect size={20} />
+          </ToolbarButton>
+          <ToolbarButton onClick={() => setCurrentTool('pan')} active={currentTool === 'pan'} title={t('toolPan')} label={t('toolLabelPan')}>
+            <IconPan size={20} />
+          </ToolbarButton>
+          <div className="h-px bg-gray-700 my-0.5" />
+          <ToolbarButton onClick={addRing} title={t('toolAddRing')} label={t('toolLabelRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+            <IconAddRing size={20} />
+          </ToolbarButton>
+          <ToolbarButton onClick={addSplitRing} title={t('toolAddSplitRing')} label={t('toolLabelSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+            <IconAddSplitRing size={20} />
+          </ToolbarButton>
+          <ToolbarButton onClick={addChain} title={t('toolAddChain')} label={t('toolLabelChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+            <IconAddChain size={20} />
+          </ToolbarButton>
+          <ToolbarButton onClick={togglePicotJoinMode} active={activeMode === 'picotJoin'} title={t('toolPicotJoin')} label={t('toolLabelJoin')}>
+            <IconJoinPicots size={20} />
+          </ToolbarButton>
+          <ToolbarButton onClick={deleteSelected} title={t('toolDelete')} label={t('toolLabelDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
+            <IconDelete size={20} />
+          </ToolbarButton>
+          <div className="h-px bg-gray-700 my-0.5" />
+          <div className="tb-zoom grid grid-cols-2 gap-1">
+            <ToolbarButton onClick={() => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)} title={t('toolZoomOut')} flexCenter>
+              <IconZoomOut size={20} />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} title={t('toolZoomIn')} flexCenter>
+              <IconZoomIn size={20} />
+            </ToolbarButton>
+          </div>
+          <ToolbarButton onClick={fitAllElements} title={t('btnFitAll')} label={t('toolLabelFitAll')}>
+            <IconFitView size={20} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => setCurrentTool(currentTool === 'image' ? 'select' : 'image')}
+            active={currentTool === 'image'}
+            title={t('toolRefImage')}
+            label={t('toolLabelRefImage')}
+          >
+            <IconImage size={20} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => setNotesOpen(v => !v)}
+            active={notesOpen}
+            activeColor="bg-amber-600"
+            title={notesOpen ? t('notesClose') : t('notesOpen')}
+            label={t('toolNotes')}
+          >
+            <IconNotes size={20} />
+          </ToolbarButton>
+          <div className="h-px bg-gray-700 my-0.5" />
+          <button
+            onClick={() => setToolbarMode('full')}
+            title={t('toolbarMoreToolsTip')}
+            className="tb-more pointer-events-auto rounded px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-gray-700 text-left"
+            style={{ touchAction: 'manipulation' }}
+          >{t('toolbarMoreTools')} ›</button>
+          </>}
+          {renderMode !== 'realistic' && !simpleToolbar && <>
           {/* Row 1: Pan and Select */}
           <ToolbarButton onClick={() => setCurrentTool('pan')} active={currentTool === 'pan'} title={t('toolPan')}>
             <IconPan size={20} />
@@ -7500,16 +7771,7 @@ const APP_VERSION = '1.3.0';
 
           {/* Picot Join button */}
           <ToolbarButton
-            onClick={() => {
-              if (activeMode === 'picotJoin') {
-                setActiveMode(null);
-              } else {
-                setActiveMode('picotJoin');
-                setCurrentTool('select');
-                if (localStorage.getItem('tcad_seen_join_tip') !== '1') setShowJoinTip(true);
-                setSelectedIds([]);
-              }
-            }}
+            onClick={togglePicotJoinMode}
             active={activeMode === 'picotJoin'}
             colSpan2
             flexCenter
@@ -7519,17 +7781,7 @@ const APP_VERSION = '1.3.0';
           </ToolbarButton>
           {/* Beading mode button */}
           <ToolbarButton
-            onClick={() => {
-              if (activeMode === 'beading') {
-                setActiveMode(null);
-                setSelectedBEs([]);
-              } else {
-                setActiveMode('beading');
-                setCurrentTool('select');
-                setSelectedIds([]);
-                setSelectedBEs([]);
-              }
-            }}
+            onClick={toggleBeadingMode}
             active={activeMode === 'beading'}
             activeColor="bg-purple-600"
             colSpan2
@@ -7606,8 +7858,20 @@ const APP_VERSION = '1.3.0';
             <IconNotes size={16} />
             <span>{t('toolNotes')}</span>
           </ToolbarButton>
+          <button
+            onClick={() => setToolbarMode('simple')}
+            title={t('toolbarSimpleTip')}
+            className="col-span-2 pointer-events-auto rounded px-1 py-0.5 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+            style={{ touchAction: 'manipulation' }}
+          >‹ {t('toolbarSimple')}</button>
           </>}
         </div>
+        </div>
+        </aside>
+        ); })()}
+
+        {/* Upright phone: bottom tool bar instead of the rail (CSS decides). */}
+        <PhoneToolBar main={phoneMainTools} more={phoneMoreTools} moreLabel={t('toolbarMore')} moreTitle={t('toolbarMoreTip')} />
         
         {/* Remove confirmation dialog */}
         {showRemoveConfirm && (
@@ -7664,7 +7928,7 @@ const APP_VERSION = '1.3.0';
 
                 {/* Info Bar - Bottom (Full Width) */}
         <div 
-          className="absolute bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 px-4 py-2 z-10 pointer-events-none"
+          className="info-bar absolute bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 px-4 py-2 z-10 pointer-events-none"
           style={{ 
             fontSize: '12px',
             fontFamily: 'monospace',
@@ -7790,7 +8054,13 @@ const APP_VERSION = '1.3.0';
               );
               const centerX = (touches[0].clientX + touches[1].clientX) / 2;
               const centerY = (touches[0].clientY + touches[1].clientY) / 2;
-              setTouchState({ dist, zoom, centerX, centerY });
+              // World point under the fingers' midpoint at the start of the
+              // gesture; onTouchMove keeps it under the (moving) midpoint.
+              const canvasEl: any = canvasRef.current;
+              const rect = canvasEl ? canvasEl.getBoundingClientRect() : null;
+              const worldX = rect ? (centerX - rect.left - camera.x) / zoom : 0;
+              const worldY = rect ? (centerY - rect.top - camera.y) / zoom : 0;
+              setTouchState({ dist, zoom, centerX, centerY, worldX, worldY });
             } else if (touches.length === 1) {
               // Single touch - normal pan/select behavior
               const touch = touches[0];
@@ -7813,7 +8083,10 @@ const APP_VERSION = '1.3.0';
               return;
             }
             if (touches.length === 2) {
-              // Two-finger pinch zoom
+              // Two fingers: pinch zoom + pan in one gesture (session 58).
+              // Spreading/pinching changes zoom; moving both fingers pans;
+              // both at once do both — like a map. Pinch with still fingers
+              // behaves exactly as before.
               e.preventDefault();
               if (!touchState.dist) return; // guard against zero dist
               const dist = Math.hypot(
@@ -7826,7 +8099,7 @@ const APP_VERSION = '1.3.0';
               // Clamp zoom between 0.3x and 3x (reasonable limits to prevent losing work)
               const clampedZoom = Math.max(0.3, Math.min(3, newZoom));
               
-              // Zoom towards the pinch center point
+              // Current midpoint of the two fingers
               const centerX = (touches[0].clientX + touches[1].clientX) / 2;
               const centerY = (touches[0].clientY + touches[1].clientY) / 2;
               
@@ -7837,13 +8110,13 @@ const APP_VERSION = '1.3.0';
                 const canvasX = centerX - rect.left;
                 const canvasY = centerY - rect.top;
                 
-                // Get world point at pinch center BEFORE zoom
-                const worldX = (canvasX - camera.x) / zoom;
-                const worldY = (canvasY - camera.y) / zoom;
-                
-                // Calculate new camera position to keep world point at same screen position
-                const newCameraX = canvasX - worldX * clampedZoom;
-                const newCameraY = canvasY - worldY * clampedZoom;
+                // Put the world point that was under the midpoint when the
+                // gesture started (touchState.worldX/Y) under the CURRENT
+                // midpoint at the new zoom. Midpoint still → pure zoom about
+                // it (the old behaviour); midpoint moving → the canvas
+                // follows the fingers.
+                const newCameraX = canvasX - touchState.worldX * clampedZoom;
+                const newCameraY = canvasY - touchState.worldY * clampedZoom;
                 
                 setZoom(clampedZoom);
                 setCamera({ x: newCameraX, y: newCameraY });
@@ -7873,7 +8146,7 @@ const APP_VERSION = '1.3.0';
               if (touchState.dist > 0) {
                 handleMouseUp(null);
               }
-              setTouchState({ dist: 0, zoom: zoom, centerX: 0, centerY: 0 });
+              setTouchState({ dist: 0, zoom: zoom, centerX: 0, centerY: 0, worldX: 0, worldY: 0 });
             }
             if (e.touches.length === 0) {
               handleMouseUp(null);
@@ -9627,7 +9900,9 @@ const APP_VERSION = '1.3.0';
         };
 
         const doLoad = (pendingAction: () => void) => {
-          if (elements.length > 0) {
+          // Ask only when something would be lost (session 58; was: any
+          // non-empty canvas, even right after saving).
+          if (hasUnsavedChanges) {
             // Show inline confirm then proceed
             setPendingRecentLoad(() => pendingAction);
             setShowRecentLoadConfirm(true);
@@ -9930,7 +10205,8 @@ const APP_VERSION = '1.3.0';
           <button
             onClick={() => {
               setShowFileMenu(false);
-              if (elements.length > 0) {
+              // Ask only when there are unsaved changes (session 58).
+              if (hasUnsavedChanges) {
                 setConfirmDialog({
                   message: t('recentProjectsLoadConfirmBody'),
                   confirmLabel: t('recentProjectsLoadConfirmOk'),
@@ -11604,7 +11880,7 @@ const APP_VERSION = '1.3.0';
 
               <button
                 onClick={() => { setShowSplash(false); setShowHelp(true); }}
-                className="py-2 rounded-lg bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-gray-200 text-xs font-semibold transition-colors"
+                className="py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold transition-colors"
               >{t('splashGettingStarted')}</button>
             </div>
 

@@ -1,6 +1,12 @@
 # TattingCAD — Architecture
 
-Last updated: **session 57** (end-allowance steps 1–5 — see "Stitch → path
+Last updated: **session 58** (beginner-friendly layout + unsaved-changes
+rework — see the session-58 sections under Rules: "Tool rail and phone
+bottom bar", "Simple / Full toolbar and the getting-started hint",
+"Unsaved changes — history edit numbers", "Window title", "Two-finger
+gesture", "Chain centre = chord midpoint"). The layout plan with progress
+and the polish list is `plan-ui-layout-session58.md`. Before that:
+**session 57** (end-allowance steps 1–5 — see "Stitch → path
 position" under Rules). Before that: **session 56**. Sessions 54–56 were folded in during session 56
 (this doc had not been updated since session 53). Session 54/55 details come
 from their handoff docs; session 56's from the work itself. The new Rules
@@ -118,6 +124,10 @@ src/
                           position into a place along a chain / teardrop /
                           split-ring path now calls these. See "Stitch → path
                           position" under Rules.
+                          Session 58: withChordCenter(el) — puts a single-path
+                          chain's/line's `center` back on its chord midpoint
+                          (returns the same object when nothing changes). See
+                          "Chain centre = chord midpoint" under Rules.
 
   domain/
     parser.ts             parseNotation, reverseNotation, buildSegmentLabel,
@@ -606,6 +616,27 @@ src/
                           category tabs) — see PresetChip.tsx below, a
                           visually similar but separate pattern (no title, no
                           touch handling).
+                          Session 58: optional `label` prop — renders icon +
+                          text as a full-width row (`tb-labelled`/`tb-label`
+                          classes) for the Simple toolbar. File is CRLF.
+    GettingStartedHint.tsx  Session 58. The "what next" hint in the empty
+                          property bar (nothing selected, no mode): empty
+                          pattern → add Ring/Split ring/Chain or a reference
+                          image; one element → Select, then edit notation;
+                          2+ elements, no joins → Picot Join; otherwise the old
+                          "Select an element…" text. The real tool buttons sit
+                          inline in the sentence: translations carry {ring},
+                          {splitRing}, {chain}, {refImage}, {select}, {join}
+                          tokens, so each language places them itself.
+                          getHintStage(count, hasConnections) is exported.
+    PhoneToolBar.tsx      Session 58. Bottom tool bar for upright phones: one
+                          row (icon over label) + a "More" button that opens a
+                          tile panel above the bar; tapping a tile or the
+                          backdrop closes it. No tool logic — takes PhoneTool
+                          descriptors built in tattingindex.tsx
+                          (phoneMainTools / phoneMoreTools). Always rendered;
+                          CSS decides whether it or the rail shows. See "Tool
+                          rail and phone bottom bar" under Rules.
     PresetChip.tsx        Shared selectable "chip" button for quick-pick
                           presets: polar/linear/spiral array count and angle
                           presets, linear spacing/rotation shortcuts, spiral
@@ -697,10 +728,22 @@ src/
                           single-element rotation control was rebuilt on
                           NumberStepper.tsx in an earlier session and this field
                           was never wired to it.
+                          Session 58: currentTool starts as 'select' when the
+                          toolbar is in Simple mode, 'pan' in Full
+                          (getInitialToolbarMode). touchState also holds
+                          worldX/worldY for the two-finger gesture. CRLF.
     useTattingOrder.ts    Tatting order mode state
     useProjectState.ts    Project/file state
+                          Session 58: lastSavedHistoryIndex → lastSavedRev (see
+                          "Unsaved changes — history edit numbers"). CRLF.
     useBeadState.ts       Bead, picot, thread state
     useViewState.ts       Visual settings state
+                          Session 58: toolbarMode ('simple' | 'full') +
+                          setToolbarMode (saved in localStorage
+                          tcad_toolbar_mode), and the exported
+                          getInitialToolbarMode() — decided once and stored:
+                          fresh install → simple, existing user (any of our
+                          localStorage keys present) → full. CRLF.
     usePatternState.ts    Core domain state (elements, picotConnections, materials…).
                           Obtained later session while chasing the history-reset bugs
                           (useHistoryActions.ts Addendum 5) — checked and ruled out as
@@ -708,7 +751,10 @@ src/
                           plain useState, no custom persistence, merging, or debounce.
                           The actual bugs were in the effects/functions that USE this
                           state, not in the state hook itself.
-    useHistoryActions.ts  pushHistoryState(els, conns, groups?, grids?) — reviewed directly
+    useHistoryActions.ts  Session 58: every pushed entry gets `rev` from a
+                          module-level counter (nextHistoryRev) — see "Unsaved
+                          changes — history edit numbers" under Rules.
+                          pushHistoryState(els, conns, groups?, grids?) — reviewed directly
                           (later session), then extended in the same session to add a real
                           4th parameter. Snapshot is now {elements, connections, orderGroups,
                           polarGrids} — polarGrids carries forward the previous entry's value
@@ -1167,6 +1213,11 @@ src/
     useProjectFile.ts     buildProjectData, saveToPath, performSave, saveProject,
                           saveProjectAs, applyProjectData, loadFromPath, loadProject,
                           exportSVG
+                          Session 58: saveToPath records the saved history rev
+                          BEFORE its awaits (getCurrentHistoryRev param), loading
+                          sets lastSavedRev(0), load applies withChordCenter to
+                          every element, and the no-camera fallback centres on
+                          the canvas (canvasCenterOf) instead of the window.
                           applyProjectData always sets renderMode to 'schematic' on
                           load now (session 52 bug fix), ignoring whatever
                           projectData.renderMode was saved as. bakedRealisticSVG
@@ -1304,7 +1355,11 @@ rebuild from the pristine original upload and reapply all fixes in one traceable
 then diff against the original to confirm zero unexpected changes. Session 38 had a
 silent key-loss bug caught this way.
 
-Translation files are currently at **558 keys** (534 pristine + 24 added in session 38).
+Translation files are currently at **642 keys** in en, **640** in hu/es
+(session 58; hu/es lack only the two `_comment_folded_picots` /
+`_comment_cleanup_duplicates` notes). Session 58 added 30 keys to all three
+(`toolLabel*`, `toolbar*`, `hint*`, `windowTitleUntitled`) and removed the
+unused `propEndAllowanceCurrent` from hu/es (en had dropped it in session 57).
 
 ### Translation fallback chain
 `t(key)` resolution order:
@@ -2016,6 +2071,162 @@ changes after that push). It moves like a mouse drag, incl. ghost-array
 regeneration. Skipped for form-control focus, realistic view, the special
 modes and mid-drag.
 
+### Tool rail and phone bottom bar (session 58)
+
+The left toolbar is no longer a floating box on the canvas. It is a fixed,
+full-height strip, `<aside class="tool-rail">` (logo on top, tools below in
+`.tool-rail-body`, which scrolls only when the screen is too short).
+Everything else is pushed right by padding on `.app-root` (the outermost div):
+`padding-left: var(--rail-w)`. The rail JSX still sits where the old toolbar
+was (inside the canvas container); position: fixed makes that irrelevant.
+
+`--rail-w` per toolbar mode (`rail-simple` / `rail-full` on `.app-root`) and
+screen shape (CSS block "Tool rail (session 58)" in the `<style>` of
+tattingindex.tsx; all include `env(safe-area-inset-left)`):
+
+| Screen | Simple | Full |
+|---|---|---|
+| Desktop / tablet | 150 px | 100 px |
+| Large UI (desktop only) | 188 px (grid `zoom: 1.25`) | 125 px |
+| Phone sideways (height ≤ 500) | 124 px | 84 px |
+| Phone upright (width ≤ 768 and height > 500) | 0 — bottom bar instead | 0 |
+
+Upright phone = `(max-width: 768px) and (min-height: 501px)`. There the rail
+is `display: none`, `.phone-toolbar` (PhoneToolBar.tsx) shows, and
+`.app-root` gets `padding-bottom` for the 58 px bar (+ safe-area inset).
+Both are always rendered; only CSS chooses.
+
+- **Logo:** `public/app-icon_sm.png` (~200 px square; Vite serves `public/`,
+  not the project root). Hidden via onError if missing. Tooltip "TattingCAD
+  {APP_VERSION}"; no click action.
+- **The old floating-toolbar CSS is gone:** `.toolbar-scalable-left`
+  transform scales (6 media rules + 3 ui-large rules) and
+  `.mobile-toolbar-compact`. Don't reintroduce transform scaling for the rail;
+  it doesn't shrink the layout box, which is what made the old toolbar
+  overflow on short screens.
+- **Phone bottom bar contents** (descriptors `phoneTools` in tattingindex.tsx,
+  just before the main return): main row Select · Pan · Ring · Split ring ·
+  Chain · Picot Join (+ More). More panel: Delete, Show all, Zoom −/+,
+  Reference image, Notes, "More tools"; in Full mode also every Full tool and
+  "Simple". Realistic view: Pan + zoom + Show all, no More.
+- **Shared toggles:** `togglePicotJoinMode` and `toggleBeadingMode` (defined
+  next to flipElements) are used by the rail, the phone bar and the hint.
+  Shift+J keeps its own variant (also clears fold state).
+- **Canvas centring:** anything that centres the view must measure the canvas,
+  not the window (the canvas starts right of the rail and under the header).
+  `canvasCenterCamera()` (tattingindex.tsx) is used at app start (a mount
+  effect re-centres after usePatternState's window-based initial camera), New
+  Project and the autosave fallback; `canvasCenterOf(canvasRef)`
+  (useProjectFile.ts) for the file-load fallbacks. `getViewportCenter`,
+  `screenToWorld` and touch handling already used the canvas rect.
+- **Phone clean-up:** `.info-bar` (status bar) hidden on phones (width ≤ 768
+  or height ≤ 500). `.prop-bar` (the property bar) has a FIXED height on
+  phones (6.5rem upright, 4.5rem sideways, scrolls inside) so
+  selecting/deselecting no longer moves the canvas (it used to jump ~63 px).
+  Sideways phones: top row on one line (icons only, scrolls sideways).
+- **Known duplication:** the rail has its own JSX; the phone bar uses the
+  descriptors. Rebuilding the rail on the descriptors would remove it.
+
+### Simple / Full toolbar and the getting-started hint (session 58)
+
+- **Simple** (default for fresh installs): one labelled column — Select,
+  Pan, Ring, Split ring, Chain, Picot Join, Delete, Zoom −/+, Show all,
+  Reference image, Notes, "More tools ›". **Full**: the original 2-column
+  icon grid of every tool, plus "‹ Simple". Hidden tools keep their keyboard
+  shortcuts. Mode: `toolbarMode` (useViewState.ts).
+- **Start tool:** Select in Simple, Pan in Full (useCanvasInteraction.ts).
+  Leaving realistic view or closing the reference-image tool returns to
+  Select in Simple. handleSetRenderMode reads the mode via
+  getInitialToolbarMode() (localStorage), not state, because the V-key
+  listener can call it from an older render.
+- **Hint:** GettingStartedHint.tsx in the property bar's last branch
+  (nothing selected, no mode, not the image tool). Element count excludes
+  ghosts.
+- **Splash:** "Getting Started" now has the same style as "Load Project"
+  (it looked disabled before).
+
+### Unsaved changes — history edit numbers (session 58)
+
+**One check** drives the title star, the close-window warning and the
+"load anyway?" / New Project prompts:
+
+    currentHistoryRev = history[historyIndex]?.rev ?? 0
+    hasUnsavedChanges = currentHistoryRev !== lastSavedRev
+                        && (elements.length > 0 || currentFilePath !== null)
+
+- Every entry pushed by pushHistoryState gets a new, ever-increasing `rev`
+  (module counter in useHistoryActions.ts). Entries created directly with
+  setHistory (New Project, open file, resume autosave) have none → 0.
+- `lastSavedRev` (useProjectState.ts): set on save to the rev of the entry
+  being written — captured BEFORE saveToPath's awaits, so an edit made while
+  the file/thumbnail are written stays unsaved. Open file → 0. New Project →
+  0. Resume autosave → -1 (not in any file yet).
+- **Why not indices** (the old lastSavedHistoryIndex): opening a file reset
+  historyIndex to 0 but not the saved index; once the 50-entry cap is
+  reached every new edit lands on index 49, so after a save at 49 later
+  edits looked saved and closing the app did NOT warn; and undo-then-edit
+  puts a different state on the same index. Revs fix all three.
+- Undo back to the saved entry clears the star; redo onto it too.
+- The close-warning listener reads `hasUnsavedChangesRef` and re-registers
+  only when `t` changes.
+- **Prompts:** File → New, File → Browse for File… and Load Project's
+  doLoad ask only when hasUnsavedChanges (they used to ask whenever the
+  canvas wasn't empty). A completely fresh, empty, untitled canvas: New
+  does nothing.
+- Verified in a browser harness (save/open dialogs stubbed): 18/18 title
+  steps incl. the 50-cap case, 6/6 prompt cases.
+
+### Window title (session 58)
+
+`*Snowflake.json — TattingCAD` — file name only (from currentFilePath, folder
+stripped), `*` = hasUnsavedChanges, `Untitled` (key windowTitleUntitled)
+before the first save. The pattern-name field is legacy and NOT used. Set in
+an effect via Tauri `getCurrentWindow().setTitle()` (guarded by
+`__TAURI_INTERNALS__`, errors swallowed) and `document.title`.
+**Needs `"core:window:allow-set-title"`** in
+`src-tauri/capabilities/default.json` (added session 58, next to
+allow-destroy). Without it the title silently stays "TattingCAD".
+
+### Two-finger gesture: pinch zoom + pan (session 58)
+
+onTouchStart (2 fingers) stores the world point under the fingers' midpoint
+(`touchState.worldX/worldY`). onTouchMove puts that point under the CURRENT
+midpoint at the new zoom: `camera = midpoint − world × newZoom`. Still
+fingers = the old pinch exactly; moving fingers pan; both at once do both.
+Zoom limits unchanged (0.3–3). Verified with emulated touch (pan, pinch incl.
+the 300% cap, combined — all within 0.1 px). The user decided this after
+first rejecting it; two fingers no longer "only zoom".
+
+### Chain centre = chord midpoint; order badges (session 58)
+
+A single-path chain's (and line's) `center` is its chord midpoint — what
+addChain/addLine set and what moves, rotations and flips preserve. Before
+session 58 the Path Edit endpoint drag on chains (smartEndpointDrag), the
+legacy quadratic control drag (it moves the end) and line angle presets
+(commitSinglePathUpdate) changed an end without updating center, so old
+files can have a stale one (seen: ~85 units off). Now:
+- those three paths apply `withChordCenter` (stitchGeometry.ts);
+- file open and autosave resume apply it to every element (≈0.3 ms per
+  5,000 elements; no shape changes, ghosts/rings/multi-path chains
+  untouched);
+- tatting-order badges on chains and lines (number AND "R") sit halfway
+  along the drawn path (`orderLabelPosOnPath`, module level in
+  tattingindex.tsx; chains sample 40, lines 20 — the values each site always
+  used, verified identical on 4,000 random cases). The "R" used el.center
+  before, which is why it floated away from reshaped chains.
+
+### Update reminder clock (session 58 fix)
+
+The splash's "Have you checked for updates?" overlay shows after **90 days
+with the installed version** (`updateReminderDue`, a useState initializer in
+tattingindex.tsx). `tcad_install_date` + `tcad_install_version`: when the
+stored version differs from APP_VERSION (or no date yet), the date restarts
+and nothing shows. Before session 58 the date was set once at the very first
+run and never restarted, and localStorage survives updates/reinstalls, so a
+new version asked immediately. Dismissing still stores `tcad_update_seen`.
+Keep the key name `tcad_install_date`: getInitialToolbarMode uses its
+presence to recognise an existing user.
+
 ### Release checklist — version number (user's notes, session 57)
 
 A release changes the version in ALL of these, to the same value:
@@ -2399,3 +2610,5 @@ exact trap once this session before catching it).
 | ~~`isInteractingRef` — remaining gap after Addendum 4's fix~~ | DONE (session 56) — window-blur flush; see Rules. |
 | `NumberStepper.tsx` auto-repeat after focus loss | OPEN, needs the file (never obtained). History is already safe; only the repeat itself may continue. |
 | Clean Up Duplicates — duplicate ghost arrays | PARKED with ghost arrays. |
+| Rail JSX vs phone-bar descriptors | OPEN (session 58). The same tools are defined twice: the rail's inline ToolbarButtons and the `phoneTools` descriptors. Rebuild the rail on the descriptors. |
+| Layout polish list | OPEN (session 58) — in `plan-ui-layout-session58.md`: bigger logo, first tool level with the canvas top, no width jump Simple ↔ Full, phone property-bar overflow (second settings row needs scrolling), "Picot J…" truncation at 360 px. |

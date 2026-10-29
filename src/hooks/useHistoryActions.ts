@@ -13,6 +13,16 @@ export interface UseHistoryActionsParams {
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
 }
 
+// Edit number for history entries (session 58). Every entry pushed below
+// gets a new, ever-increasing `rev`, so "unsaved changes" can be told apart
+// by identity (tattingindex.tsx: hasUnsavedChanges = current entry's rev !==
+// lastSavedRev) instead of by array index, which broke once the 50-entry cap
+// was reached (the index stays at 49 for every new edit) and after
+// undo-then-edit (a different state lands on the same index). Entries made
+// directly with setHistory (New Project, open file, resume) have no rev and
+// count as 0.
+let nextHistoryRev = 1;
+
 export function useHistoryActions(p: UseHistoryActionsParams) {
 
   const pushHistoryState = useCallback((
@@ -71,6 +81,7 @@ export function useHistoryActions(p: UseHistoryActionsParams) {
     if (oldStateStr === newStateStr) return;
 
     const cloned = {
+      rev:           nextHistoryRev++,
       elements:      JSON.parse(JSON.stringify(els)),
       connections:   JSON.parse(JSON.stringify(conns)),
       rounds:        JSON.parse(JSON.stringify(normalRounds)),

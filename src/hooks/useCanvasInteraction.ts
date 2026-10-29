@@ -2,10 +2,13 @@
 // Covers drag, selection box, rotation handles, pivot, zoom rect, touch, key modifiers.
 
 import { useState } from 'react';
+import { getInitialToolbarMode } from './useViewState';
 
 export function useCanvasInteraction() {
   // ── Tool and mode ──────────────────────────────────────────────────────
-  const [currentTool, setCurrentTool] = useState('pan');
+  // Simple toolbar starts on Select (a newcomer's first click on a ring must
+  // select it); the full toolbar keeps the long-standing Pan start.
+  const [currentTool, setCurrentTool] = useState(() => getInitialToolbarMode() === 'simple' ? 'select' : 'pan');
   const [activeMode, setActiveMode] = useState<string | null>(null);
   const [orthoLock, setOrthoLock] = useState(false);
 
@@ -28,7 +31,10 @@ export function useCanvasInteraction() {
   const [zoomRectBox, setZoomRectBox] = useState<any>(null);
 
   // ── Touch / pinch ──────────────────────────────────────────────────────
-  const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0 });
+  // Two-finger gesture (pinch zoom + two-finger pan, session 58): finger
+  // distance and zoom at the start, plus the world point that was under the
+  // fingers' midpoint (worldX/worldY) — it stays under the midpoint.
+  const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0, worldX: 0, worldY: 0 });
 
   // ── Key modifiers ──────────────────────────────────────────────────────
   const [isShiftHeld, setIsShiftHeld] = useState(false);
