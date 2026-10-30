@@ -903,17 +903,53 @@
 	<li><strong>Crowded rosette?</strong> If rings around a center overlap in Realistic view, raise their <strong>Tension</strong> in the property bar and squeeze instead of moving them by hand.</li>
   </ul>
 
-  <h3>Customising Indicator Colors</h3>
-  <p style="margin-bottom:0.75rem; font-size:0.875rem;">The snap points, joint picot dots, path-edit handles and connection lines all use colors defined in a <code class="code-inline">tatting-theme.json</code> file.</p>
-
+    <h3>Customising Indicator Colors</h3>
+  <p style="margin-bottom:0.75rem; font-size:0.875rem;">The colors the app uses to show you things — snap points, picot and core-join dots, connection lines, selection outlines and handles, warning glows, bead markers, the ruler, Tatting Order numbers, stitch-count labels and grid lines — all come from a <strong>color theme</strong>.</p>
+ 
   <div class="card">
-    <h4>To customise:</h4>
+    <h4>Choosing a theme</h4>
+    <p style="font-size:0.875rem; color:#d1d5db; margin-top:0.4rem;">Open <strong>Options → Indicator colours…</strong> and pick one at the top:</p>
+    <ul style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.875rem; line-height:1.8; color:#d1d5db;">
+      <li><strong>Standard</strong> — the classic look.</li>
+      <li><strong>Pastel</strong> — a softer palette, designed to stay readable with color blindness (red-green and blue-yellow).</li>
+      <li><strong>My file</strong> — appears only when a <code class="code-inline">tatting-theme.json</code> is placed in the same folder as the app (see below).</li>
+      <li><strong>Custom</strong> — your own theme (see below).</li>
+    </ul>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-top:0.6rem;">The change applies straight away, and the app remembers your choice.</p>
+  </div>
+ 
+  <div class="card">
+    <h4>Making your own colors</h4>
+    <p style="font-size:0.875rem; color:#d1d5db; margin-top:0.4rem;">Standard, Pastel and My file can't be changed directly. To make your own:</p>
+    <ol style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.875rem; line-height:1.8; color:#d1d5db;">
+      <li>Pick the theme you want to start from, then click <strong>+ Custom</strong> (or <strong>Copy to Custom</strong>).</li>
+      <li>Click any color swatch and choose a new color. Some colors (like the inside of the selection box) also have an opacity slider.</li>
+      <li>Your changes are saved automatically and stay even if you switch to another theme and back.</li>
+    </ol>
+    <ul style="padding-left:1.25rem; margin-top:0.5rem; font-size:0.82rem; line-height:1.7; color:#9ca3af;">
+      <li><strong>↺</strong> next to a color takes it back to the color Custom started from.</li>
+      <li><strong>Undo my changes</strong> resets all of them at once.</li>
+      <li><strong>Replace Custom with these colours</strong> (shown while another theme is selected) starts Custom over from that theme — it asks first if you've made changes.</li>
+    </ul>
+  </div>
+ 
+  <div class="card">
+    <h4>Saving and sharing a theme</h4>
+    <ul style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.875rem; line-height:1.8; color:#d1d5db;">
+      <li><strong>Save as file…</strong> (while Custom is selected) saves your theme as a <code class="code-inline">.json</code> file — for a backup, or to share it.</li>
+      <li><strong>Load Theme…</strong> (in the editor, or under Options) loads a theme file into Custom.</li>
+    </ul>
+  </div>
+ 
+  <div class="card">
+    <h4>Using a theme file next to the app</h4>
+    <p style="font-size:0.875rem; color:#d1d5db; margin-top:0.4rem;">If a file named <code class="code-inline">tatting-theme.json</code> is in the same folder as the app, its colors appear as <strong>My file</strong> and are used automatically on first start. To edit it:</p>
     <ol style="padding-left:1.25rem; margin-top:0.4rem; font-size:0.875rem; line-height:1.8; color:#d1d5db;">
       <li>Open <code class="code-inline">tatting-theme.json</code> in any text editor.</li>
-      <li>Change any hex color value (e.g. <code class="code-inline">"#FFA500"</code> → <code class="code-inline">"#00BFFF"</code>).</li>
-      <li>Save the file and reload the app — colors apply automatically.</li>
+      <li>Change any color value (e.g. <code class="code-inline">"#FFA500"</code> → <code class="code-inline">"#00BFFF"</code>). Hex colors and <code class="code-inline">rgba(…)</code> both work.</li>
+      <li>Save the file and restart the app.</li>
     </ol>
-    <p style="font-size:0.82rem; color:#9ca3af; margin-top:0.6rem;">You can also load a theme mid-session via <strong>Options → Load Theme…</strong> without restarting.</p>
+    <p style="font-size:0.82rem; color:#9ca3af; margin-top:0.6rem;">Any color you leave out keeps its Standard value; unknown keys are ignored. <strong>Options → Reset Theme</strong> switches back to Standard (your Custom theme is kept).</p>
   </div>
 
   <h4 style="margin-top:1rem; margin-bottom:0.5rem;">Theme keys</h4>

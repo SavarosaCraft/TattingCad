@@ -22,6 +22,10 @@ import {
 } from './icons';
 
 interface TopMenuBarProps {
+  /** Upright phones (session 59): one ☰ button replaces File / View /
+   *  Arrange / Options / Help (see the .tmb-desktop / .tmb-phone CSS). */
+  phoneMenuButtonRef: React.RefObject<HTMLButtonElement>;
+  onTogglePhoneMenu: () => void;
   fileButtonRef: React.RefObject<HTMLButtonElement>;
   viewButtonRef: React.RefObject<HTMLButtonElement>;
   arrangeButtonRef: React.RefObject<HTMLButtonElement>;
@@ -61,6 +65,7 @@ interface TopMenuBarProps {
 }
 
 export const TopMenuBar: React.FC<TopMenuBarProps> = ({
+  phoneMenuButtonRef, onTogglePhoneMenu,
   fileButtonRef, viewButtonRef, arrangeButtonRef, optionsButtonRef, helpButtonRef,
   showFileMenu, showViewMenu,
   onToggleFileMenu, onToggleViewMenu, onToggleArrangeMenu, onToggleOptionsMenu, onToggleHelpMenu,
@@ -77,8 +82,23 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
 
   return (
     <div className="top-row-buttons min-h-12 flex flex-wrap items-center px-4 mobile-no-padding gap-1 md:gap-4 border-b border-gray-700 py-1 md:py-2">
+      {/* Upright phone only: ☰ opens one menu with File / View / Arrange /
+          Options / Help and the actions hidden from this row there.
+          Everything marked tmb-desktop is hidden on an upright phone; Undo,
+          Redo, Copy, Cut, Paste and Delete stay. */}
+      <button
+        ref={phoneMenuButtonRef}
+        onClick={onTogglePhoneMenu}
+        className="tmb-phone items-center justify-center px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded"
+        style={squareBtn}
+        title={t('menuPhoneMenu')}
+        aria-label={t('menuPhoneMenu')}
+      >
+        <IconMenu size={20} />
+      </button>
+
       {/* File operations dropdown menu */}
-      <div className="relative" style={{ overflow: 'visible' }}>
+      <div className="tmb-desktop relative" style={{ overflow: 'visible' }}>
         <button
           ref={fileButtonRef}
           onClick={onToggleFileMenu}
@@ -93,7 +113,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
       </div>
 
       {/* View menu */}
-      <div className="relative" style={{ overflow: 'visible' }}>
+      <div className="tmb-desktop relative" style={{ overflow: 'visible' }}>
         <button
           ref={viewButtonRef}
           onClick={onToggleViewMenu}
@@ -108,7 +128,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
       </div>
 
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600"></div>
+      <div className="tmb-desktop w-px h-8 bg-gray-600"></div>
 
       {/* Undo/Redo/Copy/Paste — centered in remaining space */}
       <div className="flex-1 flex items-center justify-center gap-1">
@@ -161,11 +181,11 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
           <IconPaste size={20} />
         </button>
 
-        <div className="w-px h-6 bg-gray-600 mx-0.5" />
+        <div className="tmb-desktop w-px h-6 bg-gray-600 mx-0.5" />
 
         <button
           onClick={sendToBack}
-          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          className="tmb-desktop px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           style={squareBtn}
           title={t('btnSendToBack')}
           disabled={arrangeDisabled}
@@ -175,7 +195,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
 
         <button
           onClick={bringToFront}
-          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          className="tmb-desktop px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           style={squareBtn}
           title={t('btnBringToFront')}
           disabled={arrangeDisabled}
@@ -183,7 +203,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
           <IconBringToFront size={20} />
         </button>
 
-        <div className="w-px h-6 bg-gray-600 mx-0.5" />
+        <div className="tmb-desktop w-px h-6 bg-gray-600 mx-0.5" />
 
         {/* Delete — duplicate of the left-toolbar delete button (same
             handler, title key, icon and disabled rule, passed in from
@@ -202,7 +222,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
 
       <button
         onClick={fitAllElements}
-        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+        className="tmb-desktop px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
         style={squareBtn}
         title={t('btnFitAll')}
         disabled={fitAllDisabled}
@@ -214,7 +234,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
       <button
         ref={arrangeButtonRef}
         onClick={onToggleArrangeMenu}
-        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
+        className="tmb-desktop px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
         style={wideBtn}
         title={t('menuArrangeTitle')}
       >
@@ -224,13 +244,13 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
       </button>
 
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600"></div>
+      <div className="tmb-desktop w-px h-8 bg-gray-600"></div>
 
       {/* Options menu (BG, Grid, Snap) */}
       <button
         ref={optionsButtonRef}
         onClick={onToggleOptionsMenu}
-        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
+        className="tmb-desktop px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-2 justify-center"
         style={wideBtn}
         title={t('menuOptions')}
       >
@@ -240,13 +260,13 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = ({
       </button>
 
       {/* Divider */}
-      <div className="w-px h-8 bg-gray-600"></div>
+      <div className="tmb-desktop w-px h-8 bg-gray-600"></div>
 
       {/* Help / About dropdown */}
       <button
         ref={helpButtonRef}
         onClick={onToggleHelpMenu}
-        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1 justify-center"
+        className="tmb-desktop px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1 justify-center"
         style={{ height: '44px' }}
         title={t('menuHelpDropdown')}
       >

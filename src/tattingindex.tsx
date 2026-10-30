@@ -824,6 +824,17 @@ const APP_VERSION = '1.3.0';
   const arrangeButtonRef = useRef(null); // For arrange dropdown positioning
   const optionsButtonRef = useRef(null); // For options dropdown positioning
   const viewButtonRef = useRef(null);   // For view dropdown positioning
+  // Upright phones (session 59): the ☰ button that replaces File / View /
+  // Arrange / Options / Help in the top row, and its menu.
+  const phoneMenuButtonRef = useRef(null);
+  const [showPhoneMenu, setShowPhoneMenu] = React.useState(false);
+  // On an upright phone the five menus' own buttons are hidden, so the menus
+  // open under the ☰ button instead (same media query as the CSS).
+  // Same widths as the .tmb-phone CSS (compact top row).
+  const menuAnchor = (ref) =>
+    (typeof window !== 'undefined'
+      && window.matchMedia?.(`(max-width: ${uiScale === 'large' ? 1274 : 1139}px) and (min-height: 501px)`).matches
+      ? phoneMenuButtonRef : ref);
   const helpButtonRef = useRef(null);   // For help/about dropdown positioning
   const draggedHandleRef = useRef(null); // NEW: for path edit
   const fileInputRef = useRef(null);     // NEW: for reference image upload
@@ -7137,6 +7148,62 @@ const APP_VERSION = '1.3.0';
         .phone-toolbar-tile { gap: 4px; padding: 10px 2px; min-height: 60px; }
         .phone-toolbar-tile .phone-toolbar-label { white-space: normal; }
 
+        /* Top row: compact ☰ row vs the full set of buttons (session 59,
+           TopMenuBar.tsx). Compact whenever the full row would wrap — not
+           only on phones: measured, the full row fits one line from 1140 px
+           wide (Normal) / 1275 px (Large, 50 px buttons) — without the
+           separators (1190 / 1320 with them). Below that,
+           windows between 769 px and those widths used to get a 2–3 line
+           top row (user screenshot). Sideways phones (height ≤ 500) keep
+           their own one-line icon row. Keep in sync with menuAnchor(). */
+        .tmb-phone { display: none; }
+        /* No separators in the top row (session 59, user): the group gaps
+           already separate the groups, and dropping the 5 dividers (+ their
+           gaps) lets the full row fit ~50 px narrower windows. */
+        .top-row-buttons .w-px { display: none !important; }
+        @media (max-width: 1139px) and (min-height: 501px) {
+          .tmb-phone { display: flex; }
+          .top-row-buttons .tmb-desktop { display: none !important; }
+          .top-row-buttons { flex-wrap: nowrap !important; }
+        }
+        @media (max-width: 1274px) and (min-height: 501px) {
+          .ui-large .tmb-phone { display: flex; }
+          .ui-large .top-row-buttons .tmb-desktop { display: none !important; }
+          .ui-large .top-row-buttons { flex-wrap: nowrap !important; }
+        }
+        @media (max-width: 768px) and (min-height: 501px) {
+          .top-row-buttons { padding-left: 6px; padding-right: 6px; }
+        }
+        /* Narrow desktop windows (769–1199 px; Large up to 1359 — the
+           property bar's own fit widths, measured with a ring selected;
+           wider than the top row's 1140 / 1275 because of its labels): the
+           property bar drops its small "Order: / Shape: / Squeeze: /
+           Material:" labels, as phones do, and works like the phone bar — a
+           fixed 6.5rem slot (the canvas never moves) with the bar laid over
+           the canvas when a selection needs more rows. Before, it grew to
+           140–180 px here and pushed the canvas down. */
+        @media (min-width: 769px) and (max-width: 1199px) and (min-height: 501px) {
+          .top-row-properties .hide-label-mobile,
+          .top-row-properties label.text-xs { display: none !important; }
+          .app-root .prop-bar-slot { position: relative; z-index: 25; flex-shrink: 0; height: 6.5rem; }
+          .app-root .prop-bar {
+            position: absolute; top: 0; left: 0; right: 0;
+            height: auto; overflow: visible !important;
+            background: #1f2937; border-bottom: 1px solid #374151;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.35);
+          }
+        }
+        @media (min-width: 1200px) and (max-width: 1359px) and (min-height: 501px) {
+          .ui-large .top-row-properties .hide-label-mobile,
+          .ui-large .top-row-properties label.text-xs { display: none !important; }
+          .ui-large.app-root .prop-bar-slot { position: relative; z-index: 25; flex-shrink: 0; height: 6.5rem; }
+          .ui-large.app-root .prop-bar {
+            position: absolute; top: 0; left: 0; right: 0;
+            height: auto; overflow: visible !important;
+            background: #1f2937; border-bottom: 1px solid #374151;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.35);
+          }
+        }
         /* Phone held upright: the bottom bar replaces the rail; the app is
            padded at the bottom instead of the left. */
         @media (max-width: 768px) and (min-height: 501px) {
@@ -7228,6 +7295,8 @@ const APP_VERSION = '1.3.0';
           onToggleArrangeMenu={() => setShowArrangeMenu(!showArrangeMenu)}
           onToggleOptionsMenu={() => setShowOptionsMenu(!showOptionsMenu)}
           onToggleHelpMenu={() => setShowHelpMenu(v => !v)}
+          phoneMenuButtonRef={phoneMenuButtonRef}
+          onTogglePhoneMenu={() => setShowPhoneMenu(v => !v)}
           undo={undo}
           redo={redo}
           historyIndex={historyIndex}
@@ -10001,8 +10070,42 @@ const APP_VERSION = '1.3.0';
     
     {/* File dropdown menu - rendered at top level to avoid clipping */}
     {/* ── Help / About dropdown ──────────────────────────────────── */}
+      {/* ── Upright phone: ☰ menu (session 59) ── */}
+      {showPhoneMenu && (
+        <DropdownMenu buttonRef={phoneMenuButtonRef} onClose={() => setShowPhoneMenu(false)} width={230}>
+          {([
+            ['file', <IconMenu size={18} />, t('menuFile'), () => setShowFileMenu(true)],
+            ['view', <IconEyeOn size={18} />, t('menuView'), () => setShowViewMenu(true)],
+            ['arrange', <IconAlignMiddle size={18} />, t('menuArrange'), () => setShowArrangeMenu(true)],
+            ['options', <IconSettings size={18} />, t('menuOptions'), () => setShowOptionsMenu(true)],
+            ['help', <IconHelp size={18} />, t('menuHelpDropdown'), () => setShowHelpMenu(true)],
+          ] as const).map(([key, icon, label, open]) => (
+            <button key={key}
+              onClick={() => { setShowPhoneMenu(false); open(); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-600 text-left text-gray-200">
+              {icon}<span className="flex-1">{label}</span><span className="text-gray-400">›</span>
+            </button>
+          ))}
+          <div className="border-t border-gray-600 my-1"></div>
+          {(() => {
+            const arrangeOff = selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder';
+            const item = (key: string, icon: React.ReactNode, label: string, onClick: () => void, disabled: boolean) => (
+              <button key={key} disabled={disabled}
+                onClick={() => { setShowPhoneMenu(false); onClick(); }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-600 text-left text-gray-200 disabled:opacity-40 disabled:hover:bg-transparent">
+                {icon}<span>{label}</span>
+              </button>
+            );
+            return (<>
+              {item('front', <IconBringToFront size={18} />, t('menuPhoneBringToFront'), bringToFront, arrangeOff)}
+              {item('back', <IconSendToBack size={18} />, t('menuPhoneSendToBack'), sendToBack, arrangeOff)}
+              {item('fit', <IconFitView size={18} />, t('toolLabelFitAll'), fitAllElements, elements.length === 0)}
+            </>);
+          })()}
+        </DropdownMenu>
+      )}
     {showHelpMenu && (
-      <DropdownMenu buttonRef={helpButtonRef} onClose={() => setShowHelpMenu(false)} width={220}>
+      <DropdownMenu buttonRef={menuAnchor(helpButtonRef)} onClose={() => setShowHelpMenu(false)} width={220}>
           <button onClick={() => { setShowHelp(true); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <IconHelp size={16} /><span>{t('helpMenuHelp')}</span>
@@ -10102,7 +10205,7 @@ const APP_VERSION = '1.3.0';
     )}
 
     {showFileMenu && (
-      <DropdownMenu buttonRef={fileButtonRef} onClose={() => setShowFileMenu(false)} width={200}>
+      <DropdownMenu buttonRef={menuAnchor(fileButtonRef)} onClose={() => setShowFileMenu(false)} width={200}>
           <button
             onClick={() => {
               setShowFileMenu(false);
@@ -10204,7 +10307,7 @@ const APP_VERSION = '1.3.0';
 
     {/* Arrange dropdown menu - rendered at top level to avoid clipping */}
     {showArrangeMenu && (
-      <DropdownMenu buttonRef={arrangeButtonRef} onClose={() => setShowArrangeMenu(false)} width={220}>
+      <DropdownMenu buttonRef={menuAnchor(arrangeButtonRef)} onClose={() => setShowArrangeMenu(false)} width={220}>
           {/* Duplicate */}
           <button
             onClick={() => {
@@ -10731,7 +10834,7 @@ const APP_VERSION = '1.3.0';
 
     {/* View dropdown menu - rendered at top level to avoid clipping */}
     {showViewMenu && (
-      <DropdownMenu buttonRef={viewButtonRef} onClose={() => setShowViewMenu(false)} width={200}>
+      <DropdownMenu buttonRef={menuAnchor(viewButtonRef)} onClose={() => setShowViewMenu(false)} width={200}>
           {/* Fit View — top of menu */}
           <button
             onClick={() => { fitAllElements(); setShowViewMenu(false); }}
@@ -10826,7 +10929,7 @@ const APP_VERSION = '1.3.0';
 
     {/* Options dropdown menu - rendered at top level to avoid clipping */}
     {showOptionsMenu && (
-      <DropdownMenu buttonRef={optionsButtonRef} onClose={() => setShowOptionsMenu(false)} width={200}>
+      <DropdownMenu buttonRef={menuAnchor(optionsButtonRef)} onClose={() => setShowOptionsMenu(false)} width={200}>
           {/* Materials Manager */}
           <button
             onClick={() => { setShowMaterialsPanel(true); setShowOptionsMenu(false); }}
