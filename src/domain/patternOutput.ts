@@ -353,6 +353,14 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
 
   const perDsWorking = activePreset.ds20Working / 20;
   const perDsCore    = activePreset.ds20Core / 20;
+  // Shuttle presets (session 59): a ring is made from the shuttle thread
+  // alone (ds20Ring = all thread for a 20 DS ring), while a chain uses the
+  // ball thread for its stitches (ds20Working) over the shuttle thread as
+  // core (ds20Core). Needle presets keep the old model for everything:
+  // working + core per stitch.
+  const isShuttle = activePreset.technique === 'shuttle' && Number(activePreset.ds20Ring) > 0;
+  const perDsRing = isShuttle ? Number(activePreset.ds20Ring) / 20 : 0;
+  let shuttleTotal = 0, ballTotal = 0;
   const perSsWorking = perDsWorking * 0.5;
   const picotMm: Record<string, number> = {
     regular: activePreset.picotRegular,
@@ -440,13 +448,26 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       const dsUnits = totalPx / dsWidth;
       materialMm[matId] += dsUnits * perDsWorking;
       coreTotal += dsUnits * perDsCore;
+      if (isShuttle) { ballTotal += dsUnits * perDsWorking; shuttleTotal += dsUnits * perDsCore; }
       countDS += Math.round(dsUnits);
       continue;
     }
 
     const s = countStitchType(el.notation || '');
-    materialMm[matId] += s.ds * perDsWorking + s.ss * perSsWorking;
-    coreTotal += (s.ds + s.ss * 0.5 + s.beadDs) * perDsCore;
+    // Shuttle preset + ring: everything is shuttle thread, no separate core.
+    const shuttleRing = isShuttle && !!el.isClosed;
+    const addStitches = (mat: string, st: ReturnType<typeof countStitchType>) => {
+      if (shuttleRing) {
+        const mm = (st.ds + st.beadDs) * perDsRing + st.ss * perDsRing * 0.5;
+        materialMm[mat] += mm; shuttleTotal += mm;
+      } else {
+        const work = st.ds * perDsWorking + st.ss * perSsWorking;
+        const core = (st.ds + st.ss * 0.5 + st.beadDs) * perDsCore;
+        materialMm[mat] += work; coreTotal += core;
+        if (isShuttle) { ballTotal += work; shuttleTotal += core; }
+      }
+    };
+    addStitches(matId, s);
     countDS += s.ds + s.beadDs;
     countSS += s.ss;
 
@@ -456,6 +477,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       if (p.isJoint) continue;
       const pLen = picotMm[p.length] || picotMm['regular'];
       materialMm[matId] += pLen;
+      if (isShuttle) { if (shuttleRing) shuttleTotal += pLen; else ballTotal += pLen; }
       countPicots++;
     }
 
@@ -463,8 +485,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       const matIdB = el.materialIdB || matId;
       ensureMat(matIdB);
       const sB = countStitchType(el.notationB);
-      materialMm[matIdB] += sB.ds * perDsWorking + sB.ss * perSsWorking;
-      coreTotal += (sB.ds + sB.ss * 0.5 + sB.beadDs) * perDsCore;
+      addStitches(matIdB, sB);
       countDS += sB.ds + sB.beadDs;
       countSS += sB.ss;
     }
@@ -478,6 +499,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       const matId = el.materialId || 'default';
       ensureMat(matId);
       materialMm[matId] += picotMm['joined'];
+      if (isShuttle) { if (el.isClosed) shuttleTotal += picotMm['joined']; else ballTotal += picotMm['joined']; }
     }
   }
 
@@ -587,7 +609,17 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   const presetName = activePreset.id === 'default' && activePreset.name === DEFAULT_THREAD_PRESET.name
     ? t('threadPresetDefaultName') : activePreset.name;
 
-  const threadBlock = materialLines.length > 0
+  // Shuttle preset: what to wind on the shuttle and what to take from the
+  // ball, then the per-colour totals (visible stitches) when there are
+  // several materials.
+  const threadBlock = materialLines.length > 0 && isShuttle
+    ? `\n\n--- ${t('patternOutThreadHeader').replace('{preset}', presetName)} ---` +
+      `\n${t('patternOutThreadTails')}\n` +
+      `\n${t('patternOutShuttleThread').replace('{m}', mmToM(shuttleTotal))}` +
+      `\n${t('patternOutBallThread').replace('{m}', mmToM(ballTotal))}` +
+      (multiMat ? `\n\n${t('patternOutByColour')}` + materialLines.map(l => `\n  ${l}`).join('') : '') +
+      `\n\n${t('patternOutCounts').replace('{ds}', String(countDS)).replace('{ss}', String(countSS)).replace('{picots}', String(countPicots)).replace('{joined}', String(countJoined))}`
+    : materialLines.length > 0
     ? `\n\n--- ${t('patternOutThreadHeader').replace('{preset}', presetName)} ---` +
       `\n${t('patternOutThreadTails')}\n` +
       materialLines.map(l => `\n${l}`).join('') +

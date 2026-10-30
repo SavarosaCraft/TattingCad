@@ -43,6 +43,8 @@ const isFileNotFoundError = (error: any): boolean => {
 export interface UseProjectFileParams {
   // State values
   elements: any[];
+  /** Theme round colours for SVG export badges (session 59). */
+  roundColors?: [string, string][];
   picotConnections: any[];
   camera: { x: number; y: number };
   zoom: number;
@@ -388,6 +390,7 @@ export function useProjectFile(p: UseProjectFileParams) {
       bounds: { minX, minY, maxX, maxY },
       elements: p.elements, rounds: p.rounds,
       patternNotes: p.patternNotes, dsWidth: p.dsWidth,
+      roundColors: p.roundColors,
     });
 
     try {
@@ -397,7 +400,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     } catch (err) {
       console.error('SVG export failed:', err);
     }
-  }, [p.elements, p.projectName, p.patternNotes, p.rounds, p.dsWidth]);
+  }, [p.elements, p.projectName, p.patternNotes, p.rounds, p.dsWidth, p.roundColors]);
 
   return {
     buildProjectData,

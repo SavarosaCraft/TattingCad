@@ -43,6 +43,8 @@ export interface PrepareSvgParams {
   rounds: any[];
   patternNotes: string;
   dsWidth: number;
+  /** Round badge colours from the theme (session 59); default ORDER_GROUP_COLORS. */
+  roundColors?: [string, string][];
 }
 
 // Mutates clonedSvg in-place, then serializes and returns the SVG string.
@@ -53,6 +55,7 @@ export function prepareSvgForExport(
   params: PrepareSvgParams,
 ): string {
   const { bounds, elements, rounds, patternNotes, dsWidth } = params;
+  const roundPalette = params.roundColors ?? ORDER_GROUP_COLORS;
 
   // Legacy-read shim (session 43 naming-collision fix): elements may still carry the
   // old `orderGroup` field if this function is ever called with data that bypassed the
@@ -64,6 +67,9 @@ export function prepareSvgForExport(
   clonedSvg.querySelectorAll('[stroke="#3B82F6"]').forEach(n => n.remove());
   clonedSvg.querySelectorAll('[data-ui]').forEach(n => n.remove());
   clonedSvg.querySelectorAll('[stroke="#888"]').forEach(n => n.remove());
+  // Session 59: those two colours are themeable now, so the selection
+  // outlines and Path Edit guides also carry data-ui (removed above); the
+  // colour matches stay as a backstop for the default theme.
   // Remove glow filters (invalid-notation red, search pink — not for export)
   clonedSvg.querySelectorAll('[filter]').forEach(n => n.removeAttribute('filter'));
 
@@ -177,8 +183,8 @@ export function prepareSvgForExport(
       const groupIndex = getRoundId(el)
         ? rounds.findIndex(g => g.id === getRoundId(el))
         : -1;
-      const [fillColor, strokeColor] = ORDER_GROUP_COLORS[
-        groupIndex >= 0 ? (groupIndex + 1) % ORDER_GROUP_COLORS.length : 0
+      const [fillColor, strokeColor] = roundPalette[
+        groupIndex >= 0 ? (groupIndex + 1) % roundPalette.length : 0
       ];
       const bg = document.createElementNS(ns, 'text');
       bg.setAttribute('x', String(el.center.x));

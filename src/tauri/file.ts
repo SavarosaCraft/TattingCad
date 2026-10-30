@@ -50,6 +50,16 @@ export const showSaveSvgDialog = async (defaultName: string): Promise<string | n
   return filePath ?? null;
 };
 
+// Session 59: Options → Indicator colours… → Save as file…
+export const showSaveThemeDialog = async (): Promise<string | null> => {
+  const filePath = await tauriSave({
+    title: 'Save Theme',
+    defaultPath: 'tatting-theme.json',
+    filters: [{ name: 'TattingCAD Theme', extensions: ['json'] }],
+  });
+  return filePath ?? null;
+};
+
 // ── File I/O ───────────────────────────────────────────────────────────────
 
 export const writeProjectFile = async (filePath: string, data: object): Promise<void> => {

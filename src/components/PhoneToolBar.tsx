@@ -14,6 +14,9 @@ import React, { useState } from 'react';
 export interface PhoneTool {
   key: string;
   label: string;
+  /** Shorter label for the narrow bottom row (e.g. "Join"); the More
+   *  panel and the rail use `label`. */
+  shortLabel?: string;
   title?: string;
   icon: React.ReactNode;
   onClick: () => void;
@@ -49,7 +52,7 @@ export const PhoneToolBar: React.FC<PhoneToolBarProps> = ({ main, more, moreLabe
       style={{ touchAction: 'manipulation' }}
     >
       {tool.icon}
-      <span className="phone-toolbar-label">{tool.label}</span>
+      <span className="phone-toolbar-label">{inPanel ? tool.label : (tool.shortLabel ?? tool.label)}</span>
     </button>
   );
 

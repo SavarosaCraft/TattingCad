@@ -11,6 +11,8 @@ import {
   thumbSrcFor,
   thumbPathFor,
   checkFileExists,
+  showSaveThemeDialog,
+  writeTextToFile,
 } from './tauri/file';
 import { generateId } from './utils/id';
 import {
@@ -24,6 +26,7 @@ import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
+import { RoundColorsContext, parseRoundColors } from './utils/roundColors';
 import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, endAllowanceFactor, elementTension, withChordCenter } from './geometry/stitchGeometry';
 import { bakeRealisticView } from './render/realisticRenderer';
 import {
@@ -42,7 +45,7 @@ import { useUIState } from './hooks/useUIState';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useTattingOrder } from './hooks/useTattingOrder';
 import { useProjectState } from './hooks/useProjectState';
-import { useViewState, DEFAULT_THEME, SPLASH_TIP_COUNT, getInitialToolbarMode } from './hooks/useViewState';
+import { useViewState, SPLASH_TIP_COUNT, getInitialToolbarMode, pickThemeKeys } from './hooks/useViewState';
 import { useBeadState, DEFAULT_BEAD_LIBRARY } from './hooks/useBeadState';
 import { usePatternState, DEFAULT_MATERIALS, LANGUAGES_FALLBACK } from './hooks/usePatternState';
 import {
@@ -75,6 +78,7 @@ import { DropdownMenu } from './components/DropdownMenu';
 import { ToolbarButton } from './components/ToolbarButton';
 import { GettingStartedHint } from './components/GettingStartedHint';
 import { PhoneToolBar, PhoneTool } from './components/PhoneToolBar';
+import { ThemeEditor } from './components/ThemeEditor';
 import { PresetChip } from './components/PresetChip';
 import { updateElement, updateSelected, updateWhere } from './utils/elementUpdates';
 import { Modal } from './components/Modal';
@@ -390,6 +394,25 @@ const orderLabelPosOnPath = (el: any, samples: number): { x: number; y: number }
   return { x: ox, y: oy };
 };
 
+// Session 59: the rail's logo area is exactly as tall as the header (top row
+// + property bar), so the first tool button lines up with the top of the
+// canvas. The header's height changes (the top row wraps on tablets, the
+// property bar grows with some selections), so it is measured and published
+// as --header-h on .app-root (the header's parent). A stable module-level
+// callback ref, so React attaches the observer once rather than every render.
+let headerHeightObserver: ResizeObserver | null = null;
+const observeHeaderHeight = (el: HTMLDivElement | null) => {
+  headerHeightObserver?.disconnect();
+  headerHeightObserver = null;
+  if (!el || typeof ResizeObserver === 'undefined') return;
+  const publish = () => {
+    el.parentElement?.style.setProperty('--header-h', `${Math.round(el.getBoundingClientRect().height)}px`);
+  };
+  publish();
+  headerHeightObserver = new ResizeObserver(publish);
+  headerHeightObserver.observe(el);
+};
+
 const TattingDesigner = () => {
   // ── UI state (dialogs, menus, toggles) ──────────────────────────────────
   const {
@@ -555,7 +578,8 @@ const TattingDesigner = () => {
     bgColor, setBgColor,
     gridEnabled, setGridEnabled,
     customColors, setCustomColors,
-    theme, setTheme,
+    theme, themeFor, themePreset, setThemePreset, themeCustom, copyThemeToCustom,
+    setCustomThemeColors, loadThemeIntoCustom, themeFileColors, applyThemeFile, resetTheme,
     snapEnabled, setSnapEnabled,
     snapRadius, setSnapRadius,
     referenceImage, setReferenceImage,
@@ -567,6 +591,11 @@ const TattingDesigner = () => {
     clipboard, setClipboard,
     splashTipIndex, setSplashTipIndex,
   } = useViewState();
+  // Tatting Order round colours from the theme (session 59; one string key,
+  // parsed here — see utils/roundColors.ts).
+  const roundColors = React.useMemo(() => parseRoundColors(theme.orderRoundColors), [theme.orderRoundColors]);
+  // Options → Indicator colours… (session 59, components/ThemeEditor.tsx)
+  const [showThemeEditor, setShowThemeEditor] = React.useState(false);
 
   // ── Lizbeth color-picker tab state ──────────────────────────────────────
   // Kept local rather than added to useUIState.ts/useViewState.ts (don't
@@ -1381,13 +1410,9 @@ const APP_VERSION = '1.3.0';
         if (!response.ok) return;
         const data = await response.json();
         if (typeof data !== 'object' || Array.isArray(data)) return;
-        setTheme(prev => {
-          const merged = { ...prev };
-          for (const key of Object.keys(DEFAULT_THEME)) {
-            if (typeof data[key] === 'string') merged[key] = data[key];
-          }
-          return merged;
-        });
+        // Session 59: offered as its own choice in the theme editor (and
+        // chosen automatically on a first start) — see useViewState.
+        applyThemeFile(pickThemeKeys(data));
       } catch {
         // No theme file present — use defaults, no problem.
       }
@@ -2232,9 +2257,9 @@ const APP_VERSION = '1.3.0';
   // Assigned elements start from index 1 so Round 1 is visually distinct from unassigned.
   const getRoundBadgeColor = (el): [string, string] => {
     const roundId = getRoundId(el);
-    if (!roundId) return ORDER_GROUP_COLORS[0];
+    if (!roundId) return roundColors[0];
     const idx = rounds.findIndex(g => g.id === roundId);
-    return ORDER_GROUP_COLORS[idx >= 0 ? (idx + 1) % ORDER_GROUP_COLORS.length : 1];
+    return roundColors[idx >= 0 ? (idx + 1) % roundColors.length : 1];
   };
 
   // Predicate: does element e belong to the currently active round scope?
@@ -2465,12 +2490,9 @@ const APP_VERSION = '1.3.0';
           showLoadMsg('error', t('loadThemeErrInvalid'));
           return;
         }
-        // Merge: only accept keys that exist in DEFAULT_THEME
-        const merged = { ...DEFAULT_THEME };
-        for (const key of Object.keys(DEFAULT_THEME)) {
-          if (typeof parsed[key] === 'string') merged[key] = parsed[key];
-        }
-        setTheme(merged);
+        // Session 59: a loaded file becomes the Custom theme (on top of
+        // Standard) and is selected; only known keys are taken.
+        loadThemeIntoCustom(pickThemeKeys(parsed));
         showLoadMsg('success', t('loadThemeSuccess'));
       } catch {
         showLoadMsg('error', t('loadThemeErrJson'));
@@ -3372,7 +3394,7 @@ const APP_VERSION = '1.3.0';
     applyProjectData, loadFromPath, loadProject,
     exportSVG,
   } = useProjectFile({
-    elements, picotConnections, camera, zoom, dsWidth,
+    roundColors, elements, picotConnections, camera, zoom, dsWidth,
     bgColor, gridEnabled, customColors, referenceImage, refImageProps,
     renderMode, patternNotes, materials, rounds, beadLibrary,
     polarGrids, selectedPolarGridId, threadPresets, activePresetId,
@@ -5122,7 +5144,7 @@ const APP_VERSION = '1.3.0';
     const resolveBeads = (slots) =>
       (slots || []).filter(Boolean).map(id => {
         const b = beadLibrary.find(b => b.id === id);
-        return b ? { size: b.size, color: b.color, shape: b.shape || 'circle' } : { size: 'Y', color: '#ef4444', shape: 'circle' };
+        return b ? { size: b.size, color: b.color, shape: b.shape || 'circle' } : { size: 'Y', color: theme.beadMissing, shape: 'circle' };
       });
 
     const coreBeadList  = resolveBeads(picot.coreBeads);
@@ -5145,16 +5167,16 @@ const APP_VERSION = '1.3.0';
     const hideDiamond = renderMode === 'realistic' && hasContent && !inBeadingMode;
 
     const diamondR = isThisSel ? 7/zoom : 5/zoom;
-    const diamondColor = isThisSel ? '#38bdf8'   // selected: cyan
-                       : inBeadingMode ? '#f472b6' // beading mode: bright pink
-                       : '#ec4899';                 // normal: pink
+    const diamondColor = isThisSel ? theme.beadAnchorSelected   // selected: cyan
+                       : inBeadingMode ? theme.beadAnchorBeading // beading mode: bright pink
+                       : theme.beadAnchor;                 // normal: pink
     const diamond = hideDiamond ? null : (
       <rect
         transform={`rotate(45, ${cx}, ${cy})`}
         x={cx - diamondR} y={cy - diamondR}
         width={diamondR * 2} height={diamondR * 2}
         fill={diamondColor}
-        stroke={isThisSel ? '#fff' : '#111'}
+        stroke={isThisSel ? theme.handleBorder : theme.beadAnchorOutline}
         strokeWidth={isThisSel ? 1.5/zoom : 1/zoom}
         style={inBeadingMode ? { cursor: 'pointer' } : undefined}
       />
@@ -5322,7 +5344,7 @@ const APP_VERSION = '1.3.0';
 
     return (
       <g key={key}>
-        {positions.map((p, i) => renderBeadShape(p.bx, p.by, p.rad, 'circle', BEAD_FILL[p.size] || '#ef4444', 0, i))}
+        {positions.map((p, i) => renderBeadShape(p.bx, p.by, p.rad, 'circle', BEAD_FILL[p.size] || theme.beadMissing, 0, i))}
       </g>
     );
   };
@@ -5429,7 +5451,7 @@ const APP_VERSION = '1.3.0';
         return (
           <g key={key}>
             {renderBE(p, x, y, perpAngle, dotColor, len, isSelected)}
-            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} opacity={0.9} />
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2/zoom} opacity={0.9} />
           </g>
         );
       }
@@ -5443,7 +5465,7 @@ const APP_VERSION = '1.3.0';
         return (
           <g key={key}>
             {renderCoreBead(`${key}-core`, x, y, p.coreSize || 'Y', dotColor, perpAngle)}
-            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} />
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2/zoom} />
           </g>
         );
       }
@@ -5452,7 +5474,7 @@ const APP_VERSION = '1.3.0';
         <g key={key}>
           {renderCoreBead(`${key}-core`, x, y, p.coreSize || 'Y', dotColor, perpAngle)}
           {renderMode !== 'realistic' && (
-            <circle cx={x} cy={y} r={jointDotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} opacity={0.7} />
+            <circle cx={x} cy={y} r={jointDotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} opacity={0.7} />
           )}
         </g>
       );
@@ -5474,7 +5496,7 @@ const APP_VERSION = '1.3.0';
           return (
             <g key={key} data-ui="1">
               <line x1={x} y1={y} x2={endX} y2={endY} stroke={dotColor} strokeWidth={sw} />
-              <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} />
+              <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
             </g>
           );
         }
@@ -5511,7 +5533,7 @@ const APP_VERSION = '1.3.0';
       const gy = y + Math.sin(perpAngle) * gpOffset;
       return (
         <g key={key} className="guide-picot">
-          <circle cx={gx} cy={gy} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} opacity={0.9} />
+          <circle cx={gx} cy={gy} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} opacity={0.9} />
         </g>
       );
     }
@@ -5540,7 +5562,7 @@ const APP_VERSION = '1.3.0';
         return (
           <g key={key}>
             {renderClusteredBeads(`${key}-beads`, x, y, p.beadSeq)}
-            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2/zoom} opacity={0.9} />
+            <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2/zoom} opacity={0.9} />
           </g>
         );
       }
@@ -5551,7 +5573,7 @@ const APP_VERSION = '1.3.0';
     if (activeMode === 'picotJoin' && showEditingArtifacts) {
       return (
         <g key={key} data-ui="1">
-          <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke="#000" strokeWidth={2 / zoom} />
+          <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
         </g>
       );
     }
@@ -5718,12 +5740,12 @@ const APP_VERSION = '1.3.0';
               key={`label-${element.id}-np-${j}`}
               x={element.center.x + Math.cos(angleMid) * textRadius}
               y={element.center.y + Math.sin(angleMid) * textRadius}
-              fill="white"
+              fill={theme.notationText}
               fontSize={notationFS}
               fontWeight="bold"
               textAnchor="middle"
               dominantBaseline="middle"
-              stroke="#000000"
+              stroke={theme.notationOutline}
               strokeWidth="4"
               strokeLinejoin="round"
               paintOrder="stroke"
@@ -5754,12 +5776,12 @@ const APP_VERSION = '1.3.0';
                 key={`${keyPfx}-${j}`}
                 x={x + Math.cos(perpAngle) * offset}
                 y={y + Math.sin(perpAngle) * offset}
-                fill="white"
+                fill={theme.notationText}
                 fontSize={notationFS}
                 fontWeight="bold"
                 textAnchor="middle"
                 dominantBaseline="middle"
-                stroke="#000000"
+                stroke={theme.notationOutline}
                 strokeWidth="4"
                 strokeLinejoin="round"
                 paintOrder="stroke"
@@ -5794,12 +5816,12 @@ const APP_VERSION = '1.3.0';
               key={`label-${element.id}-np-${j}`}
               x={x + Math.cos(perpAngle) * offset}
               y={y + Math.sin(perpAngle) * offset}
-              fill="white"
+              fill={theme.notationText}
               fontSize={notationFS}
               fontWeight="bold"
               textAnchor="middle"
               dominantBaseline="middle"
-              stroke="#000000"
+              stroke={theme.notationOutline}
               strokeWidth="4"
               strokeLinejoin="round"
               paintOrder="stroke"
@@ -5843,12 +5865,12 @@ const APP_VERSION = '1.3.0';
               key={`label-${element.id}-${i}-${j}`}
               x={element.center.x + Math.cos(angleMid) * textRadius}
               y={element.center.y + Math.sin(angleMid) * textRadius}
-              fill="white"
+              fill={theme.notationText}
               fontSize={notationFS}
               fontWeight="bold"
               textAnchor="middle"
               dominantBaseline="middle"
-              stroke="#000000"
+              stroke={theme.notationOutline}
               strokeWidth="4"
               strokeLinejoin="round"
               paintOrder="stroke"
@@ -5905,12 +5927,12 @@ const APP_VERSION = '1.3.0';
                 key={`label-${element.id}-sr${sectionId}-${i}-${j}`}
                 x={x + Math.cos(perpAngle) * offset}
                 y={y + Math.sin(perpAngle) * offset}
-                fill="white"
+                fill={theme.notationText}
                 fontSize={notationFS}
                 fontWeight="bold"
                 textAnchor="middle"
                 dominantBaseline="middle"
-                stroke="#000000"
+                stroke={theme.notationOutline}
                 strokeWidth="4"
                 strokeLinejoin="round"
                 paintOrder="stroke"
@@ -5947,12 +5969,12 @@ const APP_VERSION = '1.3.0';
             key={`label-${element.id}-${i}-${j}`}
             x={x + Math.cos(perpAngle) * offset}
             y={y + Math.sin(perpAngle) * offset}
-            fill="white"
+            fill={theme.notationText}
             fontSize={notationFS}
             fontWeight="bold"
             textAnchor="middle"
             dominantBaseline="middle"
-            stroke="#000000"
+            stroke={theme.notationOutline}
             strokeWidth="4"
             strokeLinejoin="round"
             paintOrder="stroke"
@@ -6507,13 +6529,15 @@ const APP_VERSION = '1.3.0';
     </>
   );
 
-  // ── Phone (upright) bottom tool bar — button lists (session 58) ─────────
-  // Same actions as the left rail, as plain descriptors for PhoneToolBar.
-  // Main row: Select · Pan · Ring · Split ring · Chain · Picot Join (+ More).
+  // ── Tool descriptors: ONE list for the left rail and the phone bar ─────
+  // (session 58 phone bar; session 59 rebuilt the rail on the same list, so a
+  // tool's label, icon, tooltip, action and enabled/active state are defined
+  // once, here). The layouts that use them:
+  //   phone bar  — phoneMainTools / phoneMoreTools (below)
+  //   left rail  — railSimple / railFull / railRealistic (below)
+  // Phone main row: Select · Pan · Ring · Split ring · Chain · Join (+ More).
   // More panel: the rest of the Simple tools, plus every Full-mode tool when
   // the toolbar is in Full mode. Realistic view: Pan + zoom only, no More.
-  // (The rail still has its own JSX; unifying both on these descriptors is a
-  // possible later clean-up.)
   const phoneBusyMode = activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder';
   const ptool = (key: string, label: string, title: string, icon: React.ReactNode, onClick: () => void,
     extra: Partial<PhoneTool> = {}): PhoneTool => ({ key, label, title, icon, onClick, ...extra });
@@ -6523,12 +6547,12 @@ const APP_VERSION = '1.3.0';
     ring: ptool('ring', t('toolLabelRing'), t('toolAddRing'), <IconAddRing size={20} />, addRing, { disabled: phoneBusyMode }),
     splitRing: ptool('splitRing', t('toolLabelSplitRing'), t('toolAddSplitRing'), <IconAddSplitRing size={20} />, addSplitRing, { disabled: phoneBusyMode }),
     chain: ptool('chain', t('toolLabelChain'), t('toolAddChain'), <IconAddChain size={20} />, addChain, { disabled: phoneBusyMode }),
-    join: ptool('join', t('toolLabelJoin'), t('toolPicotJoin'), <IconJoinPicots size={20} />, togglePicotJoinMode, { active: activeMode === 'picotJoin' }),
+    join: ptool('join', t('toolLabelJoin'), t('toolPicotJoin'), <IconJoinPicots size={20} />, togglePicotJoinMode, { active: activeMode === 'picotJoin', shortLabel: t('toolLabelJoinShort') }),
     del: ptool('delete', t('toolLabelDelete'), t('toolDelete'), <IconDelete size={20} />, deleteSelected, { disabled: phoneBusyMode || selectedIds.length === 0 }),
     fit: ptool('fit', t('toolLabelFitAll'), t('btnFitAll'), <IconFitView size={20} />, fitAllElements),
     zoomOut: ptool('zoomOut', t('toolLabelZoomOut'), t('toolZoomOut'), <IconZoomOut size={20} />, () => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)),
     zoomIn: ptool('zoomIn', t('toolLabelZoomIn'), t('toolZoomIn'), <IconZoomIn size={20} />, () => zoomToCenter(ZOOM_STEP_BUTTON_IN)),
-    refImage: ptool('refImage', t('toolLabelRefImage'), t('toolRefImage'), <IconImage size={20} />, () => setCurrentTool(currentTool === 'image' ? 'select' : 'image'), { active: currentTool === 'image' }),
+    refImage: ptool('refImage', t('toolLabelRefImage'), t('toolRefImage'), <IconImage size={20} />, () => setCurrentTool(currentTool === 'image' ? (toolbarMode === 'simple' ? 'select' : 'pan') : 'image'), { active: currentTool === 'image' }),
     notes: ptool('notes', t('toolNotes'), notesOpen ? t('notesClose') : t('notesOpen'), <IconNotes size={20} />, () => setNotesOpen(v => !v), { active: notesOpen, activeColor: 'bg-amber-600' }),
     rotate: ptool('rotate', t('toolLabelRotate'), showRotationHandles ? t('toolRotationHandlesHide') : t('toolRotationHandlesShow'), <IconRotateMode size={20} />, () => setShowRotationHandles(!showRotationHandles), { active: showRotationHandles }),
     ortho: ptool('ortho', t('toolLabelOrtho'), t('toolOrthoLock'), <IconOrtho size={20} />, () => setOrthoLock(v => !v), { active: orthoLock, activeColor: 'bg-orange-600' }),
@@ -6552,10 +6576,73 @@ const APP_VERSION = '1.3.0';
       : [P.del, P.fit, P.zoomOut, P.zoomIn, P.refImage, P.notes,
          P.rotate, P.ortho, P.path, P.ruler, P.line, P.beading, P.group, P.ungroup, P.zoomRect, P.toSimple];
 
+  // Left rail layouts. Entries: a tool (optionally laid out wide / with its
+  // label), a divider, a side-by-side pair, or the small Simple ↔ Full link.
+  type RailEntry =
+    | { tool: PhoneTool; span2?: boolean; center?: boolean; labelled?: boolean; inlineLabel?: boolean }
+    | { divider: true } | { pair: [PhoneTool, PhoneTool] } | { link: PhoneTool; text: string; className: string };
+  const railTool = (tool: PhoneTool, o: { span2?: boolean; center?: boolean; labelled?: boolean; inlineLabel?: boolean } = {}): RailEntry => ({ tool, ...o });
+  const railDivider: RailEntry = { divider: true };
+  // Simple: one labelled column of everyday tools.
+  const railSimple: RailEntry[] = [
+    railTool(P.select, { labelled: true }), railTool(P.pan, { labelled: true }), railDivider,
+    ...[P.ring, P.splitRing, P.chain, P.join, P.del].map(tl => railTool(tl, { labelled: true })), railDivider,
+    // Zoom out / in as two labelled rows (session 59) rather than a pair
+    // side by side — that pair was what kept the rail wide.
+    railTool(P.zoomOut, { labelled: true }), railTool(P.zoomIn, { labelled: true }),
+    ...[P.fit, P.refImage, P.notes].map(tl => railTool(tl, { labelled: true })), railDivider,
+    { link: P.toFull, text: `${t('toolbarMoreTools')} ›`, className: 'tb-more pointer-events-auto rounded px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-gray-700 text-left' },
+  ];
+  // Full: the original 2-column icon grid of every tool.
+  // Session 59: every icon centred on its button; the wide (2-column)
+  // buttons also show a short label beside the icon, like Notes.
+  const fullIcon = (tl: PhoneTool) => railTool(tl, { center: true });
+  const fullWide = (tl: PhoneTool, label?: string) =>
+    railTool(label ? { ...tl, label } : tl, { span2: true, center: true, inlineLabel: true });
+  const railFull: RailEntry[] = [
+    ...[P.pan, P.select, P.rotate, P.ortho, P.path, P.ruler].map(fullIcon),
+    fullWide(P.join, t('toolLabelJoinShort')), fullWide(P.beading, t('toolLabelBeadsShort')),
+    ...[P.ring, P.splitRing, P.line, P.chain].map(fullIcon),
+    fullWide(P.del), ...[P.group, P.ungroup].map(fullIcon),
+    ...[P.zoomOut, P.zoomIn, P.fit, P.zoomRect].map(fullIcon),
+    fullWide(P.refImage, t('toolLabelRefImageShort')),
+    fullWide({ ...P.notes, icon: <IconNotes size={16} /> }),
+    { link: P.toSimple, text: `‹ ${t('toolbarSimple')}`, className: 'col-span-2 pointer-events-auto rounded px-1 py-0.5 text-xs text-gray-400 hover:text-white hover:bg-gray-700' },
+  ];
+  // Realistic view: pan + zoom only (editing is off). Zoom Rect stays out:
+  // it would switch currentTool away from 'pan'.
+  const railRealistic: RailEntry[] = [
+    railTool({ ...P.pan, active: true, title: t('toolPanRealistic') }, { span2: true }),
+    railTool(P.zoomOut), railTool(P.zoomIn), railTool(P.fit, { span2: true }),
+  ];
+  const renderRailEntry = (e: RailEntry, i: number) => {
+    if ('divider' in e) return <div key={`div${i}`} className="h-px bg-gray-700 my-0.5" />;
+    if ('pair' in e) return (
+      <div key={`pair${i}`} className="tb-zoom grid grid-cols-2 gap-1">
+        {e.pair.map(tl => (
+          <ToolbarButton key={tl.key} onClick={tl.onClick} active={tl.active} activeColor={tl.activeColor} disabled={tl.disabled} title={tl.title} flexCenter>{tl.icon}</ToolbarButton>
+        ))}
+      </div>
+    );
+    if ('link' in e) return (
+      <button key={e.link.key} onClick={e.link.onClick} title={e.link.title} className={e.className} style={{ touchAction: 'manipulation' }}>{e.text}</button>
+    );
+    const tl = e.tool;
+    return (
+      <ToolbarButton key={tl.key} onClick={tl.onClick} active={tl.active} activeColor={tl.activeColor} disabled={tl.disabled} title={tl.title}
+        colSpan2={e.span2} flexCenter={e.center} label={e.labelled ? tl.label : undefined}
+        className={e.inlineLabel ? 'gap-1 text-xs font-semibold' : ''}>
+        {tl.icon}
+        {e.inlineLabel && <span>{tl.label}</span>}
+      </ToolbarButton>
+    );
+  };
+
   // ── Polar grid snap candidates ───────────────────────────────────────────
   // Injected after element snap: polar ring×spoke intersections are candidates
   // only when snapEnabled. Uses same nearestDist so element snaps still win.
   return (
+    <RoundColorsContext.Provider value={roundColors}>
     <>
       {/* Load notification toast */}
       {loadMsg && (
@@ -6914,7 +7001,7 @@ const APP_VERSION = '1.3.0';
            bigger under ui-large, that's a follow-up sizing decision, not
            a bug fix — flagging rather than deciding it here.
         ── */
-        .ui-large { font-size: 17.6px; } /* 16px default → ~1.1×; rem-based Tailwind classes (text-xs/sm/base…) scale with this */
+        .ui-large { font-size: 17.6px; } /* NOTE (session 59): this does NOT scale rem-based Tailwind text (rem = the html element's size) — the Large text sizes below are set in px for that reason */
         /* Row 1 real growth under ui-large — box-model sizing (not transform),
            same fix as Row 2. Row 1's button dimensions are set as fixed px
            via inline style in TopMenuBar.tsx (squareBtn/wideBtn = 44px), so
@@ -6926,37 +7013,45 @@ const APP_VERSION = '1.3.0';
            it doesn't override a larger natural width. !important is needed
            to beat the inline px styles. */
         .ui-large .top-row-buttons button {
-          height: 56px !important;
-          min-width: 56px !important;
+          height: 50px !important;
+          min-width: 50px !important;
           padding: 0 0.6rem !important;
-          font-size: 0.95rem !important;
+          font-size: 17px !important;
         }
         .ui-large .top-row-buttons svg {
           width: 22px !important;
           height: 22px !important;
         }
+        /* The File / View / Arrange / Options words carry their own
+           text-sm (14px) class, so they need sizing directly (session 59). */
+        .ui-large .top-row-buttons button span { font-size: 17px !important; }
 
         /* Row 2 real growth under ui-large — box-model sizing (not transform),
            so it actually reserves the extra space and fills the bar instead
            of sitting small with room to spare. No !important: the width/
            height shrink media queries above use !important and still win
            on narrow/short viewports, so this recedes gracefully there. */
+        /* Session 59: text sizes in px. They were rem-based (0.95rem), but
+           rem follows the PAGE's font size, which .ui-large never changed —
+           so Large made the controls bigger while the text stayed about
+           the same as Normal. */
         .ui-large .top-row-properties button {
           height: 2.5rem;
           padding: 0 0.75rem;
-          font-size: 0.95rem;
+          font-size: 17px;
         }
         .ui-large .top-row-properties input[type="text"],
         .ui-large .top-row-properties input[type="number"] {
           height: 2.5rem;
-          font-size: 0.95rem;
+          font-size: 18px;
           padding: 0 0.6rem;
         }
         .ui-large .top-row-properties select {
           height: 2.5rem;
-          font-size: 0.95rem;
+          font-size: 17px;
           padding: 0 0.6rem;
         }
+        .ui-large .top-row-properties .text-sm { font-size: 17px; }
         .ui-large .top-row-properties input[type="range"] {
           height: 2.5rem;
         }
@@ -6966,21 +7061,29 @@ const APP_VERSION = '1.3.0';
         }
         .ui-large .top-row-properties .text-xs,
         .ui-large .top-row-properties label {
-          font-size: 0.85rem;
+          font-size: 15px;
         }
+        /* Session 59: wide gaps between controls, but tight vertical
+           spacing, so two rows of the bigger Large controls still fit the
+           normal 6.5rem bar (was 122–124 px with a ring / chain selected). */
         .ui-large .top-row-properties {
-          gap: 0.75rem;
+          column-gap: 0.75rem;
+          row-gap: 0.25rem;
+          padding-top: 0.3rem;
+          padding-bottom: 0.3rem;
         }
 
         /* ── Tool rail (session 58) ───────────────────────────────────────
            The left toolbar is a fixed, full-height strip OUTSIDE the canvas
            (logo on top, tools below, scrolling only if the screen is too
            short). Everything else is pushed right by --rail-w via
-           .app-root's padding. Width per toolbar mode (rail-simple /
-           rail-full) and screen shape; the rail itself is never scaled with
+           .app-root's padding. Width depends on screen shape only (the
+           same for Simple and Full since session 59); the rail itself is never scaled with
            transform any more (that is what made it overflow before). */
-        .app-root { --rail-w: calc(100px + env(safe-area-inset-left, 0px)); padding-left: var(--rail-w); }
-        .app-root.rail-simple { --rail-w: calc(150px + env(safe-area-inset-left, 0px)); }
+        /* One rail width for Simple and Full (session 59), so switching
+           between them never makes the canvas jump sideways. 120 px since
+           the zoom buttons became two labelled rows (was 150). */
+        .app-root { --rail-w: calc(120px + env(safe-area-inset-left, 0px)); padding-left: var(--rail-w); }
         .tool-rail {
           position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
           width: var(--rail-w);
@@ -6990,8 +7093,21 @@ const APP_VERSION = '1.3.0';
           padding-bottom: env(safe-area-inset-bottom, 0px);
           padding-left: env(safe-area-inset-left, 0px);
         }
-        .tool-rail-logo { display: flex; justify-content: center; padding: 10px 0 6px; flex-shrink: 0; }
-        .tool-rail-logo img { width: 48px; height: 48px; object-fit: contain; }
+        /* Logo area exactly as tall as the header (--header-h is measured,
+           see observeHeaderHeight), so the first tool lines up with the top
+           of the canvas. The rail's own top padding is the same safe-area
+           inset the header has, hence the subtraction. */
+        .tool-rail-logo {
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+          box-sizing: border-box; padding: 8px 6px;
+          height: calc(var(--header-h, 72px) - env(safe-area-inset-top, 0px));
+          border-bottom: 1px solid #374151;
+        }
+        /* Fits any logo shape: fills the logo area (header height × rail
+           width, minus a small margin) and keeps its proportions. The 72 px
+           cap used for the old square logo is gone (session 59 — the branded
+           logo with text is taller than wide). */
+        .tool-rail-logo img { width: auto; height: auto; max-width: calc(var(--rail-w) - 16px); max-height: 100%; object-fit: contain; }
         .tool-rail-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0.5rem; scrollbar-width: thin; }
 
         /* ── Phone toolbar (bottom bar) — hidden except on upright phones ── */
@@ -7004,8 +7120,11 @@ const APP_VERSION = '1.3.0';
           background: #1f2937; border-top: 1px solid #374151;
         }
         .phone-toolbar-btn { flex: 1 1 0; min-width: 0; gap: 3px; padding: 4px 0; }
-        .phone-toolbar-label { font-size: 10px; font-weight: 600; line-height: 1.1; text-align: center;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; padding: 0 1px; }
+        .phone-toolbar-label { font-size: 10px; font-weight: 600; line-height: 1.05; text-align: center;
+          overflow: hidden; max-width: 100%; padding: 0 1px; overflow-wrap: anywhere;
+          /* Up to two lines, so longer translations ("Anillo dividido") fit
+             instead of being cut off with "…". */
+          display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
         .phone-toolbar-backdrop { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.35); }
         .phone-toolbar-more {
           position: fixed; left: 6px; right: 6px; z-index: 31;
@@ -7021,12 +7140,26 @@ const APP_VERSION = '1.3.0';
         /* Phone held upright: the bottom bar replaces the rail; the app is
            padded at the bottom instead of the left. */
         @media (max-width: 768px) and (min-height: 501px) {
-          .app-root, .app-root.rail-simple { --rail-w: 0px; padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+          .app-root { --rail-w: 0px; padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
           .tool-rail { display: none; }
           .phone-toolbar { display: block; }
-          /* Fixed-height property bar so selecting / deselecting doesn't make
-             the canvas jump; longer contents scroll inside it. */
-          .app-root .prop-bar { height: 6.5rem; min-height: 6.5rem !important; overflow-y: auto !important; }
+          .app-root .prop-bar-slot { height: 6.5rem; }
+          .app-root .prop-bar { min-height: 6.5rem !important; }
+        }
+        /* Phones (either way round): the property bar's slot has a fixed
+           height so selecting / deselecting never makes the canvas jump, and
+           the bar itself is laid over the canvas, growing downwards when a
+           selection has more settings than fit (e.g. a ring's second row:
+           Order / Shape / Squeeze / Material). Nothing scrolls inside it, so
+           its colour / material pop-ups aren't clipped either. */
+        @media (max-width: 768px) and (min-height: 501px), (max-height: 500px) {
+          .app-root .prop-bar-slot { position: relative; z-index: 25; flex-shrink: 0; }
+          .app-root .prop-bar {
+            position: absolute; top: 0; left: 0; right: 0;
+            height: auto; overflow: visible !important;
+            background: #1f2937; border-bottom: 1px solid #374151;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.35);
+          }
         }
         /* Phones (either way round): no status bar — it overlaps the canvas
            and the bottom bar, and isn't needed on a small screen. */
@@ -7035,10 +7168,11 @@ const APP_VERSION = '1.3.0';
         }
         /* Phone on its side (short screen): compact rail, labels beside icons. */
         @media (max-height: 500px) {
-          .app-root { --rail-w: calc(84px + env(safe-area-inset-left, 0px)); }
-          .app-root.rail-simple { --rail-w: calc(124px + env(safe-area-inset-left, 0px)); }
-          .tool-rail-logo { padding: 4px 0 2px; }
-          .tool-rail-logo img { width: 30px; height: 30px; }
+          .app-root { --rail-w: calc(112px + env(safe-area-inset-left, 0px)); }
+          /* Height is scarce here: keep the small logo instead of lining
+             the tools up with the canvas. */
+          .tool-rail-logo { height: auto; padding: 4px 0 2px; border-bottom: none; }
+          .tool-rail-logo img { max-height: 30px; max-width: calc(var(--rail-w) - 16px); }
           .tool-rail-body { padding: 0.25rem; }
           .tool-rail-body button { padding: 0.3rem !important; }
           .rail-simple .tb-labelled { font-size: 11px !important; gap: 0.4rem !important; }
@@ -7049,21 +7183,37 @@ const APP_VERSION = '1.3.0';
           .top-row-buttons { flex-wrap: nowrap !important; overflow-x: auto !important; gap: 0.2rem !important; }
           .top-row-buttons .w-px, .top-row-buttons .ml-auto { display: none !important; }
           .hide-label-mobile { display: none !important; }
-          .app-root .prop-bar { height: 4.5rem; min-height: 4.5rem !important; overflow-y: auto !important; padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+          .app-root .prop-bar-slot { height: 4.5rem; }
+          .app-root .prop-bar { min-height: 4.5rem !important; padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
         }
-        /* Large UI (Options → size): a wider rail with everything 1.25× —
-           desktop-sized screens only, as before. */
+        /* Laptops / tablets (session 59): with the wider (150 px) rail the
+           top row wrapped onto a second line at ~1280 px wide (stealing 60 px
+           of canvas height), so its group gaps are halved there. Kept with
+           the 120 px rail — it also helps on smaller laptops. */
+        @media (min-width: 769px) and (max-width: 1439px) {
+          .top-row-buttons { column-gap: 0.5rem !important; }
+        }
+        /* Short desktop screens (e.g. 1280×720): the logo area is as tall as
+           the header, so trim the rail buttons' vertical padding a little to
+           keep every tool on screen without scrolling. */
+        @media (min-height: 501px) and (max-height: 800px) {
+          .tool-rail-body .rail-grid > button, .tool-rail-body .tb-zoom > button { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+        }
+        /* Large UI (Options → size): a slightly bigger rail — desktop-sized
+           screens only. Toned down in session 59 (was 188 px at 1.25×; the
+           user found it took too much room). */
         @media (min-width: 769px) and (min-height: 501px) {
-          .ui-large.app-root { --rail-w: calc(125px + env(safe-area-inset-left, 0px)); }
-          .ui-large.app-root.rail-simple { --rail-w: calc(188px + env(safe-area-inset-left, 0px)); }
-          .ui-large .tool-rail-body > .rail-grid { zoom: 1.25; }
+          .ui-large.app-root { --rail-w: calc(136px + env(safe-area-inset-left, 0px)); }
+          .ui-large .tool-rail-body > .rail-grid { zoom: 1.12; }
+          /* Labels: 13px × 1.12 ≈ 14.6px on screen (Normal: 12px). */
+          .ui-large .tool-rail-body .tb-label, .ui-large .tool-rail-body .text-xs { font-size: 13px !important; }
           .ui-large .tool-rail-body { padding: 0.4rem; }
         }
         @keyframes tattingBakeSpin { to { transform: rotate(360deg); } }
       `}</style>
       <div className={`app-root ${toolbarMode === 'simple' ? 'rail-simple' : 'rail-full'} w-full h-screen flex flex-col select-none${uiScale === 'large' ? ' ui-large' : ''}`} style={{ backgroundColor: bgColor }}>
       {/* Two-row header — paddingTop pushes content below the Android status bar on edge-to-edge WebViews */}
-      <div className="bg-gray-800 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div ref={observeHeaderHeight} className="app-header bg-gray-800 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         {/* Row 1: Main Commands */}
         <TopMenuBar
           fileButtonRef={fileButtonRef}
@@ -7098,7 +7248,11 @@ const APP_VERSION = '1.3.0';
           t={t}
         />
         
-        {/* Row 2: Properties (always visible) */}
+        {/* Row 2: Properties (always visible). On phones .prop-bar-slot keeps
+            a fixed height in the layout (canvas never jumps) and the bar
+            itself grows down over the canvas when its contents need more
+            room — see the .prop-bar-slot CSS. Elsewhere the slot is inert. */}
+        <div className="prop-bar-slot">
         <div className="top-row-properties prop-bar flex flex-wrap items-center content-start px-4 mobile-no-padding gap-0.5 md:gap-3 bg-gray-750 py-1 md:py-2 justify-start" style={{
           minHeight: '6.5rem',
         }}>
@@ -7427,6 +7581,7 @@ const APP_VERSION = '1.3.0';
             </>
           )}
         </div>
+        </div>
       </div>
 
       <div className="flex-1 relative">
@@ -7645,226 +7800,15 @@ const APP_VERSION = '1.3.0';
         </div>
         <div className="tool-rail-body">
         <div className={`rail-grid grid ${simpleToolbar ? 'grid-cols-1' : 'grid-cols-2'} gap-1`}>
+          {/* Built from the same tool descriptors as the phone bar
+              (phoneTools, session 59) — railSimple / railFull /
+              railRealistic below set the order and layout only. */}
+          {(renderMode === 'realistic' ? railRealistic : simpleToolbar ? railSimple : railFull).map(renderRailEntry)}
           {renderMode === 'realistic' && (
-            <>
-              {/* Realistic mode: Pan only — editing disabled. Zoom/Fit are
-                  safe to keep active here: they only touch camera/zoom
-                  state and don't change currentTool away from 'pan'. Zoom
-                  Rect was tried here too but pulled — it does change
-                  currentTool away from 'pan', which conflicts with the
-                  mode's pan-only design even though pointer-events: none
-                  on the elements group kept it from being able to select/
-                  edit anything. */}
-              <button onClick={() => setCurrentTool('pan')} className="p-2 rounded col-span-2 pointer-events-auto bg-blue-600" style={{ touchAction: 'manipulation' }} title={t('toolPanRealistic')}>
-                <IconPan size={20} />
-              </button>
-              <button onClick={() => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)} className="p-2 rounded pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('toolZoomOut')}>
-                <IconZoomOut size={20} />
-              </button>
-              <button onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} className="p-2 rounded pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('toolZoomIn')}>
-                <IconZoomIn size={20} />
-              </button>
-              <button onClick={fitAllElements} className="p-2 rounded col-span-2 pointer-events-auto bg-gray-700 hover:bg-gray-600" style={{ touchAction: 'manipulation' }} title={t('btnFitAll')}>
-                <IconFitView size={20} />
-              </button>
-              <div className="col-span-2 text-center text-gray-400 text-xs leading-tight px-1 py-0.5">
-                {t('toolPanRealisticSub')}<br/>{t('toolPanRealisticSub2')}
-              </div>
-            </>
+            <div className="col-span-2 text-center text-gray-400 text-xs leading-tight px-1 py-0.5">
+              {t('toolPanRealisticSub')}<br/>{t('toolPanRealisticSub2')}
+            </div>
           )}
-          {simpleToolbar && <>
-          {/* ── Simple toolbar (one labelled column) ── */}
-          <ToolbarButton onClick={() => setCurrentTool('select')} active={currentTool === 'select'} title={t('toolSelect')} label={t('toolLabelSelect')}>
-            <IconSelect size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => setCurrentTool('pan')} active={currentTool === 'pan'} title={t('toolPan')} label={t('toolLabelPan')}>
-            <IconPan size={20} />
-          </ToolbarButton>
-          <div className="h-px bg-gray-700 my-0.5" />
-          <ToolbarButton onClick={addRing} title={t('toolAddRing')} label={t('toolLabelRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddRing size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={addSplitRing} title={t('toolAddSplitRing')} label={t('toolLabelSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddSplitRing size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={addChain} title={t('toolAddChain')} label={t('toolLabelChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddChain size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={togglePicotJoinMode} active={activeMode === 'picotJoin'} title={t('toolPicotJoin')} label={t('toolLabelJoin')}>
-            <IconJoinPicots size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={deleteSelected} title={t('toolDelete')} label={t('toolLabelDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconDelete size={20} />
-          </ToolbarButton>
-          <div className="h-px bg-gray-700 my-0.5" />
-          <div className="tb-zoom grid grid-cols-2 gap-1">
-            <ToolbarButton onClick={() => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)} title={t('toolZoomOut')} flexCenter>
-              <IconZoomOut size={20} />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} title={t('toolZoomIn')} flexCenter>
-              <IconZoomIn size={20} />
-            </ToolbarButton>
-          </div>
-          <ToolbarButton onClick={fitAllElements} title={t('btnFitAll')} label={t('toolLabelFitAll')}>
-            <IconFitView size={20} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => setCurrentTool(currentTool === 'image' ? 'select' : 'image')}
-            active={currentTool === 'image'}
-            title={t('toolRefImage')}
-            label={t('toolLabelRefImage')}
-          >
-            <IconImage size={20} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => setNotesOpen(v => !v)}
-            active={notesOpen}
-            activeColor="bg-amber-600"
-            title={notesOpen ? t('notesClose') : t('notesOpen')}
-            label={t('toolNotes')}
-          >
-            <IconNotes size={20} />
-          </ToolbarButton>
-          <div className="h-px bg-gray-700 my-0.5" />
-          <button
-            onClick={() => setToolbarMode('full')}
-            title={t('toolbarMoreToolsTip')}
-            className="tb-more pointer-events-auto rounded px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-gray-700 text-left"
-            style={{ touchAction: 'manipulation' }}
-          >{t('toolbarMoreTools')} ›</button>
-          </>}
-          {renderMode !== 'realistic' && !simpleToolbar && <>
-          {/* Row 1: Pan and Select */}
-          <ToolbarButton onClick={() => setCurrentTool('pan')} active={currentTool === 'pan'} title={t('toolPan')}>
-            <IconPan size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => setCurrentTool('select')} active={currentTool === 'select'} title={t('toolSelect')}>
-            <IconSelect size={20} />
-          </ToolbarButton>
-          
-          {/* Row 2: Rotation Handles and Ortho Lock */}
-          <ToolbarButton
-            onClick={() => setShowRotationHandles(!showRotationHandles)}
-            active={showRotationHandles}
-            title={showRotationHandles ? t('toolRotationHandlesHide') : t('toolRotationHandlesShow')}
-          >
-            <IconRotateMode size={20} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => setOrthoLock(v => !v)}
-            active={orthoLock}
-            activeColor="bg-orange-600"
-            title={t('toolOrthoLock')}
-          >
-            <IconOrtho size={20} />
-          </ToolbarButton>
-
-          {/* Row 3: Path Edit */}
-          <ToolbarButton onClick={() => setCurrentTool('path')} active={currentTool === 'path'} title={t('toolPathEdit')}>
-            <IconPathEdit size={20} />
-          </ToolbarButton>
-
-          {/* Ruler tool */}
-          <ToolbarButton onClick={() => setCurrentTool('ruler')} active={currentTool === 'ruler'} title={t('toolRuler')}>
-            <IconRuler size={20} />
-          </ToolbarButton>
-
-          {/* Picot Join button */}
-          <ToolbarButton
-            onClick={togglePicotJoinMode}
-            active={activeMode === 'picotJoin'}
-            colSpan2
-            flexCenter
-            title={t('toolPicotJoin')}
-          >
-            <IconJoinPicots size={20} />
-          </ToolbarButton>
-          {/* Beading mode button */}
-          <ToolbarButton
-            onClick={toggleBeadingMode}
-            active={activeMode === 'beading'}
-            activeColor="bg-purple-600"
-            colSpan2
-            flexCenter
-            title={t('toolBeadingMode')}
-          >
-            <IconBeadMode size={20} />
-          </ToolbarButton>
-
-          {/* Join/Break buttons moved to properties bar in picotJoin mode */}
-          <ToolbarButton onClick={addRing} title={t('toolAddRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddRing size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={addSplitRing} title={t('toolAddSplitRing')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddSplitRing size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => setCurrentTool('line')} active={currentTool === 'line'} title={t('toolLineTool')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddLine size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={addChain} title={t('toolAddChain')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}>
-            <IconAddChain size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={deleteSelected} colSpan2 title={t('toolDelete')} disabled={activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}><IconDelete size={20} /></ToolbarButton>
-          <ToolbarButton
-            onClick={groupSelected}
-            title={t('toolGroup')}
-            disabled={selectedIds.length < 2 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
-          >
-            <IconGroup size={20} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={ungroupSelected}
-            title={t('toolUngroup')}
-            disabled={selectedIds.length === 0 || activeMode === 'picotJoin' || activeMode === 'beading' || activeMode === 'tattingOrder'}
-          >
-            <IconUngroup size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => zoomToCenter(-ZOOM_STEP_BUTTON_OUT)} title={t('toolZoomOut')}>
-            <IconZoomOut size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => zoomToCenter(ZOOM_STEP_BUTTON_IN)} title={t('toolZoomIn')}>
-            <IconZoomIn size={20} />
-          </ToolbarButton>
-          <ToolbarButton onClick={fitAllElements} title={t('btnFitAll')}>
-            <IconFitView size={20} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => setCurrentTool(prev => prev === 'zoomRect' ? 'select' : 'zoomRect')}
-            active={currentTool === 'zoomRect'}
-            activeColor="bg-yellow-600"
-            title={t('toolZoomRect')}
-          >
-            <IconZoomRect size={20} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => setCurrentTool(currentTool === 'image' ? 'pan' : 'image')}
-            active={currentTool === 'image'}
-            colSpan2
-            title={t('toolRefImage')}
-          >
-            <IconImage size={20} />
-          </ToolbarButton>
-
-          {/* Notes toggle — bottom of left toolbar */}
-          <ToolbarButton
-            onClick={() => setNotesOpen(v => !v)}
-            active={notesOpen}
-            activeColor="bg-amber-600"
-            colSpan2
-            flexCenter
-            className="gap-1 text-xs font-semibold"
-            title={notesOpen ? t('notesClose') : t('notesOpen')}
-          >
-            <IconNotes size={16} />
-            <span>{t('toolNotes')}</span>
-          </ToolbarButton>
-          <button
-            onClick={() => setToolbarMode('simple')}
-            title={t('toolbarSimpleTip')}
-            className="col-span-2 pointer-events-auto rounded px-1 py-0.5 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
-            style={{ touchAction: 'manipulation' }}
-          >‹ {t('toolbarSimple')}</button>
-          </>}
         </div>
         </div>
         </aside>
@@ -8157,22 +8101,22 @@ const APP_VERSION = '1.3.0';
             <defs>
               {/* Grid pattern */}
               <pattern id="grid" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
-                <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke={bgColor === '#FFFFFF' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'} strokeWidth="1" />
+                <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke={bgColor === '#FFFFFF' ? theme.gridLineLight : theme.gridLine} strokeWidth="1" />
               </pattern>
               
               {/* Pink glow filter for highlighting unnumbered elements */}
               <filter id="pink-glow" x="-40%" y="-40%" width="180%" height="180%">
-                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#FF1493" floodOpacity="1"/>
+                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor={theme.glowUnnumbered} floodOpacity="1"/>
               </filter>
 
               {/* Red glow filter for invalid/broken notation */}
               <filter id="red-glow" x="-40%" y="-40%" width="180%" height="180%">
-                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#ef4444" floodOpacity="1"/>
+                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor={theme.glowInvalid} floodOpacity="1"/>
               </filter>
 
               {/* Amber glow filter for chains stretched too flat to hold their curve */}
               <filter id="amber-glow" x="-40%" y="-40%" width="180%" height="180%">
-                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#f59e0b" floodOpacity="1"/>
+                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor={theme.glowTooShort} floodOpacity="1"/>
               </filter>
               
               {/* NEW: Realistic rendering stitch patterns */}
@@ -8366,7 +8310,7 @@ const APP_VERSION = '1.3.0';
                       ? getConnectionThreadColor(foldFirstEl, originPicot, conn.materialId)
                       : getConnectionThreadColor(foldFirstEl, originPicot);
                   } else {
-                    foldLineColor = getConnectionThreadColor(foldFirstEl, originPicot) || '#FF8C00';
+                    foldLineColor = getConnectionThreadColor(foldFirstEl, originPicot) || theme.foldLine;
                   }
                   const foldLineWidth = foldFirstEl?.lineWidth || 2;
                   // Paint order (session 47, live feedback): whichever
@@ -8389,11 +8333,11 @@ const APP_VERSION = '1.3.0';
                   const foldHW = foldLineWidth / 2;
                   const outerArcEls = (
                     <path key="outer" d={ribbonFromPoints(sampleCubicD(outerD), foldHW)} fill={foldLineColor}
-                      stroke="black" strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
+                      stroke={theme.markerOutline} strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                   );
                   const innerArcEls = (
                     <path key="inner" d={ribbonFromPoints(sampleCubicD(innerD), foldHW)} fill={foldLineColor}
-                      stroke="black" strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
+                      stroke={theme.markerOutline} strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                   );
                   return (
                     <g key={conn.id}>
@@ -8439,7 +8383,7 @@ const APP_VERSION = '1.3.0';
                       const c = getConnectionThreadColor(pair.el, pair.picot);
                       return c && c.toLowerCase() !== '#ffffff' && c.toLowerCase() !== '#fff';
                     }) || firstPair;
-                    lineColor = (pickedPair ? getConnectionThreadColor(pickedPair.el, pickedPair.picot) : null) || '#FF8C00';
+                    lineColor = (pickedPair ? getConnectionThreadColor(pickedPair.el, pickedPair.picot) : null) || theme.foldLine;
                   }
                   const lineWidth = firstEl?.lineWidth || 2;
                   const beadSeqForConnR = getConnectionBeadSeq(conn);
@@ -8473,12 +8417,12 @@ const APP_VERSION = '1.3.0';
                     <g key={conn.id}>
                       {connD && (
                         <path d={connD} fill={lineColor}
-                          stroke="black" strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
+                          stroke={theme.markerOutline} strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                       )}
                       {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
                       {beadSeqForConnR
                         ? renderClusteredBeads(`conn-r-${conn.id}`, cx, cy, beadSeqForConnR)
-                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke="black" strokeWidth="1" />
+                        : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke={theme.markerOutline} strokeWidth="1" />
                       }
                     </g>
                   );
@@ -8569,7 +8513,7 @@ const APP_VERSION = '1.3.0';
                     })}
                     {/* Center handle */}
                     <circle cx={grid.center.x} cy={grid.center.y} r={5 / zoom}
-                      fill={color} stroke="white" strokeWidth={1.5 / zoom} opacity={Math.min(1, opacity * 1.6)}
+                      fill={color} stroke={theme.handleBorder} strokeWidth={1.5 / zoom} opacity={Math.min(1, opacity * 1.6)}
                     />
                   </g>
                 );
@@ -8684,7 +8628,7 @@ const APP_VERSION = '1.3.0';
                           cy={el.center.y}
                           r={radius}
                           fill="none"
-                          stroke="#3B82F6"
+                          stroke={theme.selectionOutline} data-ui="1"
                           strokeWidth="2"
                           strokeDasharray="5,5"
                         />
@@ -8714,7 +8658,7 @@ const APP_VERSION = '1.3.0';
                         );
                       })()}
                       {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (
-                        <text data-layer="order" x={el.center.x} y={el.center.y} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>
+                        <text data-layer="order" x={el.center.x} y={el.center.y} fill={theme.orderRepeatText} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={theme.orderRepeatOutline} strokeWidth="3" paintOrder="stroke">R</text>
                       )}
                     </g>
                   );
@@ -8739,7 +8683,7 @@ const APP_VERSION = '1.3.0';
                               <path
                                 d={pathD}
                                 fill="none"
-                                stroke="#000000"
+                                stroke={theme.threadOutline}
                                 strokeWidth={(el.lineWidth || 2) + 2}
                                 opacity={isSelected ? 0.7 : ghostOpacity}
                                 strokeDasharray={isGhost ? '5,5' : undefined}
@@ -8769,7 +8713,7 @@ const APP_VERSION = '1.3.0';
                               key={`select-${i}`}
                               d={pathD}
                               fill="none"
-                              stroke="#3B82F6"
+                              stroke={theme.selectionOutline} data-ui="1"
                               strokeWidth="2"
                               strokeDasharray="5,5"
                             />
@@ -8819,7 +8763,7 @@ const APP_VERSION = '1.3.0';
                         })()}
                         {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && el.paths?.length > 0 && (() => {
                           const { x: ox, y: oy } = orderLabelPosOnPath(el, 20);
-                          return <text data-layer="order" x={ox} y={oy} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>;
+                          return <text data-layer="order" x={ox} y={oy} fill={theme.orderRepeatText} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={theme.orderRepeatOutline} strokeWidth="3" paintOrder="stroke">R</text>;
                         })()}
                       </>
                     ) : (
@@ -8845,7 +8789,7 @@ const APP_VERSION = '1.3.0';
                               <path
                                 d={pathD}
                                 fill="none"
-                                stroke="#000000"
+                                stroke={theme.threadOutline}
                                 strokeWidth={(el.lineWidth || 2) + 2}
                                 opacity={isSelected ? 0.7 : ghostOpacity}
                                 strokeDasharray={isGhost ? '5,5' : undefined}
@@ -8875,7 +8819,7 @@ const APP_VERSION = '1.3.0';
                               key={`select-${i}`}
                               d={pathD}
                               fill="none"
-                              stroke="#3B82F6"
+                              stroke={theme.selectionOutline} data-ui="1"
                               strokeWidth="2"
                               strokeDasharray="5,5"
                             />
@@ -8972,7 +8916,7 @@ const APP_VERSION = '1.3.0';
                           return (
                             <>
                               <line x1={x1} y1={y1} x2={x2} y2={y2}
-                                stroke="#000000" strokeWidth={(el.lineWidth || 2) + 2}
+                                stroke={theme.threadOutline} strokeWidth={(el.lineWidth || 2) + 2}
                                 strokeDasharray="5,5" opacity={isSelected ? 0.7 : ghostOpacity}
                               />
                               <line x1={x1} y1={y1} x2={x2} y2={y2}
@@ -8981,7 +8925,7 @@ const APP_VERSION = '1.3.0';
                               />
                               {/* Arrowhead pointing to the start of notation A */}
                               <polyline points={`${ax1},${ay1} ${x2},${y2} ${ax2},${ay2}`}
-                                fill="none" stroke="#000000" strokeWidth={(el.lineWidth || 2) + 2}
+                                fill="none" stroke={theme.threadOutline} strokeWidth={(el.lineWidth || 2) + 2}
                                 strokeLinejoin="round" strokeLinecap="round"
                                 opacity={isSelected ? 0.7 : ghostOpacity}
                               />
@@ -9011,7 +8955,7 @@ const APP_VERSION = '1.3.0';
                                   key={`select-${i}`}
                                   d={pathD}
                                   fill="none"
-                                  stroke="#3B82F6"
+                                  stroke={theme.selectionOutline} data-ui="1"
                                   strokeWidth="2"
                                   strokeDasharray="5,5"
                                 />
@@ -9030,7 +8974,7 @@ const APP_VERSION = '1.3.0';
                             const [_f5, _s5] = getRoundBadgeColor(el);
                             return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                           }
-                          return <text data-layer="order" x={ox} y={oy} fill="#9ca3af" fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke="#111827" strokeWidth="3" paintOrder="stroke">R</text>;
+                          return <text data-layer="order" x={ox} y={oy} fill={theme.orderRepeatText} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={theme.orderRepeatOutline} strokeWidth="3" paintOrder="stroke">R</text>;
                         })()}
                         {/* Per-element "G" badge removed — superseded by the
                             dashed-box group overlay + corner badge. */}
@@ -9075,7 +9019,7 @@ const APP_VERSION = '1.3.0';
                       ghosts.push(
                         <circle key={`ghost-${i}-${el.id}`}
                           cx={previewEl.center.x} cy={previewEl.center.y} r={r}
-                          fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
+                          fill="none" stroke={theme.previewPolar} strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
                         />
@@ -9088,7 +9032,7 @@ const APP_VERSION = '1.3.0';
                       ghosts.push(
                         <path key={`ghost-${i}-${el.id}`}
                           d={pathStrs}
-                          fill="none" stroke="#60a5fa" strokeWidth={2 / zoom}
+                          fill="none" stroke={theme.previewPolar} strokeWidth={2 / zoom}
                           strokeDasharray={`${6/zoom} ${4/zoom}`}
                           opacity={0.55} pointerEvents="none"
                         />
@@ -9123,7 +9067,7 @@ const APP_VERSION = '1.3.0';
                       return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
                     }).join(' ');
                     if (d) {
-                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} fill="none" stroke="#34d399" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                      ghosts.push(<path key={`lgh-${i}-${el.id}`} d={d} fill="none" stroke={theme.previewLinear} strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
                     }
                   });
                 }
@@ -9169,13 +9113,13 @@ const APP_VERSION = '1.3.0';
                       : `translate(${offsetX},${offsetY})`;
                     if (el.isClosed && el.shapeStyle === 'circle') {
                       const r = (el.stitchCount * dsWidth) / (2 * Math.PI);
-                      ghosts.push(<circle key={`sgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke="#f472b6" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                      ghosts.push(<circle key={`sgh-${i}-${el.id}`} cx={el.center.x} cy={el.center.y} r={r} transform={transform} fill="none" stroke={theme.previewSpiral} strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
                     } else if (el.paths?.length > 0) {
                       const d = el.paths.map(p => {
                         if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
                         return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
                       }).join(' ');
-                      ghosts.push(<path key={`sgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke="#f472b6" strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
+                      ghosts.push(<path key={`sgh-${i}-${el.id}`} d={d} transform={transform} fill="none" stroke={theme.previewSpiral} strokeWidth={2/zoom} strokeDasharray={`${6/zoom} ${4/zoom}`} opacity={0.55} pointerEvents="none" />);
                     }
                   });
                 }
@@ -9232,8 +9176,8 @@ const APP_VERSION = '1.3.0';
                       <circle cx={path.control2X} cy={path.control2Y} r={12/zoom} fill={theme.handleControl2} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
                       
                       {/* Helper lines */}
-                      <line x1={path.x} y1={path.y} x2={path.control1X} y2={path.control1Y} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                      <line x1={path.control2X} y1={path.control2Y} x2={path.endX} y2={path.endY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
+                      <line x1={path.x} y1={path.y} x2={path.control1X} y2={path.control1Y} stroke={theme.pathGuide} data-ui="1" strokeWidth="1" strokeDasharray="3,3" />
+                      <line x1={path.control2X} y1={path.control2Y} x2={path.endX} y2={path.endY} stroke={theme.pathGuide} data-ui="1" strokeWidth="1" strokeDasharray="3,3" />
                     </g>
                   );
                 } else {
@@ -9253,8 +9197,8 @@ const APP_VERSION = '1.3.0';
                       <circle cx={path.controlX} cy={path.controlY} r={12/zoom} fill={theme.handleControl1} stroke={theme.handleStroke} strokeWidth={2/zoom} style={{ cursor: 'move' }} />
                       
                       {/* Helper lines */}
-                      <line x1={path.x} y1={path.y} x2={path.controlX} y2={path.controlY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
-                      <line x1={path.endX} y1={path.endY} x2={path.controlX} y2={path.controlY} stroke="#888" strokeWidth="1" strokeDasharray="3,3" />
+                      <line x1={path.x} y1={path.y} x2={path.controlX} y2={path.controlY} stroke={theme.pathGuide} data-ui="1" strokeWidth="1" strokeDasharray="3,3" />
+                      <line x1={path.endX} y1={path.endY} x2={path.controlX} y2={path.controlY} stroke={theme.pathGuide} data-ui="1" strokeWidth="1" strokeDasharray="3,3" />
                     </>
                   );
                 }
@@ -9316,7 +9260,7 @@ const APP_VERSION = '1.3.0';
                       key={`ep-${el.id}-${ep.id}`}
                       data-ui="1"
                       cx={ep.x} cy={ep.y} r={r}
-                      fill={fill} stroke="#000" strokeWidth={2 / zoom}
+                      fill={fill} stroke={theme.markerOutline} strokeWidth={2 / zoom}
                       opacity={0.9}
                     />
                   );
@@ -9388,21 +9332,21 @@ const APP_VERSION = '1.3.0';
                 const renderDot = (p, color) => (
                   <g key={`dot-${p.x}-${p.y}`}>
                     <circle cx={p.x} cy={p.y} r={dotR + 2 * S} fill="rgba(0,0,0,0.5)" />
-                    <circle cx={p.x} cy={p.y} r={dotR} fill={color} stroke="white" strokeWidth={1.5 * S} />
+                    <circle cx={p.x} cy={p.y} r={dotR} fill={color} stroke={theme.handleBorder} strokeWidth={1.5 * S} />
                     {/* Crosshair arms */}
-                    <line x1={p.x - dotR * 2.5} y1={p.y} x2={p.x + dotR * 2.5} y2={p.y} stroke="white" strokeWidth={S} opacity={0.8} />
-                    <line x1={p.x} y1={p.y - dotR * 2.5} x2={p.x} y2={p.y + dotR * 2.5} stroke="white" strokeWidth={S} opacity={0.8} />
+                    <line x1={p.x - dotR * 2.5} y1={p.y} x2={p.x + dotR * 2.5} y2={p.y} stroke={theme.handleBorder} strokeWidth={S} opacity={0.8} />
+                    <line x1={p.x} y1={p.y - dotR * 2.5} x2={p.x} y2={p.y + dotR * 2.5} stroke={theme.handleBorder} strokeWidth={S} opacity={0.8} />
                   </g>
                 );
 
                 if (!p2) {
                   // Only first point — just render the anchor dot
-                  return renderDot(p1, '#FACC15');
+                  return renderDot(p1, theme.rulerStart);
                 }
 
                 const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
                 const locked = rulerPoints.length === 2;
-                const lineColor = locked ? '#34D399' : '#FACC15';
+                const lineColor = locked ? theme.rulerLocked : theme.rulerStart;
                 const { px, mm, cm, inch } = makeMeasurementLabel(dist);
 
                 // Label position: perpendicular offset from midpoint, always readable
@@ -9452,20 +9396,20 @@ const APP_VERSION = '1.3.0';
                       );
                     })}
                     {/* Anchor dots */}
-                    {renderDot(p1, '#FACC15')}
-                    {renderDot(p2, locked ? '#34D399' : '#60A5FA')}
+                    {renderDot(p1, theme.rulerStart)}
+                    {renderDot(p2, locked ? theme.rulerLocked : theme.rulerEnd)}
                     {/* Measurement label box */}
                     <rect
                       x={lx} y={ly} width={boxW} height={boxH}
                       rx={4 * S} ry={4 * S}
-                      fill="rgba(15,23,42,0.88)" stroke={lineColor} strokeWidth={S}
+                      fill={theme.rulerLabelBg} stroke={lineColor} strokeWidth={S}
                     />
                     {rows.map((row, i) => (
                       <text
                         key={i}
                         x={lx + boxW / 2}
                         y={ly + padding + lineHeight * i + lineHeight * 0.72}
-                        fill={i === 0 ? '#94A3B8' : i === 1 ? '#F1F5F9' : i === 2 ? '#34D399' : '#60A5FA'}
+                        fill={i === 0 ? theme.rulerTextPx : i === 1 ? theme.rulerTextMm : i === 2 ? theme.rulerTextCm : theme.rulerTextInch}
                         fontSize={fontSize}
                         fontFamily="monospace"
                         fontWeight={i === 0 ? 'normal' : 'bold'}
@@ -9478,7 +9422,7 @@ const APP_VERSION = '1.3.0';
                     {locked && (
                       <text
                         x={lx + boxW / 2} y={ly + boxH + 14 * S}
-                        fill="rgba(148,163,184,0.7)" fontSize={10 * S}
+                        fill={theme.rulerHint} fontSize={10 * S}
                         fontFamily="sans-serif" textAnchor="middle"
                       >{t('rulerClickToReset')}</text>
                     )}
@@ -9493,8 +9437,8 @@ const APP_VERSION = '1.3.0';
                   y={Math.min(selectionBox.y, selectionBox.y + selectionBox.height)}
                   width={Math.abs(selectionBox.width)}
                   height={Math.abs(selectionBox.height)}
-                  fill="rgba(59, 130, 246, 0.1)"
-                  stroke="#3B82F6"
+                  fill={theme.selectionFill}
+                  stroke={theme.selectionOutline}
                   strokeWidth="2"
                   strokeDasharray="5,5"
                 />
@@ -9507,8 +9451,8 @@ const APP_VERSION = '1.3.0';
                   y={Math.min(zoomRectBox.y, zoomRectBox.y + zoomRectBox.height)}
                   width={Math.abs(zoomRectBox.width)}
                   height={Math.abs(zoomRectBox.height)}
-                  fill="rgba(251, 191, 36, 0.1)"
-                  stroke="#FBBF24"
+                  fill={theme.zoomRectFill}
+                  stroke={theme.zoomRectOutline}
                   strokeWidth="2"
                   strokeDasharray="5,5"
                 />
@@ -9535,7 +9479,7 @@ const APP_VERSION = '1.3.0';
                       width={bbox.width}
                       height={bbox.height}
                       fill="none"
-                      stroke="#3B82F6"
+                      stroke={theme.selectionOutline}
                       strokeWidth="1"
                       strokeDasharray="5,5"
                     />
@@ -9543,10 +9487,10 @@ const APP_VERSION = '1.3.0';
                     {/* Rotation handles at corners - show when Shift is held OR toggle is on */}
                     {shouldShowRotationHandles && (
                       <>
-                        <circle cx={bbox.x} cy={bbox.y} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
-                        <circle cx={bbox.x + bbox.width} cy={bbox.y} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
-                        <circle cx={bbox.x + bbox.width} cy={bbox.y + bbox.height} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
-                        <circle cx={bbox.x} cy={bbox.y + bbox.height} r={8 / zoom} fill="#3B82F6" stroke="#FFF" strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x} cy={bbox.y} r={8 / zoom} fill={theme.selectionOutline} stroke={theme.handleBorder} strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x + bbox.width} cy={bbox.y} r={8 / zoom} fill={theme.selectionOutline} stroke={theme.handleBorder} strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x + bbox.width} cy={bbox.y + bbox.height} r={8 / zoom} fill={theme.selectionOutline} stroke={theme.handleBorder} strokeWidth={2 / zoom} className="cursor-grab" />
+                        <circle cx={bbox.x} cy={bbox.y + bbox.height} r={8 / zoom} fill={theme.selectionOutline} stroke={theme.handleBorder} strokeWidth={2 / zoom} className="cursor-grab" />
                       </>
                     )}
                     
@@ -9557,8 +9501,8 @@ const APP_VERSION = '1.3.0';
                           cx={pivotX} 
                           cy={pivotY} 
                           r={10 / zoom}
-                          fill="#FF8C00" 
-                          stroke="#FFF"
+                          fill={theme.pivotHandle} 
+                          stroke={theme.handleBorder}
                           strokeWidth={2 / zoom}
                           className="cursor-move"
                         />
@@ -9567,7 +9511,7 @@ const APP_VERSION = '1.3.0';
                           y1={pivotY} 
                           x2={pivotX + 10 / zoom} 
                           y2={pivotY} 
-                          stroke="#FFF"
+                          stroke={theme.handleBorder}
                           strokeWidth={2 / zoom}
                         />
                         <line 
@@ -9575,7 +9519,7 @@ const APP_VERSION = '1.3.0';
                           y1={pivotY - 10 / zoom} 
                           x2={pivotX} 
                           y2={pivotY + 10 / zoom} 
-                          stroke="#FFF"
+                          stroke={theme.handleBorder}
                           strokeWidth={2 / zoom}
                         />
                       </>
@@ -10997,6 +10941,15 @@ const APP_VERSION = '1.3.0';
           {/* Theme */}
           <div className="border-t border-gray-600 my-1"></div>
           <button
+            onClick={() => { setShowOptionsMenu(false); setShowThemeEditor(true); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            <span className="flex w-4 justify-center">
+              <span className="w-3 h-3 rounded-full" style={{ background: `conic-gradient(${theme.jpUnconnected} 0 33%, ${theme.jpConnected} 0 66%, ${theme.jpSelected} 0)` }} />
+            </span>
+            <span>{t('optionsThemeEditor')}</span>
+          </button>
+          <button
             onClick={() => { setShowOptionsMenu(false); themeInputRef.current?.click(); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
@@ -11004,7 +10957,7 @@ const APP_VERSION = '1.3.0';
             <span>{t('viewLoadTheme')}</span>
           </button>
           <button
-            onClick={() => { setTheme(DEFAULT_THEME); setShowOptionsMenu(false); showLoadMsg('success', t('themeResetSuccess')); }}
+            onClick={() => { resetTheme(); setShowOptionsMenu(false); showLoadMsg('success', t('themeResetSuccess')); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
           >
             <span className="text-base">↩️</span>
@@ -11016,6 +10969,35 @@ const APP_VERSION = '1.3.0';
 
       </DropdownMenu>
     )}
+    <ThemeEditor
+      show={showThemeEditor}
+      onClose={() => setShowThemeEditor(false)}
+      theme={theme}
+      themePreset={themePreset}
+      setThemePreset={setThemePreset}
+      themeFor={themeFor}
+      themeCustom={themeCustom}
+      copyThemeToCustom={copyThemeToCustom}
+      setCustomThemeColors={setCustomThemeColors}
+      hasThemeFile={Object.keys(themeFileColors).length > 0}
+      onSaveFile={async () => {
+        // Session 59: Custom → a tatting-theme.json wherever the user picks.
+        const text = JSON.stringify({ _comment: 'TattingCAD colour theme — load it with Options → Load Theme…, or place it next to the app.', ...theme }, null, 2);
+        try {
+          const path = await showSaveThemeDialog();
+          if (!path) return;
+          await writeTextToFile(path, text);
+          showLoadMsg('success', t('themeSavedFile'));
+        } catch {
+          // No Tauri (browser): download instead.
+          const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+          const a = document.createElement('a'); a.href = url; a.download = 'tatting-theme.json'; a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+      }}
+      onLoadFile={() => themeInputRef.current?.click()}
+      t={t}
+    />
     {/* ── Materials Manager Panel ─────────────────────────────── */}
     {showMaterialsPanel && (
       <>
@@ -11724,14 +11706,47 @@ const APP_VERSION = '1.3.0';
 
                 <div className="flex-1 overflow-y-auto px-4 py-3">
 
-                  {/* Core measurements */}
-                  <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadMeasurementsHeader')}</div>
-                  <div className="grid grid-cols-2 gap-x-4">
-                    <ThreadPropertiesNumInput label={t('thread20DSWorking')} value={activePreset.ds20Working}
-                      onChange={v => updatePreset(activePreset.id, { ds20Working: v })} />
-                    <ThreadPropertiesNumInput label={t('thread20DSCore')} value={activePreset.ds20Core}
-                      onChange={v => updatePreset(activePreset.id, { ds20Core: v })} />
-                  </div>
+                  {/* Technique (session 59): Needle = every element is working
+                      thread + core per stitch (the original model). Shuttle =
+                      rings use only the shuttle thread (ds20Ring); chains use
+                      ball thread (ds20Working) over shuttle thread (ds20Core).
+                      See the thread estimate in domain/patternOutput.ts. */}
+                  {(() => {
+                    const shuttle = activePreset.technique === 'shuttle';
+                    const setTechnique = (tech: 'needle' | 'shuttle') => updatePreset(activePreset.id, {
+                      technique: tech,
+                      // First switch to shuttle: start the ring value from the
+                      // chain numbers so the field isn't empty.
+                      ...(tech === 'shuttle' && !(Number(activePreset.ds20Ring) > 0)
+                        ? { ds20Ring: Math.round((activePreset.ds20Working + activePreset.ds20Core) * 10) / 10 } : {}),
+                    });
+                    return (
+                      <>
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
+                          <span className="text-xs text-gray-400 uppercase tracking-wider mr-1">{t('threadTechnique')}</span>
+                          {(['needle', 'shuttle'] as const).map(tech => (
+                            <button key={tech} onClick={() => setTechnique(tech)}
+                              className={`px-3 py-1 rounded text-xs ${(tech === 'shuttle') === shuttle ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                              {t(tech === 'shuttle' ? 'threadTechniqueShuttle' : 'threadTechniqueNeedle')}
+                            </button>
+                          ))}
+                        </div>
+                        {shuttle && <div className="text-xs text-gray-500 mb-3 leading-relaxed">{t('threadShuttleHint')}</div>}
+                        {/* Core measurements */}
+                        <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadMeasurementsHeader')}</div>
+                        <div className="grid grid-cols-2 gap-x-4">
+                          {shuttle && (
+                            <ThreadPropertiesNumInput label={t('threadShuttleRing')} value={activePreset.ds20Ring}
+                              onChange={v => updatePreset(activePreset.id, { ds20Ring: v })} />
+                          )}
+                          <ThreadPropertiesNumInput label={t(shuttle ? 'threadShuttleChainBall' : 'thread20DSWorking')} value={activePreset.ds20Working}
+                            onChange={v => updatePreset(activePreset.id, { ds20Working: v })} />
+                          <ThreadPropertiesNumInput label={t(shuttle ? 'threadShuttleChainCore' : 'thread20DSCore')} value={activePreset.ds20Core}
+                            onChange={v => updatePreset(activePreset.id, { ds20Core: v })} />
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   <div className="border-t border-gray-600 my-3" />
 
@@ -11800,9 +11815,12 @@ const APP_VERSION = '1.3.0';
                   {/* Calculated summary */}
                   <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">{t('threadPerStitchHeader')}</div>
                   <div className="bg-gray-700 rounded p-3 text-xs text-gray-300 space-y-1 font-mono">
-                    <div>{t('threadWorkingPerDS')} = {(activePreset.ds20Working / 20).toFixed(2)} mm</div>
-                    <div>{t('threadWorkingPerSS')} = {(activePreset.ds20Working / 40).toFixed(2)} mm</div>
-                    <div>{t('threadCorePerDS')} = {(activePreset.ds20Core / 20).toFixed(2)} mm</div>
+                    {activePreset.technique === 'shuttle' && Number(activePreset.ds20Ring) > 0 && (
+                      <div className="pb-1 border-b border-gray-600">{t('threadRingPerDS')} = {(activePreset.ds20Ring / 20).toFixed(2)} mm</div>
+                    )}
+                    <div>{t(activePreset.technique === 'shuttle' ? 'threadChainBallPerDS' : 'threadWorkingPerDS')} = {(activePreset.ds20Working / 20).toFixed(2)} mm</div>
+                    <div>{t(activePreset.technique === 'shuttle' ? 'threadChainBallPerSS' : 'threadWorkingPerSS')} = {(activePreset.ds20Working / 40).toFixed(2)} mm</div>
+                    <div>{t(activePreset.technique === 'shuttle' ? 'threadChainCorePerDS' : 'threadCorePerDS')} = {(activePreset.ds20Core / 20).toFixed(2)} mm</div>
                     <div className="pt-1 border-t border-gray-600">{t('threadRegularPicot')} = {activePreset.picotRegular} mm</div>
                     <div>{t('threadLongPicot')} = {(activePreset.picotRegular * 2).toFixed(1)} mm</div>
                     <div>{t('threadShortPicot')} = {(activePreset.picotShort ?? activePreset.picotRegular * 0.5).toFixed(1)} mm{activePreset.picotShort ? ` ${t('threadFromSample')}` : ` ${t('threadHalfRegular')}`}</div>
@@ -12225,6 +12243,7 @@ const APP_VERSION = '1.3.0';
     )}
 
     </>
+    </RoundColorsContext.Provider>
   );
 };
 

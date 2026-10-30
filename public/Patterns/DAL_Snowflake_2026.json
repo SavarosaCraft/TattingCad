@@ -1,0 +1,3579 @@
+{
+  "version": 91,
+  "name": "Untitled Pattern",
+  "created": "2026-10-30T19:48:04.101Z",
+  "elements": [
+    {
+      "id": "70ae1845-6fa0-4775-a5d8-7cdead78bd07",
+      "type": "chain",
+      "materialId": "default",
+      "center": {
+        "x": -48.69327705972596,
+        "y": -83.76531557824049
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -1.0658141036401503e-13,
+          "y": -111.8783921963983,
+          "control1X": -15.813907888801406,
+          "control1Y": -45.43934446315538,
+          "control2X": -31.94169703481586,
+          "control2Y": -36.12796105827039,
+          "endX": -97.38655411945182,
+          "endY": -55.652238960082684
+        }
+      ],
+      "stitchCount": 14,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "a4b7571b-958f-4061-93ec-f11e653a6987",
+          "stitchesBefore": 1,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "0fac851e-0718-4485-832d-b36ee41d7611",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "d15eca43-be3c-4801-b442-c93763d40802",
+          "stitchesBefore": 13,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 1ds-p-6ds-p-6ds-p-1ds",
+      "labelOffset": -10,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isSplitChain": false,
+      "isTooShort": false,
+      "rotation": 150,
+      "polarRotationGridId": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
+      "hideLabel": true,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5",
+      "rw": true
+    },
+    {
+      "id": "778b98f7-1852-4120-aa1f-020f58ef26d7",
+      "type": "chain",
+      "materialId": "default",
+      "center": {
+        "x": 48.69327705972581,
+        "y": -83.76531557824057
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945172,
+          "y": -55.65223896008285,
+          "control1X": 31.941697034815803,
+          "control1Y": -36.12796105827046,
+          "control2X": 15.813907888801328,
+          "control2Y": -45.43934446315542,
+          "endX": -9.947598300641403e-14,
+          "endY": -111.8783921963983
+        }
+      ],
+      "stitchCount": 14,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "a4b7571b-958f-4061-93ec-f11e653a6987",
+          "stitchesBefore": 1,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "0fac851e-0718-4485-832d-b36ee41d7611",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "d15eca43-be3c-4801-b442-c93763d40802",
+          "stitchesBefore": 13,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 1ds-p-6ds-p-6ds-p-1ds",
+      "labelOffset": 2,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isSplitChain": false,
+      "isTooShort": false,
+      "rotation": 210,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": false,
+      "orderNumber": 4,
+      "isRepeat": false,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5",
+      "rw": true
+    },
+    {
+      "id": "3cd947ec-9efd-490a-b5e4-5a0345f28b4f",
+      "type": "chain",
+      "materialId": "default",
+      "center": {
+        "x": 97.38655411945182,
+        "y": 0.5739142762326814
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945187,
+          "y": 56.80006751254822,
+          "control1X": 47.75560492361722,
+          "control1Y": 9.885297681117702,
+          "control2X": 47.755604923617184,
+          "control2Y": -8.737469128652252,
+          "endX": 97.38655411945176,
+          "endY": -55.652238960082855
+        }
+      ],
+      "stitchCount": 14,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "a4b7571b-958f-4061-93ec-f11e653a6987",
+          "stitchesBefore": 1,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "0fac851e-0718-4485-832d-b36ee41d7611",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "d15eca43-be3c-4801-b442-c93763d40802",
+          "stitchesBefore": 13,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 1ds-p-6ds-p-6ds-p-1ds",
+      "labelOffset": -10,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isSplitChain": false,
+      "isTooShort": false,
+      "rotation": 270,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "6fae3c25-eb85-444c-87a2-2b39c07849fa",
+      "type": "chain",
+      "materialId": "default",
+      "center": {
+        "x": 48.693277059726,
+        "y": 84.91314413070606
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.3855583347321954e-13,
+          "y": 113.02622074886386,
+          "control1X": 15.813907888801431,
+          "control1Y": 46.587173015620955,
+          "control2X": 31.94169703481589,
+          "control2Y": 37.27578961073596,
+          "endX": 97.38655411945186,
+          "endY": 56.800067512548246
+        }
+      ],
+      "stitchCount": 14,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "a4b7571b-958f-4061-93ec-f11e653a6987",
+          "stitchesBefore": 1,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "0fac851e-0718-4485-832d-b36ee41d7611",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "d15eca43-be3c-4801-b442-c93763d40802",
+          "stitchesBefore": 13,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 1ds-p-6ds-p-6ds-p-1ds",
+      "labelOffset": -10,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isSplitChain": false,
+      "isTooShort": false,
+      "rotation": 330,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "36465f80-9c95-4985-879e-e876d5074630",
+      "type": "chain",
+      "materialId": "default",
+      "center": {
+        "x": -48.69327705972576,
+        "y": 84.91314413070619
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.3865541194517,
+          "y": 56.80006751254848,
+          "control1X": -31.94169703481575,
+          "control1Y": 37.27578961073606,
+          "control2X": -15.813907888801271,
+          "control2Y": 46.58717301562101,
+          "endX": 1.7763568394002505e-13,
+          "endY": 113.02622074886389
+        }
+      ],
+      "stitchCount": 14,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "a4b7571b-958f-4061-93ec-f11e653a6987",
+          "stitchesBefore": 1,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "0fac851e-0718-4485-832d-b36ee41d7611",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "d15eca43-be3c-4801-b442-c93763d40802",
+          "stitchesBefore": 13,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 1ds-p-6ds-p-6ds-p-1ds",
+      "labelOffset": -10,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isSplitChain": false,
+      "isTooShort": false,
+      "rotation": 30,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "6cf53a35-b6f2-47ad-8edb-4ebd74fa6529",
+      "type": "chain",
+      "materialId": "default",
+      "center": {
+        "x": -97.38655411945177,
+        "y": 0.5739142762328484
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.38655411945182,
+          "y": -55.652238960082684,
+          "control1X": -47.75560492361718,
+          "control1Y": -8.737469128652137,
+          "control2X": -47.75560492361716,
+          "control2Y": 9.88529768111782,
+          "endX": -97.38655411945173,
+          "endY": 56.80006751254838
+        }
+      ],
+      "stitchCount": 14,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "a4b7571b-958f-4061-93ec-f11e653a6987",
+          "stitchesBefore": 1,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "0fac851e-0718-4485-832d-b36ee41d7611",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "d15eca43-be3c-4801-b442-c93763d40802",
+          "stitchesBefore": 13,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 1ds-p-6ds-p-6ds-p-1ds",
+      "labelOffset": -10,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isSplitChain": false,
+      "isTooShort": false,
+      "rotation": 90,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "8c512555-0818-4d96-8cbf-8ebf4d041399",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -14.701500000000019,
+        "y": -24.88983067124104
+      },
+      "rotation": 150,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0.1,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.1102230246251565e-14,
+          "y": 0.5739142762327889,
+          "control1X": -12.744039255536888,
+          "control1Y": -2.2538092080093524,
+          "control2X": -30.060965425894832,
+          "control2Y": -19.417205165988403,
+          "endX": -33.00126542589485,
+          "endY": -24.509954155483175
+        },
+        {
+          "type": "cubic",
+          "x": -33.00126542589485,
+          "y": -24.509954155483175,
+          "control1X": -38.96308388330538,
+          "control1Y": -38.04372662922009,
+          "control2X": -33.48857617035797,
+          "control2Y": -44.59960112396749,
+          "endX": -29.403000000000052,
+          "endY": -50.35357561871488
+        },
+        {
+          "type": "cubic",
+          "x": -29.403000000000052,
+          "y": -50.35357561871488,
+          "control1X": -22.37712382964212,
+          "control1Y": -51.01480112396749,
+          "control2X": -13.962316116694707,
+          "control2Y": -52.47792662922013,
+          "endX": -5.222634574105209,
+          "endY": -40.54795415548321
+        },
+        {
+          "type": "cubic",
+          "x": -5.222634574105209,
+          "y": -40.54795415548321,
+          "control1X": -2.2823345741052075,
+          "control1Y": -35.45520516598843,
+          "control2X": 3.923139255536892,
+          "control2Y": -11.87660920800937,
+          "endX": 1.1102230246251565e-14,
+          "endY": 0.5739142762327889
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": false,
+      "endAllowance": 0.75,
+      "orderNumber": 1,
+      "isRepeat": false,
+      "roundId": "1677e76a-c085-45dd-a569-1e7a4241e66d"
+    },
+    {
+      "id": "f1894ed1-b14f-45ab-a778-ff3be232ac4a",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 26.72999999999991,
+        "y": -111.87839219639838
+      },
+      "rotation": 270,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -1.0658141036401503e-13,
+          "y": -111.8783921963983,
+          "control1X": 8.018999999999906,
+          "control1Y": -122.57039219639833,
+          "control2X": 29.402999999999906,
+          "control2Y": -129.69839219639837,
+          "endX": 34.74899999999987,
+          "endY": -129.69839219639837
+        },
+        {
+          "type": "cubic",
+          "x": 34.74899999999987,
+          "y": -129.69839219639837,
+          "control1X": 48.1139999999999,
+          "control1Y": -127.91639219639845,
+          "control2X": 50.78699999999991,
+          "control2Y": -119.0063921963984,
+          "endX": 53.4599999999999,
+          "endY": -111.8783921963984
+        },
+        {
+          "type": "cubic",
+          "x": 53.4599999999999,
+          "y": -111.8783921963984,
+          "control1X": 50.78699999999995,
+          "control1Y": -104.75039219639842,
+          "control2X": 48.11399999999998,
+          "control2Y": -95.84039219639841,
+          "endX": 34.74899999999997,
+          "endY": -94.0583921963984
+        },
+        {
+          "type": "cubic",
+          "x": 34.74899999999997,
+          "y": -94.0583921963984,
+          "control1X": 29.40299999999997,
+          "control1Y": -94.05839219639836,
+          "control2X": 8.018999999999929,
+          "control2Y": -101.18639219639834,
+          "endX": -1.0658141036401503e-13,
+          "endY": -111.8783921963983
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": false,
+      "endAllowance": 0.75,
+      "orderNumber": 3,
+      "isRepeat": false,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5",
+      "rw": true
+    },
+    {
+      "id": "8fa53926-af0c-4150-a9ca-ad733c98a6cf",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 84.02155411945171,
+        "y": -78.80109800324088
+      },
+      "rotation": 150,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945172,
+          "y": -55.65223896008285,
+          "control1X": 84.11751050218851,
+          "control1Y": -57.25089667303023,
+          "control2X": 67.25248142401297,
+          "control2Y": -72.2059839075566,
+          "endX": 64.57948142401297,
+          "endY": -76.83575571618823
+        },
+        {
+          "type": "cubic",
+          "x": 64.57948142401297,
+          "y": -76.83575571618823,
+          "control1X": 59.44023869355682,
+          "control1Y": -89.30118523776724,
+          "control2X": 65.82002504127614,
+          "control2Y": -96.07107114208307,
+          "endX": 70.65655411945158,
+          "endY": -101.94995704639888
+        },
+        {
+          "type": "cubic",
+          "x": 70.65655411945158,
+          "y": -101.94995704639888,
+          "control1X": 78.1660831976271,
+          "control1Y": -103.19907114208311,
+          "control2X": 87.21886954534648,
+          "control2Y": -105.33918523776732,
+          "endX": 95.44462681489034,
+          "endY": -94.6557557161883
+        },
+        {
+          "type": "cubic",
+          "x": 95.44462681489034,
+          "y": -94.6557557161883,
+          "control1X": 98.11762681489036,
+          "control1Y": -90.02598390755671,
+          "control2X": 102.63659773671496,
+          "control2Y": -67.94289667303032,
+          "endX": 97.38655411945172,
+          "endY": -55.65223896008285
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "95f519da-8758-488e-94a7-1653f9d168c0",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 120.53541316260979,
+        "y": -69.01723896008292
+      },
+      "rotation": 240,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945172,
+          "y": -55.65223896008285,
+          "control1X": 98.98521183239916,
+          "control1Y": -68.9212825773461,
+          "control2X": 113.94029906692549,
+          "control2Y": -85.78631165552154,
+          "endX": 118.57007087555718,
+          "endY": -88.45931165552162
+        },
+        {
+          "type": "cubic",
+          "x": 118.57007087555718,
+          "y": -88.45931165552162,
+          "control1X": 131.03550039713616,
+          "control1Y": -93.59855438597776,
+          "control2X": 137.805386301452,
+          "control2Y": -87.21876803825845,
+          "endX": 143.6842722057678,
+          "endY": -82.38223896008303
+        },
+        {
+          "type": "cubic",
+          "x": 143.6842722057678,
+          "y": -82.38223896008303,
+          "control1X": 144.93338630145203,
+          "control1Y": -74.87270988190747,
+          "control2X": 147.0735003971362,
+          "control2Y": -65.81992353418813,
+          "endX": 136.3900708755572,
+          "endY": -57.59416626464425
+        },
+        {
+          "type": "cubic",
+          "x": 136.3900708755572,
+          "y": -57.59416626464425,
+          "control1X": 131.76029906692554,
+          "control1Y": -54.92116626464422,
+          "control2X": 109.67721183239917,
+          "control2Y": -50.40219534281968,
+          "endX": 97.38655411945172,
+          "endY": -55.65223896008285
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "c98e810e-4961-41ca-bac6-d8db8effa3a0",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 110.75155411945181,
+        "y": -32.50337991692482
+      },
+      "rotation": 330,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945172,
+          "y": -55.65223896008285,
+          "control1X": 110.65559773671498,
+          "control1Y": -54.05358124713546,
+          "control2X": 127.52062681489048,
+          "control2Y": -39.098494012609045,
+          "endX": 130.19362681489048,
+          "endY": -34.46872220397746
+        },
+        {
+          "type": "cubic",
+          "x": 130.19362681489048,
+          "y": -34.46872220397746,
+          "control1X": 135.33286954534668,
+          "control1Y": -22.003292682398445,
+          "control2X": 128.9530831976273,
+          "control2Y": -15.233406778082596,
+          "endX": 124.11655411945182,
+          "endY": -9.354520873766816
+        },
+        {
+          "type": "cubic",
+          "x": 124.11655411945182,
+          "y": -9.354520873766816,
+          "control1X": 116.6070250412764,
+          "control1Y": -8.105406778082585,
+          "control2X": 107.55423869355704,
+          "control2Y": -5.965292682398367,
+          "endX": 99.32848142401315,
+          "endY": -16.648722203977385
+        },
+        {
+          "type": "cubic",
+          "x": 99.32848142401315,
+          "y": -16.648722203977385,
+          "control1X": 96.65548142401315,
+          "control1Y": -21.278494012608967,
+          "control2X": 92.13651050218856,
+          "control2Y": -43.36158124713541,
+          "endX": 97.38655411945172,
+          "endY": -55.65223896008285
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "5b4fa17a-c3cb-44ee-851a-7bf794d3d7a9",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 110.75155411945181,
+        "y": 33.651208469390156
+      },
+      "rotation": 210,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945187,
+          "y": 56.80006751254822,
+          "control1X": 92.13651050218861,
+          "control1Y": 44.50940979960082,
+          "control2X": 96.65548142401306,
+          "control2Y": 22.426322565074372,
+          "endX": 99.32848142401303,
+          "endY": 17.79655075644276
+        },
+        {
+          "type": "cubic",
+          "x": 99.32848142401303,
+          "y": 17.79655075644276,
+          "control1X": 107.5542386935569,
+          "control1Y": 7.113121234863726,
+          "control2X": 116.60702504127624,
+          "control2Y": 9.253235330547893,
+          "endX": 124.11655411945173,
+          "endY": 10.50234942623205
+        },
+        {
+          "type": "cubic",
+          "x": 124.11655411945173,
+          "y": 10.50234942623205,
+          "control1X": 128.9530831976272,
+          "control1Y": 16.381235330547852,
+          "control2X": 135.3328695453466,
+          "control2Y": 23.151121234863687,
+          "endX": 130.1936268148905,
+          "endY": 35.61655075644268
+        },
+        {
+          "type": "cubic",
+          "x": 130.1936268148905,
+          "y": 35.61655075644268,
+          "control1X": 127.52062681489053,
+          "control1Y": 40.246322565074294,
+          "control2X": 110.65559773671508,
+          "control2Y": 55.20140979960079,
+          "endX": 97.38655411945187,
+          "endY": 56.80006751254822
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "ea14d41f-a40b-4989-8bf2-adac5c0a0be9",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 120.53541316260993,
+        "y": 70.16506751254819
+      },
+      "rotation": 300,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945187,
+          "y": 56.80006751254822,
+          "control1X": 109.67721183239928,
+          "control1Y": 51.550023895284994,
+          "control2X": 131.76029906692563,
+          "control2Y": 56.068994817109434,
+          "endX": 136.3900708755573,
+          "endY": 58.741994817109465
+        },
+        {
+          "type": "cubic",
+          "x": 136.3900708755573,
+          "y": 58.741994817109465,
+          "control1X": 147.07350039713637,
+          "control1Y": 66.96775208665332,
+          "control2X": 144.9333863014522,
+          "control2Y": 76.02053843437261,
+          "endX": 143.6842722057681,
+          "endY": 83.53006751254814
+        },
+        {
+          "type": "cubic",
+          "x": 143.6842722057681,
+          "y": 83.53006751254814,
+          "control1X": 137.80538630145222,
+          "control1Y": 88.36659659072363,
+          "control2X": 131.03550039713636,
+          "control2Y": 94.74638293844293,
+          "endX": 118.57007087555738,
+          "endY": 89.60714020798686
+        },
+        {
+          "type": "cubic",
+          "x": 118.57007087555738,
+          "y": 89.60714020798686,
+          "control1X": 113.94029906692573,
+          "control1Y": 86.93414020798684,
+          "control2X": 98.9852118323993,
+          "control2Y": 70.06911112981145,
+          "endX": 97.38655411945187,
+          "endY": 56.80006751254822
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "0285b1fb-0c90-42d7-a67c-d657669373a7",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 84.0215541194519,
+        "y": 79.94892655570631
+      },
+      "rotation": 30,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 97.38655411945187,
+          "y": 56.80006751254822,
+          "control1X": 102.63659773671509,
+          "control1Y": 69.09072522549566,
+          "control2X": 98.11762681489063,
+          "control2Y": 91.1738124600221,
+          "endX": 95.44462681489061,
+          "endY": 95.80358426865368
+        },
+        {
+          "type": "cubic",
+          "x": 95.44462681489061,
+          "y": 95.80358426865368,
+          "control1X": 87.21886954534682,
+          "control1Y": 106.48701379023275,
+          "control2X": 78.16608319762744,
+          "control2Y": 104.34689969454857,
+          "endX": 70.65655411945193,
+          "endY": 103.09778559886436
+        },
+        {
+          "type": "cubic",
+          "x": 70.65655411945193,
+          "y": 103.09778559886436,
+          "control1X": 65.82002504127647,
+          "control1Y": 97.21889969454861,
+          "control2X": 59.44023869355709,
+          "control2Y": 90.44901379023283,
+          "endX": 64.57948142401318,
+          "endY": 77.98358426865376
+        },
+        {
+          "type": "cubic",
+          "x": 64.57948142401318,
+          "y": 77.98358426865376,
+          "control1X": 67.25248142401317,
+          "control1Y": 73.35381246002218,
+          "control2X": 84.11751050218862,
+          "control2Y": 58.398725225495646,
+          "endX": 97.38655411945187,
+          "endY": 56.80006751254822
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "f36d5884-9e46-4084-a3eb-f55c9511725b",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 26.73000000000012,
+        "y": 113.02622074886384
+      },
+      "rotation": 270,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.3855583347321954e-13,
+          "y": 113.02622074886386,
+          "control1X": 8.01900000000009,
+          "control1Y": 102.33422074886386,
+          "control2X": 29.40300000000007,
+          "control2Y": 95.20622074886379,
+          "endX": 34.749000000000095,
+          "endY": 95.20622074886376
+        },
+        {
+          "type": "cubic",
+          "x": 34.749000000000095,
+          "y": 95.20622074886376,
+          "control1X": 48.11400000000009,
+          "control1Y": 96.98822074886374,
+          "control2X": 50.78700000000011,
+          "control2Y": 105.89822074886375,
+          "endX": 53.460000000000136,
+          "endY": 113.02622074886372
+        },
+        {
+          "type": "cubic",
+          "x": 53.460000000000136,
+          "y": 113.02622074886372,
+          "control1X": 50.787000000000134,
+          "control1Y": 120.15422074886375,
+          "control2X": 48.114000000000146,
+          "control2Y": 129.06422074886376,
+          "endX": 34.74900000000017,
+          "endY": 130.8462207488638
+        },
+        {
+          "type": "cubic",
+          "x": 34.74900000000017,
+          "y": 130.8462207488638,
+          "control1X": 29.40300000000019,
+          "control1Y": 130.8462207488638,
+          "control2X": 8.019000000000162,
+          "control2Y": 123.71822074886387,
+          "endX": 1.3855583347321954e-13,
+          "endY": 113.02622074886386
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "7a87c657-483a-4088-b79c-3c096005fbdb",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 1.9184653865522705e-13,
+        "y": 139.7562207488639
+      },
+      "rotation": 0,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.3855583347321954e-13,
+          "y": 113.02622074886386,
+          "control1X": 10.692000000000153,
+          "control1Y": 121.0452207488639,
+          "control2X": 17.820000000000178,
+          "control2Y": 142.4292207488638,
+          "endX": 17.8200000000002,
+          "endY": 147.77522074886386
+        },
+        {
+          "type": "cubic",
+          "x": 17.8200000000002,
+          "y": 147.77522074886386,
+          "control1X": 16.038000000000217,
+          "control1Y": 161.14022074886387,
+          "control2X": 7.128000000000277,
+          "control2Y": 163.8132207488639,
+          "endX": 2.4868995751603507e-13,
+          "endY": 166.48622074886396
+        },
+        {
+          "type": "cubic",
+          "x": 2.4868995751603507e-13,
+          "y": 166.48622074886396,
+          "control1X": -7.127999999999794,
+          "control1Y": 163.81322074886393,
+          "control2X": -16.037999999999787,
+          "control2Y": 161.1402207488639,
+          "endX": -17.819999999999766,
+          "endY": 147.77522074886392
+        },
+        {
+          "type": "cubic",
+          "x": -17.819999999999766,
+          "y": 147.77522074886392,
+          "control1X": -17.81999999999979,
+          "control1Y": 142.4292207488639,
+          "control2X": -10.691999999999855,
+          "control2Y": 121.04522074886393,
+          "endX": 1.3855583347321954e-13,
+          "endY": 113.02622074886386
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "276325ab-870c-44c8-a7d7-8be49e36b20a",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -26.729999999999873,
+        "y": 113.02622074886395
+      },
+      "rotation": 90,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.3855583347321954e-13,
+          "y": 113.02622074886386,
+          "control1X": -8.018999999999878,
+          "control1Y": 123.7182207488639,
+          "control2X": -29.402999999999878,
+          "control2Y": 130.84622074886394,
+          "endX": -34.748999999999846,
+          "endY": 130.846220748864
+        },
+        {
+          "type": "cubic",
+          "x": -34.748999999999846,
+          "y": 130.846220748864,
+          "control1X": -48.11399999999987,
+          "control1Y": 129.06422074886402,
+          "control2X": -50.786999999999864,
+          "control2Y": 120.15422074886399,
+          "endX": -53.459999999999866,
+          "endY": 113.02622074886396
+        },
+        {
+          "type": "cubic",
+          "x": -53.459999999999866,
+          "y": 113.02622074886396,
+          "control1X": -50.78699999999991,
+          "control1Y": 105.89822074886402,
+          "control2X": -48.113999999999926,
+          "control2Y": 96.988220748864,
+          "endX": -34.74899999999993,
+          "endY": 95.20622074886397
+        },
+        {
+          "type": "cubic",
+          "x": -34.74899999999993,
+          "y": 95.20622074886397,
+          "control1X": -29.402999999999928,
+          "control1Y": 95.20622074886394,
+          "control2X": -8.018999999999906,
+          "control2Y": 102.3342207488639,
+          "endX": 1.3855583347321954e-13,
+          "endY": 113.02622074886386
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "5b4c0abd-5764-41c5-9187-612e5768498d",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -84.02155411945165,
+        "y": 79.94892655570649
+      },
+      "rotation": 330,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.3865541194517,
+          "y": 56.80006751254848,
+          "control1X": -84.11751050218848,
+          "control1Y": 58.39872522549587,
+          "control2X": -67.25248142401293,
+          "control2Y": 73.35381246002223,
+          "endX": -64.57948142401294,
+          "endY": 77.98358426865384
+        },
+        {
+          "type": "cubic",
+          "x": -64.57948142401294,
+          "y": 77.98358426865384,
+          "control1X": -59.44023869355675,
+          "control1Y": 90.44901379023284,
+          "control2X": -65.82002504127608,
+          "control2Y": 97.21889969454868,
+          "endX": -70.65655411945151,
+          "endY": 103.09778559886448
+        },
+        {
+          "type": "cubic",
+          "x": -70.65655411945151,
+          "y": 103.09778559886448,
+          "control1X": -78.16608319762705,
+          "control1Y": 104.3468996945487,
+          "control2X": -87.2188695453464,
+          "control2Y": 106.48701379023291,
+          "endX": -95.44462681489031,
+          "endY": 95.80358426865392
+        },
+        {
+          "type": "cubic",
+          "x": -95.44462681489031,
+          "y": 95.80358426865392,
+          "control1X": -98.1176268148903,
+          "control1Y": 91.17381246002233,
+          "control2X": -102.63659773671489,
+          "control2Y": 69.09072522549593,
+          "endX": -97.3865541194517,
+          "endY": 56.80006751254848
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "ebb71c0e-6c3c-4db1-a647-6c8f3ffda5e9",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -120.53541316260971,
+        "y": 70.16506751254855
+      },
+      "rotation": 60,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.3865541194517,
+          "y": 56.80006751254848,
+          "control1X": -98.9852118323991,
+          "control1Y": 70.06911112981172,
+          "control2X": -113.94029906692549,
+          "control2Y": 86.9341402079872,
+          "endX": -118.57007087555706,
+          "endY": 89.60714020798721
+        },
+        {
+          "type": "cubic",
+          "x": -118.57007087555706,
+          "y": 89.60714020798721,
+          "control1X": -131.03550039713605,
+          "control1Y": 94.74638293844339,
+          "control2X": -137.8053863014519,
+          "control2Y": 88.3665965907241,
+          "endX": -143.68427220576777,
+          "endY": 83.53006751254863
+        },
+        {
+          "type": "cubic",
+          "x": -143.68427220576777,
+          "y": 83.53006751254863,
+          "control1X": -144.93338630145195,
+          "control1Y": 76.0205384343731,
+          "control2X": -147.07350039713612,
+          "control2Y": 66.9677520866538,
+          "endX": -136.39007087555717,
+          "endY": 58.74199481710991
+        },
+        {
+          "type": "cubic",
+          "x": -136.39007087555717,
+          "y": 58.74199481710991,
+          "control1X": -131.76029906692548,
+          "control1Y": 56.06899481710987,
+          "control2X": -109.67721183239914,
+          "control2Y": 51.55002389528533,
+          "endX": -97.3865541194517,
+          "endY": 56.80006751254848
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "fb66d62a-80da-4262-859f-74ecbe14de66",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -110.75155411945178,
+        "y": 33.651208469390475
+      },
+      "rotation": 150,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.3865541194517,
+          "y": 56.80006751254848,
+          "control1X": -110.65559773671495,
+          "control1Y": 55.20140979960111,
+          "control2X": -127.52062681489046,
+          "control2Y": 40.24632256507469,
+          "endX": -130.19362681489045,
+          "endY": 35.61655075644312
+        },
+        {
+          "type": "cubic",
+          "x": -130.19362681489045,
+          "y": 35.61655075644312,
+          "control1X": -135.33286954534663,
+          "control1Y": 23.1511212348641,
+          "control2X": -128.95308319762728,
+          "control2Y": 16.38123533054828,
+          "endX": -124.11655411945182,
+          "endY": 10.502349426232463
+        },
+        {
+          "type": "cubic",
+          "x": -124.11655411945182,
+          "y": 10.502349426232463,
+          "control1X": -116.60702504127637,
+          "control1Y": 9.253235330548222,
+          "control2X": -107.55423869355704,
+          "control2Y": 7.113121234863996,
+          "endX": -99.32848142401312,
+          "endY": 17.796550756443004
+        },
+        {
+          "type": "cubic",
+          "x": -99.32848142401312,
+          "y": 17.796550756443004,
+          "control1X": -96.65548142401313,
+          "control1Y": 22.4263225650746,
+          "control2X": -92.13651050218853,
+          "control2Y": 44.50940979960106,
+          "endX": -97.3865541194517,
+          "endY": 56.80006751254848
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "4cba4c8f-68de-43fb-a885-37a2af77fb16",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -110.7515541194518,
+        "y": -32.503379916924594
+      },
+      "rotation": 30,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.38655411945182,
+          "y": -55.652238960082684,
+          "control1X": -92.1365105021886,
+          "control1Y": -43.36158124713527,
+          "control2X": -96.65548142401305,
+          "control2Y": -21.278494012608824,
+          "endX": -99.32848142401303,
+          "endY": -16.648722203977215
+        },
+        {
+          "type": "cubic",
+          "x": -99.32848142401303,
+          "y": -16.648722203977215,
+          "control1X": -107.55423869355687,
+          "control1Y": -5.965292682398154,
+          "control2X": -116.60702504127622,
+          "control2Y": -8.105406778082326,
+          "endX": -124.11655411945172,
+          "endY": -9.354520873766496
+        },
+        {
+          "type": "cubic",
+          "x": -124.11655411945172,
+          "y": -9.354520873766496,
+          "control1X": -128.95308319762722,
+          "control1Y": -15.233406778082308,
+          "control2X": -135.33286954534657,
+          "control2Y": -22.003292682398122,
+          "endX": -130.19362681489048,
+          "endY": -34.46872220397715
+        },
+        {
+          "type": "cubic",
+          "x": -130.19362681489048,
+          "y": -34.46872220397715,
+          "control1X": -127.52062681489048,
+          "control1Y": -39.09849401260874,
+          "control2X": -110.65559773671507,
+          "control2Y": -54.05358124713524,
+          "endX": -97.38655411945182,
+          "endY": -55.652238960082684
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "3828cee6-6ec0-4c63-bb46-6a4573b86c13",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -120.53541316260988,
+        "y": -69.01723896008262
+      },
+      "rotation": 120,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.38655411945182,
+          "y": -55.652238960082684,
+          "control1X": -109.67721183239928,
+          "control1Y": -50.402195342819454,
+          "control2X": -131.76029906692563,
+          "control2Y": -54.9211662646439,
+          "endX": -136.39007087555729,
+          "endY": -57.59416626464393
+        },
+        {
+          "type": "cubic",
+          "x": -136.39007087555729,
+          "y": -57.59416626464393,
+          "control1X": -147.0735003971364,
+          "control1Y": -65.81992353418778,
+          "control2X": -144.9333863014522,
+          "control2Y": -74.8727098819071,
+          "endX": -143.684272205768,
+          "endY": -82.3822389600826
+        },
+        {
+          "type": "cubic",
+          "x": -143.684272205768,
+          "y": -82.3822389600826,
+          "control1X": -137.80538630145222,
+          "control1Y": -87.21876803825812,
+          "control2X": -131.0355003971364,
+          "control2Y": -93.59855438597742,
+          "endX": -118.57007087555736,
+          "endY": -88.45931165552135
+        },
+        {
+          "type": "cubic",
+          "x": -118.57007087555736,
+          "y": -88.45931165552135,
+          "control1X": -113.94029906692569,
+          "control1Y": -85.78631165552133,
+          "control2X": -98.98521183239929,
+          "control2Y": -68.9212825773459,
+          "endX": -97.38655411945182,
+          "endY": -55.652238960082684
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "d7a3e0e2-91c6-4071-a588-17f046548c8b",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -84.02155411945188,
+        "y": -78.80109800324075
+      },
+      "rotation": 210,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -97.38655411945182,
+          "y": -55.652238960082684,
+          "control1X": -102.63659773671506,
+          "control1Y": -67.9428966730301,
+          "control2X": -98.11762681489057,
+          "control2Y": -90.0259839075566,
+          "endX": -95.44462681489057,
+          "endY": -94.65575571618814
+        },
+        {
+          "type": "cubic",
+          "x": -95.44462681489057,
+          "y": -94.65575571618814,
+          "control1X": -87.21886954534676,
+          "control1Y": -105.33918523776723,
+          "control2X": -78.16608319762739,
+          "control2Y": -103.19907114208301,
+          "endX": -70.6565541194519,
+          "endY": -101.94995704639882
+        },
+        {
+          "type": "cubic",
+          "x": -70.6565541194519,
+          "y": -101.94995704639882,
+          "control1X": -65.82002504127644,
+          "control1Y": -96.0710711420831,
+          "control2X": -59.440238693557056,
+          "control2Y": -89.30118523776727,
+          "endX": -64.57948142401315,
+          "endY": -76.83575571618822
+        },
+        {
+          "type": "cubic",
+          "x": -64.57948142401315,
+          "y": -76.83575571618822,
+          "control1X": -67.25248142401315,
+          "control1Y": -72.20598390755663,
+          "control2X": -84.11751050218861,
+          "control2Y": -57.25089667303012,
+          "endX": -97.38655411945182,
+          "endY": -55.652238960082684
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "isRepeat": true,
+      "orderNumber": null,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "cc32afc6-b4ac-4611-a0fa-1b0a31da240f",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 14.701499999999974,
+        "y": -24.88983067124108
+      },
+      "rotation": 210,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0.1,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.1102230246251565e-14,
+          "y": 0.5739142762327889,
+          "control1X": -3.923139255536899,
+          "control1Y": -11.876609208009361,
+          "control2X": 2.2823345741051284,
+          "control2Y": -35.45520516598843,
+          "endX": 5.222634574105131,
+          "endY": -40.54795415548323
+        },
+        {
+          "type": "cubic",
+          "x": 5.222634574105131,
+          "y": -40.54795415548323,
+          "control1X": 13.962316116694588,
+          "control1Y": -52.47792662922015,
+          "control2X": 22.377123829642006,
+          "control2Y": -51.01480112396756,
+          "endX": 29.402999999999935,
+          "endY": -50.35357561871495
+        },
+        {
+          "type": "cubic",
+          "x": 29.402999999999935,
+          "y": -50.35357561871495,
+          "control1X": 33.48857617035788,
+          "control1Y": -44.59960112396756,
+          "control2X": 38.9630838833053,
+          "control2Y": -38.043726629220174,
+          "endX": 33.00126542589481,
+          "endY": -24.509954155483253
+        },
+        {
+          "type": "cubic",
+          "x": 33.00126542589481,
+          "y": -24.509954155483253,
+          "control1X": 30.060965425894814,
+          "control1Y": -19.417205165988484,
+          "control2X": 12.7440392555369,
+          "control2Y": -2.253809208009382,
+          "endX": 1.1102230246251565e-14,
+          "endY": 0.5739142762327889
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "orderNumber": null,
+      "isRepeat": true,
+      "roundId": "1677e76a-c085-45dd-a569-1e7a4241e66d"
+    },
+    {
+      "id": "675417a8-11c4-45fe-a770-e85c3de51581",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 29.403000000000013,
+        "y": 0.5739142762327465
+      },
+      "rotation": 270,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0.1,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.1102230246251565e-14,
+          "y": 0.5739142762327889,
+          "control1X": 8.820899999999998,
+          "control1Y": -9.048885723767224,
+          "control2X": 32.343299999999985,
+          "control2Y": -15.464085723767262,
+          "endX": 38.223899999999986,
+          "endY": -15.464085723767264
+        },
+        {
+          "type": "cubic",
+          "x": 38.223899999999986,
+          "y": -15.464085723767264,
+          "control1X": 52.925399999999996,
+          "control1Y": -13.860285723767285,
+          "control2X": 55.86569999999999,
+          "control2Y": -5.841285723767287,
+          "endX": 58.806000000000004,
+          "endY": 0.5739142762326983
+        },
+        {
+          "type": "cubic",
+          "x": 58.806000000000004,
+          "y": 0.5739142762326983,
+          "control1X": 55.86570000000001,
+          "control1Y": 6.989114276232717,
+          "control2X": 52.925400000000025,
+          "control2Y": 15.008114276232718,
+          "endX": 38.223900000000036,
+          "endY": 16.61191427623273
+        },
+        {
+          "type": "cubic",
+          "x": 38.223900000000036,
+          "y": 16.61191427623273,
+          "control1X": 32.34330000000004,
+          "control1Y": 16.61191427623274,
+          "control2X": 8.820900000000025,
+          "control2Y": 10.196714276232779,
+          "endX": 1.1102230246251565e-14,
+          "endY": 0.5739142762327889
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "orderNumber": null,
+      "isRepeat": true,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "85256059-9d27-4e83-b9e2-d61c699d6db6",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 14.701500000000046,
+        "y": 26.037659223706612
+      },
+      "rotation": 330,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0.1,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.1102230246251565e-14,
+          "y": 0.5739142762327889,
+          "control1X": 12.744039255536915,
+          "control1Y": 3.4016377604749284,
+          "control2X": 30.060965425894864,
+          "control2Y": 20.565033718453975,
+          "endX": 33.00126542589488,
+          "endY": 25.657782707948755
+        },
+        {
+          "type": "cubic",
+          "x": 33.00126542589488,
+          "y": 25.657782707948755,
+          "control1X": 38.9630838833054,
+          "control1Y": 39.19155518168566,
+          "control2X": 33.488576170358016,
+          "control2Y": 45.74742967643305,
+          "endX": 29.403000000000077,
+          "endY": 51.50140417118045
+        },
+        {
+          "type": "cubic",
+          "x": 29.403000000000077,
+          "y": 51.50140417118045,
+          "control1X": 22.377123829642144,
+          "control1Y": 52.16262967643306,
+          "control2X": 13.962316116694737,
+          "control2Y": 53.6257551816857,
+          "endX": 5.222634574105239,
+          "endY": 41.69578270794879
+        },
+        {
+          "type": "cubic",
+          "x": 5.222634574105239,
+          "y": 41.69578270794879,
+          "control1X": 2.282334574105233,
+          "control1Y": 36.603033718454014,
+          "control2X": -3.9231392555368663,
+          "control2Y": 13.024437760474948,
+          "endX": 1.1102230246251565e-14,
+          "endY": 0.5739142762327889
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "orderNumber": null,
+      "isRepeat": true,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "96263007-f516-479c-aacf-dfb998ba1b6f",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -14.70149999999995,
+        "y": 26.03765922370667
+      },
+      "rotation": 30,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0.1,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.1102230246251565e-14,
+          "y": 0.5739142762327889,
+          "control1X": 3.9231392555369275,
+          "control1Y": 13.02443776047494,
+          "control2X": -2.282334574105098,
+          "control2Y": 36.60303371845402,
+          "endX": -5.222634574105097,
+          "endY": 41.6957827079488
+        },
+        {
+          "type": "cubic",
+          "x": -5.222634574105097,
+          "y": 41.6957827079488,
+          "control1X": -13.962316116694549,
+          "control1Y": 53.62575518168574,
+          "control2X": -22.377123829641963,
+          "control2Y": 52.16262967643313,
+          "endX": -29.4029999999999,
+          "endY": 51.501404171180546
+        },
+        {
+          "type": "cubic",
+          "x": -29.4029999999999,
+          "y": 51.501404171180546,
+          "control1X": -33.48857617035783,
+          "control1Y": 45.747429676433164,
+          "control2X": -38.96308388330526,
+          "control2Y": 39.19155518168578,
+          "endX": -33.00126542589477,
+          "endY": 25.65778270794886
+        },
+        {
+          "type": "cubic",
+          "x": -33.00126542589477,
+          "y": 25.65778270794886,
+          "control1X": -30.06096542589478,
+          "control1Y": 20.565033718454078,
+          "control2X": -12.74403925553688,
+          "control2Y": 3.4016377604749675,
+          "endX": 1.1102230246251565e-14,
+          "endY": 0.5739142762327889
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "orderNumber": null,
+      "isRepeat": true,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "04d1dc63-a384-4769-a3c4-d8684114ab6a",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -29.402999999999984,
+        "y": 0.57391427623282
+      },
+      "rotation": 90,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0.1,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 1.1102230246251565e-14,
+          "y": 0.5739142762327889,
+          "control1X": -8.820899999999984,
+          "control1Y": 10.196714276232804,
+          "control2X": -32.34329999999996,
+          "control2Y": 16.611914276232824,
+          "endX": -38.22389999999998,
+          "endY": 16.611914276232838
+        },
+        {
+          "type": "cubic",
+          "x": -38.22389999999998,
+          "y": 16.611914276232838,
+          "control1X": -52.92539999999998,
+          "control1Y": 15.008114276232845,
+          "control2X": -55.865699999999975,
+          "control2Y": 6.989114276232854,
+          "endX": -58.80599999999999,
+          "endY": 0.5739142762328626
+        },
+        {
+          "type": "cubic",
+          "x": -58.80599999999999,
+          "y": 0.5739142762328626,
+          "control1X": -55.86569999999998,
+          "control1Y": -5.841285723767152,
+          "control2X": -52.92540000000001,
+          "control2Y": -13.860285723767156,
+          "endX": -38.22390000000001,
+          "endY": -15.464085723767171
+        },
+        {
+          "type": "cubic",
+          "x": -38.22390000000001,
+          "y": -15.464085723767171,
+          "control1X": -32.34330000000001,
+          "control1Y": -15.464085723767171,
+          "control2X": -8.820900000000002,
+          "control2Y": -9.048885723767201,
+          "endX": 1.1102230246251565e-14,
+          "endY": 0.5739142762327889
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": true,
+      "endAllowance": 0.75,
+      "orderNumber": null,
+      "isRepeat": true,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "e9349e5a-6fb0-4d6a-bd31-1bf5fed7a34e",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -26.73000000000009,
+        "y": -111.87839219639827
+      },
+      "rotation": 90,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": -4,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -1.0658141036401503e-13,
+          "y": -111.8783921963983,
+          "control1X": -8.01900000000007,
+          "control1Y": -101.18639219639829,
+          "control2X": -29.40300000000004,
+          "control2Y": -94.05839219639824,
+          "endX": -34.74900000000005,
+          "endY": -94.05839219639822
+        },
+        {
+          "type": "cubic",
+          "x": -34.74900000000005,
+          "y": -94.05839219639822,
+          "control1X": -48.11400000000006,
+          "control1Y": -95.8403921963982,
+          "control2X": -50.787000000000084,
+          "control2Y": -104.75039219639818,
+          "endX": -53.460000000000086,
+          "endY": -111.87839219639818
+        },
+        {
+          "type": "cubic",
+          "x": -53.460000000000086,
+          "y": -111.87839219639818,
+          "control1X": -50.787000000000106,
+          "control1Y": -119.00639219639818,
+          "control2X": -48.11400000000012,
+          "control2Y": -127.91639219639819,
+          "endX": -34.74900000000015,
+          "endY": -129.69839219639826
+        },
+        {
+          "type": "cubic",
+          "x": -34.74900000000015,
+          "y": -129.69839219639826,
+          "control1X": -29.40300000000017,
+          "control1Y": -129.69839219639823,
+          "control2X": -8.019000000000116,
+          "control2Y": -122.5703921963983,
+          "endX": -1.0658141036401503e-13,
+          "endY": -111.8783921963983
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": false,
+      "endAllowance": 0.75,
+      "orderNumber": 1,
+      "isRepeat": false,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    },
+    {
+      "id": "e8b12ce1-db6f-4c15-bf30-c43447d1949f",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": -1.3500311979441904e-13,
+        "y": -138.60839219639834
+      },
+      "rotation": 180,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "82d260d5-0981-4814-9a37-a230b97eded2",
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "41be5998-cb43-4457-bc1a-4c8fe0caaba6",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        },
+        {
+          "id": "611255a7-c517-46bb-9be3-a67763ce9bb6",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 3x(3ds-p)-3ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": -1.0658141036401503e-13,
+          "y": -111.8783921963983,
+          "control1X": -10.692000000000114,
+          "control1Y": -119.89739219639833,
+          "control2X": -17.820000000000128,
+          "control2Y": -141.28139219639823,
+          "endX": -17.82000000000017,
+          "endY": -146.62739219639832
+        },
+        {
+          "type": "cubic",
+          "x": -17.82000000000017,
+          "y": -146.62739219639832,
+          "control1X": -16.038000000000196,
+          "control1Y": -159.9923921963983,
+          "control2X": -7.1280000000002275,
+          "control2Y": -162.66539219639833,
+          "endX": -2.3447910280083306e-13,
+          "endY": -165.3383921963984
+        },
+        {
+          "type": "cubic",
+          "x": -2.3447910280083306e-13,
+          "y": -165.3383921963984,
+          "control1X": 7.1279999999998225,
+          "control1Y": -162.66539219639833,
+          "control2X": 16.03799999999982,
+          "control2Y": -159.99239219639833,
+          "endX": 17.819999999999823,
+          "endY": -146.62739219639832
+        },
+        {
+          "type": "cubic",
+          "x": 17.819999999999823,
+          "y": -146.62739219639832,
+          "control1X": 17.819999999999844,
+          "control1Y": -141.2813921963983,
+          "control2X": 10.691999999999881,
+          "control2Y": -119.89739219639833,
+          "endX": -1.0658141036401503e-13,
+          "endY": -111.8783921963983
+        }
+      ],
+      "isSplitChain": false,
+      "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "hideLabel": false,
+      "endAllowance": 0.75,
+      "orderNumber": 2,
+      "isRepeat": false,
+      "roundId": "a0eeb458-9803-40ed-8038-b2023342b3a5"
+    }
+  ],
+  "picotConnections": [
+    {
+      "id": "8c2a89d9-2970-452d-9135-63db7b67d3d6",
+      "picots": [
+        {
+          "elementId": "8c512555-0818-4d96-8cbf-8ebf4d041399",
+          "picotId": "41be5998-cb43-4457-bc1a-4c8fe0caaba6"
+        },
+        {
+          "elementId": "70ae1845-6fa0-4775-a5d8-7cdead78bd07",
+          "picotId": "0fac851e-0718-4485-832d-b36ee41d7611"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "b0a2a5c2-b062-444a-9258-e0d8a90b6a09",
+      "picots": [
+        {
+          "elementId": "e8b12ce1-db6f-4c15-bf30-c43447d1949f",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "e9349e5a-6fb0-4d6a-bd31-1bf5fed7a34e",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "8ecbce22-7666-419a-830d-8592376c7c5e",
+      "picots": [
+        {
+          "elementId": "e8b12ce1-db6f-4c15-bf30-c43447d1949f",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "f1894ed1-b14f-45ab-a778-ff3be232ac4a",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "55bf4021-5f66-4575-a3c2-84d098515378",
+      "picots": [
+        {
+          "elementId": "95f519da-8758-488e-94a7-1653f9d168c0",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "8fa53926-af0c-4150-a9ca-ad733c98a6cf",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "b03230ab-28e8-40b4-b0dd-2338105160c3",
+      "picots": [
+        {
+          "elementId": "95f519da-8758-488e-94a7-1653f9d168c0",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "c98e810e-4961-41ca-bac6-d8db8effa3a0",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "c9b73bec-5867-4875-8b2b-6ed6d55bcf17",
+      "picots": [
+        {
+          "elementId": "ea14d41f-a40b-4989-8bf2-adac5c0a0be9",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "5b4fa17a-c3cb-44ee-851a-7bf794d3d7a9",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "cef30acc-8008-4502-897b-545f196f34ae",
+      "picots": [
+        {
+          "elementId": "ea14d41f-a40b-4989-8bf2-adac5c0a0be9",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "0285b1fb-0c90-42d7-a67c-d657669373a7",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "26bb25d7-13ee-4754-8710-d19977e75539",
+      "picots": [
+        {
+          "elementId": "7a87c657-483a-4088-b79c-3c096005fbdb",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "f36d5884-9e46-4084-a3eb-f55c9511725b",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "d9e58e8e-9fd6-4e89-b449-c86546053978",
+      "picots": [
+        {
+          "elementId": "7a87c657-483a-4088-b79c-3c096005fbdb",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "276325ab-870c-44c8-a7d7-8be49e36b20a",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "ee31f3e4-c08f-47d7-8697-7f9feea7f14f",
+      "picots": [
+        {
+          "elementId": "ebb71c0e-6c3c-4db1-a647-6c8f3ffda5e9",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "5b4c0abd-5764-41c5-9187-612e5768498d",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "2e0234af-6f23-4063-abee-ba6a71a791e5",
+      "picots": [
+        {
+          "elementId": "ebb71c0e-6c3c-4db1-a647-6c8f3ffda5e9",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "fb66d62a-80da-4262-859f-74ecbe14de66",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "849068b1-da9d-4b28-b006-7a5ccf155150",
+      "picots": [
+        {
+          "elementId": "3828cee6-6ec0-4c63-bb46-6a4573b86c13",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "4cba4c8f-68de-43fb-a885-37a2af77fb16",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "716d9515-7c50-4ecc-90cb-bfc8a7ea9d41",
+      "picots": [
+        {
+          "elementId": "3828cee6-6ec0-4c63-bb46-6a4573b86c13",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "d7a3e0e2-91c6-4071-a588-17f046548c8b",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "6620a26d-1853-41a4-81bf-685ea8d8c914",
+      "picots": [
+        {
+          "elementId": "70ae1845-6fa0-4775-a5d8-7cdead78bd07",
+          "picotId": "d15eca43-be3c-4801-b442-c93763d40802"
+        },
+        {
+          "elementId": "6cf53a35-b6f2-47ad-8edb-4ebd74fa6529",
+          "picotId": "a4b7571b-958f-4061-93ec-f11e653a6987"
+        }
+      ]
+    },
+    {
+      "id": "a6ebf094-93d6-4160-9473-4ac8b455cb9f",
+      "picots": [
+        {
+          "elementId": "70ae1845-6fa0-4775-a5d8-7cdead78bd07",
+          "picotId": "a4b7571b-958f-4061-93ec-f11e653a6987"
+        },
+        {
+          "elementId": "778b98f7-1852-4120-aa1f-020f58ef26d7",
+          "picotId": "d15eca43-be3c-4801-b442-c93763d40802"
+        }
+      ]
+    },
+    {
+      "id": "c162e96f-e653-402e-b870-a7c660079687",
+      "picots": [
+        {
+          "elementId": "778b98f7-1852-4120-aa1f-020f58ef26d7",
+          "picotId": "a4b7571b-958f-4061-93ec-f11e653a6987"
+        },
+        {
+          "elementId": "3cd947ec-9efd-490a-b5e4-5a0345f28b4f",
+          "picotId": "d15eca43-be3c-4801-b442-c93763d40802"
+        }
+      ]
+    },
+    {
+      "id": "df42512b-38ed-4e2d-8ad2-4969008af930",
+      "picots": [
+        {
+          "elementId": "3cd947ec-9efd-490a-b5e4-5a0345f28b4f",
+          "picotId": "a4b7571b-958f-4061-93ec-f11e653a6987"
+        },
+        {
+          "elementId": "6fae3c25-eb85-444c-87a2-2b39c07849fa",
+          "picotId": "d15eca43-be3c-4801-b442-c93763d40802"
+        }
+      ]
+    },
+    {
+      "id": "ce43bf8d-a287-424f-ada8-b47e124bcaa3",
+      "picots": [
+        {
+          "elementId": "6fae3c25-eb85-444c-87a2-2b39c07849fa",
+          "picotId": "a4b7571b-958f-4061-93ec-f11e653a6987"
+        },
+        {
+          "elementId": "36465f80-9c95-4985-879e-e876d5074630",
+          "picotId": "d15eca43-be3c-4801-b442-c93763d40802"
+        }
+      ]
+    },
+    {
+      "id": "a5fa7bd7-5c9c-4955-9bd7-3ae3e310a491",
+      "picots": [
+        {
+          "elementId": "36465f80-9c95-4985-879e-e876d5074630",
+          "picotId": "a4b7571b-958f-4061-93ec-f11e653a6987"
+        },
+        {
+          "elementId": "6cf53a35-b6f2-47ad-8edb-4ebd74fa6529",
+          "picotId": "d15eca43-be3c-4801-b442-c93763d40802"
+        }
+      ]
+    },
+    {
+      "id": "1f2aceb3-0915-4484-8a3c-221de30dc30d",
+      "picots": [
+        {
+          "elementId": "778b98f7-1852-4120-aa1f-020f58ef26d7",
+          "picotId": "0fac851e-0718-4485-832d-b36ee41d7611"
+        },
+        {
+          "elementId": "cc32afc6-b4ac-4611-a0fa-1b0a31da240f",
+          "picotId": "41be5998-cb43-4457-bc1a-4c8fe0caaba6"
+        }
+      ]
+    },
+    {
+      "id": "c5180d37-26c5-48f5-8a3a-3a07495b971c",
+      "picots": [
+        {
+          "elementId": "8c512555-0818-4d96-8cbf-8ebf4d041399",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "cc32afc6-b4ac-4611-a0fa-1b0a31da240f",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ]
+    },
+    {
+      "id": "6886e694-405b-4f91-8269-f330f6fcb7c2",
+      "picots": [
+        {
+          "elementId": "8c512555-0818-4d96-8cbf-8ebf4d041399",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        },
+        {
+          "elementId": "04d1dc63-a384-4769-a3c4-d8684114ab6a",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        }
+      ]
+    },
+    {
+      "id": "78cf3f3e-752c-4f3a-a98c-833a9c329afd",
+      "picots": [
+        {
+          "elementId": "6cf53a35-b6f2-47ad-8edb-4ebd74fa6529",
+          "picotId": "0fac851e-0718-4485-832d-b36ee41d7611"
+        },
+        {
+          "elementId": "04d1dc63-a384-4769-a3c4-d8684114ab6a",
+          "picotId": "41be5998-cb43-4457-bc1a-4c8fe0caaba6"
+        }
+      ]
+    },
+    {
+      "id": "61571414-411f-4820-b658-2b52685b2315",
+      "picots": [
+        {
+          "elementId": "96263007-f516-479c-aacf-dfb998ba1b6f",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "04d1dc63-a384-4769-a3c4-d8684114ab6a",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ]
+    },
+    {
+      "id": "947bb7ff-1ff9-4b0c-8641-b435f871f576",
+      "picots": [
+        {
+          "elementId": "36465f80-9c95-4985-879e-e876d5074630",
+          "picotId": "0fac851e-0718-4485-832d-b36ee41d7611"
+        },
+        {
+          "elementId": "96263007-f516-479c-aacf-dfb998ba1b6f",
+          "picotId": "41be5998-cb43-4457-bc1a-4c8fe0caaba6"
+        }
+      ]
+    },
+    {
+      "id": "2749c130-66ad-4764-a1e5-64b74df4e29b",
+      "picots": [
+        {
+          "elementId": "85256059-9d27-4e83-b9e2-d61c699d6db6",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "96263007-f516-479c-aacf-dfb998ba1b6f",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ]
+    },
+    {
+      "id": "3ad2f29c-67c4-4e0d-8d84-d839b8818c33",
+      "picots": [
+        {
+          "elementId": "6fae3c25-eb85-444c-87a2-2b39c07849fa",
+          "picotId": "0fac851e-0718-4485-832d-b36ee41d7611"
+        },
+        {
+          "elementId": "85256059-9d27-4e83-b9e2-d61c699d6db6",
+          "picotId": "41be5998-cb43-4457-bc1a-4c8fe0caaba6"
+        }
+      ]
+    },
+    {
+      "id": "ae9d8b19-d174-4788-bd76-0665c0dff938",
+      "picots": [
+        {
+          "elementId": "675417a8-11c4-45fe-a770-e85c3de51581",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "85256059-9d27-4e83-b9e2-d61c699d6db6",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ]
+    },
+    {
+      "id": "b41363c6-4cd5-4dfc-8d24-2585b7b584ca",
+      "picots": [
+        {
+          "elementId": "cc32afc6-b4ac-4611-a0fa-1b0a31da240f",
+          "picotId": "611255a7-c517-46bb-9be3-a67763ce9bb6"
+        },
+        {
+          "elementId": "675417a8-11c4-45fe-a770-e85c3de51581",
+          "picotId": "82d260d5-0981-4814-9a37-a230b97eded2"
+        }
+      ]
+    },
+    {
+      "id": "825926f3-e2c8-4c83-8a51-12a0f406b168",
+      "picots": [
+        {
+          "elementId": "3cd947ec-9efd-490a-b5e4-5a0345f28b4f",
+          "picotId": "0fac851e-0718-4485-832d-b36ee41d7611"
+        },
+        {
+          "elementId": "675417a8-11c4-45fe-a770-e85c3de51581",
+          "picotId": "41be5998-cb43-4457-bc1a-4c8fe0caaba6"
+        }
+      ]
+    }
+  ],
+  "camera": {
+    "x": 618.3680911188712,
+    "y": 362.71981740596493
+  },
+  "zoom": 1.3326540736319923,
+  "dsWidth": 10,
+  "bgColor": "#4B5563",
+  "gridEnabled": true,
+  "customColors": [],
+  "referenceImage": null,
+  "refImageProps": {
+    "opacity": 0.5,
+    "rotation": 0,
+    "scale": 1,
+    "visible": true,
+    "x": 0,
+    "y": 0
+  },
+  "renderMode": "schematic",
+  "patternNotes": "",
+  "materials": [
+    {
+      "id": "default",
+      "name": "Default",
+      "color": "#FFFFFF",
+      "isGradient": false
+    }
+  ],
+  "orderGroups": [
+    {
+      "id": "1677e76a-c085-45dd-a569-1e7a4241e66d",
+      "name": "Round 1"
+    },
+    {
+      "id": "a0eeb458-9803-40ed-8038-b2023342b3a5",
+      "name": "Round 2"
+    },
+    {
+      "id": "5631e049-f82d-4c78-93a2-0adb5b017cc3",
+      "name": "Round 3"
+    }
+  ],
+  "beadLibrary": [
+    {
+      "id": "bead1",
+      "name": "Small seed",
+      "size": "Y",
+      "color": "#ef4444",
+      "shape": "circle"
+    },
+    {
+      "id": "bead2",
+      "name": "Medium seed",
+      "size": "Z",
+      "color": "#22c55e",
+      "shape": "circle"
+    },
+    {
+      "id": "bead3",
+      "name": "Large seed",
+      "size": "V",
+      "color": "#a855f7",
+      "shape": "circle"
+    },
+    {
+      "id": "bead4",
+      "name": "Square medium",
+      "size": "Z",
+      "color": "#228B22",
+      "shape": "square"
+    },
+    {
+      "id": "bead5",
+      "name": "Rectangular large",
+      "size": "V",
+      "color": "#FFD700",
+      "shape": "rectangle"
+    },
+    {
+      "id": "bead6",
+      "name": "Teardrop large tip-out",
+      "size": "V",
+      "color": "#0F52BA",
+      "shape": "teardrop-up"
+    },
+    {
+      "id": "bead7",
+      "name": "Teardrop large tip-in",
+      "size": "V",
+      "color": "#ADD8E6",
+      "shape": "teardrop-down"
+    }
+  ],
+  "polarGrids": [
+    {
+      "id": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
+      "name": "snowflake",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "862a3745-0b20-4023-b108-8dedf6a9f475",
+          "radius": 75,
+          "divisions": 6,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "name": "Snowflake",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#FFD700",
+      "rings": [
+        {
+          "id": "34086545-fac3-4491-a8fd-654b3fe593d4",
+          "radius": 250,
+          "divisions": 6,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 90
+        },
+        {
+          "id": "4841cd04-e406-45f9-b18d-7d1f5da252ab",
+          "radius": 325,
+          "divisions": 12,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 15
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "28d63346-1fd5-4e22-8ce8-bb3a5ceb2741",
+      "name": "Grid 2",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "7c911668-a380-42be-be5f-08ea5b5bba5e",
+          "radius": 200,
+          "divisions": 4,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 45
+        }
+      ],
+      "opacity": 0.9
+    },
+    {
+      "id": "f6b20ec8-de16-49c7-9ade-a3d3a05ab1e8",
+      "name": "Grid 3",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": []
+    },
+    {
+      "id": "fe343234-c5b2-46e8-93d1-56e29ed6bc9b",
+      "name": "Grid 1",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#ADD8E6",
+      "rings": [
+        {
+          "id": "77dc5511-3066-4267-9ccd-46cc25f75af9",
+          "radius": 240,
+          "divisions": 4,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ],
+      "opacity": 0.75
+    },
+    {
+      "id": "5ef7089f-d0c6-41ce-bc47-5e1140554969",
+      "name": "Grid 2",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "5380d318-0a82-400d-a0da-9a0966b31df7",
+          "radius": 143,
+          "divisions": 18,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 10
+        }
+      ]
+    },
+    {
+      "id": "2b528c14-dca7-4a96-9b0a-24d257292421",
+      "name": "5star",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "960c715b-c78a-46ff-a5e2-9d3355acfc87",
+          "radius": 150,
+          "divisions": 5,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        },
+        {
+          "id": "3e3dd963-99c1-4807-af38-c9821d2da483",
+          "radius": 225,
+          "divisions": 10,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ]
+    },
+    {
+      "id": "97287de6-18f6-43e8-ab49-b858e360da4d",
+      "name": "triangle",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#D1001C",
+      "rings": [
+        {
+          "id": "91037039-b69a-4337-90dd-a3fc481fe100",
+          "radius": 130,
+          "divisions": 3,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 270
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "fe4bac8f-0547-423b-bff4-914eef18a748",
+      "name": "8. rács",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "e2a2b5cc-78a8-4e1c-9616-db4139fa614f",
+          "radius": 75,
+          "divisions": 8,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ]
+    }
+  ],
+  "selectedPolarGridId": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
+  "activeThreadPreset": {
+    "id": "default",
+    "name": "Pearl Cotton Size 10, Needle Tat",
+    "ds20Working": 285,
+    "ds20Core": 45,
+    "picotRegular": 7,
+    "picotJoined": 5,
+    "sample20DS10Regular": null,
+    "sample20DS10Short": null,
+    "endAllowance": 0.375
+  }
+}

@@ -12,9 +12,9 @@
 // (uses `selectedEl`, has a border, and its own manual
 // setElements+pushHistoryState instead of updateElement/needsHistoryPushRef)
 // — left exactly as-is, matching the reasoning already on record.
-import React from 'react';
+import React, { useContext } from 'react';
 import { IconUnnumberedOn } from './icons';
-import { ORDER_GROUP_COLORS } from '../render/svgExport';
+import { RoundColorsContext } from '../utils/roundColors';
 
 interface Round { id: string; name: string; }
 
@@ -91,6 +91,8 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
   inActiveRound,
   t,
 }) => {
+  // Round colours come from the colour theme (session 59, utils/roundColors.ts).
+  const roundColors = useContext(RoundColorsContext);
   const selectedEl = selectedElement;
 
   // Legacy-read shim (session 43 naming-collision fix): elements loaded via an
@@ -107,8 +109,8 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
     ? rounds.findIndex(g => g.id === activeGroup.id)
     : -1;
   const [activeBadgeFill] = activeGroup
-    ? ORDER_GROUP_COLORS[(activeGroupIndex + 1) % ORDER_GROUP_COLORS.length]
-    : ORDER_GROUP_COLORS[0]; // gold for ungrouped
+    ? roundColors[(activeGroupIndex + 1) % roundColors.length]
+    : roundColors[0]; // gold for ungrouped
 
   // Per-group numbered count for the progress chip
   const numberedInScope = elements.filter(e => {
@@ -169,7 +171,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
 
                 {/* Group rows */}
                 {rounds.map((grp, gi) => {
-                  const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
+                  const [gpFill] = roundColors[(gi + 1) % roundColors.length];
                   const isActive = activeRoundId === grp.id;
                   const isRenaming = renamingGroupId === grp.id;
 
@@ -452,7 +454,7 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
             const selGi = selRoundId
               ? rounds.findIndex(g => g.id === selRoundId)
               : -1;
-            const [selFill] = ORDER_GROUP_COLORS[selGi >= 0 ? (selGi + 1) % ORDER_GROUP_COLORS.length : 0];
+            const [selFill] = roundColors[selGi >= 0 ? (selGi + 1) % roundColors.length : 0];
             const selGroupName = selGi >= 0 ? rounds[selGi]?.name : null;
             return (
               <span className="text-xs font-semibold" style={{ color: selFill }}>

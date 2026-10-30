@@ -25,6 +25,27 @@ const DEFAULT_THREAD_PRESET = {
   sample20DS10Short: null,
 };
 
+// Session 59: a shuttle-tatting preset from Tim's measurements (20 DS ring =
+// 203 mm of shuttle thread; 20 DS chain = 236.5 mm ball thread over 36.5 mm
+// shuttle thread), size 20 thread. Picot lengths not measured yet — the
+// default's values until Tim sends them.
+export const TIMS_TAT_PRESET = {
+  id: 'tims-tat',
+  name: 'Size 20, Shuttle Tat (Tim)',
+  technique: 'shuttle',
+  ds20Ring: 203,      // mm — all (shuttle) thread for a 20 DS ring
+  ds20Working: 236.5, // mm — ball thread for a 20 DS chain
+  ds20Core: 36.5,     // mm — shuttle thread (core) for a 20 DS chain
+  picotRegular: 8,
+  picotJoined: 5,
+  endAllowance: DEFAULT_END_ALLOWANCE,
+  sample20DS10Regular: null,
+  sample20DS10Short: null,
+};
+// Built-in presets added to existing installs once each; the ids added so far
+// are remembered so a preset the user deleted doesn't come back.
+const BUILT_IN_EXTRA_PRESETS = [TIMS_TAT_PRESET];
+
 const loadPolarGrids = (): any[] => {
   try {
     const saved = localStorage.getItem('tcad_polar_grids');
@@ -37,11 +58,32 @@ const loadPolarGrids = (): any[] => {
 };
 
 const loadThreadPresets = (): any[] => {
+  // Fresh install: default + built-ins, in memory only. Nothing is written
+  // here — tcad_thread_presets is one of the keys getInitialToolbarMode
+  // (useViewState.ts) uses to spot an EXISTING user.
+  let saved: string | null = null;
+  try { saved = localStorage.getItem('tcad_thread_presets'); } catch {}
+  if (!saved) return [{ ...DEFAULT_THREAD_PRESET }, ...BUILT_IN_EXTRA_PRESETS.map(b => ({ ...b }))];
+  let presets: any[] = [{ ...DEFAULT_THREAD_PRESET }];
+  try { presets = JSON.parse(saved); } catch {}
+  // Session 59: the first build called it "Tim's tat"; rename copies the
+  // user hasn't renamed themselves.
+  if (presets.some(p => p.id === 'tims-tat' && p.name === "Tim's tat")) {
+    presets = presets.map(p => (p.id === 'tims-tat' && p.name === "Tim's tat" ? { ...p, name: TIMS_TAT_PRESET.name } : p));
+    try { localStorage.setItem('tcad_thread_presets', JSON.stringify(presets)); } catch {}
+  }
+  // Existing install: add each built-in once (remembered, so a deleted one
+  // doesn't come back).
   try {
-    const saved = localStorage.getItem('tcad_thread_presets');
-    if (saved) return JSON.parse(saved);
+    const added: string[] = JSON.parse(localStorage.getItem('tcad_builtin_presets_added') || '[]');
+    const missing = BUILT_IN_EXTRA_PRESETS.filter(b => !added.includes(b.id));
+    if (missing.length > 0) {
+      for (const b of missing) if (!presets.some(p => p.id === b.id)) presets = [...presets, { ...b }];
+      localStorage.setItem('tcad_thread_presets', JSON.stringify(presets));
+      localStorage.setItem('tcad_builtin_presets_added', JSON.stringify([...added, ...missing.map(b => b.id)]));
+    }
   } catch {}
-  return [{ ...DEFAULT_THREAD_PRESET }];
+  return presets;
 };
 
 const loadActivePresetId = (): string => {

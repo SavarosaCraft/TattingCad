@@ -9,8 +9,8 @@
 // pushHistoryState pattern, the generic site uses updateElement + a
 // pushOrderHistory() call. Deliberately NOT unified — each call site supplies
 // its own handler as a prop, preserving its existing behavior exactly.
-import React from 'react';
-import { ORDER_GROUP_COLORS } from '../render/svgExport';
+import React, { useContext } from 'react';
+import { RoundColorsContext } from '../utils/roundColors';
 
 interface Round { id: string; name: string; }
 
@@ -43,9 +43,11 @@ export const RoundGroupPicker: React.FC<RoundGroupPickerProps> = ({
   triggerTitle,
   wrapperClassName = 'relative flex-shrink-0',
 }) => {
+  // Round colours come from the colour theme (session 59, utils/roundColors.ts).
+  const roundColors = useContext(RoundColorsContext);
   const currentGroup = currentGroupId ? rounds.find(g => g.id === currentGroupId) : null;
   const currentGroupIdx = currentGroup ? rounds.findIndex(g => g.id === currentGroup.id) : -1;
-  const [triggerColor] = currentGroupIdx >= 0 ? ORDER_GROUP_COLORS[(currentGroupIdx + 1) % ORDER_GROUP_COLORS.length] : [null];
+  const [triggerColor] = currentGroupIdx >= 0 ? roundColors[(currentGroupIdx + 1) % roundColors.length] : [null];
 
   return (
     <div className={wrapperClassName}>
@@ -77,7 +79,7 @@ export const RoundGroupPicker: React.FC<RoundGroupPickerProps> = ({
               </button>
               {rounds.length > 0 && <div className="my-1 border-t border-gray-600" />}
               {rounds.map((grp, gi) => {
-                const [gpFill] = ORDER_GROUP_COLORS[(gi + 1) % ORDER_GROUP_COLORS.length];
+                const [gpFill] = roundColors[(gi + 1) % roundColors.length];
                 const isActive = currentGroupId === grp.id;
                 return (
                   <button key={grp.id}
