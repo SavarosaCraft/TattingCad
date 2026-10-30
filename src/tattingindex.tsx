@@ -24,6 +24,11 @@ import {
 } from './geometry/bezier';
 import { getBoundingBox as getBoundingBoxPure } from './geometry/layout';
 import enStrings from './i18n/translations_en.json';
+// Session 60: Spanish and Hungarian are bundled too, as a fallback under the
+// public/ files — so keys added in a new version show translated even when
+// the copies in public/ are older. A public/ file still wins key by key.
+import esStrings from './i18n/translations_es.json';
+import huStrings from './i18n/translations_hu.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
 import { RoundColorsContext, parseRoundColors } from './utils/roundColors';
@@ -79,6 +84,8 @@ import { ToolbarButton } from './components/ToolbarButton';
 import { GettingStartedHint } from './components/GettingStartedHint';
 import { PhoneToolBar, PhoneTool } from './components/PhoneToolBar';
 import { ThemeEditor } from './components/ThemeEditor';
+import { SetupScreen } from './components/SetupScreen';
+import { SampleGallery, SampleEntry, loadSampleList, pickText, sampleUrl } from './components/SampleGallery';
 import { PresetChip } from './components/PresetChip';
 import { updateElement, updateSelected, updateWhere } from './utils/elementUpdates';
 import { Modal } from './components/Modal';
@@ -102,6 +109,9 @@ import { ColorPickerPickerTab } from './components/ColorPickerPickerTab';
 import { ColorPickerSwatchesTab } from './components/ColorPickerSwatchesTab';
 import { ColorPickerGradientsTab } from './components/ColorPickerGradientsTab';
 import { COLORS, BG_COLORS } from './utils/color';
+// Setup screen background swatches: the default (useViewState) + the
+// Options → Background Color cycle (BG_COLORS).
+const SETUP_BG_CHOICES = ['#1F2937', ...BG_COLORS.filter(c => c.toUpperCase() !== '#1F2937')];
 import { ArrayInput } from './components/ArrayInput';
 import { LineBeadPicker } from './components/LineBeadPicker';
 import { FillPicotsSection } from './components/FillPicotsSection';
@@ -596,6 +606,12 @@ const TattingDesigner = () => {
   const roundColors = React.useMemo(() => parseRoundColors(theme.orderRoundColors), [theme.orderRoundColors]);
   // Options → Indicator colours… (session 59, components/ThemeEditor.tsx)
   const [showThemeEditor, setShowThemeEditor] = React.useState(false);
+  // First-run setup screen (session 60, components/SetupScreen.tsx). Shown
+  // once to everyone — fresh installs and existing users — until
+  // tcad_setup_seen is written (Start / Skip / ✕); Options → Setup… reopens it.
+  const [showSetup, setShowSetup] = React.useState<boolean>(() => {
+    try { return localStorage.getItem('tcad_setup_seen') === null; } catch { return false; }
+  });
 
   // ── Lizbeth color-picker tab state ──────────────────────────────────────
   // Kept local rather than added to useUIState.ts/useViewState.ts (don't
@@ -1346,6 +1362,14 @@ const APP_VERSION = '1.3.0';
   // Load translations on mount.
   // translations_en.json is statically imported — guaranteed available, no fetch needed.
   // Other language files are loaded from the public folder if a languages.json manifest exists.
+  // Bundled translation JSON → flat strings ("_comment…" notes dropped).
+  const dropComments = (data: Record<string, unknown>): Record<string, string> => {
+    const flat: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (!k.startsWith('_') && typeof v === 'string') flat[k] = v;
+    }
+    return flat;
+  };
   useEffect(() => {
     const loadTranslations = async () => {
       try {
@@ -1393,11 +1417,20 @@ const APP_VERSION = '1.3.0';
         );
 
         const langs: Record<string, Record<string, string>> = { en: enFlat };
+        // Bundled es/hu first (only for languages the manifest lists) …
+        const bundled: Record<string, Record<string, string>> = {
+          es: dropComments(esStrings as Record<string, unknown>),
+          hu: dropComments(huStrings as Record<string, unknown>),
+        };
+        for (const code of Object.keys(manifest)) {
+          if (bundled[code]) langs[code] = bundled[code];
+        }
         for (const [code, flat] of entries) {
           if (flat && Object.keys(flat as object).length > 0) {
-            // External en file merges over bundled en (allows overrides)
+            // … then the external file merges over the bundled one, key by key
+            // (allows overrides; a stale file can't hide newer keys).
             if (code === 'en') langs['en'] = { ...enFlat, ...(flat as Record<string, string>) };
-            else langs[code as string] = flat as Record<string, string>;
+            else langs[code as string] = { ...(langs[code as string] ?? {}), ...(flat as Record<string, string>) };
           }
         }
 
@@ -3423,6 +3456,40 @@ const APP_VERSION = '1.3.0';
     cleanupDuplicates,
     skipAutoHistoryRef,
   });
+
+  // ── Sample patterns (session 60, components/SampleGallery.tsx) ──────────
+  // public/Patterns/samples.json, read once. Empty list = no entry points.
+  const [samples, setSamples] = useState<SampleEntry[]>([]);
+  const [showSampleGallery, setShowSampleGallery] = useState(false);
+  useEffect(() => { loadSampleList().then(setSamples); }, []);
+  const openSampleNow = async (sample: SampleEntry) => {
+    setShowSampleGallery(false);
+    setShowSplash(false);
+    try {
+      const res = await fetch(sampleUrl(sample.file));
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const data = await res.json();
+      // Untitled copy: no file path, named after the sample.
+      await applyProjectData(data, null, { name: pickText(sample.title, language) });
+    } catch (err: any) {
+      // Missing file / not a pattern (a web server may answer a missing file
+      // with its index page) — plain message; the details go to the console.
+      console.error('Sample open failed:', sample.file, err);
+      showLoadMsg('error', t('samplesLoadError').replace('{name}', pickText(sample.title, language)));
+    }
+  };
+  // Asks first only when there are unsaved changes (same rule as Open).
+  const openSample = (sample: SampleEntry) => {
+    if (hasUnsavedChanges) {
+      setConfirmDialog({
+        message: t('recentProjectsLoadConfirmBody'),
+        confirmLabel: t('recentProjectsLoadConfirmOk'),
+        onConfirm: () => { openSampleNow(sample); },
+      });
+    } else {
+      openSampleNow(sample);
+    }
+  };
 
   // ── Input handlers ─────────────────────────────────────────────────────
   const getSnapPoints = (element) => {
@@ -6097,7 +6164,9 @@ const APP_VERSION = '1.3.0';
   useEffect(() => {
     escapeActionRef.current = () => {
       const closers: Array<[boolean, () => void]> = [
+        [showSetup,                       () => { /* SetupScreen handles Escape (= Skip) itself */ }],
         [showSplash,                      () => setShowSplash(false)],
+        [showSampleGallery,               () => setShowSampleGallery(false)],
         [renderMode === 'realistic',       () => handleSetRenderMode('schematic')],
         [showColorPicker,                  () => { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); }],
         [showMaterialsPanel,               () => setShowMaterialsPanel(false)],
@@ -7519,6 +7588,7 @@ const APP_VERSION = '1.3.0';
                 onRefImage={() => setCurrentTool('image')}
                 onSelectTool={() => setCurrentTool('select')}
                 onPicotJoin={togglePicotJoinMode}
+                onSamples={samples.length > 0 ? () => setShowSampleGallery(true) : undefined}
                 t={t}
               />
             )}
@@ -10114,6 +10184,13 @@ const APP_VERSION = '1.3.0';
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
             <IconHelp size={16} /><span>{t('helpMenuUiGuide')}</span>
           </button>
+          {/* Sample patterns (session 60) — same gallery as File → Sample patterns… */}
+          {samples.length > 0 && (
+            <button onClick={() => { setShowSampleGallery(true); setShowHelpMenu(false); }}
+              className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
+              <span className="flex w-4 justify-center text-sm leading-none flex-shrink-0" aria-hidden="true">✦</span><span>{t('samplesMenu')}</span>
+            </button>
+          )}
           <div className="border-t border-gray-600 my-1" />
           <button onClick={() => { setShowAbout(true); setShowHelpMenu(false); }}
             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200">
@@ -10268,6 +10345,15 @@ const APP_VERSION = '1.3.0';
             <IconLoad size={16} />
             <span>{t('fileBrowse')}</span>
           </button>
+          {samples.length > 0 && (
+            <button
+              onClick={() => { setShowFileMenu(false); setShowSampleGallery(true); }}
+              className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+            >
+              <span className="flex w-4 justify-center text-sm leading-none" aria-hidden="true">✦</span>
+              <span>{t('samplesMenu')}</span>
+            </button>
+          )}
           <div className="border-t border-gray-600 my-1"></div>
           <button
             onClick={() => {
@@ -10930,6 +11016,15 @@ const APP_VERSION = '1.3.0';
     {/* Options dropdown menu - rendered at top level to avoid clipping */}
     {showOptionsMenu && (
       <DropdownMenu buttonRef={menuAnchor(optionsButtonRef)} onClose={() => setShowOptionsMenu(false)} width={200}>
+          {/* Setup screen (session 60) */}
+          <button
+            onClick={() => { setShowOptionsMenu(false); setShowSetup(true); }}
+            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+          >
+            <span>{t('setupMenu')}</span>
+          </button>
+          <div className="border-t border-gray-600 my-1"></div>
+
           {/* Materials Manager */}
           <button
             onClick={() => { setShowMaterialsPanel(true); setShowOptionsMenu(false); }}
@@ -11072,6 +11167,34 @@ const APP_VERSION = '1.3.0';
 
       </DropdownMenu>
     )}
+    <SampleGallery
+      show={showSampleGallery}
+      onClose={() => setShowSampleGallery(false)}
+      samples={samples}
+      language={language}
+      onOpen={openSample}
+      t={t}
+    />
+    <SetupScreen
+      show={showSetup}
+      onDone={() => { try { localStorage.setItem('tcad_setup_seen', '1'); } catch { /* storage unavailable */ } setShowSetup(false); }}
+      language={language}
+      languages={availableLanguages}
+      setLanguage={code => { setLanguage(code); try { localStorage.setItem('tcad_language', code); } catch { /* storage unavailable */ } }}
+      toolbarMode={toolbarMode}
+      setToolbarMode={setToolbarMode}
+      uiScale={uiScale}
+      setUiScale={s => { try { localStorage.setItem('tcad_ui_scale', s); } catch { /* storage unavailable */ } setUiScale(s); }}
+      bgColor={bgColor}
+      bgChoices={SETUP_BG_CHOICES}
+      setBgColor={c => { try { localStorage.setItem('tcad_bg_color', c); } catch { /* storage unavailable */ } setBgColor(c); }}
+      themePreset={themePreset}
+      setThemePreset={setThemePreset}
+      themeFor={themeFor}
+      hasThemeFile={Object.keys(themeFileColors).length > 0}
+      hasCustomTheme={!!themeCustom}
+      t={t}
+    />
     <ThemeEditor
       show={showThemeEditor}
       onClose={() => setShowThemeEditor(false)}
@@ -12003,6 +12126,13 @@ const APP_VERSION = '1.3.0';
                 onClick={() => { setShowSplash(false); setShowHelp(true); }}
                 className="py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold transition-colors"
               >{t('splashGettingStarted')}</button>
+
+              {samples.length > 0 && (
+                <button
+                  onClick={() => { setShowSplash(false); setShowSampleGallery(true); }}
+                  className="col-span-2 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold transition-colors"
+                >{t('splashSamples')}</button>
+              )}
             </div>
 
             {/* Navigable tips strip */}

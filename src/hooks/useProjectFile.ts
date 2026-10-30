@@ -195,7 +195,10 @@ export function useProjectFile(p: UseProjectFileParams) {
     performSave();
   }, [performSave]);
 
-  const applyProjectData = useCallback(async (projectData: any, filePath: string) => {
+  // filePath null = a sample pattern (session 60): opened as an untitled
+  // copy — no file path (so Save asks where), not added to Recent, named
+  // `opts.name`.
+  const applyProjectData = useCallback(async (projectData: any, filePath: string | null, opts?: { name?: string }) => {
     if (!projectData.elements || !Array.isArray(projectData.elements)) {
       p.showLoadMsg('error', p.t('loadErrMissingElements'));
       return;
@@ -273,7 +276,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setCustomColors(projectData.customColors || []);
     p.setReferenceImage(projectData.referenceImage || null);
     p.setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-    p.setProjectName(projectData.name || p.t('projectUntitled'));
+    p.setProjectName(opts?.name || projectData.name || p.t('projectUntitled'));
     // Always load into schematic mode, regardless of what was saved.
     // bakedRealisticSVG is derived/computed (not persisted), so loading
     // straight into 'realistic' leaves the canvas blank until the user
@@ -323,6 +326,7 @@ export function useProjectFile(p: UseProjectFileParams) {
 
     const count = (projectData.elements || []).length;
     setTimeout(() => p.showLoadMsg('success', p.t('loadSuccess').replace('{n}', String(count))), 50);
+    if (filePath === null) return; // sample: nothing on disk to list in Recent
 
     const displayName = filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? projectData.name ?? 'Project';
     const thumbPath = await generateThumbnailPng(projectData.elements || [], projectData.dsWidth || 10, filePath);

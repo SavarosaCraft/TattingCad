@@ -12,6 +12,8 @@
 //   - exactly one element     → pick Select, then click it to edit notation
 //   - 2+ elements, no joins   → turn on Picot Join to connect them
 //   - otherwise               → the original placeholder text
+// Session 60: on an empty pattern, when sample patterns exist (onSamples
+// given), a second sentence offers them: hintSamples with a {samples} button.
 //
 // The sentences come from translations with {token} placeholders where the
 // buttons go, so each language can put the buttons wherever its grammar
@@ -32,6 +34,8 @@ interface GettingStartedHintProps {
   onRefImage: () => void;
   onSelectTool: () => void;
   onPicotJoin: () => void;
+  /** Opens the sample gallery; omitted when there are no samples. */
+  onSamples?: () => void;
   t: (key: string) => string;
 }
 
@@ -58,7 +62,7 @@ const HintButton: React.FC<{ onClick: () => void; title?: string; children: Reac
 
 export const GettingStartedHint: React.FC<GettingStartedHintProps> = ({
   elementCount, hasConnections,
-  onAddRing, onAddSplitRing, onAddChain, onRefImage, onSelectTool, onPicotJoin, t,
+  onAddRing, onAddSplitRing, onAddChain, onRefImage, onSelectTool, onPicotJoin, onSamples, t,
 }) => {
   const stage = getHintStage(elementCount, hasConnections);
 
@@ -77,9 +81,11 @@ export const GettingStartedHint: React.FC<GettingStartedHintProps> = ({
     refImage: <HintButton key="refImage" onClick={onRefImage} title={t('toolRefImage')}><IconImage size={14} />{t('toolLabelRefImage')}</HintButton>,
     select: <HintButton key="select" onClick={onSelectTool} title={t('toolSelect')}><IconSelect size={14} />{t('toolLabelSelect')}</HintButton>,
     join: <HintButton key="join" onClick={onPicotJoin} title={t('toolPicotJoin')}><IconJoinPicots size={14} />{t('toolLabelJoin')}</HintButton>,
+    ...(onSamples ? { samples: <HintButton key="samples" onClick={onSamples} title={t('samplesTitle')}>{t('hintSamplesButton')}</HintButton> } : {}),
   };
 
-  const text = t(stage === 'empty' ? 'hintEmpty' : stage === 'notation' ? 'hintNotation' : 'hintJoin');
+  const text = t(stage === 'empty' ? 'hintEmpty' : stage === 'notation' ? 'hintNotation' : 'hintJoin')
+    + (stage === 'empty' && onSamples ? ' ' + t('hintSamples') : '');
   const parts = text.split(/(\{\w+\})/);
 
   return (

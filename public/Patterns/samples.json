@@ -1,0 +1,33 @@
+{
+  "_comment": "Sample patterns shown in File → Sample patterns… (TattingCAD session 60). Each entry: file (pattern .json in this folder), thumb (optional image in this folder), title and description (plain text, or one per language code; English is the fallback). Listed in this order.",
+  "samples": [
+    {
+      "file": "Tatting_Tension.json",
+      "thumb": "Tatting_Tension_thumb.png",
+      "title": {
+        "en": "Tension sampler",
+        "es": "Muestrario de tensión",
+        "hu": "Feszességminta"
+      },
+      "description": {
+        "en": "A small motif with rosettes worked at different tensions. Switch to realistic view (View → Switch to Realistic) to compare them.",
+        "es": "Un motivo pequeño con rosetas trabajadas a distintas tensiones. Cambia a la vista realista (Vista → Cambiar a vista realista) para compararlas.",
+        "hu": "Kis motívum, különböző feszességgel készült rozettákkal. Válts valóságos nézetre (Nézet → Váltás valóságos nézetre), és hasonlítsd össze őket."
+      }
+    },
+    {
+      "file": "DAL_Snowflake_2026.json",
+      "thumb": "DAL_Snowflake_2026_thumb.png",
+      "title": {
+        "en": "DAL Snowflake 2026",
+        "es": "Copo de nieve DAL 2026",
+        "hu": "DAL hópehely 2026"
+      },
+      "description": {
+        "en": "A two-round snowflake built from repeated elements — open View → Tatting Order… to see the rounds. The notation is tidied up, so File → Export SVG gives a chart that is almost ready to publish.",
+        "es": "Un copo de nieve de dos vueltas hecho con elementos repetidos: abre Vista → Orden de frivolité… para ver las vueltas. La notación está ordenada, así que Archivo → Exportar SVG da un esquema casi listo para publicar.",
+        "hu": "Kétkörös hópehely ismétlődő elemekből — a körök a Nézet → Hajócsipke sorrend… alatt láthatók. A jelölés rendbe van téve, így a Fájl → SVG exportálása szinte közlésre kész ábrát ad."
+      }
+    }
+  ]
+}
