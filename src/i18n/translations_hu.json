@@ -67,7 +67,7 @@
   "viewUIScale": "Felület mérete",
   "viewLoadTheme": "Téma betöltése…",
   "viewResetTheme": "Téma visszaállítása",
-  "viewThemeHint": "A jelzőszíneket az Opciók → Jelzőszínek… menüben, vagy egy tatting-theme.json fájllal módosíthatod (lásd Súgó → Tippek).",
+  "viewThemeHint": "A jelzőszíneket az Opciók → Jelzőszínek… menüben módosíthatod, vagy betölthetsz egy kapott színfájlt az Opciók → Téma betöltése… menüponttal.",
   "optionsThemeEditor": "Jelzőszínek…",
   "_comment_setup": "Első indítási beállítások (60. munkamenet)",
   "setupMenu": "Kezdeti beállítás…",

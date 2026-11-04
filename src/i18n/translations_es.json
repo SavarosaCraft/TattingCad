@@ -67,7 +67,7 @@
   "viewUIScale": "Tamaño de interfaz",
   "viewLoadTheme": "Cargar tema…",
   "viewResetTheme": "Restablecer tema",
-  "viewThemeHint": "Cambia los colores indicadores en Opciones → Colores indicadores…, o con un archivo tatting-theme.json (ver Ayuda → Consejos).",
+  "viewThemeHint": "Cambia los colores indicadores en Opciones → Colores indicadores…, o carga un archivo de colores que te hayan pasado con Opciones → Cargar tema….",
   "optionsThemeEditor": "Colores indicadores…",
   "_comment_setup": "Pantalla de configuración inicial (sesión 60)",
   "setupMenu": "Configuración inicial…",

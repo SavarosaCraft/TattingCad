@@ -69,7 +69,7 @@
   "viewUIScale": "UI Scale",
   "viewLoadTheme": "Load Theme…",
   "viewResetTheme": "Reset Theme",
-  "viewThemeHint": "Change indicator colours in Options → Indicator colours…, or with a tatting-theme.json file (see Help → Tips).",
+  "viewThemeHint": "Change indicator colours in Options → Indicator colours…, or load a colour file someone shared with Options → Load Theme….",
   "optionsThemeEditor": "Indicator colours…",
   "_comment_setup": "First-run setup screen (session 60)",
   "setupMenu": "Setup…",
