@@ -22,6 +22,20 @@ body {
   height: 100vh;
 }
 
+/* Dropdowns on Linux (session 60). The desktop app's Linux web view
+   (WebKitGTK) draws <select> boxes with the system's LIGHT style and
+   ignores their dark background classes, but keeps the white text — white
+   on white. color-scheme: dark asks for the dark style of the native
+   control; the option colours cover the opened list. Windows / macOS /
+   Android already honour the classes, so nothing changes there. */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: #1f2937;
+  color: #f3f4f6;
+}
+
 /* Large size → bigger dialogs, menus, toasts and canvas pop-ups (session 60).
    html.tcad-ui-large is set from uiScale in tattingindex.tsx. The scale is
    --tcad-zoom: 1.12 on windows >= 700x700, 1.2 on >= 900x860; phones and

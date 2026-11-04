@@ -631,7 +631,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
 
   // ── Final assembly ─────────────────────────────────────────────────────
   const displayName = currentFilePath
-    ? currentFilePath.split(/[\\\/]/).pop()?.replace(/\.json$/i, '') ?? projectName
+    ? currentFilePath.split(/[\\\/]/).pop()?.replace(/\.(tatcad|json)$/i, '') ?? projectName
     : projectName;
 
   const text = fallbackHeader

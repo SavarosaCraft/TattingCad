@@ -4,7 +4,7 @@
 //
 // THUMBNAIL SYSTEM
 // Thumbnails are stored as PNG files next to the project file:
-//   MyPattern.json  →  MyPattern_thumb.png
+//   MyPattern.tatcad (or old .json)  →  MyPattern_thumb.png
 // The recent entry stores thumbPath. The dialog uses convertFileSrc(thumbPath).
 // This avoids btoa issues, localStorage bloat, and lets file browsers show previews.
 // Config required in tauri.conf.json:
@@ -23,11 +23,24 @@ export const readClipboardText = (): Promise<string> => readText();
 
 // ── Dialogs ────────────────────────────────────────────────────────────────
 
+// Session 60: pattern files are ".tatcad" on desktop (same JSON inside —
+// only the name changed, so the system can give them TattingCAD's icon and
+// open them with the app). Old ".json" patterns still open and keep their
+// name when saved again; Save As offers ".tatcad".
+// Android is left on ".json" for now: its file pickers filter by MIME type,
+// not extension (Tauri dialog docs), so an unknown extension is untested
+// there — switch it when that has been tried on a phone.
+export const PATTERN_EXT = 'tatcad';
+const isAndroid = () => typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
+/** "MyPattern.tatcad" / "MyPattern.json" → "MyPattern" */
+export const stripPatternExt = (name: string): string => name.replace(/\.(tatcad|json)$/i, '');
+
 export const showSaveDialog = async (defaultName: string): Promise<string | null> => {
+  const ext = isAndroid() ? 'json' : PATTERN_EXT;
   const filePath = await tauriSave({
     title: 'Save Project',
-    defaultPath: `${defaultName.replace(/[^a-z0-9]/gi, '_')}.json`,
-    filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
+    defaultPath: `${defaultName.replace(/[^a-z0-9]/gi, '_')}.${ext}`,
+    filters: [{ name: 'TattingCAD Pattern', extensions: [ext] }],
   });
   return filePath ?? null;
 };
@@ -35,7 +48,7 @@ export const showSaveDialog = async (defaultName: string): Promise<string | null
 export const showOpenDialog = async (): Promise<string | null> => {
   const filePath = await tauriOpen({
     title: 'Open Project',
-    filters: [{ name: 'TattingCAD Project', extensions: ['json'] }],
+    filters: [{ name: 'TattingCAD Pattern', extensions: isAndroid() ? ['json'] : [PATTERN_EXT, 'json'] }],
   });
   if (!filePath || typeof filePath !== 'string') return null;
   return filePath;
@@ -108,10 +121,10 @@ export interface RecentEntry {
 const normalizePath = (p: string): string => p ? p.replace(/\\\\/g, '\\') : '';
 
 // Derive the thumbnail path from the project path.
-// MyPattern.json → MyPattern_thumb.png (same directory)
+// MyPattern.tatcad / MyPattern.json → MyPattern_thumb.png (same directory)
 export const thumbPathFor = (projectPath: string): string => {
   if (!projectPath) return '';
-  return normalizePath(projectPath).replace(/\.json$/i, '_thumb.png');
+  return normalizePath(projectPath).replace(/\.(tatcad|json)$/i, '_thumb.png');
 };
 
 // Convert a thumbnail file path to an asset:// URL for use in <img src>.
@@ -127,7 +140,7 @@ export const thumbSrcFor = (thumbPath: string): string => {
 const normaliseEntry = (e: any): RecentEntry => {
   const filename = normalizePath(e.filename ?? e.path ?? e.filePath ?? e.file ?? '');
   const name = filename
-    ? (filename.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? e.name ?? 'Untitled')
+    ? (stripPatternExt(filename.split(/[\\/]/).pop() ?? '') || e.name || 'Untitled')
     : (e.name ?? 'Untitled');
   return {
     id:        e.id        ?? Date.now().toString(),

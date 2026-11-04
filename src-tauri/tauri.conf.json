@@ -45,14 +45,41 @@
     "resources": [
       "../dist/*.json",
       "../dist/*.md",
-      "../dist/*.html"
+      "../dist/*.html",
+      "icons/tatcad-document.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["tatcad"],
+        "name": "TattingCAD Pattern",
+        "description": "TattingCAD pattern",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "application/x-tatcad",
+        "exportedType": {
+          "identifier": "com.savarosa.tattingcad.pattern",
+          "conformsTo": ["public.json"]
+        }
+      }
     ],
 	"windows": {
 		"nsis": {
 			"installerIcon": "icons/icon.ico",
-			"sidebarImage": "icons/installer-sidebar.bmp"
+			"sidebarImage": "icons/installer-sidebar.bmp",
+			"installerHooks": "windows/hooks.nsh"
 				}
-			}
+			},
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/main.desktop",
+        "files": {
+          "/usr/share/mime/packages/tattingcad.xml": "linux/tattingcad-mime.xml",
+          "/usr/share/icons/hicolor/256x256/mimetypes/application-x-tatcad.png": "icons/tatcad-document-256.png"
+        },
+        "postInstallScript": "linux/postinst.sh",
+        "postRemoveScript": "linux/postrm.sh"
+      }
+    }
   },
 
     

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TattingCAD pattern files (session 60). Installed by the .deb to
+     /usr/share/mime/packages/ — tells Linux what a .tatcad file is, so the
+     launcher's MimeType line can claim it and file managers show its icon. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-tatcad">
+    <comment>TattingCAD pattern</comment>
+    <sub-class-of type="application/json"/>
+    <icon name="application-x-tatcad"/>
+    <glob pattern="*.tatcad"/>
+  </mime-type>
+</mime-info>

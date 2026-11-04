@@ -3537,6 +3537,54 @@ const APP_VERSION = '1.3.0';
       showLoadMsg('error', t('samplesLoadError').replace('{name}', pickText(sample.title, language)));
     }
   };
+  // ── Files handed over by the system (session 60) ─────────────────────────
+  // Double-clicking a .tatcad (or "Open with" TattingCAD) on desktop. The
+  // Rust side (src-tauri/src/lib.rs) keeps the file(s) the app was STARTED
+  // with until the page asks (take_pending_files), and sends "open-files"
+  // when the app is already running (single-instance plugin on Windows /
+  // Linux; macOS's "opened" event). Only the first file is opened — one
+  // pattern at a time. Asks first when there are unsaved changes.
+  const openSystemFileNow = (filePath: string) => {
+    setShowSplash(false);
+    setShowSampleGallery(false);
+    setShowRecentProjectsDialog(false);
+    loadFromPath(filePath);
+  };
+  const openSystemFileRef = useRef<(filePath: string) => void>(() => {});
+  openSystemFileRef.current = (filePath: string) => {
+    if (hasUnsavedChangesRef.current) {
+      setConfirmDialog({
+        message: t('recentProjectsLoadConfirmBody'),
+        confirmLabel: t('recentProjectsLoadConfirmOk'),
+        onConfirm: () => { openSystemFileNow(filePath); },
+      });
+    } else {
+      openSystemFileNow(filePath);
+    }
+  };
+  const systemFilesTakenRef = useRef(false);
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    // Listener first, then ask for the start-up files — so a file sent in
+    // between can't be missed. The start-up files are taken ONCE (a ref:
+    // React's dev double-mount must not take them and drop them).
+    listen<string[]>('open-files', (e) => {
+      const paths = e.payload;
+      if (Array.isArray(paths) && paths.length > 0) openSystemFileRef.current(paths[0]);
+    }).then((fn) => {
+      if (disposed) { fn(); return; }
+      unlisten = fn;
+      if (systemFilesTakenRef.current) return;
+      systemFilesTakenRef.current = true;
+      invoke<string[]>('take_pending_files')
+        .then((paths) => { if (Array.isArray(paths) && paths.length > 0) openSystemFileRef.current(paths[0]); })
+        .catch((err) => console.warn('[TATCAD] take_pending_files:', err));
+    });
+    return () => { disposed = true; if (unlisten) unlisten(); };
+  }, []);
+
   // Asks first only when there are unsaved changes (same rule as Open).
   const openSample = (sample: SampleEntry) => {
     if (hasUnsavedChanges) {
