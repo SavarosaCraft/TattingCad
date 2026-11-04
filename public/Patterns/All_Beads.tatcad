@@ -1,0 +1,2595 @@
+{
+  "version": 91,
+  "name": "Bead reference",
+  "created": "2026-11-04T23:06:19.982Z",
+  "elements": [
+    {
+      "id": "900b1d97-ac2f-4c46-8166-1dd9ac2629bd",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 170.09815319314907,
+        "y": -394.0817156479309
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d9c1c388-f808-43af-b5b2-cc3f5722efd8",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "be",
+          "beStructure": "core+picot",
+          "beIsJoint": false,
+          "coreBeads": [
+            "bead1",
+            null,
+            null
+          ],
+          "picotBeads": [
+            null,
+            null,
+            null
+          ]
+        }
+      ],
+      "orderNumber": null,
+      "notation": "r: 6ds-be-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 170.09815319314907,
+          "y": -422.7917156479309,
+          "control1X": 181.5821531931491,
+          "control1Y": -414.1787156479309,
+          "control2X": 189.23815319314917,
+          "control2Y": -391.21071564793095,
+          "endX": 189.23815319314917,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 189.23815319314917,
+          "y": -385.4687156479309,
+          "control1X": 187.32415319314907,
+          "control1Y": -371.1137156479309,
+          "control2X": 177.75415319314914,
+          "control2Y": -368.2427156479309,
+          "endX": 170.09815319314907,
+          "endY": -365.37171564793084
+        },
+        {
+          "type": "cubic",
+          "x": 170.09815319314907,
+          "y": -365.37171564793084,
+          "control1X": 162.442153193149,
+          "control1Y": -368.2427156479309,
+          "control2X": 152.87215319314907,
+          "control2Y": -371.1137156479309,
+          "endX": 150.95815319314897,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 150.95815319314897,
+          "y": -385.4687156479309,
+          "control1X": 150.95815319314897,
+          "control1Y": -391.21071564793095,
+          "control2X": 158.61415319314904,
+          "control2Y": -414.1787156479309,
+          "endX": 170.09815319314907,
+          "endY": -422.7917156479309
+        }
+      ],
+      "isSplitChain": false,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "31cdefb8-1a66-4f92-99fa-d718fcabf8ec",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 101.09815319314907,
+        "y": -394.0817156479309
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d9c1c388-f808-43af-b5b2-cc3f5722efd8",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "be",
+          "beStructure": "core",
+          "beIsJoint": false,
+          "coreBeads": [
+            "bead1",
+            null,
+            null
+          ],
+          "picotBeads": [
+            null,
+            null,
+            null
+          ]
+        }
+      ],
+      "notation": "r: 6ds-be-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 101.09815319314907,
+          "y": -422.7917156479309,
+          "control1X": 112.58215319314911,
+          "control1Y": -414.17871564793097,
+          "control2X": 120.23815319314917,
+          "control2Y": -391.210715647931,
+          "endX": 120.23815319314917,
+          "endY": -385.46871564793094
+        },
+        {
+          "type": "cubic",
+          "x": 120.23815319314917,
+          "y": -385.46871564793094,
+          "control1X": 118.32415319314907,
+          "control1Y": -371.1137156479309,
+          "control2X": 108.75415319314914,
+          "control2Y": -368.24271564793094,
+          "endX": 101.09815319314907,
+          "endY": -365.37171564793084
+        },
+        {
+          "type": "cubic",
+          "x": 101.09815319314907,
+          "y": -365.37171564793084,
+          "control1X": 93.44215319314901,
+          "control1Y": -368.24271564793094,
+          "control2X": 83.87215319314907,
+          "control2Y": -371.1137156479309,
+          "endX": 81.95815319314897,
+          "endY": -385.46871564793094
+        },
+        {
+          "type": "cubic",
+          "x": 81.95815319314897,
+          "y": -385.46871564793094,
+          "control1X": 81.95815319314897,
+          "control1Y": -391.210715647931,
+          "control2X": 89.61415319314904,
+          "control2Y": -414.17871564793097,
+          "endX": 101.09815319314907,
+          "endY": -422.7917156479309
+        }
+      ],
+      "isSplitChain": false,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "d717ac4b-2c77-41bb-9298-628901de5da2",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 239.2917015802459,
+        "y": -394.0817156479309
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d9c1c388-f808-43af-b5b2-cc3f5722efd8",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "be",
+          "beStructure": "core+beaded",
+          "beIsJoint": false,
+          "coreBeads": [
+            "bead1",
+            null,
+            null
+          ],
+          "picotBeads": [
+            "bead1",
+            "bead2",
+            "bead3"
+          ]
+        }
+      ],
+      "notation": "r: 6ds-be-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 239.2917015802459,
+          "y": -422.7917156479309,
+          "control1X": 250.77570158024605,
+          "control1Y": -414.1787156479309,
+          "control2X": 258.431701580246,
+          "control2Y": -391.21071564793095,
+          "endX": 258.431701580246,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 258.431701580246,
+          "y": -385.4687156479309,
+          "control1X": 256.5177015802458,
+          "control1Y": -371.1137156479309,
+          "control2X": 246.94770158024585,
+          "control2Y": -368.2427156479309,
+          "endX": 239.2917015802459,
+          "endY": -365.37171564793084
+        },
+        {
+          "type": "cubic",
+          "x": 239.2917015802459,
+          "y": -365.37171564793084,
+          "control1X": 231.63570158024595,
+          "control1Y": -368.2427156479309,
+          "control2X": 222.065701580246,
+          "control2Y": -371.1137156479309,
+          "endX": 220.1517015802458,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 220.1517015802458,
+          "y": -385.4687156479309,
+          "control1X": 220.1517015802458,
+          "control1Y": -391.21071564793095,
+          "control2X": 227.80770158024575,
+          "control2Y": -414.1787156479309,
+          "endX": 239.2917015802459,
+          "endY": -422.7917156479309
+        }
+      ],
+      "isSplitChain": false,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "14f2d1de-95f4-49fd-b529-757c2024d608",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 307.0981531931491,
+        "y": -394.0817156479309
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d9c1c388-f808-43af-b5b2-cc3f5722efd8",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "be",
+          "beStructure": "spike",
+          "beIsJoint": false,
+          "coreBeads": [
+            "bead1",
+            null,
+            null
+          ],
+          "picotBeads": [
+            "bead1",
+            "bead2",
+            "bead3"
+          ]
+        }
+      ],
+      "notation": "r: 6ds-be-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 307.0981531931491,
+          "y": -422.7917156479309,
+          "control1X": 318.5821531931492,
+          "control1Y": -414.1787156479309,
+          "control2X": 326.2381531931492,
+          "control2Y": -391.21071564793095,
+          "endX": 326.2381531931492,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 326.2381531931492,
+          "y": -385.4687156479309,
+          "control1X": 324.32415319314896,
+          "control1Y": -371.1137156479309,
+          "control2X": 314.754153193149,
+          "control2Y": -368.2427156479309,
+          "endX": 307.0981531931491,
+          "endY": -365.37171564793084
+        },
+        {
+          "type": "cubic",
+          "x": 307.0981531931491,
+          "y": -365.37171564793084,
+          "control1X": 299.4421531931491,
+          "control1Y": -368.2427156479309,
+          "control2X": 289.8721531931492,
+          "control2Y": -371.1137156479309,
+          "endX": 287.958153193149,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 287.958153193149,
+          "y": -385.4687156479309,
+          "control1X": 287.958153193149,
+          "control1Y": -391.21071564793095,
+          "control2X": 295.6141531931489,
+          "control2Y": -414.1787156479309,
+          "endX": 307.0981531931491,
+          "endY": -422.7917156479309
+        }
+      ],
+      "isSplitChain": false,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "942b881e-4757-4646-8f70-5c9670fe404d",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 376.0981531931491,
+        "y": -394.0817156479309
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d9c1c388-f808-43af-b5b2-cc3f5722efd8",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "be",
+          "beStructure": "suspended",
+          "beIsJoint": false,
+          "coreBeads": [
+            "bead1",
+            null,
+            null
+          ],
+          "picotBeads": [
+            "bead2",
+            "bead1",
+            "bead3"
+          ]
+        }
+      ],
+      "notation": "r: 6ds-be-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 376.0981531931491,
+          "y": -422.7917156479309,
+          "control1X": 387.5821531931492,
+          "control1Y": -414.1787156479309,
+          "control2X": 395.2381531931492,
+          "control2Y": -391.21071564793095,
+          "endX": 395.2381531931492,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 395.2381531931492,
+          "y": -385.4687156479309,
+          "control1X": 393.32415319314896,
+          "control1Y": -371.1137156479309,
+          "control2X": 383.754153193149,
+          "control2Y": -368.2427156479309,
+          "endX": 376.0981531931491,
+          "endY": -365.37171564793084
+        },
+        {
+          "type": "cubic",
+          "x": 376.0981531931491,
+          "y": -365.37171564793084,
+          "control1X": 368.4421531931491,
+          "control1Y": -368.2427156479309,
+          "control2X": 358.8721531931492,
+          "control2Y": -371.1137156479309,
+          "endX": 356.958153193149,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 356.958153193149,
+          "y": -385.4687156479309,
+          "control1X": 356.958153193149,
+          "control1Y": -391.21071564793095,
+          "control2X": 364.6141531931489,
+          "control2Y": -414.1787156479309,
+          "endX": 376.0981531931491,
+          "endY": -422.7917156479309
+        }
+      ],
+      "isSplitChain": false,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "d1cfb821-b959-41f3-a7c5-8ba185c2e27a",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 448.5175080318587,
+        "y": -394.0817156479309
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d9c1c388-f808-43af-b5b2-cc3f5722efd8",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "be",
+          "beStructure": "suspended",
+          "beIsJoint": true,
+          "coreBeads": [
+            "bead1",
+            null,
+            null
+          ],
+          "picotBeads": [
+            "bead2",
+            "bead2",
+            null
+          ]
+        }
+      ],
+      "notation": "r: 6ds-be-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 448.5175080318587,
+          "y": -422.7917156479309,
+          "control1X": 460.00150803185886,
+          "control1Y": -414.1787156479309,
+          "control2X": 467.6575080318588,
+          "control2Y": -391.21071564793095,
+          "endX": 467.6575080318588,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 467.6575080318588,
+          "y": -385.4687156479309,
+          "control1X": 465.7435080318586,
+          "control1Y": -371.1137156479309,
+          "control2X": 456.17350803185866,
+          "control2Y": -368.2427156479309,
+          "endX": 448.5175080318587,
+          "endY": -365.37171564793084
+        },
+        {
+          "type": "cubic",
+          "x": 448.5175080318587,
+          "y": -365.37171564793084,
+          "control1X": 440.86150803185876,
+          "control1Y": -368.2427156479309,
+          "control2X": 431.2915080318588,
+          "control2Y": -371.1137156479309,
+          "endX": 429.3775080318586,
+          "endY": -385.4687156479309
+        },
+        {
+          "type": "cubic",
+          "x": 429.3775080318586,
+          "y": -385.4687156479309,
+          "control1X": 429.3775080318586,
+          "control1Y": -391.21071564793095,
+          "control2X": 437.03350803185856,
+          "control2Y": -414.1787156479309,
+          "endX": 448.5175080318587,
+          "endY": -422.7917156479309
+        }
+      ],
+      "isSplitChain": false,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "c7ba6678-2653-4ae0-ae95-88cd79e4c47a",
+      "type": "ring",
+      "materialId": "default",
+      "center": {
+        "x": 539.2594435157297,
+        "y": -396.0617156479309
+      },
+      "rotation": 360,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "928835a2-2f62-4501-8660-bdbcf4e7e397",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "orderNumber": null,
+      "notation": "r: 6ds-p-6ds",
+      "labelOffset": 8,
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isGhost": false,
+      "ghostSourceId": null,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 539.2594435157297,
+          "y": -422.7917156479309,
+          "control1X": 549.9514435157298,
+          "control1Y": -414.77271564793097,
+          "control2X": 557.0794435157297,
+          "control2Y": -393.3887156479309,
+          "endX": 557.0794435157297,
+          "endY": -388.042715647931
+        },
+        {
+          "type": "cubic",
+          "x": 557.0794435157297,
+          "y": -388.042715647931,
+          "control1X": 555.2974435157296,
+          "control1Y": -374.6777156479309,
+          "control2X": 546.3874435157296,
+          "control2Y": -372.0047156479309,
+          "endX": 539.2594435157297,
+          "endY": -369.3317156479309
+        },
+        {
+          "type": "cubic",
+          "x": 539.2594435157297,
+          "y": -369.3317156479309,
+          "control1X": 532.1314435157298,
+          "control1Y": -372.0047156479309,
+          "control2X": 523.2214435157298,
+          "control2Y": -374.6777156479309,
+          "endX": 521.4394435157296,
+          "endY": -388.042715647931
+        },
+        {
+          "type": "cubic",
+          "x": 521.4394435157296,
+          "y": -388.042715647931,
+          "control1X": 521.4394435157296,
+          "control1Y": -393.3887156479309,
+          "control2X": 528.5674435157296,
+          "control2Y": -414.77271564793097,
+          "endX": 539.2594435157297,
+          "endY": -422.7917156479309
+        }
+      ],
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "5b95d45f-7aaa-45fc-b81e-d90b6f31a2d5",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 100.43559813008301,
+        "y": -261.3756224579667
+      },
+      "rotation": 0,
+      "stitchCount": 11,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244348841.925,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bp",
+          "beadSeq": "Y"
+        }
+      ],
+      "notation": "r: 6ds-bp:Y-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 100.43559813008301,
+          "y": -286.1256224579667,
+          "control1X": 110.33559813008299,
+          "control1Y": -278.70062245796663,
+          "control2X": 116.93559813008301,
+          "control2Y": -258.9006224579667,
+          "endX": 116.93559813008301,
+          "endY": -253.95062245796674
+        },
+        {
+          "type": "cubic",
+          "x": 116.93559813008301,
+          "y": -253.95062245796674,
+          "control1X": 115.28559813008303,
+          "control1Y": -241.57562245796674,
+          "control2X": 107.03559813008303,
+          "control2Y": -239.10062245796672,
+          "endX": 100.43559813008301,
+          "endY": -236.6256224579667
+        },
+        {
+          "type": "cubic",
+          "x": 100.43559813008301,
+          "y": -236.6256224579667,
+          "control1X": 93.83559813008299,
+          "control1Y": -239.10062245796672,
+          "control2X": 85.58559813008299,
+          "control2Y": -241.57562245796674,
+          "endX": 83.93559813008301,
+          "endY": -253.95062245796674
+        },
+        {
+          "type": "cubic",
+          "x": 83.93559813008301,
+          "y": -253.95062245796674,
+          "control1X": 83.93559813008301,
+          "control1Y": -258.9006224579667,
+          "control2X": 90.53559813008303,
+          "control2Y": -278.70062245796663,
+          "endX": 100.43559813008301,
+          "endY": -286.1256224579667
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "af52d9e6-bf96-4d2c-b7f0-75cedb9e0a67",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 160.19033126231648,
+        "y": -261.3756224579667
+      },
+      "rotation": 0,
+      "stitchCount": 11,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244351999.0286,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bp",
+          "beadSeq": "YZY"
+        }
+      ],
+      "notation": "r: 6ds-bp:YZY-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 160.19033126231648,
+          "y": -286.1256224579667,
+          "control1X": 170.09033126231645,
+          "control1Y": -278.70062245796663,
+          "control2X": 176.69033126231648,
+          "control2Y": -258.9006224579667,
+          "endX": 176.69033126231648,
+          "endY": -253.95062245796674
+        },
+        {
+          "type": "cubic",
+          "x": 176.69033126231648,
+          "y": -253.95062245796674,
+          "control1X": 175.0403312623165,
+          "control1Y": -241.57562245796674,
+          "control2X": 166.7903312623165,
+          "control2Y": -239.10062245796672,
+          "endX": 160.19033126231648,
+          "endY": -236.6256224579667
+        },
+        {
+          "type": "cubic",
+          "x": 160.19033126231648,
+          "y": -236.6256224579667,
+          "control1X": 153.59033126231645,
+          "control1Y": -239.10062245796672,
+          "control2X": 145.34033126231645,
+          "control2Y": -241.57562245796674,
+          "endX": 143.69033126231648,
+          "endY": -253.95062245796674
+        },
+        {
+          "type": "cubic",
+          "x": 143.69033126231648,
+          "y": -253.95062245796674,
+          "control1X": 143.69033126231648,
+          "control1Y": -258.9006224579667,
+          "control2X": 150.2903312623165,
+          "control2Y": -278.70062245796663,
+          "endX": 160.19033126231648,
+          "endY": -286.1256224579667
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "5151738e-2abb-45d3-b2f7-bc22fb246b25",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 220.97628939386584,
+        "y": -261.3756224579667
+      },
+      "rotation": 0,
+      "stitchCount": 11,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244355120.9763,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "sb",
+          "beadSeq": "3Y"
+        }
+      ],
+      "notation": "r: 6ds-sb:3Y-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 220.97628939386584,
+          "y": -286.1256224579667,
+          "control1X": 230.87628939386593,
+          "control1Y": -278.70062245796663,
+          "control2X": 237.47628939386584,
+          "control2Y": -258.9006224579667,
+          "endX": 237.47628939386584,
+          "endY": -253.95062245796674
+        },
+        {
+          "type": "cubic",
+          "x": 237.47628939386584,
+          "y": -253.95062245796674,
+          "control1X": 235.82628939386575,
+          "control1Y": -241.57562245796674,
+          "control2X": 227.57628939386575,
+          "control2Y": -239.10062245796672,
+          "endX": 220.97628939386584,
+          "endY": -236.6256224579667
+        },
+        {
+          "type": "cubic",
+          "x": 220.97628939386584,
+          "y": -236.6256224579667,
+          "control1X": 214.37628939386593,
+          "control1Y": -239.10062245796672,
+          "control2X": 206.12628939386582,
+          "control2Y": -241.57562245796674,
+          "endX": 204.47628939386584,
+          "endY": -253.95062245796674
+        },
+        {
+          "type": "cubic",
+          "x": 204.47628939386584,
+          "y": -253.95062245796674,
+          "control1X": 204.47628939386584,
+          "control1Y": -258.9006224579667,
+          "control2X": 211.07628939386575,
+          "control2Y": -278.70062245796663,
+          "endX": 220.97628939386584,
+          "endY": -286.1256224579667
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "5edf3787-2dcb-43c5-a101-80edf7f945c8",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 100.43559813008301,
+        "y": -158.2173428880743
+      },
+      "rotation": 0,
+      "stitchCount": 11,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244393855.7258,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "sb",
+          "beadSeq": "YZY"
+        }
+      ],
+      "notation": "r: 6ds-sb:YZY-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 100.43559813008301,
+          "y": -182.9673428880743,
+          "control1X": 110.33559813008299,
+          "control1Y": -175.54234288807424,
+          "control2X": 116.93559813008301,
+          "control2Y": -155.7423428880743,
+          "endX": 116.93559813008301,
+          "endY": -150.79234288807436
+        },
+        {
+          "type": "cubic",
+          "x": 116.93559813008301,
+          "y": -150.79234288807436,
+          "control1X": 115.28559813008303,
+          "control1Y": -138.41734288807436,
+          "control2X": 107.03559813008303,
+          "control2Y": -135.94234288807434,
+          "endX": 100.43559813008301,
+          "endY": -133.4673428880743
+        },
+        {
+          "type": "cubic",
+          "x": 100.43559813008301,
+          "y": -133.4673428880743,
+          "control1X": 93.83559813008299,
+          "control1Y": -135.94234288807434,
+          "control2X": 85.58559813008299,
+          "control2Y": -138.41734288807436,
+          "endX": 83.93559813008301,
+          "endY": -150.79234288807436
+        },
+        {
+          "type": "cubic",
+          "x": 83.93559813008301,
+          "y": -150.79234288807436,
+          "control1X": 83.93559813008301,
+          "control1Y": -155.7423428880743,
+          "control2X": 90.53559813008303,
+          "control2Y": -175.54234288807424,
+          "endX": 100.43559813008301,
+          "endY": -182.9673428880743
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "49d127dc-846d-4fb0-bb52-d90f773460a5",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 160.19033126231648,
+        "y": -158.21734288807426
+      },
+      "rotation": 0,
+      "stitchCount": 11,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244402624.5652,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        }
+      ],
+      "notation": "r: 5ds-bc:Y-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 160.19033126231648,
+          "y": -182.9673428880743,
+          "control1X": 170.09033126231645,
+          "control1Y": -175.54234288807424,
+          "control2X": 176.69033126231648,
+          "control2Y": -155.74234288807423,
+          "endX": 176.69033126231648,
+          "endY": -150.7923428880743
+        },
+        {
+          "type": "cubic",
+          "x": 176.69033126231648,
+          "y": -150.7923428880743,
+          "control1X": 175.0403312623165,
+          "control1Y": -138.4173428880743,
+          "control2X": 166.7903312623165,
+          "control2Y": -135.94234288807428,
+          "endX": 160.19033126231648,
+          "endY": -133.46734288807426
+        },
+        {
+          "type": "cubic",
+          "x": 160.19033126231648,
+          "y": -133.46734288807426,
+          "control1X": 153.59033126231645,
+          "control1Y": -135.94234288807428,
+          "control2X": 145.34033126231645,
+          "control2Y": -138.4173428880743,
+          "endX": 143.69033126231648,
+          "endY": -150.7923428880743
+        },
+        {
+          "type": "cubic",
+          "x": 143.69033126231648,
+          "y": -150.7923428880743,
+          "control1X": 143.69033126231648,
+          "control1Y": -155.74234288807423,
+          "control2X": 150.2903312623165,
+          "control2Y": -175.54234288807424,
+          "endX": 160.19033126231648,
+          "endY": -182.9673428880743
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "392e4f7f-fdf5-4534-9238-59cec73e3a6c",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 220.97628939386584,
+        "y": -154.25734288807428
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244414824.4255,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        },
+        {
+          "id": 1772244414825.319,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        },
+        {
+          "id": 1772244414826.8813,
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        }
+      ],
+      "notation": "r: 5ds-bc:3Y-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 220.97628939386584,
+          "y": -182.9673428880743,
+          "control1X": 232.460289393866,
+          "control1Y": -174.35434288807426,
+          "control2X": 240.11628939386594,
+          "control2Y": -151.3863428880743,
+          "endX": 240.11628939386594,
+          "endY": -145.64434288807433
+        },
+        {
+          "type": "cubic",
+          "x": 240.11628939386594,
+          "y": -145.64434288807433,
+          "control1X": 238.20228939386573,
+          "control1Y": -131.28934288807432,
+          "control2X": 228.6322893938658,
+          "control2Y": -128.41834288807433,
+          "endX": 220.97628939386584,
+          "endY": -125.54734288807424
+        },
+        {
+          "type": "cubic",
+          "x": 220.97628939386584,
+          "y": -125.54734288807424,
+          "control1X": 213.3202893938659,
+          "control1Y": -128.41834288807433,
+          "control2X": 203.75028939386578,
+          "control2Y": -131.28934288807432,
+          "endX": 201.8362893938658,
+          "endY": -145.64434288807433
+        },
+        {
+          "type": "cubic",
+          "x": 201.8362893938658,
+          "y": -145.64434288807433,
+          "control1X": 201.8362893938658,
+          "control1Y": -151.3863428880743,
+          "control2X": 209.4922893938657,
+          "control2Y": -174.35434288807426,
+          "endX": 220.97628939386584,
+          "endY": -182.9673428880743
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "f2cf19cf-5d8d-42a5-9322-637121f737d7",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 100.43559813008301,
+        "y": -59.174905612088594
+      },
+      "rotation": 0,
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244427000.6453,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        },
+        {
+          "id": 1772244427001.2031,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Z",
+          "beadSeq": null
+        },
+        {
+          "id": 1772244427002.0432,
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        }
+      ],
+      "notation": "r: 5ds-bc:YZY-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 100.43559813008301,
+          "y": -87.88490561208863,
+          "control1X": 111.91959813008299,
+          "control1Y": -79.27190561208857,
+          "control2X": 119.57559813008305,
+          "control2Y": -56.30390561208861,
+          "endX": 119.57559813008305,
+          "endY": -50.56190561208865
+        },
+        {
+          "type": "cubic",
+          "x": 119.57559813008305,
+          "y": -50.56190561208865,
+          "control1X": 117.66159813008306,
+          "control1Y": -36.206905612088576,
+          "control2X": 108.09159813008301,
+          "control2Y": -33.33590561208871,
+          "endX": 100.43559813008301,
+          "endY": -30.464905612088614
+        },
+        {
+          "type": "cubic",
+          "x": 100.43559813008301,
+          "y": -30.464905612088614,
+          "control1X": 92.779598130083,
+          "control1Y": -33.33590561208871,
+          "control2X": 83.20959813008295,
+          "control2Y": -36.206905612088576,
+          "endX": 81.29559813008296,
+          "endY": -50.56190561208865
+        },
+        {
+          "type": "cubic",
+          "x": 81.29559813008296,
+          "y": -50.56190561208865,
+          "control1X": 81.29559813008296,
+          "control1Y": -56.30390561208861,
+          "control2X": 88.95159813008303,
+          "control2Y": -79.27190561208857,
+          "endX": 100.43559813008301,
+          "endY": -87.88490561208863
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "089c8749-27ff-41a2-accc-14e7128d8416",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 160.19033126231648,
+        "y": -61.15490561208861
+      },
+      "rotation": 0,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244450994.7935,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bcp",
+          "coreSize": "Y",
+          "beadSeq": "Y"
+        }
+      ],
+      "notation": "r: 6ds-bcp:Y:Y-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 160.19033126231648,
+          "y": -87.88490561208863,
+          "control1X": 170.88233126231648,
+          "control1Y": -79.86590561208851,
+          "control2X": 178.01033126231647,
+          "control2Y": -58.4819056120885,
+          "endX": 178.01033126231647,
+          "endY": -53.13590561208861
+        },
+        {
+          "type": "cubic",
+          "x": 178.01033126231647,
+          "y": -53.13590561208861,
+          "control1X": 176.22833126231654,
+          "control1Y": -39.7709056120886,
+          "control2X": 167.31833126231652,
+          "control2Y": -37.097905612088596,
+          "endX": 160.19033126231648,
+          "endY": -34.42490561208865
+        },
+        {
+          "type": "cubic",
+          "x": 160.19033126231648,
+          "y": -34.42490561208865,
+          "control1X": 153.06233126231643,
+          "control1Y": -37.097905612088596,
+          "control2X": 144.1523312623164,
+          "control2Y": -39.7709056120886,
+          "endX": 142.37033126231648,
+          "endY": -53.13590561208861
+        },
+        {
+          "type": "cubic",
+          "x": 142.37033126231648,
+          "y": -53.13590561208861,
+          "control1X": 142.37033126231648,
+          "control1Y": -58.4819056120885,
+          "control2X": 149.49833126231647,
+          "control2Y": -79.86590561208851,
+          "endX": 160.19033126231648,
+          "endY": -87.88490561208863
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "ecb16ca1-04d5-470b-861d-6870844ab4c5",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 220.97628939386584,
+        "y": -61.15490561208861
+      },
+      "rotation": 0,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244448160.7615,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bcp",
+          "coreSize": "Z",
+          "beadSeq": "YZY"
+        }
+      ],
+      "notation": "r: 6ds-bcp:Z:YZY-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 220.97628939386584,
+          "y": -87.88490561208863,
+          "control1X": 231.66828939386562,
+          "control1Y": -79.86590561208851,
+          "control2X": 238.79628939386578,
+          "control2Y": -58.48190561208861,
+          "endX": 238.79628939386578,
+          "endY": -53.13590561208872
+        },
+        {
+          "type": "cubic",
+          "x": 238.79628939386578,
+          "y": -53.13590561208872,
+          "control1X": 237.01428939386574,
+          "control1Y": -39.77090561208871,
+          "control2X": 228.10428939386577,
+          "control2Y": -37.097905612088596,
+          "endX": 220.97628939386584,
+          "endY": -34.42490561208865
+        },
+        {
+          "type": "cubic",
+          "x": 220.97628939386584,
+          "y": -34.42490561208865,
+          "control1X": 213.8482893938659,
+          "control1Y": -37.097905612088596,
+          "control2X": 204.93828939386572,
+          "control2Y": -39.77090561208871,
+          "endX": 203.1562893938658,
+          "endY": -53.13590561208872
+        },
+        {
+          "type": "cubic",
+          "x": 203.1562893938658,
+          "y": -53.13590561208872,
+          "control1X": 203.1562893938658,
+          "control1Y": -58.48190561208861,
+          "control2X": 210.2842893938656,
+          "control2Y": -79.86590561208851,
+          "endX": 220.97628939386584,
+          "endY": -87.88490561208863
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "16c7ca6d-7f8c-454e-9f62-1bddb8c20707",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 519.8651782827546,
+        "y": -88.95268338986642
+      },
+      "rotation": 0,
+      "stitchCount": 10,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244475904.401,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": "bjp",
+          "beadSeq": "Y"
+        }
+      ],
+      "notation": "r: 5ds-bjp:Y-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 519.8651782827546,
+          "y": -111.72268338986663,
+          "control1X": 528.9731782827548,
+          "control1Y": -104.89168338986661,
+          "control2X": 535.0451782827547,
+          "control2Y": -86.67568338986638,
+          "endX": 535.0451782827547,
+          "endY": -82.12168338986663
+        },
+        {
+          "type": "cubic",
+          "x": 535.0451782827547,
+          "y": -82.12168338986663,
+          "control1X": 533.5271782827547,
+          "control1Y": -70.73668338986653,
+          "control2X": 525.9371782827546,
+          "control2Y": -68.45968338986648,
+          "endX": 519.8651782827546,
+          "endY": -66.18268338986644
+        },
+        {
+          "type": "cubic",
+          "x": 519.8651782827546,
+          "y": -66.18268338986644,
+          "control1X": 513.7931782827548,
+          "control1Y": -68.45968338986648,
+          "control2X": 506.20317828275483,
+          "control2Y": -70.73668338986653,
+          "endX": 504.6851782827547,
+          "endY": -82.12168338986663
+        },
+        {
+          "type": "cubic",
+          "x": 504.6851782827547,
+          "y": -82.12168338986663,
+          "control1X": 504.6851782827547,
+          "control1Y": -86.67568338986638,
+          "control2X": 510.7571782827546,
+          "control2Y": -104.89168338986661,
+          "endX": 519.8651782827546,
+          "endY": -111.72268338986663
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "e0758bc9-a82c-4c3d-a27c-0b17e70d473e",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 606.8723467415361,
+        "y": -90.79856152606715
+      },
+      "rotation": 0,
+      "stitchCount": 10,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244486193.0046,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": "bjp",
+          "beadSeq": "3Z"
+        }
+      ],
+      "notation": "r: 5ds-bjp:3Z-5ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 606.8723467415361,
+          "y": -113.56856152606713,
+          "control1X": 615.9803467415363,
+          "control1Y": -106.737561526067,
+          "control2X": 622.0523467415362,
+          "control2Y": -88.5215615260671,
+          "endX": 622.0523467415362,
+          "endY": -83.96756152606713
+        },
+        {
+          "type": "cubic",
+          "x": 622.0523467415362,
+          "y": -83.96756152606713,
+          "control1X": 620.5343467415364,
+          "control1Y": -72.58256152606725,
+          "control2X": 612.944346741536,
+          "control2Y": -70.30556152606721,
+          "endX": 606.8723467415361,
+          "endY": -68.02856152606716
+        },
+        {
+          "type": "cubic",
+          "x": 606.8723467415361,
+          "y": -68.02856152606716,
+          "control1X": 600.8003467415363,
+          "control1Y": -70.30556152606721,
+          "control2X": 593.2103467415359,
+          "control2Y": -72.58256152606725,
+          "endX": 591.6923467415361,
+          "endY": -83.96756152606713
+        },
+        {
+          "type": "cubic",
+          "x": 591.6923467415361,
+          "y": -83.96756152606713,
+          "control1X": 591.6923467415361,
+          "control1Y": -88.5215615260671,
+          "control2X": 597.764346741536,
+          "control2Y": -106.737561526067,
+          "endX": 606.8723467415361,
+          "endY": -113.56856152606713
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "2bce799d-17c6-49e4-9f1b-79c087c42d33",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 520.6178664547978,
+        "y": 3.1620119506353603
+      },
+      "rotation": -180,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244495266.3474,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 6ds-jp-6ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 520.6178664547978,
+          "y": 29.89201195063538,
+          "control1X": 509.92586645479764,
+          "control1Y": 21.873011950635146,
+          "control2X": 502.7978664547977,
+          "control2Y": 0.48901195063513114,
+          "endX": 502.7978664547977,
+          "endY": -4.8569880493648725
+        },
+        {
+          "type": "cubic",
+          "x": 502.7978664547977,
+          "y": -4.8569880493648725,
+          "control1X": 504.57986645479787,
+          "control1Y": -18.221988049364654,
+          "control2X": 513.4898664547978,
+          "control2Y": -20.894988049364656,
+          "endX": 520.6178664547978,
+          "endY": -23.567988049364658
+        },
+        {
+          "type": "cubic",
+          "x": 520.6178664547978,
+          "y": -23.567988049364658,
+          "control1X": 527.7458664547977,
+          "control1Y": -20.894988049364656,
+          "control2X": 536.6558664547977,
+          "control2Y": -18.221988049364654,
+          "endX": 538.4378664547978,
+          "endY": -4.8569880493648725
+        },
+        {
+          "type": "cubic",
+          "x": 538.4378664547978,
+          "y": -4.8569880493648725,
+          "control1X": 538.4378664547978,
+          "control1Y": 0.48901195063513114,
+          "control2X": 531.3098664547979,
+          "control2Y": 21.873011950635146,
+          "endX": 520.6178664547978,
+          "endY": 29.89201195063538
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "48b405b9-5eda-4a78-8a52-355ec98029d7",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 606.2271854512135,
+        "y": 4.326886502606612
+      },
+      "rotation": -180,
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244500176.0898,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 6ds-jp-6ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 606.2271854512135,
+          "y": 31.05688650260663,
+          "control1X": 595.5351854512135,
+          "control1Y": 23.03788650260674,
+          "control2X": 588.4071854512135,
+          "control2Y": 1.6538865026066105,
+          "endX": 588.4071854512135,
+          "endY": -3.6921134973932794
+        },
+        {
+          "type": "cubic",
+          "x": 588.4071854512135,
+          "y": -3.6921134973932794,
+          "control1X": 590.1891854512132,
+          "control1Y": -17.057113497393175,
+          "control2X": 599.0991854512135,
+          "control2Y": -19.730113497393404,
+          "endX": 606.2271854512135,
+          "endY": -22.403113497393406
+        },
+        {
+          "type": "cubic",
+          "x": 606.2271854512135,
+          "y": -22.403113497393406,
+          "control1X": 613.3551854512134,
+          "control1Y": -19.730113497393404,
+          "control2X": 622.2651854512137,
+          "control2Y": -17.057113497393175,
+          "endX": 624.0471854512134,
+          "endY": -3.6921134973932794
+        },
+        {
+          "type": "cubic",
+          "x": 624.0471854512134,
+          "y": -3.6921134973932794,
+          "control1X": 624.0471854512134,
+          "control1Y": 1.6538865026066105,
+          "control2X": 616.9191854512137,
+          "control2Y": 23.03788650260674,
+          "endX": 606.2271854512135,
+          "endY": 31.05688650260663
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true
+    },
+    {
+      "id": "667852de-f3ce-4e5e-93d2-4590b43b5e31",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 382.55923646492124,
+        "y": -266.5285136451401
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 336.55923646492136,
+          "y": -266.5285136451401,
+          "control1X": 367.225903131588,
+          "control1Y": -284.9285136451401,
+          "control2X": 397.8925697982547,
+          "control2Y": -284.9285136451401,
+          "endX": 428.55923646492124,
+          "endY": -266.5285136451401
+        }
+      ],
+      "stitchCount": 10,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244527832.097,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bp",
+          "beadSeq": "Y"
+        }
+      ],
+      "notation": "c: 5ds-bp:Y-5ds",
+      "picotSideMultiplier": 1,
+      "labelOffset": 8,
+      "hideLabel": true
+    },
+    {
+      "id": "d2b82c41-7891-4cf9-9210-352de18dcf08",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 382.55923646492124,
+        "y": -198.5071395993386
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 336.55923646492136,
+          "y": -198.5071395993386,
+          "control1X": 367.225903131588,
+          "control1Y": -216.90713959933856,
+          "control2X": 397.8925697982547,
+          "control2Y": -216.90713959933856,
+          "endX": 428.55923646492124,
+          "endY": -198.5071395993386
+        }
+      ],
+      "stitchCount": 10,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244533569.8396,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "sb",
+          "beadSeq": "YZY"
+        }
+      ],
+      "notation": "c: 5ds-sb:YZY-5ds",
+      "picotSideMultiplier": 1,
+      "labelOffset": 8,
+      "hideLabel": true
+    },
+    {
+      "id": "abc3fc99-eb84-4181-af8c-c3645049a682",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 382.55923646492124,
+        "y": -137.28790295811717
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 322.7592364649213,
+          "y": -137.28790295811717,
+          "control1X": 362.62590313158796,
+          "control1Y": -161.20790295811724,
+          "control2X": 402.49256979825464,
+          "control2Y": -161.20790295811724,
+          "endX": 442.3592364649212,
+          "endY": -137.28790295811717
+        }
+      ],
+      "stitchCount": 13,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244545288.1462,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        },
+        {
+          "id": 1772244545289.56,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        },
+        {
+          "id": 1772244545290.3518,
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "Y",
+          "beadSeq": null
+        }
+      ],
+      "notation": "c: 5ds-bc:3Y-5ds",
+      "picotSideMultiplier": 1,
+      "labelOffset": 8,
+      "hideLabel": true
+    },
+    {
+      "id": "cd6081cc-9c20-42bf-a013-370ba672c17b",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 382.55923646492124,
+        "y": -18.250498377964618
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 331.9592364649212,
+          "y": -18.250498377964618,
+          "control1X": 365.69256979825457,
+          "control1Y": -38.49049837796463,
+          "control2X": 399.4259031315879,
+          "control2Y": -38.49049837796463,
+          "endX": 433.15923646492126,
+          "endY": -18.250498377964618
+        }
+      ],
+      "stitchCount": 11,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244553841.4631,
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bcp",
+          "coreSize": "V",
+          "beadSeq": "YY"
+        }
+      ],
+      "notation": "c: 5ds-bcp:V:YY-5ds",
+      "picotSideMultiplier": 1,
+      "labelOffset": 8,
+      "hideLabel": true
+    },
+    {
+      "id": "14f55969-e558-44a8-918f-a9fb671b6853",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 382.55923646492124,
+        "y": -70.11679608788819
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 313.55923646492124,
+          "y": -70.11679608788819,
+          "control1X": 359.0992364649213,
+          "control1Y": -105.27304608788819,
+          "control2X": 406.0192364649213,
+          "control2Y": -105.27304608788819,
+          "endX": 451.55923646492124,
+          "endY": -70.11679608788819
+        }
+      ],
+      "stitchCount": 15,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "d6ece817-7bfc-4c28-bf8e-83ffda24992f",
+          "stitchesBefore": 5,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bc",
+          "beadSize": "Y"
+        },
+        {
+          "id": "bb694d80-4bce-4d6f-87b9-0af68f29e043",
+          "stitchesBefore": 7,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bc",
+          "beadSize": "Z"
+        },
+        {
+          "id": "099962bc-8a78-4490-a443-ff9894d5a26b",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bc",
+          "beadSize": "V"
+        }
+      ],
+      "notation": "c: 5ds-bc:Y-ds-bc:z-ds-bc:V-5ds",
+      "picotSideMultiplier": 1,
+      "labelOffset": 8,
+      "beConfigs": {},
+      "isSplitChain": false,
+      "hideLabel": true
+    },
+    {
+      "id": "a44c54c7-e562-4de9-9f4d-d06a69e4f4e8",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 382.55923646492124,
+        "y": 72.72808940829498
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 304.3592364649213,
+          "y": 72.72808940829498,
+          "control1X": 356.49256979825464,
+          "control1Y": 41.448089408295004,
+          "control2X": 408.6259031315881,
+          "control2Y": 41.448089408295004,
+          "endX": 460.7592364649213,
+          "endY": 72.72808940829498
+        }
+      ],
+      "stitchCount": 17,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244581136.2358,
+          "stitchesBefore": 4,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bp",
+          "beadSeq": "Y"
+        },
+        {
+          "id": 1772244581136.3691,
+          "stitchesBefore": 8,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "sb",
+          "beadSeq": "3Z"
+        },
+        {
+          "id": 1772244581136.7356,
+          "stitchesBefore": 12,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "beadType": "bc",
+          "beadSize": "V",
+          "beadSeq": null
+        }
+      ],
+      "notation": "c: 4ds-bp:Y-4ds-sb:3Z-4ds-bc:V-4ds",
+      "picotSideMultiplier": 1,
+      "labelOffset": 8,
+      "hideLabel": true
+    },
+    {
+      "id": "49f95c0a-47a6-4977-81a2-6bda188e6ad0",
+      "type": "ring",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 158.16796773639737,
+        "y": 43.72169377059033
+      },
+      "rotation": 180,
+      "stitchCount": 17,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": "f6641bcb-3eb7-4b13-84bb-32e9ef60335b",
+          "stitchesBefore": 2,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "sb",
+          "beadSeq": "ZZY"
+        },
+        {
+          "id": "2d1f5c7e-9eda-43f0-a446-79b37a756576",
+          "stitchesBefore": 4,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bp",
+          "beadSeq": "Z"
+        },
+        {
+          "id": "f49d4908-b63d-4d29-bcf8-5523e98fd99d",
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bcp",
+          "coreSize": "Y",
+          "beadSeq": "Y"
+        },
+        {
+          "id": "84e0b944-0105-46b3-a3fa-53c08294ec05",
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bcp",
+          "coreSize": "Y"
+        },
+        {
+          "id": "77e17bf3-e7f1-4330-b1cb-7b8a1b0b0314",
+          "stitchesBefore": 12,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": "bc",
+          "beadSize": "Y"
+        },
+        {
+          "id": "81c3c6ec-0259-4f1b-8e28-410c00a43f5f",
+          "stitchesBefore": 15,
+          "length": "medium",
+          "isJoint": false,
+          "isGuide": false,
+          "isGuidePoint": false,
+          "beadType": null
+        }
+      ],
+      "notation": "r: 2ds-sb:ZZY-2ds-bp:Z-2ds-bcp:Y:Y-2ds-bcp:Y-2ds-bc:Y-2ds-p-2ds",
+      "squeeze": 0,
+      "picotSideMultiplier": 1,
+      "isClosed": true,
+      "shapeStyle": "teardrop",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 158.16796773639737,
+          "y": 7.091693770590311,
+          "control1X": 172.8199677363974,
+          "control1Y": 18.080693770590315,
+          "control2X": 182.5879677363974,
+          "control2Y": 47.384693770590324,
+          "endX": 182.5879677363974,
+          "endY": 54.71069377059033
+        },
+        {
+          "type": "cubic",
+          "x": 182.5879677363974,
+          "y": 54.71069377059033,
+          "control1X": 180.14596773639738,
+          "control1Y": 73.02569377059032,
+          "control2X": 167.93596773639737,
+          "control2Y": 76.68869377059033,
+          "endX": 158.16796773639737,
+          "endY": 80.35169377059032
+        },
+        {
+          "type": "cubic",
+          "x": 158.16796773639737,
+          "y": 80.35169377059032,
+          "control1X": 148.39996773639737,
+          "control1Y": 76.68869377059033,
+          "control2X": 136.18996773639736,
+          "control2Y": 73.02569377059032,
+          "endX": 133.74796773639736,
+          "endY": 54.71069377059033
+        },
+        {
+          "type": "cubic",
+          "x": 133.74796773639736,
+          "y": 54.71069377059033,
+          "control1X": 133.74796773639736,
+          "control1Y": 47.384693770590324,
+          "control2X": 143.51596773639736,
+          "control2Y": 18.080693770590315,
+          "endX": 158.16796773639737,
+          "endY": 7.091693770590311
+        }
+      ],
+      "labelOffset": 8,
+      "endAllowance": 0.75,
+      "hideLabel": true,
+      "isSplitChain": false,
+      "isFlippedH": true,
+      "isFlippedV": false,
+      "polarRotationGridId": null
+    },
+    {
+      "id": "ae9b60c6-de6c-41ee-a5ac-1c7e2e13c74a",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 552.1908798067362,
+        "y": -175.5499258588806
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 510.79087980673626,
+          "y": -175.5499258588806,
+          "control1X": 538.3908798067363,
+          "control1Y": -192.10992585888056,
+          "control2X": 565.9908798067362,
+          "control2Y": -192.10992585888056,
+          "endX": 593.5908798067363,
+          "endY": -175.5499258588806
+        }
+      ],
+      "stitchCount": 9,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244605048.8657,
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": "bjp",
+          "beadSeq": "Y"
+        },
+        {
+          "id": 1772244605048.3877,
+          "stitchesBefore": 6,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": "bjp",
+          "beadSeq": "ZZ"
+        }
+      ],
+      "notation": "c: 3ds-bjp:Y-3ds-bjp:ZZ-3ds",
+      "picotSideMultiplier": 1,
+      "rotation": 720,
+      "labelOffset": 8,
+      "hideLabel": true
+    },
+    {
+      "id": "fb9a326c-423b-4820-88b6-2ef87bff378f",
+      "type": "chain",
+      "materialId": "mat_1772237496229",
+      "center": {
+        "x": 552.1908798067362,
+        "y": -262.27717776727746
+      },
+      "isClosed": false,
+      "shapeStyle": "chain",
+      "paths": [
+        {
+          "type": "cubic",
+          "x": 607.3908798067363,
+          "y": -262.27717776727746,
+          "control1X": 570.5908798067362,
+          "control1Y": -240.19717776727754,
+          "control2X": 533.7908798067361,
+          "control2Y": -240.19717776727754,
+          "endX": 496.9908798067362,
+          "endY": -262.27717776727746
+        }
+      ],
+      "stitchCount": 12,
+      "color": "#FFFFFF",
+      "picots": [
+        {
+          "id": 1772244630602.0686,
+          "stitchesBefore": 3,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": null
+        },
+        {
+          "id": 1772244630602.5916,
+          "stitchesBefore": 9,
+          "length": "medium",
+          "isJoint": true,
+          "isGuide": false,
+          "beadType": null
+        }
+      ],
+      "notation": "c: 3ds-jp-6ds-jp-3ds",
+      "picotSideMultiplier": 1,
+      "rotation": 180,
+      "labelOffset": 8,
+      "hideLabel": true
+    }
+  ],
+  "picotConnections": [
+    {
+      "id": "fb53d8f1-db5a-41c0-86a0-a0ec88acd339",
+      "picots": [
+        {
+          "elementId": "d1cfb821-b959-41f3-a7c5-8ba185c2e27a",
+          "picotId": "d9c1c388-f808-43af-b5b2-cc3f5722efd8"
+        },
+        {
+          "elementId": "c7ba6678-2653-4ae0-ae95-88cd79e4c47a",
+          "picotId": "928835a2-2f62-4501-8660-bdbcf4e7e397"
+        }
+      ],
+      "materialId": "default"
+    },
+    {
+      "id": "3474e844-6d6c-4889-aba3-07dd6c9dfb02",
+      "picots": [
+        {
+          "elementId": "e0758bc9-a82c-4c3d-a27c-0b17e70d473e",
+          "picotId": 1772244486193.0046
+        },
+        {
+          "elementId": "48b405b9-5eda-4a78-8a52-355ec98029d7",
+          "picotId": 1772244500176.0898
+        }
+      ]
+    },
+    {
+      "id": "b9857674-4456-4abc-8028-6807a93a33bb",
+      "picots": [
+        {
+          "elementId": "16c7ca6d-7f8c-454e-9f62-1bddb8c20707",
+          "picotId": 1772244475904.401
+        },
+        {
+          "elementId": "2bce799d-17c6-49e4-9f1b-79c087c42d33",
+          "picotId": 1772244495266.3474
+        }
+      ]
+    },
+    {
+      "id": "a982e866-71c6-49bc-bc13-c8a4d16ba680",
+      "picots": [
+        {
+          "elementId": "ae9b60c6-de6c-41ee-a5ac-1c7e2e13c74a",
+          "picotId": 1772244605048.3877
+        },
+        {
+          "elementId": "fb9a326c-423b-4820-88b6-2ef87bff378f",
+          "picotId": 1772244630602.0686
+        }
+      ]
+    },
+    {
+      "id": "f8befc82-f354-480d-ac95-b025ab011dc2",
+      "picots": [
+        {
+          "elementId": "ae9b60c6-de6c-41ee-a5ac-1c7e2e13c74a",
+          "picotId": 1772244605048.8657
+        },
+        {
+          "elementId": "fb9a326c-423b-4820-88b6-2ef87bff378f",
+          "picotId": 1772244630602.5916
+        }
+      ]
+    }
+  ],
+  "camera": {
+    "x": 450.91042894952875,
+    "y": 603.0439594051264
+  },
+  "zoom": 1.3018606913596558,
+  "dsWidth": 10,
+  "bgColor": "#1F2937",
+  "gridEnabled": true,
+  "customColors": [],
+  "referenceImage": "data:image/jpeg;base64,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",
+  "refImageProps": {
+    "opacity": 1,
+    "rotation": 0,
+    "scale": 0.1,
+    "visible": true,
+    "x": 713.6062616946989,
+    "y": 500
+  },
+  "renderMode": "schematic",
+  "patternNotes": "",
+  "materials": [
+    {
+      "id": "default",
+      "name": "Default",
+      "color": "#702963",
+      "isGradient": false
+    },
+    {
+      "id": "mat_1772237496229",
+      "name": "Material 1",
+      "color": "#ADD8E6",
+      "isGradient": false
+    }
+  ],
+  "orderGroups": [],
+  "beadLibrary": [
+    {
+      "id": "bead1",
+      "name": "Small seed",
+      "size": "Y",
+      "color": "#ef4444",
+      "shape": "circle"
+    },
+    {
+      "id": "bead2",
+      "name": "Medium seed",
+      "size": "Z",
+      "color": "#22c55e",
+      "shape": "circle"
+    },
+    {
+      "id": "bead3",
+      "name": "Large seed",
+      "size": "V",
+      "color": "#a855f7",
+      "shape": "circle"
+    },
+    {
+      "id": "bead4",
+      "name": "Square medium",
+      "size": "Z",
+      "color": "#228B22",
+      "shape": "square"
+    },
+    {
+      "id": "bead5",
+      "name": "Rectangular large",
+      "size": "V",
+      "color": "#FFD700",
+      "shape": "rectangle"
+    },
+    {
+      "id": "bead6",
+      "name": "Teardrop large tip-out",
+      "size": "V",
+      "color": "#0F52BA",
+      "shape": "teardrop-up"
+    },
+    {
+      "id": "bead7",
+      "name": "Teardrop large tip-in",
+      "size": "V",
+      "color": "#ADD8E6",
+      "shape": "teardrop-down"
+    }
+  ],
+  "polarGrids": [
+    {
+      "id": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
+      "name": "snowflake",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "862a3745-0b20-4023-b108-8dedf6a9f475",
+          "radius": 75,
+          "divisions": 6,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "176a4c5a-7ddc-44af-b205-454011c273d3",
+      "name": "Snowflake",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#FFD700",
+      "rings": [
+        {
+          "id": "34086545-fac3-4491-a8fd-654b3fe593d4",
+          "radius": 250,
+          "divisions": 6,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 90
+        },
+        {
+          "id": "4841cd04-e406-45f9-b18d-7d1f5da252ab",
+          "radius": 325,
+          "divisions": 12,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 15
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "28d63346-1fd5-4e22-8ce8-bb3a5ceb2741",
+      "name": "Grid 2",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "7c911668-a380-42be-be5f-08ea5b5bba5e",
+          "radius": 200,
+          "divisions": 4,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 45
+        }
+      ],
+      "opacity": 0.9
+    },
+    {
+      "id": "f6b20ec8-de16-49c7-9ade-a3d3a05ab1e8",
+      "name": "Grid 3",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": []
+    },
+    {
+      "id": "fe343234-c5b2-46e8-93d1-56e29ed6bc9b",
+      "name": "Grid 1",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#ADD8E6",
+      "rings": [
+        {
+          "id": "77dc5511-3066-4267-9ccd-46cc25f75af9",
+          "radius": 240,
+          "divisions": 4,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ],
+      "opacity": 0.75
+    },
+    {
+      "id": "5ef7089f-d0c6-41ce-bc47-5e1140554969",
+      "name": "Grid 2",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "5380d318-0a82-400d-a0da-9a0966b31df7",
+          "radius": 143,
+          "divisions": 18,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 10
+        }
+      ]
+    },
+    {
+      "id": "2b528c14-dca7-4a96-9b0a-24d257292421",
+      "name": "5star",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "960c715b-c78a-46ff-a5e2-9d3355acfc87",
+          "radius": 150,
+          "divisions": 5,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        },
+        {
+          "id": "3e3dd963-99c1-4807-af38-c9821d2da483",
+          "radius": 225,
+          "divisions": 10,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ]
+    },
+    {
+      "id": "97287de6-18f6-43e8-ab49-b858e360da4d",
+      "name": "triangle",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#D1001C",
+      "rings": [
+        {
+          "id": "91037039-b69a-4337-90dd-a3fc481fe100",
+          "radius": 130,
+          "divisions": 3,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 270
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "fe4bac8f-0547-423b-bff4-914eef18a748",
+      "name": "8. rács",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "e2a2b5cc-78a8-4e1c-9616-db4139fa614f",
+          "radius": 75,
+          "divisions": 8,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
+        }
+      ]
+    }
+  ],
+  "selectedPolarGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
+  "activeThreadPreset": {
+    "id": "default",
+    "name": "Pearl Cotton Size 10, Needle Tat",
+    "ds20Working": 285,
+    "ds20Core": 35,
+    "picotRegular": 8,
+    "picotJoined": 5,
+    "sample20DS10Regular": null,
+    "sample20DS10Short": null,
+    "endAllowance": 0.75
+  }
+}

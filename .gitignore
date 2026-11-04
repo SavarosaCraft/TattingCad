@@ -4,6 +4,7 @@ src-tauri/target/
 .env
 .DS_Store
 Thumbs.db
+scripts/
 
 # Android build output
 src-tauri/gen/android/

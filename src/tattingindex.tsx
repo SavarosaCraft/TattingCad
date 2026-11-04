@@ -28,6 +28,7 @@ import enStrings from './i18n/translations_en.json';
 // public/ files — so keys added in a new version show translated even when
 // the copies in public/ are older. A public/ file still wins key by key.
 import esStrings from './i18n/translations_es.json';
+import { readUserLanguages, openUserLanguagesFolder, isDesktopApp } from './tauri/userLanguages';
 import huStrings from './i18n/translations_hu.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
@@ -1428,6 +1429,16 @@ const APP_VERSION = '1.3.0';
     }
     return flat;
   };
+  // Session 60: problems in the user's own language files (tauri/
+  // userLanguages.ts) — shown once as a toast, after the texts are loaded.
+  const [userLangErrors, setUserLangErrors] = useState<string[]>([]);
+  useEffect(() => {
+    if (userLangErrors.length === 0 || Object.keys(extraTranslations).length === 0) return;
+    const list = userLangErrors.slice(0, 3).join(' · ') + (userLangErrors.length > 3 ? ' …' : '');
+    showLoadMsg('error', t('userLangFileErrors').replace('{list}', list));
+    setUserLangErrors([]);
+  }, [userLangErrors, extraTranslations]);
+
   useEffect(() => {
     const loadTranslations = async () => {
       try {
@@ -1435,14 +1446,27 @@ const APP_VERSION = '1.3.0';
         const enFlat: Record<string, string> = enStrings as Record<string, string>;
 
         // Step 1: load the language manifest (optional — may not exist)
-        const manifestRes = await fetch('./languages.json');
-        if (!manifestRes.ok) {
-          // No manifest — English only
-          setExtraTranslations({ en: enFlat });
-          return;
+        const manifestRes = await fetch('./languages.json').catch(() => null);
+        let manifest: Record<string, string> = { en: 'English' };
+        if (manifestRes && manifestRes.ok) {
+          const m = await manifestRes.json().catch(() => null);
+          if (m && typeof m === 'object' && !Array.isArray(m)) manifest = m;
         }
-        const manifest: Record<string, string> = await manifestRes.json();
-        if (typeof manifest !== 'object' || Array.isArray(manifest)) return;
+
+        // Session 60: the user's own language folder (desktop app only,
+        // tauri/userLanguages.ts) — languages added there join the list,
+        // and its files merge over the built-in ones (Step 3). Read BEFORE
+        // the language is chosen, so a saved user language isn't reset.
+        // Never let a slow / stuck disk hold up the app's texts: after 3 s
+        // carry on with the built-in languages.
+        const noUserLanguages = { manifest: {}, files: {}, errors: [] as string[] };
+        const user = await Promise.race([
+          readUserLanguages(Object.keys(manifest)).catch(() => noUserLanguages),
+          new Promise<typeof noUserLanguages>(resolve => setTimeout(() => resolve(noUserLanguages), 3000)),
+        ]);
+        if (user.errors.length > 0) setUserLangErrors(user.errors);
+        const builtInManifest = manifest;
+        manifest = { ...manifest, ...user.manifest };
 
         setAvailableLanguages(manifest);
 
@@ -1455,9 +1479,9 @@ const APP_VERSION = '1.3.0';
           return manifest[nav] ? nav : 'en';
         });
 
-        // Step 2: load each language file in parallel
+        // Step 2: load each built-in language file in parallel
         const entries = await Promise.all(
-          Object.keys(manifest).map(async (code) => {
+          Object.keys(builtInManifest).map(async (code) => {
             try {
               const res = await fetch(`./translations_${code}.json`);
               if (!res.ok) return [code, null];
@@ -1490,6 +1514,12 @@ const APP_VERSION = '1.3.0';
             if (code === 'en') langs['en'] = { ...enFlat, ...(flat as Record<string, string>) };
             else langs[code as string] = { ...(langs[code as string] ?? {}), ...(flat as Record<string, string>) };
           }
+        }
+
+        // Step 3: the user's files on top (key by key — a partial file only
+        // changes the texts it has; the rest stays built-in, then English).
+        for (const [code, flat] of Object.entries(user.files)) {
+          langs[code] = { ...(langs[code] ?? (code === 'en' ? enFlat : {})), ...flat };
         }
 
         setExtraTranslations(langs);
@@ -2625,15 +2655,39 @@ const APP_VERSION = '1.3.0';
   const isEndpointPicotId = (id: string) =>
     id === '__start__' || id === '__end__' || id === '__anchor__';
 
-  const getConnectionBeadSeq = (conn: any) => {
+  // Session 60: the beads that sit ON a join line. A joining picot's beads
+  // are strung on the join itself, not hanging off its ring: a bjp / bcjp's
+  // bead sequence (size-class colours), or a BE marked as a joining picot
+  // (beIsJoint) — its picot beads from the bead library. null = none.
+  // (Before: only bjp/bcjp were drawn here, and a joined BE kept drawing
+  // its beads sticking out of the ring — renderBE now leaves them out.)
+  const getConnectionBeads = (conn: any): Array<{ size: string; color: string; shape: string }> | null => {
     for (const p of conn.picots) {
       if (isEndpointPicotId(p.picotId)) continue;
       const el = elementById.get(p.elementId);
       const picot = el?.picots?.find(pic => pic.id === p.picotId);
-      if ((picot?.beadType === 'bjp' || picot?.beadType === 'bcjp') && picot?.beadSeq) return picot.beadSeq;
+      if (!picot) continue;
+      if ((picot.beadType === 'bjp' || picot.beadType === 'bcjp') && picot.beadSeq) {
+        const list = parseBeadSeq(picot.beadSeq).map(size => ({
+          size, color: beadSettings[size]?.color ?? theme.beadMissing, shape: 'circle',
+        }));
+        if (list.length > 0) return list;
+      }
+      if (picot.beadType === 'be' && picot.beIsJoint) {
+        const list = resolveLibraryBeads(picot.picotBeads);
+        if (list.length > 0) return list;
+      }
     }
     return null;
   };
+
+  // Bead library ids → [{size, color, shape}] (a missing id → a grey-ish
+  // "missing" small bead). Shared by renderBE and getConnectionBeads.
+  const resolveLibraryBeads = (slots: any[] | undefined) =>
+    (slots || []).filter(Boolean).map((id: string) => {
+      const b = beadLibrary.find(bb => bb.id === id);
+      return b ? { size: b.size, color: b.color, shape: b.shape || 'circle' } : { size: 'Y', color: theme.beadMissing, shape: 'circle' };
+    });
 
   // Geometry only — every ghost (boundary or not) has valid endpoint
   // positions, since the shape is identical across all instances. This is
@@ -5323,19 +5377,15 @@ const APP_VERSION = '1.3.0';
   };
 
   // ── BE (Bead Element) rendering ─────────────────────────────────────────────
-  const renderBE = (picot, cx, cy, perpAngle, threadColor, len, isSelected) => {
+  // beadsOnJoin (session 60): this BE is a JOINED joining picot — its picot
+  // beads are drawn on the join line (getConnectionBeads / renderBeadsOnJoin),
+  // so here only the core bead and the diamond remain.
+  const renderBE = (picot, cx, cy, perpAngle, threadColor, len, isSelected, beadsOnJoin = false) => {
     const key = picot.id;
     const struct = picot.beStructure || 'core';
 
-    // Resolve bead library entries → [{size, color, shape}]
-    const resolveBeads = (slots) =>
-      (slots || []).filter(Boolean).map(id => {
-        const b = beadLibrary.find(b => b.id === id);
-        return b ? { size: b.size, color: b.color, shape: b.shape || 'circle' } : { size: 'Y', color: theme.beadMissing, shape: 'circle' };
-      });
-
-    const coreBeadList  = resolveBeads(picot.coreBeads);
-    const picotBeadList = resolveBeads(picot.picotBeads);
+    const coreBeadList  = resolveLibraryBeads(picot.coreBeads);
+    const picotBeadList = resolveLibraryBeads(picot.picotBeads);
     const ax = Math.cos(perpAngle), ay = Math.sin(perpAngle);
     const inBeadingMode = activeMode === 'beading';
     const isThisSel = inBeadingMode && selectedBEs.some(s => s.picotId === picot.id);
@@ -5451,6 +5501,15 @@ const APP_VERSION = '1.3.0';
       );
     };
 
+    if (beadsOnJoin) {
+      return (
+        <g key={key}>
+          {struct !== 'spike' && struct !== 'suspended' && renderCoreBead_BE()}
+          {diamond}
+        </g>
+      );
+    }
+
     return (
       <g key={key}>
         {/* Bead geometry first, diamond on top */}
@@ -5464,6 +5523,52 @@ const APP_VERSION = '1.3.0';
             </>
         }
         {diamond}
+      </g>
+    );
+  };
+
+  // ── Beads on a join line (session 60) ───────────────────────────────────────
+  // Two joined picots: the beads sit in a row ALONG the join line, centred on
+  // its middle (they are strung on the join). Three or more: clustered at the
+  // point where the lines meet. beads = [{size, color, shape}].
+  const renderBeadsOnJoin = (key: string, positions: Array<{ x: number; y: number }>, beads: Array<{ size: string; color: string; shape: string }>) => {
+    if (!beads || beads.length === 0 || positions.length < 2) return null;
+    const sizes = BEAD_SIZES_DEFAULT;
+    const radii = beads.map(b => beadRadius(sizes[b.size] ?? sizes.Y));
+    if (positions.length === 2) {
+      const [a, b2] = positions;
+      const dx = b2.x - a.x, dy = b2.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d;
+      const along = Math.atan2(dy, dx);
+      const total = radii.reduce((sum, r) => sum + 2 * r, 0);
+      const mx = (a.x + b2.x) / 2, my = (a.y + b2.y) / 2;
+      let offset = -total / 2;
+      return (
+        <g key={key}>
+          {beads.map((bead, i) => {
+            offset += radii[i];
+            const bx = mx + ux * offset, by = my + uy * offset;
+            offset += radii[i];
+            return renderBeadShape(bx, by, radii[i], bead.shape || 'circle', bead.color, along, `${key}-${i}`);
+          })}
+        </g>
+      );
+    }
+    const cx = positions.reduce((s2, p) => s2 + p.x, 0) / positions.length;
+    const cy = positions.reduce((s2, p) => s2 + p.y, 0) / positions.length;
+    const maxR = Math.max(...radii);
+    return (
+      <g key={key}>
+        {beads.map((bead, i) => {
+          let bx = cx, by = cy;
+          if (beads.length === 2) bx = cx + (i === 0 ? -maxR : maxR);
+          else if (beads.length > 2) {
+            const angle = (i / beads.length) * Math.PI * 2 - Math.PI / 2;
+            bx = cx + Math.cos(angle) * maxR * 1.1; by = cy + Math.sin(angle) * maxR * 1.1;
+          }
+          return renderBeadShape(bx, by, radii[i], bead.shape || 'circle', bead.color, 0, `${key}-${i}`);
+        })}
       </g>
     );
   };
@@ -5634,15 +5739,37 @@ const APP_VERSION = '1.3.0';
     // ── BE ──
     if (p.beadType === 'be') {
       if (beadAndJointOnly && activeMode === 'picotJoin' && !p.beIsJoint) return null;
+      // Joined joining BE → its picot beads are on the join line (session 60).
+      const beadsOnJoin = !!p.beIsJoint && getIsConnected();
       if (activeMode === 'picotJoin' && p.beIsJoint && showEditingArtifacts) {
         return (
           <g key={key}>
-            {renderBE(p, x, y, perpAngle, dotColor, len, isSelected)}
+            {renderBE(p, x, y, perpAngle, dotColor, len, isSelected, beadsOnJoin)}
             <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2/zoom} opacity={0.9} />
           </g>
         );
       }
-      return renderBE(p, x, y, perpAngle, dotColor, len, isSelected);
+      return renderBE(p, x, y, perpAngle, dotColor, len, isSelected, beadsOnJoin);
+    }
+
+    // ── bjp (beaded joining picot, older notation) — session 60 ──
+    // Joined: its beads are drawn on the join line (getConnectionBeads), so
+    // nothing hangs off the ring — just the join dot in Join mode. Not joined
+    // yet: the beaded picot as before, plus a join dot in Join mode so it is
+    // visibly joinable (it used to have neither once isJoint was cleared).
+    if (p.beadType === 'bjp') {
+      if (!beadAndJointOnly && renderMode === 'realistic') return null;
+      const showDot = activeMode === 'picotJoin' && showEditingArtifacts;
+      const dot = showDot
+        ? <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2/zoom} opacity={0.9} />
+        : null;
+      if (getIsConnected()) return dot ? <g key={key}>{dot}</g> : null;
+      return (
+        <g key={key}>
+          {p.beadSeq && renderBeadedPicot(`${key}-beads`, x, y, perpAngle, p.beadSeq, armColor, len)}
+          {dot}
+        </g>
+      );
     }
 
     // ── bcjp ──
@@ -5744,7 +5871,8 @@ const APP_VERSION = '1.3.0';
     }
     if (p.beadSeq) {
       if (!beadAndJointOnly && renderMode === 'realistic') return null;
-      // bjp: isJoint + beadSeq — show clustered beads + picotJoin dot
+      // (bjp is handled further up — session 60. This branch is for other
+      // bead sequences, e.g. bp.)
       if (p.isJoint && activeMode === 'picotJoin' && showEditingArtifacts) {
         return (
           <g key={key}>
@@ -8657,7 +8785,7 @@ const APP_VERSION = '1.3.0';
                     lineColor = (pickedPair ? getConnectionThreadColor(pickedPair.el, pickedPair.picot) : null) || theme.foldLine;
                   }
                   const lineWidth = firstEl?.lineWidth || 2;
-                  const beadSeqForConnR = getConnectionBeadSeq(conn);
+                  const joinBeadsR = getConnectionBeads(conn);
                   // ONE element per connection, painted the same way as the
                   // baked picots (emitPicot in render/realisticRenderer.ts):
                   // a filled ribbon `lineWidth` wide in the thread colour,
@@ -8691,15 +8819,15 @@ const APP_VERSION = '1.3.0';
                           stroke={theme.markerOutline} strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                       )}
                       {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
-                      {beadSeqForConnR
-                        ? renderClusteredBeads(`conn-r-${conn.id}`, cx, cy, beadSeqForConnR)
+                      {joinBeadsR
+                        ? renderBeadsOnJoin(`conn-r-${conn.id}`, positions, joinBeadsR)
                         : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={lineWidth + 1} fill={lineColor} stroke={theme.markerOutline} strokeWidth="1" />
                       }
                     </g>
                   );
                 } else {
                   // Schematic mode: each picot → center, dotted orange
-                  const beadSeqForConn = getConnectionBeadSeq(conn);
+                  const joinBeads = getConnectionBeads(conn);
                   return (
                     <g key={conn.id}>
                       {positions.map((pos, i) => (
@@ -8711,8 +8839,8 @@ const APP_VERSION = '1.3.0';
                         />
                       ))}
                       {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
-                      {beadSeqForConn
-                        ? renderClusteredBeads(`conn-${conn.id}`, cx, cy, beadSeqForConn)
+                      {joinBeads
+                        ? renderBeadsOnJoin(`conn-${conn.id}`, positions, joinBeads)
                         : conn.picots.length > 2 && <circle cx={cx} cy={cy} r={4/zoom} fill={theme.connectionDot} opacity="0.9" />
                       }
                     </g>
@@ -11295,6 +11423,29 @@ const APP_VERSION = '1.3.0';
                 </select>
               </div>
             </>
+          )}
+          {/* Session 60: the user's own languages folder (desktop app only —
+              tauri/userLanguages.ts). Creates it with a README + template
+              and opens it in the file manager. Shown even with one language,
+              so a new one can be added. */}
+          {isDesktopApp() && (
+            <button
+              onClick={() => {
+                setShowOptionsMenu(false);
+                openUserLanguagesFolder(enStrings as Record<string, unknown>)
+                  .then(({ dir, opened }) => showLoadMsg('success', opened
+                    ? t('userLangFolderOpened')
+                    : t('userLangFolderReady').replace('{dir}', dir)))
+                  .catch((err) => {
+                    console.error('[TATCAD] languages folder:', err);
+                    showLoadMsg('error', t('userLangFolderError').replace('{msg}', String(err?.message ?? err)));
+                  });
+              }}
+              className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 text-left text-gray-200"
+            >
+              <IconLanguage size={16} />
+              <span>{t('optionsUserLanguages')}</span>
+            </button>
           )}
           {/* Theme */}
           <div className="border-t border-gray-600 my-1"></div>

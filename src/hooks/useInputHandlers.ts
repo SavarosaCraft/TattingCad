@@ -778,7 +778,14 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           if (el.picots) {
             el.picots.forEach((picot: any) => {
               if (picot.isGuidePoint) return;
-              if (picot.beadType && !picot.isJoint && !(picot.beadType === 'be' && picot.beIsJoint)) return;
+              // Bead picots join only when they ARE joining picots: a BE marked
+              // as one (beIsJoint), or a bjp/bcjp (always — session 60 fix:
+              // loading a file clears isJoint on every unjoined picot, which
+              // made an unjoined bjp impossible to select, so it could never
+              // be joined again). Other bead picots: only if already joined.
+              const joinableBead = picot.beadType === 'bjp' || picot.beadType === 'bcjp'
+                || (picot.beadType === 'be' && picot.beIsJoint);
+              if (picot.beadType && !picot.isJoint && !joinableBead) return;
               const pos = p.getPicotPosition(el, picot);
               if (!pos) return;
               if (pos.x >= minX-5 && pos.x <= maxX+5 && pos.y >= minY-5 && pos.y <= maxY+5) selPicots.push({ elementId: el.id, picotId: picot.id });

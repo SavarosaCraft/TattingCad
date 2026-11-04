@@ -1,7 +1,7 @@
 {
   "version": 91,
   "name": "Untitled Pattern",
-  "created": "2026-10-30T21:21:23.839Z",
+  "created": "2026-11-04T22:07:54.116Z",
   "elements": [
     {
       "id": 1773958802677,
@@ -1129,10 +1129,10 @@
   ],
   "picotConnections": [],
   "camera": {
-    "x": 705,
-    "y": 503
+    "x": 960.5988308848771,
+    "y": 561.8386116628647
   },
-  "zoom": 1.8,
+  "zoom": 1.5599999999999994,
   "dsWidth": 10,
   "bgColor": "#1F2937",
   "gridEnabled": true,
@@ -1219,28 +1219,6 @@
   ],
   "polarGrids": [
     {
-      "id": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
-      "name": "snowflake",
-      "center": {
-        "x": 0,
-        "y": 0
-      },
-      "angularOffset": 0,
-      "visible": false,
-      "color": "#4B9FE1",
-      "rings": [
-        {
-          "id": "862a3745-0b20-4023-b108-8dedf6a9f475",
-          "radius": 75,
-          "divisions": 6,
-          "visible": true,
-          "snap": true,
-          "angularOffset": 0
-        }
-      ],
-      "opacity": 1
-    },
-    {
       "id": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "name": "Snowflake",
       "center": {
@@ -1249,7 +1227,7 @@
       },
       "angularOffset": 0,
       "visible": false,
-      "color": "#FFD700",
+      "color": "#acd6f8",
       "rings": [
         {
           "id": "34086545-fac3-4491-a8fd-654b3fe593d4",
@@ -1265,7 +1243,7 @@
           "divisions": 12,
           "visible": true,
           "snap": true,
-          "angularOffset": 15
+          "angularOffset": 0
         }
       ],
       "opacity": 1
@@ -1394,6 +1372,28 @@
           "visible": true,
           "snap": true,
           "angularOffset": 270
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
+      "name": "snowflake",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "862a3745-0b20-4023-b108-8dedf6a9f475",
+          "radius": 75,
+          "divisions": 6,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
         }
       ],
       "opacity": 1

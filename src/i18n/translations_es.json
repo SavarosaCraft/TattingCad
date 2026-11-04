@@ -1,5 +1,10 @@
 {
   "languagePickerLabel": "Idioma",
+  "optionsUserLanguages": "Añadir o editar idiomas…",
+  "userLangFolderOpened": "Se ha abierto tu carpeta de idiomas: consulta README.txt allí. Reinicia TattingCAD después de cambiar los archivos.",
+  "userLangFolderReady": "Tu carpeta de idiomas está lista: {dir} — consulta README.txt allí. Reinicia TattingCAD después de cambiar los archivos.",
+  "userLangFolderError": "No se pudo abrir la carpeta de idiomas: {msg}",
+  "userLangFileErrors": "Algunos de tus archivos de idioma no se pudieron usar (se muestran los textos incorporados): {list}",
   "_comment_splash": "Pantalla de bienvenida",
   "splashNewProject": "Nuevo proyecto",
   "splashLoadProject": "Abrir proyecto",

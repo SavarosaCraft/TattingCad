@@ -1,7 +1,7 @@
 {
   "version": 91,
   "name": "Untitled Pattern",
-  "created": "2026-11-04T03:23:03.923Z",
+  "created": "2026-11-04T22:08:56.822Z",
   "elements": [
     {
       "id": "392faf25-b681-4b39-ba0b-37d9f3e5938a",
@@ -100,7 +100,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "e9349e5a-6fb0-4d6a-bd31-1bf5fed7a34e",
@@ -199,7 +199,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "82bbf599-fba6-498f-98b2-c6d726529329",
@@ -299,7 +299,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "579dee84-bf1c-4b86-bd85-d03ed3604187"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "be5a7d4b-a303-47fa-96b0-ddcdb13725af",
@@ -365,7 +365,7 @@
       "rotation": 240,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "8c512555-0818-4d96-8cbf-8ebf4d041399",
@@ -464,7 +464,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "579dee84-bf1c-4b86-bd85-d03ed3604187"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "877eba32-b7a1-4890-82e5-66e145247f0a",
@@ -563,7 +563,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "579dee84-bf1c-4b86-bd85-d03ed3604187"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "edfa2d9a-c79a-4887-92d7-ca70650c1df9",
@@ -662,7 +662,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "579dee84-bf1c-4b86-bd85-d03ed3604187"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "77a6505d-0b72-40eb-ab86-e5a51e05a914",
@@ -761,7 +761,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "579dee84-bf1c-4b86-bd85-d03ed3604187"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "e8b12ce1-db6f-4c15-bf30-c43447d1949f",
@@ -860,7 +860,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "a8df868e-c93f-4284-9cef-d077a6b682bf",
@@ -959,7 +959,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "1ff9ad4b-d945-49ab-9638-f722006b4533",
@@ -1058,7 +1058,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "b8a1121b-0b8c-41e9-8b3c-6e7507e84e92",
@@ -1157,7 +1157,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "07dc17b6-259a-41f8-9461-907b43885e4c",
@@ -1256,7 +1256,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "aa2ccfe8-b9fc-4ae9-870b-739b6522b81a",
@@ -1322,7 +1322,7 @@
       "rotation": 300,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "c174e2c4-ff33-4775-9aec-695695dc7fb6",
@@ -1388,7 +1388,7 @@
       "rotation": 0,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "c47f90ec-e660-4e53-9be3-3fbf3126b351",
@@ -1454,7 +1454,7 @@
       "rotation": 60,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "10177c24-9039-49fe-a6d6-decd09860d9f",
@@ -1520,7 +1520,7 @@
       "rotation": 120,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "f1894ed1-b14f-45ab-a778-ff3be232ac4a",
@@ -1619,7 +1619,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "5d2ca175-d28d-41b6-ab82-6ad11a54357b",
@@ -1718,7 +1718,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": false,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "059d5538-91ab-4056-80d0-08e85b5af21c",
@@ -1817,7 +1817,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "f2a3d763-4c0d-493d-aa8c-5dac8091be30",
@@ -1916,7 +1916,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "8db6ec2e-ff60-4b67-a0d5-b1858c163d78",
@@ -2015,7 +2015,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "1903c9e5-70ce-40ec-8466-58b71e61120b",
@@ -2114,7 +2114,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "3d8f2faf-10ab-4fe6-baad-92aadfacc38e",
@@ -2213,7 +2213,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "1d8c7a4b-2737-4aad-ad6c-7508b556e9bb",
@@ -2312,7 +2312,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "ce933c61-452e-4889-a39c-4e59a5cb489e",
@@ -2411,7 +2411,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "65119810-21d7-4f06-a5df-913398572d31",
@@ -2510,7 +2510,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": false,
-      "groupId": "579dee84-bf1c-4b86-bd85-d03ed3604187"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "12c0c080-4b4c-4cf3-b33c-69fe02060814",
@@ -2609,7 +2609,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "fa058782-f7b2-4523-9ced-e814fe827133",
@@ -2708,7 +2708,7 @@
       "isSplitChain": false,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": true,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "70ae1845-6fa0-4775-a5d8-7cdead78bd07",
@@ -2774,7 +2774,7 @@
       "rotation": 180,
       "polarRotationGridId": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "hideLabel": false,
-      "groupId": "22669fba-63f9-43b3-905a-6a9785fae188"
+      "groupId": "e311283f-a71d-4a20-bee0-563dd05aa7e5"
     },
     {
       "id": "72eb1098-96de-4946-af27-68fb346e3022",
@@ -7077,10 +7077,10 @@
     }
   ],
   "camera": {
-    "x": 682.2962927332154,
-    "y": 751.0017182198308
+    "x": 900,
+    "y": 422
   },
-  "zoom": 1.3686007212821276,
+  "zoom": 1.1489625223097042,
   "dsWidth": 10,
   "bgColor": "#4B5563",
   "gridEnabled": true,
@@ -7158,28 +7158,6 @@
   ],
   "polarGrids": [
     {
-      "id": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
-      "name": "snowflake",
-      "center": {
-        "x": 0,
-        "y": 0
-      },
-      "angularOffset": 0,
-      "visible": true,
-      "color": "#4B9FE1",
-      "rings": [
-        {
-          "id": "862a3745-0b20-4023-b108-8dedf6a9f475",
-          "radius": 75,
-          "divisions": 6,
-          "visible": true,
-          "snap": true,
-          "angularOffset": 0
-        }
-      ],
-      "opacity": 1
-    },
-    {
       "id": "176a4c5a-7ddc-44af-b205-454011c273d3",
       "name": "Snowflake",
       "center": {
@@ -7188,7 +7166,7 @@
       },
       "angularOffset": 0,
       "visible": false,
-      "color": "#FFD700",
+      "color": "#acd6f8",
       "rings": [
         {
           "id": "34086545-fac3-4491-a8fd-654b3fe593d4",
@@ -7204,7 +7182,7 @@
           "divisions": 12,
           "visible": true,
           "snap": true,
-          "angularOffset": 15
+          "angularOffset": 0
         }
       ],
       "opacity": 1
@@ -7333,6 +7311,28 @@
           "visible": true,
           "snap": true,
           "angularOffset": 270
+        }
+      ],
+      "opacity": 1
+    },
+    {
+      "id": "7db5e7d7-9cc5-418f-bd22-1dd9c58766c8",
+      "name": "snowflake",
+      "center": {
+        "x": 0,
+        "y": 0
+      },
+      "angularOffset": 0,
+      "visible": false,
+      "color": "#4B9FE1",
+      "rings": [
+        {
+          "id": "862a3745-0b20-4023-b108-8dedf6a9f475",
+          "radius": 75,
+          "divisions": 6,
+          "visible": true,
+          "snap": true,
+          "angularOffset": 0
         }
       ],
       "opacity": 1

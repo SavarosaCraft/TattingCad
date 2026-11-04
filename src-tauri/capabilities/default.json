@@ -54,6 +54,22 @@
     },
 
     {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$APPDATA" },
+        { "path": "$APPDATA/**" }
+      ]
+    },
+
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$APPDATA/languages" },
+        { "path": "$APPDATA/languages/**" }
+      ]
+    },
+
+    {
       "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://**" }

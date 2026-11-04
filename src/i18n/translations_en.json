@@ -1,5 +1,10 @@
 {
   "languagePickerLabel": "Language",
+  "optionsUserLanguages": "Add or edit languages…",
+  "userLangFolderOpened": "Your languages folder is open — see README.txt there. Restart TattingCAD after changing files.",
+  "userLangFolderReady": "Your languages folder is ready: {dir} — see README.txt there. Restart TattingCAD after changing files.",
+  "userLangFolderError": "Could not open the languages folder: {msg}",
+  "userLangFileErrors": "Some of your language files could not be used (built-in texts shown instead): {list}",
   "_comment_splash": "Splash screen",
   "splashNewProject": "New Project",
   "splashLoadProject": "Load Project",

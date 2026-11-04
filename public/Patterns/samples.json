@@ -2,7 +2,7 @@
   "_comment": "Sample patterns shown in File → Sample patterns… (TattingCAD session 60). Each entry: file (pattern .json in this folder), thumb (optional image in this folder), title and description (plain text, or one per language code; English is the fallback). Listed in this order.",
   "samples": [
     {
-      "file": "Tatting_Tension.json",
+      "file": "Tatting_Tension.tatcad",
       "thumb": "Tatting_Tension_thumb.png",
       "title": {
         "en": "Tension sampler",
@@ -16,7 +16,7 @@
       }
     },
     {
-      "file": "DAL_Snowflake_2026.json",
+      "file": "DAL_Snowflake_2026.tatcad",
       "thumb": "DAL_Snowflake_2026_thumb.png",
       "title": {
         "en": "DAL Snowflake 2026",
@@ -27,6 +27,33 @@
         "en": "A two-round snowflake built from repeated elements — open View → Tatting Order… to see the rounds. The notation is tidied up, so File → Export SVG gives a chart that is almost ready to publish.",
         "es": "Un copo de nieve de dos vueltas hecho con elementos repetidos: abre Vista → Orden de frivolité… para ver las vueltas. La notación está ordenada, así que Archivo → Exportar SVG da un esquema casi listo para publicar.",
         "hu": "Kétkörös hópehely ismétlődő elemekből — a körök a Nézet → Hajócsipke sorrend… alatt láthatók. A jelölés rendbe van téve, így a Fájl → SVG exportálása szinte közlésre kész ábrát ad."
+      }
+    },    {
+      "file": "All_Beads.tatcad",
+      "thumb": "All_Beads_thumb.png",
+      "title": {
+        "en": "Bead reference",
+        "es": "Muestrario de cuentas",
+        "hu": "Gyöngyminták"
+      },
+      "description": {
+        "en": "Every bead type on rings and chains. Choose the Beads tool and click a pink diamond to see how a bead is set up. The light-coloured elements show beads written straight into the notation.",
+        "es": "Todos los tipos de cuentas en anillos y cadenas. Elige la herramienta Cuentas y haz clic en un rombo rosa para ver cómo está configurada una cuenta. Los elementos de color claro muestran cuentas escritas directamente en la notación.",
+        "hu": "Az összes gyöngytípus gyűrűkön és láncokon. Válaszd a Gyöngyök eszközt, és kattints egy rózsaszín rombuszra a gyöngy beállításaiért. A világos színű elemeken a gyöngyök közvetlenül a jelölésbe vannak írva."
+      }
+    },
+	{
+      "file": "Savarosa_DAL_Snowflake.tatcad",
+      "thumb": "Savarosa_DAL_Snowflake_thumb.png",
+      "title": {
+        "en": "Savarosa's DAL Snowflake 2026",
+        "es": "Copo de nieve DAL 2026",
+        "hu": "DAL hópehely 2026"
+      },
+      "description": {
+        "en": "A snowflake with folded picots. Choose the Picot Join tool (or press Shift+J) and click any folded picot to see its details.",
+        "es": "Un copo de nieve con picots plegados. Elige la herramienta Unir picots (o pulsa Shift+J) y haz clic en cualquier picot plegado para ver sus detalles.",
+        "hu": "Hópehely hajtott picókkal. Válaszd a Picó összekötés eszközt (vagy nyomd meg a Shift+J-t), és kattints bármelyik hajtott picóra a részletekért."
       }
     }
   ]

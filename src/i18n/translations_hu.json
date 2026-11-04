@@ -1,5 +1,10 @@
 {
   "languagePickerLabel": "Nyelv",
+  "optionsUserLanguages": "Nyelvek hozzáadása, szerkesztése…",
+  "userLangFolderOpened": "Megnyílt a nyelvek mappája — a leírás a README.txt-ben van (angolul). A fájlok módosítása után indítsd újra a TattingCAD-et.",
+  "userLangFolderReady": "Elkészült a nyelvek mappája: {dir} — a leírás a README.txt-ben van (angolul). A fájlok módosítása után indítsd újra a TattingCAD-et.",
+  "userLangFolderError": "Nem sikerült megnyitni a nyelvek mappáját: {msg}",
+  "userLangFileErrors": "Néhány saját nyelvi fájlod nem használható (helyettük a beépített szövegek látszanak): {list}",
   "_comment_splash": "Üdvözlőképernyő",
   "splashNewProject": "Új projekt",
   "splashLoadProject": "Projekt megnyitása",
