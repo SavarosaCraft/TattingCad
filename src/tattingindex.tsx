@@ -554,6 +554,7 @@ const TattingDesigner = () => {
     zDown, setZDown,
     rulerPoints, setRulerPoints,
     rulerMousePos, setRulerMousePos,
+    rulerDone, setRulerDone,
     groupRotationInput, setGroupRotationInput,
   } = useCanvasInteraction();
 
@@ -1615,6 +1616,7 @@ const APP_VERSION = '1.3.0';
     if (currentTool !== 'ruler') {
       setRulerPoints([]);
       setRulerMousePos(null);
+      setRulerDone(false);
     }
     if (currentTool !== 'zoomRect') {
       setZoomRectBox(null);
@@ -3843,7 +3845,7 @@ const APP_VERSION = '1.3.0';
     elements, selectedIds, selectedIdSet, elementById,
     camera, zoom, dsWidth, renderMode, activeMode, currentTool,
     isDragging, dragStart, draggedElement, selectionBox, zoomRectBox,
-    movingPivot, rotationHandle, pivotOffset, rulerPoints,
+    movingPivot, rotationHandle, pivotOffset, rulerPoints, rulerDone,
     snapEnabled, snapRadius, orthoLock, isShiftHeld, showRotationHandles,
     polarGrids, picotConnections, selectedBEs, selectedPicots,
     chainPresetSymmetric, rounds,
@@ -3854,7 +3856,7 @@ const APP_VERSION = '1.3.0';
     dragTouchIdRef, spaceDownRef, zDownRef,
     setIsDragging, setDragStart, setZoomRectBox, setCamera, setElements,
     setSelectedIds, setSelectionBox, setDraggedElement, setRotationHandle,
-    setMovingPivot, setPivotOffset, setRulerPoints, setRulerMousePos,
+    setMovingPivot, setPivotOffset, setRulerPoints, setRulerMousePos, setRulerDone,
     setSelectedBEs, setDragTick, setTattingOrderConflict,
     setPropBarOrderDraft, setShowPropBarGroupDropdown, setTattingOrderInput,
     setSelectedPicots, setCurrentTool,
@@ -6240,7 +6242,7 @@ const APP_VERSION = '1.3.0';
         [activeMode === 'beading',         () => { setActiveMode(null); setSelectedBEs([]); }],
         [activeMode === 'tattingOrder',    () => { setActiveMode(null); setSelectedIds([]); }],
         [currentTool === 'zoomRect',       () => { setCurrentTool('select'); setZoomRectBox(null); }],
-        [currentTool === 'ruler' && rulerPoints.length > 0, () => { setRulerPoints([]); setRulerMousePos(null); }],
+        [currentTool === 'ruler' && rulerPoints.length > 0, () => { setRulerPoints([]); setRulerMousePos(null); setRulerDone(false); }],
       ];
       const hit = closers.find(([active]) => active);
       hit?.[1]();
@@ -7485,6 +7487,8 @@ const APP_VERSION = '1.3.0';
               activeConnection={activeConnection}
               connectionColorOptions={connectionColorOptions}
               onConnectionColorChange={onConnectionColorChange}
+              mmPerUnit={(() => { const pr = threadPresets.find(x => x.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET; return (pr.ds20Core / 20) / dsWidth; })()}
+              presetName={presetDisplayName(threadPresets.find(x => x.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET)}
               t={t}
             />
           ) : activeMode === 'beading' ? (
@@ -8098,17 +8102,23 @@ const APP_VERSION = '1.3.0';
               {currentTool === 'ruler' ? (
                 <span className="text-yellow-300">
                   <IconRuler size={12} className="inline mr-1" />
+                  {/* Session 60: multi-point ruler — total along all segments. */}
                   {rulerPoints.length === 0
                     ? t('rulerClickFirst')
                     : rulerPoints.length === 1
                       ? t('rulerClickSecond')
                       : (() => {
-                          const p1 = rulerPoints[0], p2 = rulerPoints[1];
                           const activePreset = threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET;
                           const mmPerWorldPx = (activePreset.ds20Core / 20) / dsWidth;
-                          const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                          // Same chain as the canvas label: placed points plus the
+                          // live segment to the pointer while measuring.
+                          const chain = (!rulerDone && rulerMousePos) ? [...rulerPoints, rulerMousePos] : rulerPoints;
+                          let dist = 0;
+                          for (let i = 1; i < chain.length; i++) dist += Math.hypot(chain[i].x - chain[i - 1].x, chain[i].y - chain[i - 1].y);
                           const mm = dist * mmPerWorldPx;
-                          return `${Math.round(dist)}px  ·  ${mm.toFixed(1)} mm  ·  ${(mm/10).toFixed(2)} cm  ·  ${(mm/25.4).toFixed(3)}"  — ${t('rulerClickToReset')}`;
+                          const segs = chain.length - 1;
+                          const segText = segs > 1 ? `  ·  ${t('rulerSegments').replace('{n}', String(segs))}` : '';
+                          return `${Math.round(dist)}px  ·  ${mm.toFixed(1)} mm  ·  ${(mm/10).toFixed(2)} cm  ·  ${(mm/25.4).toFixed(3)}"${segText}  — ${rulerDone ? t('rulerClickToReset') : t('rulerAddOrFinish')}`;
                         })()
                   }
                 </span>
@@ -9515,9 +9525,14 @@ const APP_VERSION = '1.3.0';
 
               {/* ── Ruler tool overlay ─────────────────────────────────────────── */}
               {currentTool === 'ruler' && (() => {
-                // Determine the two endpoints: [p1, p2] or [p1, liveMousePos]
-                const p1 = rulerPoints[0] || null;
-                const p2 = rulerPoints[1] || (rulerPoints.length === 1 ? rulerMousePos : null);
+                // Session 60: multi-point ruler. The chain is the placed
+                // points, plus the live segment to the pointer while still
+                // measuring (not after a double-click has finished it).
+                const chain = (!rulerDone && rulerMousePos && rulerPoints.length >= 1)
+                  ? [...rulerPoints, rulerMousePos]
+                  : rulerPoints;
+                const p1 = chain[0] || null;
+                const p2 = chain.length >= 2 ? chain[chain.length - 1] : null;
                 if (!p1) return null;
 
                 const activePreset = threadPresets.find(pr => pr.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET;
@@ -9557,57 +9572,82 @@ const APP_VERSION = '1.3.0';
                   return renderDot(p1, theme.rulerStart);
                 }
 
-                const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                const locked = rulerPoints.length === 2;
+                let dist = 0;
+                for (let i = 1; i < chain.length; i++) dist += Math.hypot(chain[i].x - chain[i - 1].x, chain[i].y - chain[i - 1].y);
+                const locked = rulerDone;
                 const lineColor = locked ? theme.rulerLocked : theme.rulerStart;
                 const { px, mm, cm, inch } = makeMeasurementLabel(dist);
+                const segCount = chain.length - 1;
+                const hasLive = !rulerDone && chain.length > rulerPoints.length;
 
-                // Label position: perpendicular offset from midpoint, always readable
-                const mx = (p1.x + p2.x) / 2;
-                const my = (p1.y + p2.y) / 2;
-
-                // Rows of text
+                // Rows of text (total along all segments)
                 const rows = [
                   `${px} px`,
                   `${mm} mm`,
                   `${cm} cm`,
                   `${inch}"`,
                 ];
+                if (segCount > 1) rows.push(t('rulerSegments').replace('{n}', String(segCount)));
 
-                const boxW = 80 * S;
+                const boxW = 86 * S;
                 const boxH = (rows.length * lineHeight) + padding * 2;
-                // Offset the label box perpendicular to the line, above-right of midpoint
-                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                // Label next to the LAST segment (one segment: its middle, as
+                // before; several: near the end point), offset perpendicular.
+                const a = chain[chain.length - 2], b = chain[chain.length - 1];
+                const angle = Math.atan2(b.y - a.y, b.x - a.x);
                 const perpAngle = angle - Math.PI / 2;
-                const labelOffset = 32 * S;
-                const lx = mx + Math.cos(perpAngle) * labelOffset - boxW / 2;
-                const ly = my + Math.sin(perpAngle) * labelOffset - boxH / 2;
+                let lx, ly;
+                if (segCount === 1) {
+                  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+                  lx = mx + Math.cos(perpAngle) * 32 * S - boxW / 2;
+                  ly = my + Math.sin(perpAngle) * 32 * S - boxH / 2;
+                } else {
+                  // Just past the end point, continuing the last segment's
+                  // direction — far enough that the box never covers the end
+                  // point or the line leading into it.
+                  const segLen = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+                  const ux = (b.x - a.x) / segLen, uy = (b.y - a.y) / segLen;
+                  const reach = Math.abs(ux) * boxW / 2 + Math.abs(uy) * (boxH / 2 + 16 * S) + 16 * S;
+                  lx = b.x + ux * reach - boxW / 2;
+                  ly = b.y + uy * reach - boxH / 2;
+                }
+
+                const firstAngle = Math.atan2(chain[1].y - chain[0].y, chain[1].x - chain[0].x) - Math.PI / 2;
+                const tick = (p, ang, key) => {
+                  const tickLen = 10 * S;
+                  return (
+                    <line key={key}
+                      x1={p.x + Math.cos(ang) * tickLen} y1={p.y + Math.sin(ang) * tickLen}
+                      x2={p.x - Math.cos(ang) * tickLen} y2={p.y - Math.sin(ang) * tickLen}
+                      stroke={lineColor} strokeWidth={lineW} strokeLinecap="round"
+                    />
+                  );
+                };
 
                 return (
                   <g data-ui="ruler">
-                    {/* Measurement line */}
-                    <line
-                      x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                      stroke="rgba(0,0,0,0.4)" strokeWidth={lineW + 2 * S}
-                    />
-                    <line
-                      x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                      stroke={lineColor} strokeWidth={lineW}
-                      strokeDasharray={locked ? undefined : dashArr}
-                    />
-                    {/* End cap ticks */}
-                    {[p1, p2].map((p, i) => {
-                      const tickLen = 10 * S;
+                    {/* Segments (placed ones solid; the live one to the pointer dashed) */}
+                    {chain.slice(1).map((q, i) => {
+                      const prev = chain[i];
+                      const live = hasLive && i === segCount - 1;
                       return (
-                        <line key={i}
-                          x1={p.x + Math.cos(perpAngle) * tickLen}
-                          y1={p.y + Math.sin(perpAngle) * tickLen}
-                          x2={p.x - Math.cos(perpAngle) * tickLen}
-                          y2={p.y - Math.sin(perpAngle) * tickLen}
-                          stroke={lineColor} strokeWidth={lineW} strokeLinecap="round"
-                        />
+                        <g key={`seg-${i}`}>
+                          <line x1={prev.x} y1={prev.y} x2={q.x} y2={q.y}
+                            stroke="rgba(0,0,0,0.4)" strokeWidth={lineW + 2 * S} />
+                          <line x1={prev.x} y1={prev.y} x2={q.x} y2={q.y}
+                            stroke={lineColor} strokeWidth={lineW}
+                            strokeDasharray={live ? dashArr : undefined} />
+                        </g>
                       );
                     })}
+                    {/* End cap ticks */}
+                    {tick(p1, firstAngle, 'tick-a')}
+                    {tick(p2, perpAngle, 'tick-b')}
+                    {/* Corner points between segments */}
+                    {chain.slice(1, -1).map((q, i) => (
+                      <circle key={`mid-${i}`} cx={q.x} cy={q.y} r={dotR * 0.55}
+                        fill={lineColor} stroke={theme.handleBorder} strokeWidth={S} />
+                    ))}
                     {/* Anchor dots */}
                     {renderDot(p1, theme.rulerStart)}
                     {renderDot(p2, locked ? theme.rulerLocked : theme.rulerEnd)}
@@ -9622,23 +9662,21 @@ const APP_VERSION = '1.3.0';
                         key={i}
                         x={lx + boxW / 2}
                         y={ly + padding + lineHeight * i + lineHeight * 0.72}
-                        fill={i === 0 ? theme.rulerTextPx : i === 1 ? theme.rulerTextMm : i === 2 ? theme.rulerTextCm : theme.rulerTextInch}
-                        fontSize={fontSize}
-                        fontFamily="monospace"
-                        fontWeight={i === 0 ? 'normal' : 'bold'}
+                        fill={i === 0 ? theme.rulerTextPx : i === 1 ? theme.rulerTextMm : i === 2 ? theme.rulerTextCm : i === 3 ? theme.rulerTextInch : theme.rulerHint}
+                        fontSize={i === 4 ? fontSize * 0.85 : fontSize}
+                        fontFamily={i === 4 ? 'sans-serif' : 'monospace'}
+                        fontWeight={i === 0 || i === 4 ? 'normal' : 'bold'}
                         textAnchor="middle"
                       >
                         {row}
                       </text>
                     ))}
-                    {/* "Click to reset" hint when locked */}
-                    {locked && (
-                      <text
-                        x={lx + boxW / 2} y={ly + boxH + 14 * S}
-                        fill={theme.rulerHint} fontSize={10 * S}
-                        fontFamily="sans-serif" textAnchor="middle"
-                      >{t('rulerClickToReset')}</text>
-                    )}
+                    {/* Hint under the box: how to finish, or how to start a new one */}
+                    <text
+                      x={lx + boxW / 2} y={ly + boxH + 14 * S}
+                      fill={theme.rulerHint} fontSize={10 * S}
+                      fontFamily="sans-serif" textAnchor="middle"
+                    >{locked ? t('rulerClickToReset') : t('rulerDoubleClickFinish')}</text>
                   </g>
                 );
               })()}

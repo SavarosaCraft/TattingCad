@@ -44,6 +44,9 @@ export function useCanvasInteraction() {
   // ── Ruler tool ─────────────────────────────────────────────────────────
   const [rulerPoints, setRulerPoints] = useState<{ x: number; y: number }[]>([]);
   const [rulerMousePos, setRulerMousePos] = useState<{ x: number; y: number } | null>(null);
+  // Session 60: multi-point ruler — true once a double-click/double-tap has
+  // finished it (points and totals stay; the next click starts a new one).
+  const [rulerDone, setRulerDone] = useState(false);
 
   // ── Rotation input ─────────────────────────────────────────────────────
   const [groupRotationInput, setGroupRotationInput] = useState('');
@@ -68,6 +71,7 @@ export function useCanvasInteraction() {
     zDown, setZDown,
     rulerPoints, setRulerPoints,
     rulerMousePos, setRulerMousePos,
+    rulerDone, setRulerDone,
     groupRotationInput, setGroupRotationInput,
   };
 }

@@ -84,6 +84,8 @@ export interface UseInputHandlersParams {
   setPivotOffset: (v: { x: number; y: number }) => void;
   setRulerPoints: (fn: (prev: any[]) => any[]) => void;
   setRulerMousePos: (v: any) => void;
+  rulerDone: boolean;
+  setRulerDone: (v: boolean) => void;
   setSelectedBEs: React.Dispatch<React.SetStateAction<any[]>>;
   setDragTick: (fn: (prev: number) => number) => void;
   setTattingOrderConflict: (v: any) => void;
@@ -150,12 +152,38 @@ export function useInputHandlers(p: UseInputHandlersParams) {
     const world = p.screenToWorld(e.clientX, e.clientY);
 
     if (p.currentTool === 'ruler') {
-      if (p.rulerPoints.length < 2) {
-        p.setRulerPoints(prev => [...prev, { x: world.x, y: world.y }]);
-      } else {
-        p.setRulerPoints(() => []);
+      // Session 60: multi-point ruler. Click adds a point; a second click on
+      // the same spot within ~half a second (double-click / double-tap)
+      // finishes it — the points and totals stay; the next click starts a
+      // new ruler. Done here, not in onDoubleClick, so touch works the same
+      // (a tap arrives here via onTouchStart).
+      // The browser's compatibility mouse event after a tap (same spot, a
+      // moment later) would look like a double-tap — ignored; the tap itself
+      // already came in through onTouchStart.
+      if (e?.nativeEvent?.sourceCapabilities?.firesTouchEvents) return;
+      const now = performance.now();
+      const pt = { x: world.x, y: world.y, t: now, sx: e.clientX, sy: e.clientY };
+      if (p.rulerDone) {
+        p.setRulerDone(false);
         p.setRulerMousePos(null);
+        p.setRulerPoints(() => [pt]);
+        return;
       }
+      // A click on the last point never adds a (zero-length) point: quick
+      // second click there = finish; after a pause it just restarts the
+      // double-click timer, so double-clicking the point you placed a
+      // moment ago still finishes.
+      const last = p.rulerPoints[p.rulerPoints.length - 1];
+      if (last && last.sx != null && Math.hypot(e.clientX - last.sx, e.clientY - last.sy) < 10) {
+        if (now - last.t < 450 && p.rulerPoints.length >= 2) {
+          p.setRulerDone(true);
+          p.setRulerMousePos(null);
+        } else {
+          p.setRulerPoints(prev => prev.map((q, i) => i === prev.length - 1 ? { ...q, t: now } : q));
+        }
+        return;
+      }
+      p.setRulerPoints(prev => [...prev, pt]);
       return;
     }
 
@@ -685,7 +713,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       }
     }
 
-    if (p.currentTool === 'ruler' && p.rulerPoints.length === 1) {
+    if (p.currentTool === 'ruler' && !p.rulerDone && p.rulerPoints.length >= 1) {
       p.setRulerMousePos({ x: world.x, y: world.y });
     }
 

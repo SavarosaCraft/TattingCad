@@ -96,6 +96,11 @@ interface PicotJoinModeBarProps {
   // materialId undefined/empty means "Auto" — clears the override so the
   // connection's color live-tracks its origin picot's element again.
   onConnectionColorChange: (connectionId: string, materialId: string | undefined) => void;
+  // Session 60: mm of thread per fold-length unit (from the active thread
+  // preset, same conversion as the ruler) — shows the fold's thread length
+  // as quiet grey text at the right of row 2. Omitted → not shown.
+  mmPerUnit?: number;
+  presetName?: string;
   t: (key: string) => string;
 }
 
@@ -113,6 +118,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
   activeConnection,
   connectionColorOptions,
   onConnectionColorChange,
+  mmPerUnit,
+  presetName,
   t,
 }) => {
   const [copiedFoldProps, setCopiedFoldProps] = useState<FoldProps | null>(() => lastCopiedFoldProps);
@@ -261,6 +268,25 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
             onCommit={(v, { pushHistory }) => onFoldPropertyChange(activeFold.id, { angleB: v }, pushHistory)}
           />
           <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            {/* Session 60: thread this fold uses (outer + inside length),
+                quiet grey text; the breakdown is in the tooltip. */}
+            {mmPerUnit != null && mmPerUnit > 0 && (() => {
+              const outerMm = activeFold.outerLength * mmPerUnit;
+              const innerMm = activeFold.innerLength * mmPerUnit;
+              const totalMm = outerMm + innerMm;
+              const tip = t('picotFoldThreadTip')
+                .replace('{outer}', outerMm.toFixed(1))
+                .replace('{inner}', innerMm.toFixed(1))
+                .replace('{total}', totalMm.toFixed(1))
+                .replace('{preset}', presetName || '');
+              return (
+                <span className="text-xs text-gray-400 whitespace-nowrap mr-1.5 cursor-help" title={tip}>
+                  {t('picotFoldThread')
+                    .replace('{mm}', totalMm.toFixed(1))
+                    .replace('{in}', (totalMm / 25.4).toFixed(2))}
+                </span>
+              );
+            })()}
             <button
               onClick={handleCopyFold}
               className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-medium border border-gray-500"
