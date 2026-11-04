@@ -609,6 +609,12 @@ const TattingDesigner = () => {
   // First-run setup screen (session 60, components/SetupScreen.tsx). Shown
   // once to everyone — fresh installs and existing users — until
   // tcad_setup_seen is written (Start / Skip / ✕); Options → Setup… reopens it.
+  // Large size → bigger dialogs too (session 60). Dialogs are rendered
+  // outside .app-root, so the flag goes on <html>; index.css scales every
+  // .tcad-dialog (Modal + the hand-built dialogs) with `zoom`.
+  useEffect(() => {
+    document.documentElement.classList.toggle('tcad-ui-large', uiScale === 'large');
+  }, [uiScale]);
   const [showSetup, setShowSetup] = React.useState<boolean>(() => {
     try { return localStorage.getItem('tcad_setup_seen') === null; } catch { return false; }
   });
@@ -753,7 +759,7 @@ const APP_VERSION = '1.3.0';
   const isUndoRedoRef = useRef(false);  // Flag to prevent adding history during undo/redo
   const notationEscapeRef = useRef(false); // Flag: ESC was pressed on notation input — suppress blur commit
   const pendingNotationRef = useRef(null); // { elementId, notation, notationB? } — survives re-renders/unmount
-  const historyRef = useRef([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
+  const historyRef = useRef<{ elements: any[]; connections: any[]; polarGrids?: any[] }[]>([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
   const historyIndexRef = useRef(0);  // Ref to current index
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
@@ -1085,24 +1091,75 @@ const APP_VERSION = '1.3.0';
   }, [selectedIds]);
 
   // Tauri v2 exit confirmation — Rust intercepts close and emits event, we show dialog here
+  //
+  // Session 60 fix — two dialogs on close (one with raw keys
+  // "exitConfirmTitle" / "exitConfirmMessage"). listen() registers
+  // asynchronously; this effect used to re-run whenever `t` changed (it does
+  // right after start, when the language file loads), and the cleanup ran
+  // before .then() had stored the unlisten function — so the first listener
+  // was never removed, still holding the not-yet-loaded `t`. (React
+  // StrictMode's double mount in dev did the same.) Now: registered once,
+  // the current `t` read through a ref, a listener that arrives after
+  // cleanup is removed at once, and a second close click while the dialog
+  // is open is ignored.
+  const closeTRef = useRef(t);
+  closeTRef.current = t;
   useEffect(() => {
     if (!(window as any).__TAURI__) return;
     let unlisten: (() => void) | null = null;
+    let disposed = false;
+    let asking = false;
     listen('close-requested', async () => {
+      if (asking) return;
       // Same check as the title star (session 58; was an index comparison
       // that missed edits once the 50-step undo history was full).
       if (hasUnsavedChangesRef.current) {
-        const confirmed = await ask(t('exitConfirmMessage'), {
-          title: t('exitConfirmTitle'),
-          kind: 'warning',
-        });
-        if (confirmed) getCurrentWindow().destroy();
+        asking = true;
+        try {
+          const tt = closeTRef.current;
+          const confirmed = await ask(tt('exitConfirmMessage'), {
+            title: tt('exitConfirmTitle'),
+            kind: 'warning',
+          });
+          if (confirmed) getCurrentWindow().destroy();
+        } finally {
+          asking = false;
+        }
       } else {
         getCurrentWindow().destroy();
       }
-    }).then(fn => { unlisten = fn; });
-    return () => { if (unlisten) unlisten(); };
-  }, [t]); // reads hasUnsavedChangesRef; re-registers only for a language change (dialog text)
+    }).then(fn => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+    return () => { disposed = true; if (unlisten) unlisten(); };
+  }, []); // reads hasUnsavedChangesRef / closeTRef
+
+  // Session 60. Desktop app only: the Windows web view (WebView2) keeps some
+  // browser shortcuts on — Ctrl+F / F3 / Ctrl+G opened its own Find box,
+  // Ctrl+R / F5 reloaded the page (losing undo history and anything not yet
+  // autosaved), Ctrl+P printed the whole screen, Ctrl + plus/minus/0 zoomed
+  // the whole interface. They are swallowed here, also while typing in a box.
+  // Capture phase + preventDefault only (no stopPropagation), so the app's
+  // own shortcuts still run — Ctrl+G is still Group. In a normal browser
+  // (dev server / web) nothing is blocked, so Ctrl+F still finds text there.
+  // Ctrl+wheel zoom is already blocked by the effect below.
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return;
+    const blockBrowserKeys = (e: KeyboardEvent) => {
+      const key = (e.key || '').toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      const fn = !e.altKey && (key === 'f3' || key === 'f5');
+      const withMod = mod && !e.altKey && (
+        key === 'f' || key === 'g' || key === 'r' || key === 'p' ||
+        key === '+' || key === '=' || key === '-' || key === '_' || key === '0' ||
+        e.code === 'NumpadAdd' || e.code === 'NumpadSubtract' || e.code === 'Numpad0'
+      );
+      if (fn || withMod) e.preventDefault();
+    };
+    window.addEventListener('keydown', blockBrowserKeys, true);
+    return () => window.removeEventListener('keydown', blockBrowserKeys, true);
+  }, []);
 
   // Prevent browser zoom (Ctrl+wheel on desktop, pinch on touchpad)
   // Also handles Shift+wheel → zoom in/out
@@ -2529,7 +2586,7 @@ const APP_VERSION = '1.3.0';
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target.result);
+        const parsed = JSON.parse(event.target.result as string);
         if (typeof parsed !== 'object' || Array.isArray(parsed)) {
           showLoadMsg('error', t('loadThemeErrInvalid'));
           return;
@@ -3363,7 +3420,7 @@ const APP_VERSION = '1.3.0';
     for (let iter = 0; iter < 30; iter++) {
       c1x = foot1X + dir1.x * t; c1y = foot1Y + dir1.y * t;
       c2x = foot2X + dir2.x * t; c2y = foot2Y + dir2.y * t;
-      const tryPath = { type: 'cubic', x: foot1X, y: foot1Y, control1X: c1x, control1Y: c1y, control2X: c2x, control2Y: c2y, endX: foot2X, endY: foot2Y };
+      const tryPath = { type: 'cubic' as const, x: foot1X, y: foot1Y, control1X: c1x, control1Y: c1y, control2X: c2x, control2Y: c2y, endX: foot2X, endY: foot2Y };
       const len = calculatePathLength(sampleBezierPath(tryPath, 30));
       if (Math.abs(len - targetLength) < targetLength * 0.005) break;
       if (len < targetLength) lo = t; else hi = t;
@@ -4616,7 +4673,7 @@ const APP_VERSION = '1.3.0';
   // this doesn't need yet, so a ghost mother in the selection is just left
   // untouched rather than guessing).
   const updateNotationForMultiple = (
-    targets: Array<{ elementId: string; notation: string }>,
+    targets: Array<{ elementId: string; notation: string; notationB?: string }>,
     opts: NotationUpdateOpts
   ) => {
     if (!opts.preservesExistingPicots) return; // see comment above
@@ -4627,11 +4684,13 @@ const APP_VERSION = '1.3.0';
       picotConnectionsRef.current.flatMap(conn => conn.picots.map(cp => `${cp.elementId}::${cp.picotId}`))
     );
 
-    const targetMap = new Map(targets.map(t => [t.elementId, t.notation]));
+    // notationB (session 60): split rings scaled on both sides by the
+    // multi-select Scale; null keeps side B as it is.
+    const targetMap = new Map(targets.map(t => [t.elementId, t]));
     const updated = elementsRef.current.map(el => {
-      const notation = targetMap.get(el.id);
-      if (notation === undefined || el.isGhostMother) return el;
-      const next = computeElementAfterNotationEdit(el, notation, null, picotMatchMode, survivingConnKeys);
+      const target = targetMap.get(el.id);
+      if (target === undefined || el.isGhostMother) return el;
+      const next = computeElementAfterNotationEdit(el, target.notation, target.notationB ?? null, picotMatchMode, survivingConnKeys);
       return next ? next.element : el;
     });
 
@@ -4950,7 +5009,7 @@ const APP_VERSION = '1.3.0';
     
     const reader = new FileReader();
     reader.onload = (event) => {
-      setReferenceImage(event.target.result);
+      setReferenceImage(event.target.result as string);
       // Position image at current viewport center in world coordinates
       if (canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
@@ -4989,7 +5048,7 @@ const APP_VERSION = '1.3.0';
 
   // Render a bead at (bx,by) with given radius, shape, fill color, and orientation angle (radians).
   // angleDeg: for core beads pass tangent angle; for picot beads pass perpAngle (both in radians).
-  const renderBeadShape = (bx, by, rad, shape, color, angleRad = 0, key = 0) => {
+  const renderBeadShape = (bx, by, rad, shape, color, angleRad = 0, key: string | number = 0) => {
     const shadow = <circle key={`${key}-s`} cx={bx} cy={by} r={rad + 1} fill="rgba(0,0,0,0.3)" />;
     const highlight = <ellipse key={`${key}-h`} cx={0} cy={0}
       transform={`translate(${bx - rad * 0.28},${by - rad * 0.3})`}
@@ -6344,7 +6403,7 @@ const APP_VERSION = '1.3.0';
   // awareness (materialId vs materialIdB); the two label-color call sites
   // below have no specific picot in scope and are unaffected, since
   // getSplitRingSide returns null with no picot passed.
-  const getSolidColor = (element, picot) => {
+  const getSolidColor = (element, picot?) => {
     const side = getSplitRingSide(element, picot);
     const materialId = (side === 'B' && element.materialIdB) ? element.materialIdB : element.materialId;
     const mat = materialsById.get(materialId || 'default');
@@ -6730,7 +6789,7 @@ const APP_VERSION = '1.3.0';
           className="fixed bottom-8 left-1/2 pointer-events-none"
           style={{ transform: 'translateX(-50%)', zIndex: 2147483647 }}
         >
-          <div className={`flex items-center gap-3 px-5 py-3 rounded-lg shadow-2xl text-white font-semibold text-sm border ${
+          <div className={`tcad-zoom flex items-center gap-3 px-5 py-3 rounded-lg shadow-2xl text-white font-semibold text-sm border ${
             loadMsg.type === 'success'
               ? 'bg-green-700 border-green-500'
               : 'bg-red-800 border-red-500'
@@ -7081,7 +7140,21 @@ const APP_VERSION = '1.3.0';
            bigger under ui-large, that's a follow-up sizing decision, not
            a bug fix — flagging rather than deciding it here.
         ── */
-        .ui-large { font-size: 17.6px; } /* NOTE (session 59): this does NOT scale rem-based Tailwind text (rem = the html element's size) — the Large text sizes below are set in px for that reason */
+        .ui-large { font-size: 17.6px; }
+        /* Session 60: Picot Tools pop-over — wider, two columns (one on narrow
+           screens). Large: wider still (the property-bar Large rules enlarge
+           its text and buttons). See GeneralElementPropertyBar.tsx. */
+        .picot-wizard-pop { width: 460px; max-width: calc(100vw - 16px); }
+        .picot-wizard-grid { grid-template-columns: 1fr 1fr; }
+        .ui-large .picot-wizard-pop { width: 560px; }
+        @media (max-width: 640px) { .picot-wizard-grid { grid-template-columns: 1fr; } }
+        /* The narrow-screen property-bar rules (max-width 768px) squeeze every
+           slider to 40px and number box to 44px — not inside Picot Tools. */
+        .top-row-properties .picot-wizard-pop input[type="range"] { width: 100% !important; }
+        .top-row-properties .picot-wizard-pop input[type="number"] { width: 5rem !important; }
+        .top-row-properties .picot-wizard-pop .picot-wizard-close { font-size: 22px !important; min-width: 2rem !important; justify-content: center; }
+        /* Session 60: status bar text at Large (inline 12px). */
+        .ui-large .info-bar { font-size: 14px !important; } /* NOTE (session 59): this does NOT scale rem-based Tailwind text (rem = the html element's size) — the Large text sizes below are set in px for that reason */
         /* Row 1 real growth under ui-large — box-model sizing (not transform),
            same fix as Row 2. Row 1's button dimensions are set as fixed px
            via inline style in TopMenuBar.tsx (squareBtn/wideBtn = 44px), so
@@ -7731,7 +7804,7 @@ const APP_VERSION = '1.3.0';
           if (chain?.type !== 'chain' || !chain?.paths?.length || chain.paths[0].type !== 'cubic') return null;
           return (
             <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
-              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
+              <div className="tcad-zoom flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
                 {[
                   { label: '90°', key: '1', deg: 90 },
                   { label: '60°', key: '2', deg: 60 },
@@ -7782,7 +7855,7 @@ const APP_VERSION = '1.3.0';
           if (line?.type !== 'line' || !line?.paths?.length || line.paths[0].type !== 'cubic') return null;
           return (
             <div className="flex justify-center pointer-events-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, padding: '0.35rem 0' }}>
-              <div className="flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
+              <div className="tcad-zoom flex items-center gap-1 px-2 py-1 bg-gray-800 rounded border border-gray-600 shadow-lg pointer-events-auto">
                 {[
                   { label: '90°', key: '1', deg: 90 },
                   { label: '60°', key: '2', deg: 60 },
@@ -7813,6 +7886,7 @@ const APP_VERSION = '1.3.0';
         {/* ── Notes Drawer ─────────────────────────────────────── */}
         {notesOpen && (
           <div
+            className="tcad-zoom"
             style={{
               position: 'absolute',
               top: 0,
@@ -7964,7 +8038,7 @@ const APP_VERSION = '1.3.0';
               onClick={() => setShowRemoveConfirm(false)}
             ></div>
             
-            <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white rounded z-50 shadow-xl p-4" style={{ width: '280px' }}>
+            <div className="tcad-dialog fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white rounded z-50 shadow-xl p-4" style={{ width: '280px' }}>
               <h3 className="font-semibold mb-3">{t('removeImageTitle')}</h3>
               <p className="text-sm text-gray-400 mb-4">{t('removeImageBody')}</p>
               <div className="flex gap-2">
@@ -8607,7 +8681,7 @@ const APP_VERSION = '1.3.0';
                 const opacity = grid.opacity ?? 0.5; // 0–1 user-controlled opacity
                 const gridOffsetRad = (grid.angularOffset || 0) * Math.PI / 180;
                 // Collect all unique spoke angles across all visible rings (per-ring offset aware)
-                const spokeAngles = new Set();
+                const spokeAngles = new Set<number>();
                 grid.rings.filter(r => r.visible).forEach(ring => {
                   const ringOffsetRad = gridOffsetRad + ((ring.angularOffset || 0) * Math.PI / 180);
                   for (let i = 0; i < ring.divisions; i++) {
@@ -9674,7 +9748,7 @@ const APP_VERSION = '1.3.0';
       {showHelp && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 md:p-4" style={{ zIndex: 2147483645 }} onClick={() => setShowHelp(false)}>
           <div
-            className="bg-gray-800 rounded-lg w-full max-w-full md:max-w-3xl flex flex-col"
+            className="tcad-dialog bg-gray-800 rounded-lg w-full max-w-full md:max-w-3xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
             style={{ height: window.innerWidth <= 768 ? '92vh' : '82vh', maxHeight: '92vh' }}
           >
@@ -9702,7 +9776,7 @@ const APP_VERSION = '1.3.0';
       {showUiGuide && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 md:p-4" onClick={() => setShowUiGuide(false)}>
           <div
-            className="bg-gray-800 rounded-lg w-full max-w-full md:max-w-3xl flex flex-col"
+            className="tcad-dialog bg-gray-800 rounded-lg w-full max-w-full md:max-w-3xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
             style={{ height: window.innerWidth <= 768 ? '92vh' : '82vh', maxHeight: '92vh' }}
           >
@@ -9903,7 +9977,7 @@ const APP_VERSION = '1.3.0';
       {/* Join Picots Mode Tip */}
       {showJoinTip && activeMode === 'picotJoin' && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
-          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-blue-500 shadow-2xl">
+          <div className="tcad-dialog bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-blue-500 shadow-2xl">
             <h2 className="text-lg font-bold text-blue-400 mb-3">{t('joinTipTitle')}</h2>
             <div className="text-gray-200 text-sm space-y-2 mb-5">
               <p>{t('joinTipBody1')}</p>
@@ -9940,7 +10014,7 @@ const APP_VERSION = '1.3.0';
         const canSwap = targetEl?.orderNumber != null && String(targetEl.orderNumber).trim() !== '';
         return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4" style={{ zIndex: 2147483647 }}>
-          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-amber-500 shadow-2xl">
+          <div className="tcad-dialog bg-gray-800 rounded-lg p-6 max-w-sm w-full border border-amber-500 shadow-2xl">
             <h2 className="text-base font-bold text-amber-400 mb-4">{t('tattingOrderConflictTitle')} (#{tattingOrderConflict.newNum})</h2>
             <div className="flex flex-col gap-2">
               <button
@@ -10111,7 +10185,7 @@ const APP_VERSION = '1.3.0';
             {showRecentLoadConfirm && (
               <>
                 <div className="fixed inset-0 bg-black bg-opacity-60" style={{ zIndex: 10012 }} />
-                <div className="fixed bg-gray-800 rounded-lg p-6 border border-gray-600 shadow-2xl"
+                <div className="tcad-dialog fixed bg-gray-800 rounded-lg p-6 border border-gray-600 shadow-2xl"
                   style={{ zIndex: 10013, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(360px, 92vw)' }}>
                   <h2 className="text-white font-bold text-base mb-2">{t('recentProjectsLoadConfirmTitle')}</h2>
                   <p className="text-gray-300 text-sm mb-5">{t('recentProjectsLoadConfirmBody')}</p>
@@ -10641,7 +10715,7 @@ const APP_VERSION = '1.3.0';
     {/* Ghost Array Manager Modal */}
     {showArrayManager && (
       <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
-        <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+        <div className="tcad-dialog bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
           style={{ width: 'min(560px, 95vw)', maxHeight: '85dvh' }}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
             <h2 className="text-gray-100 font-bold text-lg">{t('ghostArrayManagerTitle')}</h2>
@@ -10863,7 +10937,7 @@ const APP_VERSION = '1.3.0';
       <>
         <div className="fixed inset-0 bg-black/50" style={{zIndex: 2147483646}} onClick={() => setConvertConfirm(null)}></div>
         <div
-          className="fixed bg-gray-700 rounded-lg shadow-xl border border-gray-600 p-5 w-80"
+          className="tcad-dialog fixed bg-gray-700 rounded-lg shadow-xl border border-gray-600 p-5 w-80"
           style={{zIndex: 2147483647, top: '50%', left: '50%', transform: 'translate(-50%, -50%)'}}
         >
           {convertConfirm === 'all' ? (
@@ -11228,7 +11302,7 @@ const APP_VERSION = '1.3.0';
     {showMaterialsPanel && (
       <>
         <div className="fixed inset-0 bg-black bg-opacity-60" style={{zIndex:10000}} onClick={() => setShowMaterialsPanel(false)} />
-        <div className="fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
+        <div className="tcad-dialog fixed bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
           style={{backgroundColor:'#1f2937', zIndex:10001, top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(420px, 95vw)', maxHeight:'85dvh'}}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
             <h2 className="text-gray-100 font-bold text-lg">{t('materialsTitle')}</h2>
@@ -12073,7 +12147,7 @@ const APP_VERSION = '1.3.0';
           style={{ zIndex: 2147483631 }}
         >
           <div
-            className="bg-gray-900 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
+            className="tcad-dialog bg-gray-900 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
             style={{ width: 'min(380px, 92vw)' }}
             onClick={e => e.stopPropagation()}
           >
@@ -12158,7 +12232,7 @@ const APP_VERSION = '1.3.0';
         {showUpdatePopup && (
           <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2147483632 }}>
             <div
-              className="bg-gray-800 border border-blue-700 rounded-xl shadow-2xl pointer-events-auto px-5 py-4 flex flex-col gap-3"
+              className="tcad-dialog bg-gray-800 border border-blue-700 rounded-xl shadow-2xl pointer-events-auto px-5 py-4 flex flex-col gap-3"
               style={{ width: 'min(300px, 88vw)' }}
               onClick={e => e.stopPropagation()}
             >

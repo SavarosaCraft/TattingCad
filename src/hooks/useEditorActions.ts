@@ -50,6 +50,7 @@ export interface UseEditorActionsParams {
   // Derived maps
   elementById: Map<string, any>;
   selectedIdSet: Set<string>;
+  picotConnections: any[];
   // Refs
   canvasRef: React.RefObject<HTMLElement | null>;
   elementsRef: React.RefObject<any[]>;
@@ -60,9 +61,9 @@ export interface UseEditorActionsParams {
   clipboardRef: React.RefObject<any[]>;
   historyRef: React.RefObject<any[]>;
   historyIndexRef: React.RefObject<number>;
-  isUndoRedoRef: React.RefObject<boolean>;
-  needsHistoryPushRef: React.RefObject<boolean>;
-  skipAutoHistoryRef: React.RefObject<boolean>;
+  isUndoRedoRef: React.MutableRefObject<boolean>;
+  needsHistoryPushRef: React.MutableRefObject<boolean>;
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
   lastUsedMaterialIdRef: React.RefObject<string>;
   // ds of bare thread at each end of NEW chains/rings (active thread preset).
   defaultEndAllowanceRef: React.RefObject<number>;
@@ -839,10 +840,20 @@ export function useEditorActions(p: UseEditorActionsParams) {
     const clipboardIds = new Set(board.map((el: any) => el.id));
     const newConnections = connections
       .filter((conn: any) => conn.picots.every((pt: any) => clipboardIds.has(pt.elementId)))
-      .map((conn: any) => ({
-        id: generateId(),
-        picots: conn.picots.map(pt => ({ elementId: elementIdMap.get(pt.elementId), picotId: pt.picotId })),
-      }));
+      .map((conn: any) => {
+        // Session 60 fix: keep the whole connection (connectionType,
+        // materialId and the fold properties — totalLength, foldRatio,
+        // bendOuter, bendInner, tangentA, tangentB), same as duplicateInPlace
+        // below. Rebuilding it as just {id, picots} turned every pasted fold
+        // into a plain join. isInheritedJoin is dropped: a pasted copy is not
+        // part of a ghost array's managed join set.
+        const { isInheritedJoin, ...rest } = conn;
+        return {
+          ...rest,
+          id: generateId(),
+          picots: conn.picots.map((pt: any) => ({ elementId: elementIdMap.get(pt.elementId), picotId: pt.picotId })),
+        };
+      });
 
     p.setElements(prev => [...prev, ...newElements]);
     p.setPicotConnections(prev => [...prev, ...newConnections]);

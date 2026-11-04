@@ -500,7 +500,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
             for (let i = 0; i < 15; i++) {
               const d = (minD + maxD) / 2;
               const tCX = midX + (perpX / perpLen) * d * side, tCY = midY + (perpY / perpLen) * d * side;
-              const tryLen = calculatePathLength(sampleBezierPath({ x: startX, y: startY, endX, endY, controlX: tCX, controlY: tCY }, 20));
+              const tryLen = calculatePathLength(sampleBezierPath({ x: startX, y: startY, endX, endY, controlX: tCX, controlY: tCY, type: 'quadratic' }, 20));
               if (Math.abs(tryLen - targetLength) < tolerance * 0.5) { bestCX = tCX; bestCY = tCY; break; }
               if (tryLen < targetLength) minD = d; else maxD = d;
               bestCX = tCX; bestCY = tCY;
@@ -637,7 +637,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
             for (let i = 0; i < 20; i++) {
               const d = (minD + maxD) / 2;
               const tEX = path.x + pDx * d * side, tEY = path.y + pDy * d * side;
-              const tryLen = calculatePathLength(sampleBezierPath({ x: path.x, y: path.y, endX: tEX, endY: tEY, controlX: newCX, controlY: newCY }, 20));
+              const tryLen = calculatePathLength(sampleBezierPath({ x: path.x, y: path.y, endX: tEX, endY: tEY, controlX: newCX, controlY: newCY, type: 'quadratic' }, 20));
               const diff = Math.abs(tryLen - targetLength);
               if (diff < bestDiff) { bestDiff = diff; bestEX = tEX; bestEY = tEY; }
               if (diff < tolerance * 0.5) break;

@@ -19,7 +19,7 @@ export function useCanvasInteraction() {
   const [dragTick, setDragTick] = useState(0);
 
   // ── Selection ──────────────────────────────────────────────────────────
-  const [selectedIds, setSelectedIds] = useState<(string | number)[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionBox, setSelectionBox] = useState<any>(null);
 
   // ── Rotation handles and pivot ─────────────────────────────────────────

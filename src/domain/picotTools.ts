@@ -6,7 +6,7 @@
 // of that, it only computes the new notation string.
 //
 // SCOPE (v1 — "add" and "clear/reduce"): plain ds runs and plain picot tokens
-// only. Split rings (dual A/B notation), rds/ss/lss/rss stitch types, and bead
+// only (split rings: one side at a time — session 60). rds stitch types, and bead
 // tokens (be, bc:, bp:, bjp:, sb:, bcp:) are out of scope — analyzeNotation
 // reports `supported: false` for any of these rather than guessing. Fill
 // density and length-aware scaling (which need the "protected zone" floor
@@ -52,7 +52,11 @@ function splitPrefix(notation: string): { type: string; pattern: string } | null
 export function analyzeNotation(notation: string, picots: any[] | undefined): WizardAnalysis {
   const split = splitPrefix(notation || '');
   if (!split) return { supported: false, reason: 'unparsable', segments: [], type: '' };
-  if (/^sr$/i.test(split.type)) return { supported: false, reason: 'splitRing', segments: [], type: split.type };
+  // Session 60: split rings ARE supported now — the Picot Tools panel hands
+  // each side over separately as "sr: <side>" with that side's picots (see
+  // GeneralElementPropertyBar.tsx), so one side is just a plain run of ds +
+  // picots like any ring. ('splitRing' stays in the reason type for callers
+  // that still check it.)
 
   const tokens = expandTokens(split.pattern);
   const segments: WizardSegment[] = [];
@@ -101,6 +105,31 @@ export function analyzeNotation(notation: string, picots: any[] | undefined): Wi
   }
 
   return { supported: true, segments, type: split.type };
+}
+
+// Session 60. A split ring as two independent "sides" for the Picot Tools.
+// The element stores its picots as [...side A reversed, ...side B]
+// (computeElementAfterNotationEdit in tattingindex.tsx): side A's
+// stitchesBefore are measured from the split (countA - original), and B's
+// are offset by countA. Side A's picots are the FIRST n entries, n = the
+// number of zero-width tokens in A's notation — split by count, not by
+// position: a picot at the very start of side A is stored exactly at the
+// split (stitchesBefore === splitPosition), which a position test would put
+// on side B. Each side comes back as "sr: <pattern>" with its own picots in
+// notation order, ready for analyzeNotation and the transforms.
+export function splitRingSides(el: any): { notationA: string; notationB: string; picotsA: any[]; picotsB: any[] } {
+  const notationA = el?.notation || '';
+  const notationB = `sr: ${el?.notationB || ''}`;
+  const all: any[] = el?.picots || [];
+  const split = splitPrefix(notationA);
+  const countA = split ? expandTokens(split.pattern).filter(tok => isZeroWidth(tok)).length : 0;
+  const splitPos = el?.splitPosition || Math.floor((el?.stitchCount || 0) / 2);
+  const picotsA = all.slice(0, countA)
+    .map(p => ({ ...p, stitchesBefore: splitPos - p.stitchesBefore }))
+    .reverse();
+  const picotsB = all.slice(countA)
+    .map(p => ({ ...p, stitchesBefore: p.stitchesBefore - splitPos }));
+  return { notationA, notationB, picotsA, picotsB };
 }
 
 function segmentsToNotation(type: string, segments: WizardSegment[]): string {
@@ -380,13 +409,15 @@ export function maxUsefulFillGap(notation: string, picots: any[] | undefined): n
 }
 
 // ── Compact repeated picots ──────────────────────────────────────────────
-// Folds runs of identical, consecutive, UNJOINED (run + picot) pairs into
+// Folds runs of identical, consecutive (run + picot) pairs into
 // repeat-group syntax: N copies of "Xds-p" become "Nx(Xds-p)" (or "N*(...)"
-// — both are valid, expandTokens accepts either). A joined picot is never
-// folded into a group — it's a hard break, since a repeat group represents
-// interchangeable copies and a joined picot is not interchangeable with the
-// others. Any leftover partial run (e.g. a trailing "1ds" that isn't part of
-// a full unit) is left as a plain token.
+// — both are valid, expandTokens accepts either). Any leftover partial run
+// (e.g. a trailing "1ds" that isn't part of a full unit) is left as a plain
+// token.
+// Session 60 (user's decision): joined picots are grouped too. Joins are not
+// written in the notation — "p" is "p" whether joined or not — so grouping
+// them changes no picot and keeps every join; it used to be a hard break,
+// which left e.g. a ring with 4 of 5 picots joined with nothing to group.
 //
 // This never changes any picot's position — repeat-group syntax expands to
 // exactly the same flat tokens it was folded from — so it's inherently
@@ -397,10 +428,7 @@ export function maxUsefulFillGap(notation: string, picots: any[] | undefined): n
 // A repeat-group ("Nx(...)") is shorter than the fully spelled-out form even
 // at N=2 (e.g. "2*(2ds-p)" is 9 chars vs "2ds-p-2ds-p" at 11), so there's no
 // reason to hold out for 3+ repeats — 2 is the natural floor (1 "repeat"
-// isn't a repeat at all). This also matters for elements with a joined picot
-// partway through: it splits the run in two, and each half needs to clear
-// the threshold on its own, so a default any higher than 2 can silently
-// leave an otherwise-compactable pattern untouched.
+// isn't a repeat at all).
 const DEFAULT_MIN_REPEAT = 2;
 
 function foldRepeats(segments: WizardSegment[], minRepeat: number, symbol: 'x' | '*'): { parts: string[]; groupsCreated: number } {
@@ -410,14 +438,14 @@ function foldRepeats(segments: WizardSegment[], minRepeat: number, symbol: 'x' |
   while (i < segments.length) {
     const seg = segments[i];
     const next = segments[i + 1];
-    if (seg.kind === 'run' && next && next.kind === 'picot' && !next.joined) {
+    if (seg.kind === 'run' && next && next.kind === 'picot') {
       const unitDs = seg.ds as number;
       const unitRaw = next.raw;
       let count = 1;
       let j = i + 2;
       while (
         segments[j] && segments[j].kind === 'run' && segments[j].ds === unitDs &&
-        segments[j + 1] && segments[j + 1].kind === 'picot' && segments[j + 1].raw === unitRaw && !segments[j + 1].joined
+        segments[j + 1] && segments[j + 1].kind === 'picot' && segments[j + 1].raw === unitRaw
       ) {
         count++;
         j += 2;
@@ -475,6 +503,38 @@ export function hasCompactableGroups(notation: string, picots: any[] | undefined
 export function autoCompact(notation: string, resultZeroWidth: Array<{ isJoint: boolean }>, minRepeat: number = DEFAULT_MIN_REPEAT): string {
   const result = compactRepeatedPicots(notation, resultZeroWidth, minRepeat);
   return result ? result.notation : notation;
+}
+
+// Session 60. The opposite of Group: writes every repeat group out in full,
+// e.g. "r: 3*(3ds-p)-3ds" -> "r: 3ds-p-3ds-p-3ds-p-3ds". Both spellings
+// ("3x(...)" / "3*(...)" and "(...)x3") and nested groups are expanded by the
+// parser's own expandTokens, so the result is exactly the token list the app
+// already works from. Like Group it never moves a picot (same tokens, same
+// order), so it is join-safe. Ds runs that end up side by side are added
+// together ("2*(3ds-p-3ds)" -> "3ds-p-6ds-p-3ds"), which is the same stitch
+// count. Returns null when there is no repeat group to expand.
+// Callers must NOT run autoCompact on the result — that would group it again.
+const REPEAT_GROUP_RE = /\d+\s*[x*]\s*\(|\)\s*[x*]\s*\d+/i;
+
+export function hasRepeatGroups(notation: string): boolean {
+  const split = splitPrefix(notation || '');
+  return !!split && REPEAT_GROUP_RE.test(split.pattern);
+}
+
+export function expandRepeatGroups(notation: string): string | null {
+  const split = splitPrefix(notation || '');
+  if (!split || !REPEAT_GROUP_RE.test(split.pattern)) return null;
+  const parts: string[] = [];
+  let pendingDs = 0;
+  const flushDs = () => { if (pendingDs > 0) { parts.push(`${pendingDs}ds`); pendingDs = 0; } };
+  for (const token of expandTokens(split.pattern)) {
+    const m = token.match(DS_RE);
+    if (m) { pendingDs += m[1] ? parseInt(m[1], 10) : 1; continue; }
+    flushDs();
+    parts.push(token);
+  }
+  flushDs();
+  return `${split.type}: ${parts.join('-')}`;
 }
 
 // ── Length-aware scale ─────────────────────────────────────────────────────

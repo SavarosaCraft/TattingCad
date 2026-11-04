@@ -21,3 +21,32 @@ body {
   width: 100vw;
   height: 100vh;
 }
+
+/* Large size → bigger dialogs, menus, toasts and canvas pop-ups (session 60).
+   html.tcad-ui-large is set from uiScale in tattingindex.tsx. The scale is
+   --tcad-zoom: 1.12 on windows >= 700x700, 1.2 on >= 900x860; phones and
+   short windows keep 1 (their dialogs already fill the screen). JS that
+   places a zoomed box reads the same value (utils/uiZoom.ts).
+   - .tcad-dialog: dialog boxes (Modal + hand-built ones). Scaled as a whole;
+     the caps are divided by the zoom so a scaled box still fits the screen
+     (tall ones scroll inside, as at normal size).
+   - .tcad-zoom: anything else — menu contents (DropdownMenu zooms an inner
+     wrapper so the menu's measured position stays exact), the load toast,
+     canvas pop-ups, the Notes drawer.
+   NOT here: the property bar and pop-ups inside it (Picot Tools, round
+   pickers) — the .ui-large rules in tattingindex.tsx already enlarge those;
+   zooming them as well would double it. */
+@media (min-width: 700px) and (min-height: 700px) {
+  html.tcad-ui-large { --tcad-zoom: 1.12; }
+}
+@media (min-width: 900px) and (min-height: 860px) {
+  html.tcad-ui-large { --tcad-zoom: 1.2; }
+}
+@media (min-width: 700px) and (min-height: 700px) {
+  html.tcad-ui-large .tcad-dialog {
+    zoom: var(--tcad-zoom);
+    max-width: calc(96vw / var(--tcad-zoom)) !important;
+    max-height: calc(92dvh / var(--tcad-zoom)) !important;
+  }
+  html.tcad-ui-large .tcad-zoom { zoom: var(--tcad-zoom); }
+}

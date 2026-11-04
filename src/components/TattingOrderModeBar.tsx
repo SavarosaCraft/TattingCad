@@ -48,7 +48,7 @@ interface TattingOrderModeBarProps {
   setTattingOrderInput: (v: string) => void;
   assignOrderNumber: (id: string, n: number) => void;
   getNextAvailableNumber: () => number;
-  setElements: (fn: (prev: any[]) => any[]) => void;
+  setElements: (v: any[] | ((prev: any[]) => any[])) => void;
   assignRepeat: (id: string) => void;
   clearOrderAssignment: (id: string) => void;
   inActiveRound: (el: any) => boolean;

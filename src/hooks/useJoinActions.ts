@@ -333,8 +333,8 @@ export const applyJointFlags = (elements: any[], desiredByKey: Map<string, boole
 export interface UseJoinActionsParams {
   // Refs
   selectedPicotsRef: React.RefObject<any[]>;
-  elementsRef: React.RefObject<any[]>;
-  picotConnectionsRef: React.RefObject<any[]>;
+  elementsRef: React.MutableRefObject<any[]>;
+  picotConnectionsRef: React.MutableRefObject<any[]>;
   roundsRef: React.RefObject<any[]>;
   // State values
   elementById: Map<string, any>;
@@ -346,7 +346,7 @@ export interface UseJoinActionsParams {
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
   pushHistoryState: (els: any[], conns: any[], groups?: any[]) => void;
-  skipAutoHistoryRef: React.RefObject<boolean>;
+  skipAutoHistoryRef: React.MutableRefObject<boolean>;
 }
 
 export function useJoinActions(p: UseJoinActionsParams) {

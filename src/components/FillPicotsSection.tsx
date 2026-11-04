@@ -1,11 +1,10 @@
 // components/FillPicotsSection.tsx
 //
-// Presentational "Fill" section of the Picot Wizard popover — density slider
-// + preview text + apply button. Extracted from the single-element wizard's
-// inline IIFE in tattingindex.tsx (see architecture.md). The density-preview
-// computation (previewFillDensity) and the transform (onApply) stay in the
-// caller; this component only renders and reports gap changes.
+// "Fill density" card of the single-element Picot Tools pop-over.
+// Session 60: card layout with a one-line explanation; the "will add N"
+// count is on the Apply button ("Apply fill (+N picots)").
 import React from 'react';
+import { WIZARD_CARD_CLASS, WIZARD_SECTION_TITLE_CLASS, WIZARD_HINT_CLASS } from './ScaleControls';
 
 interface FillPicotsSectionProps {
   gap: number;
@@ -14,11 +13,13 @@ interface FillPicotsSectionProps {
   addedCount: number;
   onApply: () => void;
   sectionLabel: string;
+  hintText: string;
   denseLabel: string;
   sparseLabel: string;
-  previewText: string;
+  /** Button text, already including the count (or the "no change" text). */
   applyLabel: string;
   applyClassName: string;
+  onActivate?: () => void;
 }
 
 export const FillPicotsSection: React.FC<FillPicotsSectionProps> = ({
@@ -28,22 +29,23 @@ export const FillPicotsSection: React.FC<FillPicotsSectionProps> = ({
   addedCount,
   onApply,
   sectionLabel,
+  hintText,
   denseLabel,
   sparseLabel,
-  previewText,
   applyLabel,
   applyClassName,
+  onActivate,
 }) => (
-  <div className="border-t border-gray-600 pt-2 mb-3">
-    <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{sectionLabel}</div>
-    <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+  <div className={`${WIZARD_CARD_CLASS} flex flex-col`} onMouseEnter={onActivate} onFocusCapture={onActivate} onPointerDown={onActivate}>
+    <div className={WIZARD_SECTION_TITLE_CLASS}>{sectionLabel}</div>
+    <div className={WIZARD_HINT_CLASS}>{hintText}</div>
+    <div className="flex items-center justify-between text-xs text-gray-400">
       <span>{denseLabel}</span>
       <span>{sparseLabel}</span>
     </div>
     <input type="range" min={1} max={Math.max(1, maxGap)} value={gap}
-      onChange={(e) => onGapChange(parseInt(e.target.value, 10))}
-      className="w-full mb-1" disabled={maxGap <= 1} />
-    <div className="text-xs text-gray-400 mb-2">{previewText}</div>
-    <button disabled={addedCount === 0} onClick={onApply} className={applyClassName}>{applyLabel}</button>
+      onChange={(e) => { onGapChange(parseInt(e.target.value, 10)); onActivate?.(); }}
+      className="w-full mb-2" disabled={maxGap <= 1} />
+    <button disabled={addedCount === 0} onClick={onApply} className={`${applyClassName} mt-auto`}>{applyLabel}</button>
   </div>
 );

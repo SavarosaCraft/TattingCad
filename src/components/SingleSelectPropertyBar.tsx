@@ -13,7 +13,7 @@ interface SingleSelectPropertyBarProps {
   // Tension stepper (session 57) — see setTensionForIds in tattingindex.tsx.
   tensionInfoForIds: (ids: string[]) => { value: number; mixed: boolean };
   setTensionForIds: (ids: string[], tension: number) => void;
-  selectedIds: (string | number)[];
+  selectedIds: string[];
   selectedIdSet: Set<any>;
   elements: any[];
   elementsRef: React.MutableRefObject<any[]>;
@@ -65,8 +65,8 @@ interface SingleSelectPropertyBarProps {
   setPicotWizardSide: (v: any) => void;
   setPicotWizardSymmetric: (v: boolean) => void;
   setLineBeadClipboard: (v: any) => void;
-  updateElement: (...args: any[]) => void;
-  updateWhere: (...args: any[]) => void;
+  updateElement: (prev: any[], id: string, updates: any) => any[];
+  updateWhere: (prev: any[], predicate: (el: any) => boolean, updates: any) => any[];
   t: (key: string) => string;
 }
 

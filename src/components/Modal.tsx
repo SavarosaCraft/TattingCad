@@ -61,7 +61,7 @@ export const Modal: React.FC<ModalProps> = ({
         style={{ zIndex: wrapperZIndex, opacity: peek ? 0 : 1, transition: 'opacity 0.15s' }}
       >
         <div
-          className={`bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto ${contentClassName}`}
+          className={`tcad-dialog bg-gray-800 rounded-xl shadow-2xl border border-gray-600 pointer-events-auto ${contentClassName}`}
           style={contentStyle}
           onClick={e => e.stopPropagation()}
         >

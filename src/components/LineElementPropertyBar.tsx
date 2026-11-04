@@ -9,7 +9,7 @@ import { createRoundGroupHandlers } from '../utils/roundGroupActions';
 
 interface LineElementPropertyBarProps {
   selectedElement: any;
-  selectedIds: (string | number)[];
+  selectedIds: string[];
   elements: any[];
   elementsRef: React.MutableRefObject<any[]>;
   rounds: any[];
@@ -30,8 +30,8 @@ interface LineElementPropertyBarProps {
   setElements: (fn: any[] | ((prev: any[]) => any[])) => void;
   setRounds: (rounds: any[] | ((prev: any[]) => any[])) => void;
   setLineBeadClipboard: (v: any) => void;
-  updateElement: (...args: any[]) => void;
-  updateWhere: (...args: any[]) => void;
+  updateElement: (prev: any[], id: string, updates: any) => any[];
+  updateWhere: (prev: any[], predicate: (el: any) => boolean, updates: any) => any[];
   t: (key: string) => string;
 }
 

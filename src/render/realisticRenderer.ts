@@ -921,7 +921,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
 
       } else if (effectiveElementType(el) === 'chain' || effectiveElementType(el) === 'ring') {
         // ── path element (chain / teardrop ring) ──
-        const cached = calculatePathStitches(el);
+        const cached: any = calculatePathStitches(el);
         const stitches = cached?.stitches ?? cached;
         if (stitches && stitches.length > 0) {
           // cached already carries allSamples/pathLengths/totalLength from

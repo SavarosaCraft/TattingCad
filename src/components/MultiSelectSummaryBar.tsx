@@ -32,7 +32,8 @@ import {
   IconRotateCCW, IconRotateCW, IconFlipH, IconFlipV,
   IconNotationM, IconNotationOn, IconNotationOff, IconPaste, IconMagicWand,
 } from './icons';
-import { ScaleControls } from './ScaleControls';
+import { ScaleControls, WIZARD_CARD_CLASS } from './ScaleControls';
+import { splitRingSides } from '../domain/picotTools';
 import { rotatePaths, resetElementShape } from '../geometry/paths';
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
 
@@ -73,7 +74,7 @@ interface MultiSelectSummaryBarProps {
   lineBeadClipboard: any;
   beadLibrary: Array<{ id: string; name: string; color: string }>;
   setLineBeadClipboard: (v: any) => void;
-  notationEscapeRef: React.RefObject<boolean>;
+  notationEscapeRef: React.MutableRefObject<boolean>;
   parseNotation: (notation: string) => any;
   applyNotationToMultiple: (elementIds: string[], notation: string | null, notationB?: string | null) => void;
   applyMultiSelectRotationDelta: (deg: number) => void;
@@ -88,7 +89,7 @@ interface MultiSelectSummaryBarProps {
   suggestScalePresetsMulti: (totalDsList: number[]) => any[];
   scaleNotation: (notation: string, picots: any[], factor: number) => any;
   autoCompact: (notation: string, resultZeroWidth: any[]) => string;
-  updateNotationForMultiple: (targets: Array<{ elementId: string; notation: string }>, opts: any) => void;
+  updateNotationForMultiple: (targets: Array<{ elementId: string; notation: string; notationB?: string }>, opts: any) => void;
   groups: Array<{ id: string; name: string; color: string }>;
   setGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
   picotConnections: any[];
@@ -499,7 +500,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                 // See applyNotationToMultiple in tattingindex.tsx.
                 applyNotationToMultiple(nonLines.map(el => el.id), notation);
               }}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.target.value = prefillNotation ?? ''; e.target.blur(); } }}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { notationEscapeRef.current = true; e.currentTarget.value = prefillNotation ?? ''; e.currentTarget.blur(); } }}
               className={`notation-input px-2 py-1 rounded border text-sm ${allSameType ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'}`}
               style={{ width: '140px' }}
             />
@@ -674,26 +675,67 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             // actually asked for. Split rings, rds/ss stitches, and anything
             // with a picot-count mismatch are silently skipped (counted, not
             // touched) rather than blocking the whole batch.
-            const analyzed = nonLines.map(el => ({
-              el,
-              analysis: analyzeNotationForWizard(el.notation, el.picots),
-            }));
+            // Session 60: split rings are scaled on BOTH sides (each side
+            // analysed on its own via splitRingSides). They used to be
+            // skipped; with the engine accepting "sr:" now, analysing only
+            // el.notation would have scaled side A alone.
+            const analyzed = nonLines.map(el => {
+              if (el.isSplitRing) {
+                const sides = splitRingSides(el);
+                const aA = analyzeNotationForWizard(sides.notationA, sides.picotsA);
+                const aB = analyzeNotationForWizard(sides.notationB, sides.picotsB);
+                return {
+                  el, sides,
+                  analysis: aA.supported && aB.supported
+                    ? { ...aA, segments: [...aA.segments, ...aB.segments] }
+                    : { ...aA, supported: false },
+                };
+              }
+              return { el, sides: null as ReturnType<typeof splitRingSides> | null, analysis: analyzeNotationForWizard(el.notation, el.picots) };
+            });
             const supported = analyzed.filter(a => a.analysis.supported);
             const skippedCount = analyzed.length - supported.length;
             const totalDsList = supported.map(({ analysis }) => totalRunDs(analysis.segments));
             const presets = suggestScalePresetsMulti(totalDsList);
             const factor = multiScalePct / 100;
             const previews = factor > 0
-              ? supported.map(({ el }) => scaleNotation(el.notation, el.picots, factor))
+              ? supported.map(({ el, sides }) => {
+                  if (!sides) return scaleNotation(el.notation, el.picots, factor);
+                  const pA = scaleNotation(sides.notationA, sides.picotsA, factor);
+                  const pB = scaleNotation(sides.notationB, sides.picotsB, factor);
+                  if (!pA || !pB) return null;
+                  return {
+                    ...pA,
+                    anyClamped: pA.anyClamped || pB.anyClamped,
+                    notationB: autoCompact(pB.notation, sides.picotsB).replace(/^sr:\s*/i, ''),
+                    picotsForA: sides.picotsA,
+                  };
+                })
               : [];
             const anyClamped = previews.some(p => p && p.anyClamped);
 
             return (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowMultiScaleWizard(false)} />
-                <div className="absolute top-full right-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-3" style={{ width: '240px' }}>
-                  <div className="text-gray-100 font-semibold text-sm mb-2 flex items-center gap-2">
-                    <IconMagicWand size={14} /> {t('picotWizardScaleSection')}
+                {/* Session 60: same wide layout as the single-element Picot Tools
+                    (.picot-wizard-pop width/narrow-screen rules; Scale in two rows). */}
+                <div className="picot-wizard-pop absolute top-full right-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-3"
+                  style={{ maxHeight: 'calc(100dvh - 9rem)', overflowY: 'auto' }}
+                  ref={el => {
+                    // Hangs left from the wand; slide right if it would pass the left edge.
+                    if (!el) return;
+                    el.style.right = '0px';
+                    const r = el.getBoundingClientRect();
+                    if (r.left < 8) el.style.right = `${-Math.min(8 - r.left, Math.max(0, window.innerWidth - 8 - r.right))}px`;
+                  }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-gray-100 font-semibold text-sm flex items-center gap-2">
+                      <IconMagicWand size={14} /> {t('picotWizardScaleSection')}
+                    </span>
+                    <button onClick={() => setShowMultiScaleWizard(false)}
+                      className="picot-wizard-close ml-auto flex-shrink-0 text-gray-400 hover:text-white leading-none px-1"
+                      style={{ fontSize: 22 }}
+                      title={t('aboutClose')} aria-label={t('aboutClose')}>×</button>
                   </div>
                   <div className="text-xs text-gray-400 mb-2">
                     {t('multiScaleSupportedCount').replace('{n}', String(supported.length)).replace('{m}', String(analyzed.length))}
@@ -702,29 +744,35 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                   {supported.length === 0 ? (
                     <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
                   ) : (
+                    <div className={WIZARD_CARD_CLASS}>
                     <ScaleControls
+                      layout="wide"
                       presets={presets}
                       pct={multiScalePct}
                       onPctChange={setMultiScalePct}
                       clampedWarningText={anyClamped ? t('picotWizardScaleClamped') : null}
-                      customLabelText={t('picotWizardScaleCustomLabel')}
+                      customLabelText={t('picotWizardScaleCustomShort')}
+                      roundedLegendText={t('scaleRoundedLegend')}
                       roundedHintText={t('scaleRoundedHint')}
                       applyLabel={t('picotWizardScaleApply')}
                       applyDisabled={multiScalePct === 100}
                       onApply={() => {
                         if (multiScalePct !== 100) {
                           const targets = supported.map(({ el }, i) => {
-                            const preview = previews[i];
+                            const preview: any = previews[i];
                             if (!preview) return null;
-                            const finalNotation = autoCompact(preview.notation, el.picots);
-                            return { elementId: el.id, notation: finalNotation };
-                          }).filter(Boolean) as Array<{ elementId: string; notation: string }>;
+                            const finalNotation = autoCompact(preview.notation, preview.picotsForA ?? el.picots);
+                            return preview.notationB != null
+                              ? { elementId: el.id, notation: finalNotation, notationB: preview.notationB }
+                              : { elementId: el.id, notation: finalNotation };
+                          }).filter(Boolean) as Array<{ elementId: string; notation: string; notationB?: string }>;
                           updateNotationForMultiple(targets, { preservesExistingPicots: true, picotMatchMode: 'order' });
                         }
                         setMultiScalePct(100);
                         setShowMultiScaleWizard(false);
                       }}
                     />
+                    </div>
                   )}
                 </div>
               </>

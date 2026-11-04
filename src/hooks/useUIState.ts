@@ -30,7 +30,7 @@ export function useUIState() {
     () => localStorage.getItem('tcad_seen_join_tip') !== '1'
   );
   const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; confirmLabel?: string; onConfirm: () => void } | null>(null);
-  const [alertDialog, setAlertDialog] = useState<{ message: string } | null>(null);
+  const [alertDialog, setAlertDialog] = useState<{ message: string; sub?: string } | null>(null);
 
   // ── Array dialogs ──────────────────────────────────────────────────────
   const [showPolarArrayDialog, setShowPolarArrayDialog] = useState(false);

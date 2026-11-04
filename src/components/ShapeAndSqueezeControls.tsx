@@ -27,7 +27,7 @@ interface ShapeAndSqueezeControlsProps {
   roundsRef: React.RefObject<any[]>;
   toggleShape: () => void;
   convertToJosephineKnot: () => void;
-  isInteractingRef: React.RefObject<boolean>;
+  isInteractingRef: React.MutableRefObject<boolean>;
   t: (key: string) => string;
 }
 

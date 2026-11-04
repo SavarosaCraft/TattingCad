@@ -27,8 +27,8 @@ interface SplitRingNotationInputProps {
   onChangeRaw: (rawValue: string) => void;
   onCommit: (rawValue: string) => void;
   getRevertValue: () => string;
-  notationEscapeRef: React.RefObject<boolean>;
-  pendingNotationRef: React.RefObject<any>;
+  notationEscapeRef: React.MutableRefObject<boolean>;
+  pendingNotationRef: React.MutableRefObject<any>;
 }
 
 export const SplitRingNotationInput: React.FC<SplitRingNotationInputProps> = ({
