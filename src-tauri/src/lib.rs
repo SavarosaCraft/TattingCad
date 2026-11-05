@@ -9,7 +9,10 @@ use tauri::Manager;
 //   - Windows / Linux start the app with the file as a command-line
 //     argument. If TattingCAD is already running, the single-instance
 //     plugin stops the second copy and hands its arguments to this one.
-//   - macOS sends a RunEvent::Opened instead (see the end of run()).
+//   - macOS and Android send a RunEvent::Opened instead (see the end of
+//     run()) — Android for "Open with" / Share, at start-up and while the
+//     app is open, as content:// addresses, which are passed on as they are
+//     (the page reads them with the fs plugin and opens them as a copy).
 // The page (tattingindex.tsx) first listens for "open-files", then calls
 // take_pending_files once. Files that arrive before that are kept here;
 // after it, they are sent straight to the page as an "open-files" event.
@@ -136,13 +139,22 @@ pub fn run() {
     .expect("error while building tauri application");
 
   app.run(|app_handle, event| {
-    // macOS hands files over as an event (at start and while running).
-    #[cfg(target_os = "macos")]
+    // macOS and Android hand files over as an event (at start and while
+    // running). file:// → a normal path; anything else (Android's
+    // content://) → the address itself.
+    #[cfg(any(target_os = "macos", target_os = "android"))]
     if let tauri::RunEvent::Opened { urls } = &event {
       let files: Vec<String> = urls
         .iter()
-        .filter_map(|u| u.to_file_path().ok())
-        .map(|p| p.to_string_lossy().into_owned())
+        .filter_map(|u| {
+          if u.scheme() == "file" {
+            u.to_file_path().ok().map(|p| p.to_string_lossy().into_owned())
+          } else if u.scheme() == "content" {
+            Some(u.to_string())
+          } else {
+            None
+          }
+        })
         .collect();
       hand_over_files(app_handle, files);
     }

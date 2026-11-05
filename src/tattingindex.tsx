@@ -3135,6 +3135,28 @@ const APP_VERSION = '1.3.0';
   const getBoundingBox = (ids) => getBoundingBoxPure(ids, elements, dsWidth);
 
   // Fit all elements in view
+  // ── Centre an opened file on THIS screen (session 60) ───────────────────
+  // A file stores its view as zoom + a pixel offset for the window it was
+  // saved in, so on a smaller or differently shaped screen (a phone) the
+  // pattern opened off-centre. After a file is applied (useProjectFile →
+  // onFileApplied sets the flag), once its elements are rendered: keep the
+  // saved zoom if the whole pattern fits at it and centre it; otherwise zoom
+  // out to fit (like Show all). Autosave resume is not affected.
+  const settleViewOnOpenRef = useRef(false);
+  useEffect(() => {
+    if (!settleViewOnOpenRef.current) return;
+    settleViewOnOpenRef.current = false;
+    if (elements.length === 0 || !canvasRef.current) return;
+    const bbox = getBoundingBox(elements.map(e => e.id));
+    if (!bbox) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const padding = 25;
+    const fits = bbox.width * zoom <= rect.width - padding * 2
+      && bbox.height * zoom <= rect.height - padding * 2;
+    if (!fits) { fitAllElements(); return; }
+    setCamera({ x: rect.width / 2 - bbox.centerX * zoom, y: rect.height / 2 - bbox.centerY * zoom });
+  }, [elements]);
+
   const fitAllElements = () => {
     if (elements.length === 0) return;
     if (!canvasRef.current) return;
@@ -3548,7 +3570,7 @@ const APP_VERSION = '1.3.0';
   const {
     buildProjectData, buildProjectDataRef,
     saveToPath, performSave, saveProject, saveProjectAs,
-    applyProjectData, loadFromPath, loadProject,
+    applyProjectData, loadFromPath, loadProject, openHandedOverFile,
     exportSVG,
   } = useProjectFile({
     roundColors, elements, picotConnections, camera, zoom, dsWidth,
@@ -3557,6 +3579,7 @@ const APP_VERSION = '1.3.0';
     polarGrids, selectedPolarGridId, threadPresets, activePresetId,
     projectName, currentFilePath,
     historyIndexRef, canvasRef,
+    onFileApplied: () => { settleViewOnOpenRef.current = true; },
     setElements, setPicotConnections, setCamera, setZoom, setDsWidth,
     setBgColor, setGridEnabled, setCustomColors, setReferenceImage, setRefImageProps,
     setProjectName, setRenderMode, setPatternNotes, setMaterials,
@@ -3602,7 +3625,9 @@ const APP_VERSION = '1.3.0';
     setShowSplash(false);
     setShowSampleGallery(false);
     setShowRecentProjectsDialog(false);
-    loadFromPath(filePath);
+    // A path → like File → Open; an Android content:// address → an
+    // untitled copy (useProjectFile.openHandedOverFile).
+    openHandedOverFile(filePath);
   };
   const openSystemFileRef = useRef<(filePath: string) => void>(() => {});
   openSystemFileRef.current = (filePath: string) => {
@@ -5380,7 +5405,7 @@ const APP_VERSION = '1.3.0';
   // beadsOnJoin (session 60): this BE is a JOINED joining picot — its picot
   // beads are drawn on the join line (getConnectionBeads / renderBeadsOnJoin),
   // so here only the core bead and the diamond remain.
-  const renderBE = (picot, cx, cy, perpAngle, threadColor, len, isSelected, beadsOnJoin = false) => {
+  const renderBE = (picot, cx, cy, perpAngle, threadColor, len, isSelected, beadsOnJoin = false, elementId: string | null = null) => {
     const key = picot.id;
     const struct = picot.beStructure || 'core';
 
@@ -5388,7 +5413,10 @@ const APP_VERSION = '1.3.0';
     const picotBeadList = resolveLibraryBeads(picot.picotBeads);
     const ax = Math.cos(perpAngle), ay = Math.sin(perpAngle);
     const inBeadingMode = activeMode === 'beading';
-    const isThisSel = inBeadingMode && selectedBEs.some(s => s.picotId === picot.id);
+    // Element AND picot (session 60 fix): a copied element keeps its picots'
+    // ids, so comparing the picot id alone lit up every copy's bead picot
+    // when one was selected.
+    const isThisSel = inBeadingMode && selectedBEs.some(s => s.picotId === picot.id && (elementId == null || s.elementId === elementId));
 
     // ── Pink diamond — visible unless realistic mode with beads filled in ───
     // In realistic mode, once beads are configured the bead geometry speaks for
@@ -5744,12 +5772,12 @@ const APP_VERSION = '1.3.0';
       if (activeMode === 'picotJoin' && p.beIsJoint && showEditingArtifacts) {
         return (
           <g key={key}>
-            {renderBE(p, x, y, perpAngle, dotColor, len, isSelected, beadsOnJoin)}
+            {renderBE(p, x, y, perpAngle, dotColor, len, isSelected, beadsOnJoin, element?.id ?? null)}
             <circle key={`${key}-jpd`} cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2/zoom} opacity={0.9} />
           </g>
         );
       }
-      return renderBE(p, x, y, perpAngle, dotColor, len, isSelected, beadsOnJoin);
+      return renderBE(p, x, y, perpAngle, dotColor, len, isSelected, beadsOnJoin, element?.id ?? null);
     }
 
     // ── bjp (beaded joining picot, older notation) — session 60 ──

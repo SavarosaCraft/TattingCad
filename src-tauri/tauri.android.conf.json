@@ -1,5 +1,19 @@
 {
   "bundle": {
-    "fileAssociations": []
+    "fileAssociations": [
+      {
+        "ext": ["tatcad"],
+        "name": "TattingCAD Pattern",
+        "description": "TattingCAD pattern",
+        "mimeType": "application/x-tatcad"
+      },
+      {
+        "ext": ["tatcad"],
+        "name": "TattingCAD Pattern (generic file)",
+        "description": "TattingCAD pattern",
+        "mimeType": "application/octet-stream",
+        "androidIntentActionFilters": ["view"]
+      }
+    ]
   }
 }

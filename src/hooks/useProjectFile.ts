@@ -7,7 +7,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import {
   showSaveDialog, showOpenDialog, showSaveSvgDialog,
   writeProjectFile, writeTextToFile, readProjectFile,
-  addToRecents, generateThumbnailPng, stripPatternExt,
+  addToRecents, generateThumbnailPng, stripPatternExt, patternNameFromUri,
 } from '../tauri/file';
 import { serializeProject } from '../domain/patternOutput';
 import { prepareSvgForExport } from '../render/svgExport';
@@ -72,6 +72,11 @@ export interface UseProjectFileParams {
   // entry it would otherwise add on top of the fresh setHistory reset.
   skipAutoHistoryRef: React.MutableRefObject<boolean>;
   canvasRef: React.RefObject<HTMLElement | null>;
+  // Session 60: called when a FILE (Open, Recent, sample, double-click) has
+  // been applied — tattingindex.tsx then centres it for this screen (the
+  // saved view is a pixel offset for the screen it was saved on). Not
+  // called for autosave resume, which keeps this device's own view.
+  onFileApplied?: () => void;
   // Setters
   setElements: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setPicotConnections: (fn: ((prev: any[]) => any[]) | any[]) => void;
@@ -282,6 +287,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     // straight into 'realistic' leaves the canvas blank until the user
     // manually toggles modes. See handoff docs re: session 52 load bug.
     p.setRenderMode('schematic');
+    p.onFileApplied?.();
     p.setPatternNotes(projectData.patternNotes || '');
     p.setMaterials(projectData.materials || DEFAULT_MATERIALS);
     p.setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
@@ -349,6 +355,23 @@ export function useProjectFile(p: UseProjectFileParams) {
     }
   }, [applyProjectData, p.t]);
 
+  // Session 60 (1.4): a file handed over by the system — double-click /
+  // "Open with" / Share (src-tauri lib.rs → "open-files"). A normal path
+  // (Windows, macOS, Linux) opens like File → Open. An Android content://
+  // address opens as an UNTITLED COPY, named after the file when the
+  // address carries its name: the other app usually grants read access
+  // only, so saving back over it would fail — Save asks where instead. It
+  // is not added to Recent (that access ends when the app closes).
+  const openHandedOverFile = useCallback(async (filePath: string) => {
+    if (!/^content:\/\//i.test(filePath)) { await readAndApplyProjectFile(filePath); return; }
+    try {
+      const projectData = await readProjectFile(filePath);
+      await applyProjectData(projectData, null, { name: patternNameFromUri(filePath) || projectData?.name || undefined });
+    } catch (error: any) {
+      p.showLoadMsg('error', p.t('loadErrGeneric').replace('{msg}', getErrorMessage(error)));
+    }
+  }, [applyProjectData, readAndApplyProjectFile, p.t]);
+
   const loadFromPath = useCallback(async (filePath: string) => {
     if (!filePath) {
       p.showLoadMsg('error', p.t('loadErrFileNotFound'));
@@ -414,6 +437,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     saveProject,
     saveProjectAs,
     applyProjectData,
+    openHandedOverFile,
     loadFromPath,
     loadProject,
     exportSVG,

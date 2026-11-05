@@ -27,28 +27,47 @@ export const readClipboardText = (): Promise<string> => readText();
 // only the name changed, so the system can give them TattingCAD's icon and
 // open them with the app). Old ".json" patterns still open and keep their
 // name when saved again; Save As offers ".tatcad".
-// Android is left on ".json" for now: its file pickers filter by MIME type,
-// not extension (Tauri dialog docs), so an unknown extension is untested
-// there — switch it when that has been tried on a phone.
+// Android saves ".tatcad" too (see showSaveDialog) and opens any file (see
+// showOpenDialog) — its pickers work by MIME type, not extension.
 export const PATTERN_EXT = 'tatcad';
 const isAndroid = () => typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
 /** "MyPattern.tatcad" / "MyPattern.json" → "MyPattern" */
 export const stripPatternExt = (name: string): string => name.replace(/\.(tatcad|json)$/i, '');
 
+/**
+ * Android hands files over as content:// addresses. Some carry the file
+ * name (…/document/primary%3ADownload%2FSnowflake.tatcad → "Snowflake"),
+ * some only an id (…/document/msf%3A1234 → ""). "" = no name in it.
+ */
+export const patternNameFromUri = (uri: string): string => {
+  let last = uri.split('/').pop() || '';
+  try { last = decodeURIComponent(last); } catch { /* keep as is */ }
+  const base = last.split(/[\\/:]/).pop() || '';
+  return /\.(tatcad|json)$/i.test(base) ? stripPatternExt(base) : '';
+};
+
 export const showSaveDialog = async (defaultName: string): Promise<string | null> => {
-  const ext = isAndroid() ? 'json' : PATTERN_EXT;
+  // Android (session 60, 1.4): .tatcad too. Its save dialog needs a MIME
+  // type, and Android knows none for .tatcad — "application/octet-stream"
+  // (any file) makes it keep the name exactly as given instead of adding
+  // or swapping an extension. (A filter value with "/" is passed to
+  // Android as a MIME type by the dialog plugin.)
   const filePath = await tauriSave({
     title: 'Save Project',
-    defaultPath: `${defaultName.replace(/[^a-z0-9]/gi, '_')}.${ext}`,
-    filters: [{ name: 'TattingCAD Pattern', extensions: [ext] }],
+    defaultPath: `${defaultName.replace(/[^a-z0-9]/gi, '_')}.${PATTERN_EXT}`,
+    filters: [{ name: 'TattingCAD Pattern', extensions: [isAndroid() ? 'application/octet-stream' : PATTERN_EXT] }],
   });
   return filePath ?? null;
 };
 
 export const showOpenDialog = async (): Promise<string | null> => {
+  // Android: no filter. Its picker filters by MIME type, and a .tatcad has
+  // none it knows, so with the .json filter a .tatcad couldn't be picked
+  // (tested on a phone). Any file can be chosen; one that isn't a pattern
+  // gets the normal "couldn't open" message.
   const filePath = await tauriOpen({
     title: 'Open Project',
-    filters: [{ name: 'TattingCAD Pattern', extensions: isAndroid() ? ['json'] : [PATTERN_EXT, 'json'] }],
+    ...(isAndroid() ? {} : { filters: [{ name: 'TattingCAD Pattern', extensions: [PATTERN_EXT, 'json'] }] }),
   });
   if (!filePath || typeof filePath !== 'string') return null;
   return filePath;
