@@ -5,6 +5,9 @@
 // 51 extraction plan). No React — takes explicit params instead of closing
 // over component state.
 
+// Session 60 security fix: every colour written into this SVG TEXT goes
+// through safeColor (the text is inserted as markup — see utils/safeColor.ts).
+import { safeColor } from '../utils/safeColor';
 import {
   sampleBezierPath,
   calculatePathLength,
@@ -647,7 +650,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       // paint-order="stroke": outline painted before the fill so its
       // inward half never eats into (and hides) the thin fill band —
       // matters most where the ribbon narrows near the tip.
-      return `<path d="${d}" fill="${color}" stroke="black" stroke-width="1.5" stroke-linejoin="round" paint-order="stroke"/>`;
+      return `<path d="${d}" fill="${safeColor(color)}" stroke="black" stroke-width="1.5" stroke-linejoin="round" paint-order="stroke"/>`;
     };
 
     // ── per-element SVG fragments ──
@@ -782,7 +785,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
         let out = '';
         for (const [color, dParts] of buckets.entries()) {
           const d = dParts.filter(Boolean).join(' ');
-          if (d) out += `<path d="${d}" fill="${color}" stroke="black" stroke-width="${strokeW.toFixed(3)}" stroke-linejoin="miter"/>`;
+          if (d) out += `<path d="${d}" fill="${safeColor(color)}" stroke="black" stroke-width="${strokeW.toFixed(3)}" stroke-linejoin="miter"/>`;
         }
         return out;
       };
@@ -972,7 +975,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
             for (let i = 1; i < left.length; i++) rd += ` L ${left[i].x.toFixed(2)} ${left[i].y.toFixed(2)}`;
             for (let i = right.length - 1; i >= 0; i--) rd += ` L ${right[i].x.toFixed(2)} ${right[i].y.toFixed(2)}`;
             rd += ' Z';
-            frag += `<path d="${rd}" fill="${elStroke}" stroke="black" stroke-width="1.5" stroke-linejoin="round" paint-order="stroke"/>`;
+            frag += `<path d="${rd}" fill="${safeColor(elStroke)}" stroke="black" stroke-width="1.5" stroke-linejoin="round" paint-order="stroke"/>`;
           }
           for (const pt of left) expand(pt.x, pt.y);
           for (const pt of right) expand(pt.x, pt.y);

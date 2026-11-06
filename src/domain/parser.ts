@@ -31,7 +31,10 @@ export const STITCH_WIDTH_DS: Record<string, number> = {
 // requires content after the colon (used where "type: pattern" is being
 // pulled apart); TYPE_PREFIX_ONLY_RE matches just the prefix, no content
 // required (used where we only need to strip/identify the prefix itself).
-const NOTATION_TYPES = 'r|c|sc|sr|jk|fr';
+// fr: floating ring, mr: mock ring (session 61) — both are plain rings to
+// every part of the app; only the prefix (and the pattern text's FR / MR
+// label) differs. Set from the ring shape buttons (ShapeAndSqueezeControls).
+const NOTATION_TYPES = 'r|c|sc|sr|jk|fr|mr';
 const TYPE_PREFIX_RE = new RegExp(`^(${NOTATION_TYPES}):\\s*(.+)$`, 'i');
 const TYPE_PREFIX_ONLY_RE = new RegExp(`^(${NOTATION_TYPES}):\\s*`, 'i');
 
@@ -245,7 +248,7 @@ export const parseNotation = (
     }
     const type = match[1].toLowerCase();
     const isSplitChain = type === 'sc';
-    const effectiveType = isSplitChain ? 'c' : (type === 'fr' ? 'r' : type);
+    const effectiveType = isSplitChain ? 'c' : (type === 'fr' || type === 'mr' ? 'r' : type);
     const pattern = stripBareGroupingParens(match[2]);
     let totalDS = 0;
     const picots: ParsedPicot[] = [];

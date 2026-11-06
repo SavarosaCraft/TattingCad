@@ -1,6 +1,6 @@
 // components/ShapeAndSqueezeControls.tsx
 //
-// Shape toggle (Teardrop/Circle/Josephine Knot) + squeeze sliders (the
+// Shape buttons (Teardrop/Circle/Floating ring/Mock ring/Josephine Knot) + squeeze sliders (the
 // 3-slider split-ring variant or the single-slider regular-ring variant),
 // from the per-element properties bar. Extracted from tattingindex.tsx (see
 // architecture.md — properties-bar mode dispatch). Only rendered when
@@ -13,7 +13,7 @@
 // plain property patches only; this is exactly the kind of case
 // architecture.md's elementUpdates.ts note says to leave alone.
 import React from 'react';
-import { IconShapeTeardrop, IconShapeCircle } from './icons';
+import { IconShapeTeardrop, IconShapeCircle, IconShapeFloatingRing, IconShapeMockRing } from './icons';
 import { createTeardropPath, createCirclePath, applyRotationToPathData, resetElementShape, rebuildSplitRingInPlace } from '../geometry/paths';
 import { elementPathLength } from '../geometry/stitchGeometry';
 
@@ -25,7 +25,7 @@ interface ShapeAndSqueezeControlsProps {
   elementsRef: React.RefObject<any[]>;
   picotConnectionsRef: React.RefObject<any[]>;
   roundsRef: React.RefObject<any[]>;
-  toggleShape: () => void;
+  setRingKind: (kind: 'teardrop' | 'circle' | 'fr' | 'mr') => void;
   convertToJosephineKnot: () => void;
   isInteractingRef: React.MutableRefObject<boolean>;
   t: (key: string) => string;
@@ -39,12 +39,18 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
   elementsRef,
   picotConnectionsRef,
   roundsRef,
-  toggleShape,
+  setRingKind,
   convertToJosephineKnot,
   isInteractingRef,
   t,
 }) => {
   if (!selectedElement.isClosed) return null;
+
+  // Which of the five shape buttons is lit — from the notation prefix, then
+  // the shape (a jk: / fr: / mr: prefix wins over shapeStyle).
+  const prefix = ((selectedElement.notation || '').match(/^([a-z]+):/i)?.[1] || 'r').toLowerCase();
+  const ringKind = prefix === 'jk' ? 'jk' : prefix === 'fr' ? 'fr' : prefix === 'mr' ? 'mr'
+    : selectedElement.shapeStyle === 'circle' ? 'circle' : 'teardrop';
 
   // Shared mouse/touch events for every squeeze slider — extracted
   // because: (a) 4 sliders had identical onMouseDown/Up/Touch handlers,
@@ -83,64 +89,33 @@ export const ShapeAndSqueezeControls: React.FC<ShapeAndSqueezeControlsProps> = (
         <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
           <label className="text-xs text-gray-400 hide-label-mobile">{t('propShape')}</label>
           <div className="flex rounded overflow-hidden border border-gray-600">
-            {/* Teardrop */}
-            <button
-              onClick={() => {
-                if (/^jk:/i.test(selectedElement.notation || '')) {
-                  // Was JK — rewrite notation to r: and toggle to teardrop
-                  const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
-                  setElements(prev => prev.map(el => {
-                    if (el.id !== selectedElement.id) return el;
-                    // Length for the shape it becomes (a teardrop uses its stored end
-                    // allowance — 0 after Convert to JK, which clears it).
-                    const targetLength = elementPathLength({ ...el, notation, shapeStyle: 'teardrop' }, dsWidth);
-                    const paths = applyRotationToPathData(el, createTeardropPath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
-                    return { ...el, notation, shapeStyle: 'teardrop', paths };
-                  }));
-                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
-                } else if (selectedElement.shapeStyle !== 'teardrop') {
-                  toggleShape();
-                }
-              }}
-              className={`px-2 py-1 flex items-center gap-1 text-xs ${
-                selectedElement.shapeStyle !== 'circle' && !/^jk:/i.test(selectedElement.notation || '')
-                  ? 'bg-blue-700 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-              title={t('propShapeTeardrop')}
-            >
-              <IconShapeTeardrop size={14} />
-            </button>
-            {/* Circle */}
-            <button
-              onClick={() => {
-                if (/^jk:/i.test(selectedElement.notation || '')) {
-                  const notation = (selectedElement.notation || '').replace(/^jk:/i, 'r:');
-                  setElements(prev => prev.map(el => {
-                    if (el.id !== selectedElement.id) return el;
-                    const targetLength = elementPathLength({ ...el, notation, shapeStyle: 'circle' }, dsWidth); // circle: always 0 allowance
-                    const paths = applyRotationToPathData(el, createCirclePath(el.center.x, el.center.y, targetLength, el.squeeze || 0)).paths;
-                    return { ...el, notation, shapeStyle: 'circle', paths };
-                  }));
-                  pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
-                } else if (selectedElement.shapeStyle !== 'circle') {
-                  toggleShape();
-                }
-              }}
-              className={`px-2 py-1 flex items-center gap-1 text-xs border-l border-gray-600 ${
-                selectedElement.shapeStyle === 'circle' && !/^jk:/i.test(selectedElement.notation || '')
-                  ? 'bg-blue-700 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-              title={t('propShapeCircle')}
-            >
-              <IconShapeCircle size={14} />
-            </button>
+            {/* Teardrop · Circle · Floating ring · Mock ring (session 61) —
+                one choice at a time with JK. All four go through setRingKind
+                (tattingindex.tsx): Teardrop / Circle → r:, FR → fr:, MR → mr:
+                (always teardrop-shaped). */}
+            {([
+              { kind: 'teardrop', on: ringKind === 'teardrop', title: t('propShapeTeardrop'), icon: <IconShapeTeardrop size={14} /> },
+              { kind: 'circle',   on: ringKind === 'circle',   title: t('propShapeCircle'),   icon: <IconShapeCircle size={14} /> },
+              { kind: 'fr',       on: ringKind === 'fr',       title: t('propShapeFloatingRing'), icon: <IconShapeFloatingRing size={14} /> },
+              { kind: 'mr',       on: ringKind === 'mr',       title: t('propShapeMockRing'),     icon: <IconShapeMockRing size={14} /> },
+            ] as const).map((b, i) => (
+              <button
+                key={b.kind}
+                onClick={() => setRingKind(b.kind)}
+                className={`px-2 py-1 flex items-center gap-1 text-xs${i > 0 ? ' border-l border-gray-600' : ''} ${
+                  b.on ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}
+                title={b.title}
+                aria-pressed={b.on}
+              >
+                {b.icon}
+              </button>
+            ))}
             {/* Josephine Knot */}
             <button
               onClick={convertToJosephineKnot}
               className={`px-2 py-1 flex items-center gap-1 text-xs border-l border-gray-600 ${
-                /^jk:/i.test(selectedElement.notation || '')
+                ringKind === 'jk'
                   ? 'bg-blue-700 text-white'
                   : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               }`}

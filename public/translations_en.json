@@ -654,6 +654,8 @@
   "jkConvertConfirm": "Convert to JK",
   "propShapeTeardrop": "Teardrop",
   "propShapeCircle": "Circle",
+  "propShapeFloatingRing": "Floating ring (fr:)",
+  "propShapeMockRing": "Mock ring (mr:)",
   "picotWizardSideBoth": "Both",
   "picotWizardReverse": "Reverse notation",
   "picotWizardSideA": "Side A",

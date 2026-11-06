@@ -46,7 +46,7 @@ interface SingleSelectPropertyBarProps {
   parseNotation: (notation: string) => any;
   updateNotation: (notation: string, notationB: string | null, id: any, options?: any) => void;
   convertToJosephineKnot: (...args: any[]) => void;
-  toggleShape: (...args: any[]) => void;
+  setRingKind: (kind: 'teardrop' | 'circle' | 'fr' | 'mr') => void;
   setLabelOffset: (...args: any[]) => void;
   commitOrderDraft: (id: any, draft: string | null, el?: any) => void;
   pushHistoryState: (els: any[], picotConnections: any, rounds: any[]) => void;
@@ -136,7 +136,7 @@ export function SingleSelectPropertyBar(props: SingleSelectPropertyBarProps) {
           parseNotation={props.parseNotation}
           updateNotation={props.updateNotation}
           convertToJosephineKnot={props.convertToJosephineKnot}
-          toggleShape={props.toggleShape}
+          setRingKind={props.setRingKind}
           setLabelOffset={props.setLabelOffset}
           commitOrderDraft={props.commitOrderDraft}
           pushHistoryState={props.pushHistoryState}

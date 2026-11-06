@@ -28,6 +28,7 @@ import {
 } from '../geometry/paths';
 import { writeText as tauriWrite, readText as tauriRead } from '@tauri-apps/plugin-clipboard-manager';
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
+import { sanitizeProjectColors } from '../utils/safeColor';
 
 // Use Tauri native clipboard when available (avoids browser permission prompts).
 // Falls back to navigator.clipboard when running in browser dev server.
@@ -794,6 +795,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const sysText = await readClipboardText().catch(() => null);
       if (sysText?.startsWith(TATCAD_PREFIX)) {
         const parsed = JSON.parse(sysText.slice(TATCAD_PREFIX.length));
+        // Security (session 60): the clipboard can hold anything — check
+        // its colours like an opened file's (utils/safeColor.ts).
+        sanitizeProjectColors(parsed);
         const { elements: sysEls, connections: sysConns } = parsed;
         if (Array.isArray(sysEls) && sysEls.length > 0) {
           board = stripUnknownBeadRefs(sysEls);

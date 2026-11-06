@@ -9,6 +9,7 @@ import {
   writeProjectFile, writeTextToFile, readProjectFile,
   addToRecents, generateThumbnailPng, stripPatternExt, patternNameFromUri,
 } from '../tauri/file';
+import { sanitizeProjectColors } from '../utils/safeColor';
 import { serializeProject } from '../domain/patternOutput';
 import { prepareSvgForExport } from '../render/svgExport';
 import { sampleBezierPath } from '../geometry/bezier';
@@ -204,6 +205,9 @@ export function useProjectFile(p: UseProjectFileParams) {
   // copy — no file path (so Save asks where), not added to Recent, named
   // `opts.name`.
   const applyProjectData = useCallback(async (projectData: any, filePath: string | null, opts?: { name?: string }) => {
+    // Security (session 60): colours that aren't real colours are replaced
+    // before anything uses them — patterns are shared (utils/safeColor.ts).
+    sanitizeProjectColors(projectData);
     if (!projectData.elements || !Array.isArray(projectData.elements)) {
       p.showLoadMsg('error', p.t('loadErrMissingElements'));
       return;

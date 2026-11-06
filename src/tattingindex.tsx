@@ -29,6 +29,8 @@ import enStrings from './i18n/translations_en.json';
 // the copies in public/ are older. A public/ file still wins key by key.
 import esStrings from './i18n/translations_es.json';
 import { readUserLanguages, openUserLanguagesFolder, isDesktopApp } from './tauri/userLanguages';
+import { sanitizeProjectColors } from './utils/safeColor';
+import { evalArithmetic } from './utils/calcExpr';
 import huStrings from './i18n/translations_hu.json';
 import { generatePatternText } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
@@ -304,7 +306,6 @@ const DEFAULT_THREAD_PRESET = {
 // Open an external URL in the system browser.
 const openExternal = (url: string) => {
   console.log('[openExternal] called with:', url);
-  console.log('[openExternal] __TAURI__ present:', !!(window as any).__TAURI__);
   console.log('[openExternal] __TAURI_INTERNALS__ present:', !!(window as any).__TAURI_INTERNALS__);
   invoke('plugin:opener|open_url', { url })
     .then(() => console.log('[openExternal] invoke succeeded'))
@@ -682,7 +683,7 @@ const TattingDesigner = () => {
   // Linear array state
 
   // Spiral array state
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 
   // Update reminder: only after 90 days with THIS version — evaluated once
@@ -1024,6 +1025,7 @@ const APP_VERSION = '1.4.0';
       const saved = localStorage.getItem('tatting-designer-autosave');
       if (!saved) return;
       const projectData = JSON.parse(saved);
+      sanitizeProjectColors(projectData); // security (session 60) — utils/safeColor.ts
       if (!projectData.elements || projectData.elements.length === 0) return;
       // Same as confirmNewCanvas: history is reset directly below
       // (setHistory) while elements/connections/polarGrids also change in
@@ -1107,7 +1109,8 @@ const APP_VERSION = '1.4.0';
   const closeTRef = useRef(t);
   closeTRef.current = t;
   useEffect(() => {
-    if (!(window as any).__TAURI__) return;
+    // __TAURI_INTERNALS__, not __TAURI__: withGlobalTauri is off (session 60).
+    if (!(window as any).__TAURI_INTERNALS__) return;
     let unlisten: (() => void) | null = null;
     let disposed = false;
     let asking = false;
@@ -3123,12 +3126,11 @@ const APP_VERSION = '1.4.0';
     }
     // Safety whitelist: only digits, operators, parens, dot, whitespace
     if (!/^[\d\s.+\-*/()]+$/.test(expr)) return null;
-    try {
-      // eslint-disable-next-line no-new-func
-      const result = new Function('"use strict"; return (' + expr + ')')();
-      if (typeof result !== 'number' || !isFinite(result)) return null;
-      return ((result % 360) + 360) % 360;
-    } catch { return null; }
+    // evalArithmetic, not new Function: the Content Security Policy forbids
+    // eval-like code (session 60, utils/calcExpr.ts).
+    const result = evalArithmetic(expr);
+    if (result === null) return null;
+    return ((result % 360) + 360) % 360;
   };
 
   // getBoundingBox — thin wrapper over pure function from ./geometry/layout
@@ -4977,32 +4979,39 @@ const APP_VERSION = '1.4.0';
     }
   };
 
-  // Update ghosts when mother element changes (notation, rotation, shape, etc.)
-  const toggleShape = () => {
+  // Ring kind — the shape buttons in ShapeAndSqueezeControls (session 61;
+  // replaces toggleShape). Teardrop and Circle are plain rings (r:); Floating
+  // ring (fr:) and Mock ring (mr:) are teardrops with their own prefix —
+  // nothing else differs, they behave exactly like rings. Leaving a JK (jk:)
+  // this way keeps its stitches (Convert to JK is the separate JK button).
+  // Only the prefix is rewritten; the path is rebuilt when the shape changes.
+  // Ghost mothers regenerate their ghosts (they copy the notation).
+  const setRingKind = (kind: 'teardrop' | 'circle' | 'fr' | 'mr') => {
     if (selectedIds.length !== 1) return;
+    const prefix = kind === 'fr' ? 'fr:' : kind === 'mr' ? 'mr:' : 'r:';
+    const newStyle = kind === 'circle' ? 'circle' : 'teardrop';
+    let changed = false;
 
     // Read elementsRef.current directly rather than via a setElements
     // updater — see updateNotation for why (avoids React's double-invoke of
     // functional updaters desyncing regenerateGhostArrays' impure output).
     const updated = elementsRef.current.map(el => {
-      if (el.id === selectedIds[0] && el.isClosed) {
-        const newStyle = el.shapeStyle === 'circle' ? 'teardrop' : 'circle';
-        // If the element was a Josephine Knot (jk:), toggling back to a
-        // teardrop or circle shape means it's no longer a JK — rewrite the
-        // notation prefix to r: so the element is treated as a normal ring.
-        const notation = el.notation?.replace(/^jk:/i, 'r:') ?? el.notation;
-        // Length for the NEW shape: a teardrop gets its end allowance, a
-        // circle never does (so the ring grows/shrinks by 2a ds — intended).
-        const targetLength = elementPathLength({ ...(el as any), notation, shapeStyle: newStyle }, dsWidth); // cast: elementsRef is typed never[] (see architecture.md)
-        const squeeze = el.squeeze || 0;
-        const tempPathData = newStyle === 'circle'
-          ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
-          : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
-
-        return { ...el, notation, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
-      }
-      return el;
+      if (el.id !== selectedIds[0] || !el.isClosed || el.isSplitRing) return el;
+      const notation = (el.notation || '').replace(/^(r|jk|fr|mr):\s*/i, prefix + ' ');
+      const shapeChanges = el.shapeStyle !== newStyle;
+      if (notation === el.notation && !shapeChanges) return el;
+      changed = true;
+      if (!shapeChanges) return { ...el, notation };
+      // Length for the NEW shape: a teardrop gets its end allowance, a
+      // circle never does (so the ring grows/shrinks by 2a ds — intended).
+      const targetLength = elementPathLength({ ...(el as any), notation, shapeStyle: newStyle }, dsWidth); // cast: elementsRef is typed never[] (see architecture.md)
+      const squeeze = el.squeeze || 0;
+      const tempPathData = newStyle === 'circle'
+        ? createCirclePath(el.center.x, el.center.y, targetLength, squeeze)
+        : createTeardropPath(el.center.x, el.center.y, targetLength, squeeze);
+      return { ...el, notation, shapeStyle: newStyle, paths: applyRotationToPathData(el, tempPathData).paths };
     });
+    if (!changed) return;
 
     const motherEl = updated.find(e => e.id === selectedIds[0]);
     if (motherEl?.isGhostMother) {
@@ -7601,6 +7610,14 @@ const APP_VERSION = '1.4.0';
           .app-root .prop-bar-slot { height: 4.5rem; }
           .app-root .prop-bar { min-height: 4.5rem !important; padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
         }
+        /* Session 61: the single-select property bar's forced "Row 2" break
+           (GeneralElementPropertyBar.tsx) is hidden below 1440 px. At these
+           widths Row 1 often wraps — a tablet at 1280 px / Large put
+           "− 2.0 +" alone on a middle line, so the bar took 3 lines. Without
+           the break the controls simply flow on: 2 lines there. */
+        @media (max-width: 1439px) {
+          .top-row-properties .prop-row-break { display: none; }
+        }
         /* Laptops / tablets (session 59): with the wider (150 px) rail the
            top row wrapped onto a second line at ~1280 px wide (stealing 60 px
            of canvas height), so its group gaps are halved there. Kept with
@@ -7784,7 +7801,7 @@ const APP_VERSION = '1.4.0';
               parseNotation={parseNotation}
               updateNotation={updateNotation}
               convertToJosephineKnot={convertToJosephineKnot}
-              toggleShape={toggleShape}
+              setRingKind={setRingKind}
               setLabelOffset={setLabelOffset}
               commitOrderDraft={commitOrderDraft}
               pushHistoryState={pushHistoryState}

@@ -24,6 +24,7 @@
 // blur or Enter.
 
 import React, { useState, useRef, useEffect } from 'react';
+import { evalArithmetic } from '../utils/calcExpr';
 
 // Generalizes tattingindex.tsx's parseRotationExpr: same absolute / leading
 // +or- relative / x-substitution / arithmetic-expression support, minus the
@@ -41,11 +42,9 @@ export const parseNumberExpr = (input: string, currentDisplayValue: number): num
     expr = String(currentDisplayValue) + expr;
   }
   if (!/^[\d\s.+\-*/()]+$/.test(expr)) return null;
-  try {
-    const result = new Function('"use strict"; return (' + expr + ')')();
-    if (typeof result !== 'number' || !isFinite(result)) return null;
-    return result;
-  } catch { return null; }
+  // evalArithmetic, not new Function: the app's Content Security Policy
+  // forbids eval-like code (session 60, utils/calcExpr.ts).
+  return evalArithmetic(expr);
 };
 
 const clampOrWrap = (v: number, min: number, max: number, wrap: boolean): number => {

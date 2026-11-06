@@ -1610,6 +1610,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ── IN-APP SECURITY POLICY (session 60) ───────────────────────────
+// The app does not run onclick="…" / oninput="…" written in the page, so
+// the toolbar is connected here. Each attribute is removed first, so in a
+// normal browser nothing runs twice.
+(function connectToolbar() {
+  const actions = {
+    'window.print()': () => window.print(),
+    'nextMatch()': () => nextMatch(),
+    'clearSearch()': () => clearSearch(),
+  };
+  document.querySelectorAll('[onclick]').forEach(el => {
+    if (el.closest('#tabbar')) return; // tabs: connected above
+    const run = actions[el.getAttribute('onclick').trim()];
+    if (!run) return;
+    el.removeAttribute('onclick');
+    el.addEventListener('click', run);
+  });
+  const box = document.getElementById('searchBox');
+  if (box) {
+    box.removeAttribute('oninput');
+    box.addEventListener('input', () => runSearch(box.value));
+  }
+})();
 </script>
 
 

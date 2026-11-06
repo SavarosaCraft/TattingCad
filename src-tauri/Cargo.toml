@@ -1,6 +1,6 @@
 [package]
 name = "tattingcad"
-version = "1.4.0"
+version = "1.4.1"
 description = "Tatting pattern designer"
 authors = ["SavarosaCraft.com"]
 license = "MIT"
@@ -15,21 +15,25 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.6", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
+# Session 60: minimum versions raised for 1.4 — Android .tatcad support
+# (androidIntentActionFilters, manifest intent filters, content:// opening)
+# needs tauri-build 2.7 / tauri 2.12 and matching plugins. Same versions as
+# the JS packages (@tauri-apps/cli 2.12.4).
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.10.3", features = ["protocol-asset"] }
-tauri-plugin-log = "2"
-tauri-plugin-window-state = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-clipboard-manager = "2.3.2"
+tauri = { version = "2.12.5", features = ["protocol-asset"] }
+tauri-plugin-log = "2.10"
+tauri-plugin-window-state = "2.5"
+tauri-plugin-dialog = "2.8"
+tauri-plugin-fs = "2.7"
+tauri-plugin-opener = "2.7"
+tauri-plugin-clipboard-manager = "2.5"
 
 # Session 60: one TattingCAD at a time on desktop — double-clicking a
 # .tatcad while the app is open opens it in that window (src/lib.rs).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = "2.5"

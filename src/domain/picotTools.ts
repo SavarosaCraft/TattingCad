@@ -23,7 +23,7 @@ import { expandTokens, isZeroWidth } from './parser';
 const EDITABLE_PICOT_RE = /^(sp|cp|p|lp|jp|jpg|cj|cjp|gp)$/i;
 const DS_RE = /^(\d+)?\s*ds$/i;
 const SS_RE = /^(\d+)?\s*(ss|lss|rss)$/i;  // half-stitches: count as 0.5ds each
-const PREFIX_RE = /^(r|c|sc|sr|jk|fr):\s*/i;
+const PREFIX_RE = /^(r|c|sc|sr|jk|fr|mr):\s*/i;
 
 export interface WizardSegment {
   kind: 'run' | 'picot' | 'barrier';

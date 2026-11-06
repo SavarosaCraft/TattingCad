@@ -8,6 +8,13 @@
 
 import { DEFAULT_END_ALLOWANCE } from '../geometry/stitchGeometry';
 
+// Session 61: every notation prefix (incl. jk:, fr: floating ring, mr: mock
+// ring) — stripped for the short notation hints and the stitch counts.
+const NOTATION_PREFIX_RE = /^(r|c|sc|sr|ch|jk|fr|mr):\s*/i;
+// Short ring label in the unnumbered list: SR / FR / MR / R.
+const ringTypeLabel = (el: any): string =>
+  el.isSplitRing ? 'SR' : /^fr:/i.test(el.notation || '') ? 'FR' : /^mr:/i.test(el.notation || '') ? 'MR' : 'R';
+
 const DEFAULT_THREAD_PRESET = {
   id: 'default',
   name: 'Pearl Cotton Size 10, Needle Tat',
@@ -234,9 +241,9 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     if (hasAnyElements) {
       const unnumbered = elements.filter(el => el.type !== 'line');
       const list = unnumbered.map(el => {
-        const typeLabel = el.type === 'ring' ? (el.isSplitRing ? 'SR' : 'R') : (el.isSplitChain ? 'SC' : 'CH');
+        const typeLabel = el.type === 'ring' ? ringTypeLabel(el) : (el.isSplitChain ? 'SC' : 'CH');
         const hint = el.notation
-          ? ' (' + el.notation.replace(/^(r|c|sc|sr):\s*/i, '').slice(0, 35) + ')' : '';
+          ? ' (' + el.notation.replace(NOTATION_PREFIX_RE, '').slice(0, 35) + ')' : '';
         return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
       });
       fallbackHeader = `⚠ ${t('patternOutUnnumbered')}\n${list.join('\n')}`;
@@ -330,10 +337,10 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     ? (() => {
         const list = unnumberedElements.map(el => {
           const typeLabel = el.type === 'ring'
-            ? (el.isSplitRing ? 'SR' : 'R')
+            ? ringTypeLabel(el)
             : (el.isSplitChain ? 'SC' : 'CH');
           const hint = el.notation
-            ? ' (' + el.notation.replace(/^(r|c|sc|sr):\s*/i, '').slice(0, 35)
+            ? ' (' + el.notation.replace(NOTATION_PREFIX_RE, '').slice(0, 35)
               + (el.notation.length > 40 ? '…' : '') + ')'
             : '';
           return `  • ${typeLabel}${hint}${el.rw ? ' RW' : ''}`;
@@ -394,7 +401,7 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
       return count;
     };
 
-    const tokens = notation.replace(/^(r|c|sc|sr|ch):\s*/i, '').split(/[,\s\-]+/);
+    const tokens = notation.replace(NOTATION_PREFIX_RE, '').split(/[,\s\-]+/);
     for (const tok of tokens) {
       const bcMatch  = tok.match(/^bc:([YZVyzv0-9]+)$/i);
       if (bcMatch)  { result.beadDs += countBeadsInSeq(bcMatch[1]); continue; }

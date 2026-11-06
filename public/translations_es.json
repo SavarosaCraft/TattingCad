@@ -635,6 +635,8 @@
   "jkConvertConfirm": "Convertir a JK",
   "propShapeTeardrop": "Lágrima",
   "propShapeCircle": "Círculo",
+  "propShapeFloatingRing": "Anillo flotante (fr:)",
+  "propShapeMockRing": "Anillo simulado (mr:)",
   "picotWizardSideBoth": "Ambos",
   "picotWizardReverse": "Invertir notación",
   "picotWizardSideA": "Lado A",

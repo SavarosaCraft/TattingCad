@@ -77,7 +77,7 @@ interface GeneralElementPropertyBarProps {
   parseNotation: (notation: string, silent?: boolean) => any;
   updateNotation: (notation: string, notationB: string | null, id: any, options?: any) => void;
   convertToJosephineKnot: (...args: any[]) => void;
-  toggleShape: (...args: any[]) => void;
+  setRingKind: (kind: 'teardrop' | 'circle' | 'fr' | 'mr') => void;
   setLabelOffset: (...args: any[]) => void;
   commitOrderDraft: (id: any, draft: string | null, el?: any) => void;
   pushHistoryState: (els: any[], picotConnections: any, rounds: any[]) => void;
@@ -130,7 +130,7 @@ export function GeneralElementPropertyBar({
   parseNotation,
   updateNotation,
   convertToJosephineKnot,
-  toggleShape,
+  setRingKind,
   setLabelOffset,
   commitOrderDraft,
   pushHistoryState,
@@ -671,8 +671,11 @@ export function GeneralElementPropertyBar({
               <TensionStepper ids={[selectedElement.id]} tensionInfoForIds={tensionInfoForIds}
                 setTensionForIds={setTensionForIds} t={t} />
 
-              {/* ── Row 2 starts here ── */}
-              <div className="w-full" />
+              {/* ── Row 2 starts here ── (session 61: below 1440 px the break is
+                  hidden — see .prop-row-break in tattingindex.tsx — so when Row 1
+                  wraps, its last controls share a line with Row 2 instead of
+                  sitting alone on a middle line) */}
+              <div className="w-full prop-row-break" />
 
               {/* Order number - for all elements (rings and chains) */}
               <div className="flex items-center gap-0.5 md:gap-2 top-toolbar-scalable">
@@ -730,7 +733,7 @@ export function GeneralElementPropertyBar({
                 elementsRef={elementsRef}
                 picotConnectionsRef={picotConnectionsRef}
                 roundsRef={roundsRef}
-                toggleShape={toggleShape}
+                setRingKind={setRingKind}
                 convertToJosephineKnot={convertToJosephineKnot}
                 isInteractingRef={isInteractingRef}
                 t={t}
