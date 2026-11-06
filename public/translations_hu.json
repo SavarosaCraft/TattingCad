@@ -635,6 +635,8 @@
   "jkConvertConfirm": "Átalakítás JK-vá",
   "propShapeTeardrop": "Könnycsepp",
   "propShapeCircle": "Kör",
+  "propShapeFloatingRing": "Lebegő gyűrű (fr:)",
+  "propShapeMockRing": "Álgyűrű (mr:)",
   "picotWizardSideBoth": "Mindkettő",
   "picotWizardReverse": "Jelölés megfordítása",
   "picotWizardSideA": "A oldal",
