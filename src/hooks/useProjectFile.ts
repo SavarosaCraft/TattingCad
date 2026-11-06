@@ -7,7 +7,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import {
   showSaveDialog, showOpenDialog, showSaveSvgDialog,
   writeProjectFile, writeTextToFile, readProjectFile,
-  addToRecents, generateThumbnailPng, stripPatternExt, patternNameFromUri,
+  addToRecents, generateThumbnailPng, stripPatternExt, patternNameFromUri, fileDisplayName,
 } from '../tauri/file';
 import { sanitizeProjectColors } from '../utils/safeColor';
 import { serializeProject } from '../domain/patternOutput';
@@ -164,7 +164,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     // file, so it must still count as unsaved (session 58).
     const savedRev = p.getCurrentHistoryRev();
     await writeProjectFile(filePath, buildProjectData(finalName));
-    const displayName = stripPatternExt(filePath.split(/[\\/]/).pop() ?? '') || finalName;
+    const displayName = fileDisplayName(filePath, finalName);
     const thumbPath = await generateThumbnailPng(p.elements, p.dsWidth, filePath);
     addToRecents(displayName, filePath, thumbPath);
     p.setLastSavedRev(savedRev);
@@ -338,7 +338,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     setTimeout(() => p.showLoadMsg('success', p.t('loadSuccess').replace('{n}', String(count))), 50);
     if (filePath === null) return; // sample: nothing on disk to list in Recent
 
-    const displayName = stripPatternExt(filePath.split(/[\\/]/).pop() ?? '') || projectData.name || 'Project';
+    const displayName = fileDisplayName(filePath, projectData.name || 'Project');
     const thumbPath = await generateThumbnailPng(projectData.elements || [], projectData.dsWidth || 10, filePath);
     addToRecents(displayName, filePath, thumbPath);
   }, [p.t, p.cleanupDuplicates]);

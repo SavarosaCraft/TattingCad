@@ -46,6 +46,32 @@ export const patternNameFromUri = (uri: string): string => {
   return /\.(tatcad|json)$/i.test(base) ? stripPatternExt(base) : '';
 };
 
+const isContentUri = (p: string): boolean => /^content:\/\//i.test(p || '');
+
+/**
+ * Session 61: the file's name as shown to people (Recent list, window title),
+ * WITH its extension: "C:\\x\\Snow.tatcad" → "Snow.tatcad". For an Android
+ * content:// address the name is decoded out of it ("…%2FSnow.tatcad" →
+ * "Snow.tatcad"); "" when the address carries no name (…/msf%3A1234) — the
+ * caller then uses the pattern's own name. Before, Android showed the raw
+ * address piece ("raw%3A%2Fstorage%2F…").
+ */
+export const fileBaseName = (path: string): string => {
+  if (!path) return '';
+  if (isContentUri(path)) {
+    const name = patternNameFromUri(path);
+    if (!name) return '';
+    let last = path.split('/').pop() || '';
+    try { last = decodeURIComponent(last); } catch { /* keep as is */ }
+    return last.split(/[\\/:]/).pop() || '';
+  }
+  return path.split(/[\\/]/).pop() || '';
+};
+
+/** Name without extension, or `fallback` when the path gives none. */
+export const fileDisplayName = (path: string, fallback: string): string =>
+  stripPatternExt(fileBaseName(path)) || fallback;
+
 export const showSaveDialog = async (defaultName: string): Promise<string | null> => {
   // Android (session 60, 1.4): .tatcad too. Its save dialog needs a MIME
   // type, and Android knows none for .tatcad — "application/octet-stream"
@@ -117,6 +143,14 @@ export const readProjectFile = async (filePath: string): Promise<any> => {
 // file is there" for UI purposes.
 export const checkFileExists = async (filePath: string): Promise<boolean> => {
   if (!filePath) return false;
+  // Session 61 — Android: a saved file is a content:// address, which the
+  // file system's exists() doesn't understand (it always said "missing", so
+  // Recent showed every Android entry as File missing with Load greyed).
+  // Reading it is the real test: it fails if the file is gone OR the app
+  // may no longer open it. Patterns are small; the list holds at most 20.
+  if (isContentUri(filePath)) {
+    try { await readTextFile(filePath); return true; } catch { return false; }
+  }
   try {
     return await exists(filePath);
   } catch (err) {
@@ -150,6 +184,9 @@ export const thumbPathFor = (projectPath: string): string => {
 // convertFileSrc requires forward slashes on Windows.
 export const thumbSrcFor = (thumbPath: string): string => {
   if (!thumbPath) return '';
+  // Session 61: on Android the thumbnail is kept as a small PNG data URL in
+  // the Recent entry itself (see generateThumbnailPng) — use it as it is.
+  if (/^data:image\/png;base64,/i.test(thumbPath)) return thumbPath;
   try {
     return convertFileSrc(normalizePath(thumbPath).replace(/\\/g, '/'));
   } catch { return ''; }
@@ -159,7 +196,7 @@ export const thumbSrcFor = (thumbPath: string): string => {
 const normaliseEntry = (e: any): RecentEntry => {
   const filename = normalizePath(e.filename ?? e.path ?? e.filePath ?? e.file ?? '');
   const name = filename
-    ? (stripPatternExt(filename.split(/[\\/]/).pop() ?? '') || e.name || 'Untitled')
+    ? fileDisplayName(filename, e.name || 'Untitled')
     : (e.name ?? 'Untitled');
   return {
     id:        e.id        ?? Date.now().toString(),
@@ -184,7 +221,15 @@ export const addToRecents = (name: string, filename: string, thumbPath: string):
       filename: cleanFilename, thumbPath: cleanThumbPath,
       savedAt: new Date().toISOString(),
     };
-    localStorage.setItem('tcad_recent_projects', JSON.stringify([entry, ...filtered].slice(0, 20)));
+    try {
+      localStorage.setItem('tcad_recent_projects', JSON.stringify([entry, ...filtered].slice(0, 20)));
+    } catch {
+      // Session 61: storage full (Android keeps thumbnails in the list) —
+      // keep the entry, drop the thumbnails rather than lose the Recent list.
+      const lean = [entry, ...filtered].slice(0, 20).map(e =>
+        /^data:/i.test(e.thumbPath ?? '') ? { ...e, thumbPath: '' } : e);
+      localStorage.setItem('tcad_recent_projects', JSON.stringify(lean));
+    }
   } catch (_) {}
 };
 
@@ -282,6 +327,23 @@ export const generateThumbnailPng = async (
       }
       ctx.stroke();
     }
+  }
+
+  // Session 61 — Android: Save gives a content:// address, not a path. A
+  // "_thumb.png" next to it can't be created (Android doesn't allow writing
+  // a new file at a made-up address), so thumbnails never appeared there.
+  // Keep the picture in the Recent entry instead, as a data URL (~10–30 KB;
+  // the Recent list holds at most 20). The page's policy allows data: images.
+  if (isAndroid() || /^content:\/\//i.test(projectPath)) {
+    try { return canvas.toDataURL('image/png'); } catch { return ''; }
+  }
+
+  // Never write over the pattern itself: a path without a .tatcad / .json
+  // ending would give a "thumbnail path" equal to the pattern's own path.
+  const thumbTarget = thumbPathFor(projectPath);
+  if (!/_thumb\.png$/i.test(thumbTarget) || thumbTarget === normalizePath(projectPath)) {
+    console.warn('[thumbnail] skipped — no thumbnail name for', projectPath);
+    return '';
   }
 
   return new Promise<string>(resolve => {

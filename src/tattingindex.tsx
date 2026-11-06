@@ -11,6 +11,7 @@ import {
   thumbSrcFor,
   thumbPathFor,
   checkFileExists,
+  fileBaseName,
   showSaveThemeDialog,
   writeTextToFile,
 } from './tauri/file';
@@ -825,8 +826,10 @@ const APP_VERSION = '1.4.1';
   // Tauri permission core:window:allow-set-title (capabilities/default.json);
   // without it the call fails quietly and the title stays "TattingCAD".
   // document.title too, so a browser tab shows the same.
+  // Session 61: fileBaseName decodes Android content:// addresses; one with
+  // no name in it shows the pattern's name instead of the raw address.
   const windowTitleFileName = currentFilePath
-    ? (currentFilePath.split(/[\\/]/).pop() || currentFilePath)
+    ? (fileBaseName(currentFilePath) || projectName || t('windowTitleUntitled'))
     : t('windowTitleUntitled');
   const windowTitle = `${hasUnsavedChanges ? '*' : ''}${windowTitleFileName} — TattingCAD`;
   useEffect(() => {

@@ -1634,6 +1634,20 @@ document.addEventListener('DOMContentLoaded', () => {
     box.addEventListener('input', () => runSearch(box.value));
   }
 })();
+
+// ── ANDROID APP: NO PRINT (session 61) ───────────────────────────
+// Android's in-app web view ignores window.print(), so the Print button
+// did nothing there. Hidden only inside the Android app (an Android
+// browser can print, so it keeps the button).
+(function hidePrintInAndroidApp() {
+  if (!/android/i.test(navigator.userAgent || '')) return;
+  let inApp = !!window.__TAURI_INTERNALS__;
+  try { inApp = inApp || !!(window.parent && window.parent.__TAURI_INTERNALS__); } catch (e) { /* other origin */ }
+  if (!inApp) return;
+  document.querySelectorAll('button').forEach(b => {
+    if (/🖨/.test(b.textContent || '')) b.style.display = 'none';
+  });
+})();
 </script>
 
 

@@ -402,7 +402,7 @@
         <div class="step-num">5</div>
         <div class="step-body">
           <h5>Save &amp; Export</h5>
-          <p>Click <span class="blue">Save</span> to save your project as a <code class="code-inline">.json</code> file, or export as SVG for printing and sharing.</p>
+          <p>Click <span class="blue">Save</span> to save your project as a <code class="code-inline">.tatcad</code> file, or export as SVG for printing and sharing.</p>
         </div>
       </div>
 	  <div class="step">
@@ -458,7 +458,7 @@
 
   <div class="card card-blue" style="margin-top:1rem;">
     <h4 class="blue">Auto-Save</h4>
-    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to the app's local storage (only when the canvas isn't empty). Use <span class="blue">File → Save Project</span> to keep a permanent <code class="code-inline">.json</code> copy.</p>
+    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to the app's local storage (only when the canvas isn't empty). Use <span class="blue">File → Save Project</span> to keep a permanent <code class="code-inline">.tatcad</code> copy.</p>
   </div>
 </section>
 
@@ -1453,6 +1453,20 @@ document.addEventListener('DOMContentLoaded', () => {
     box.removeAttribute('oninput');
     box.addEventListener('input', () => runSearch(box.value));
   }
+})();
+
+// ── ANDROID APP: NO PRINT (session 61) ───────────────────────────
+// Android's in-app web view ignores window.print(), so the Print button
+// did nothing there. Hidden only inside the Android app (an Android
+// browser can print, so it keeps the button).
+(function hidePrintInAndroidApp() {
+  if (!/android/i.test(navigator.userAgent || '')) return;
+  let inApp = !!window.__TAURI_INTERNALS__;
+  try { inApp = inApp || !!(window.parent && window.parent.__TAURI_INTERNALS__); } catch (e) { /* other origin */ }
+  if (!inApp) return;
+  document.querySelectorAll('button').forEach(b => {
+    if (/🖨/.test(b.textContent || '')) b.style.display = 'none';
+  });
 })();
 </script>
 
