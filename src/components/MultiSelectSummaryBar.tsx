@@ -70,7 +70,7 @@ interface MultiSelectSummaryBarProps {
   setLabelOffset: (n: number) => void;
   updateSelected: (prev: any[], ids: Set<string>, updates: any) => any[];
   updateWhere: (prev: any[], predicate: (el: any) => boolean, updates: any) => any[];
-  polarGrids: Array<{ id: string; name: string }>;
+  polarGrids: Array<{ id: string; name: string; visible?: boolean }>;
   lineBeadClipboard: any;
   beadLibrary: Array<{ id: string; name: string; color: string }>;
   setLineBeadClipboard: (v: any) => void;
@@ -115,7 +115,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   setLabelOffset,
   updateSelected,
   updateWhere,
-  polarGrids,
+  polarGrids: allPolarGrids,
   lineBeadClipboard,
   beadLibrary,
   setLineBeadClipboard,
@@ -144,6 +144,10 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   tensionInfoForIds,
   setTensionForIds,
 }) => {
+  // Session 61: only VISIBLE grids are offered as a rotation centre — same
+  // as the single-element bar (GeneralElementPropertyBar). Hidden grids were
+  // listed here; a hidden grid is never used as a pivot anyway.
+  const polarGrids = allPolarGrids.filter(g => g.visible);
   if (selectedIds.length === 0) return null;
 
   // Check if a group is selected (one or more elements with a groupId).
