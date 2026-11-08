@@ -28,6 +28,7 @@ import {
 } from '../geometry/paths';
 import { writeText as tauriWrite, readText as tauriRead } from '@tauri-apps/plugin-clipboard-manager';
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
+import { repairSplitRingSideABeads } from '../domain/parser';
 import { sanitizeProjectColors } from '../utils/safeColor';
 
 // Use Tauri native clipboard when available (avoids browser permission prompts).
@@ -800,7 +801,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
         sanitizeProjectColors(parsed);
         const { elements: sysEls, connections: sysConns } = parsed;
         if (Array.isArray(sysEls) && sysEls.length > 0) {
-          board = stripUnknownBeadRefs(sysEls);
+          // Session 62 (H5): a pattern copied from an older version may hold
+          // split-ring side-A beads in the old slot.
+          board = stripUnknownBeadRefs(sysEls).map(repairSplitRingSideABeads);
           connections = sysConns || [];
         }
       }

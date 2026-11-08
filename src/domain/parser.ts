@@ -635,3 +635,45 @@ export const getStitchTypes = (
 let pat = normalizePattern(notation.slice(prefix.length));
   return prefix.trimEnd().replace(/:$/, '') + ': ' + pat;
 };
+
+// ── Split-ring side A positions (session 62, review H5) ─────────────────────
+// A bead that takes a stitch-wide slot: core bead (bc / bcp) or bead element
+// (be). Every other picot-like token is zero-width.
+export const isSlotBead = (p: any): boolean =>
+  p?.beadType === 'bc' || p?.beadType === 'bcp' || p?.beadType === 'be';
+
+// Side A of a split ring is stored counted BACKWARDS: its notation reads from
+// the shared start point, which is the END of el.paths[0], while stored
+// stitchesBefore (like every element's) runs from the path's start. For a
+// zero-width picot that is countA - s. A slot bead covers [s, s+1] in the
+// notation, i.e. [countA-s-1, countA-s] on the path, and stitchesBefore is a
+// slot's START — so it needs one more subtracted. (The old countA - s drew
+// side-A beads one stitch too close to the start; side B, plain rings and
+// chains were always right.) The formula is its own inverse: the same call
+// turns a stored side-A position back into the notation's.
+export const splitRingSideAPosition = (p: any, countA: number): number =>
+  countA - p.stitchesBefore - (isSlotBead(p) ? 1 : 0);
+
+// Load repair for files saved before session 62: moves each side-A slot bead
+// stored with the old formula to the right slot. Matched by order against
+// side A's own notation (the stored list is that side's picots reversed),
+// changed only where the bead type agrees and the old value is found, so it
+// is a no-op on new files and on anything it doesn't recognise.
+export const repairSplitRingSideABeads = (el: any): any => {
+  if (!el?.isSplitRing || !Array.isArray(el.picots) || typeof el.notation !== 'string') return el;
+  if (!el.picots.some(isSlotBead)) return el;
+  const parsed = parseNotation(el.notation, true);
+  if (!parsed) return el;
+  const countA = parsed.stitchCount;
+  const n = parsed.picots.length;
+  if (el.picots.length < n) return el;
+  let changed = false;
+  const sideA = el.picots.slice(0, n).map((p: any, i: number) => {
+    const q: any = parsed.picots[n - 1 - i];
+    if (!isSlotBead(p) || !q || p.beadType !== q.beadType) return p;
+    if (p.stitchesBefore !== countA - q.stitchesBefore) return p;
+    changed = true;
+    return { ...p, stitchesBefore: countA - q.stitchesBefore - 1 };
+  });
+  return changed ? { ...el, picots: [...sideA, ...el.picots.slice(n)] } : el;
+};

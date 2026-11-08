@@ -13,7 +13,7 @@
 // around joined end picots) are not implemented here; they're a separate,
 // larger pass.
 
-import { expandTokens, isZeroWidth } from './parser';
+import { expandTokens, isZeroWidth, splitRingSideAPosition, parseNotation } from './parser';
 
 // Editable picot tokens — the ones this tool is allowed to add or remove.
 // (jp/jpg/cj/cjp are included because a token typed as one of these is
@@ -122,10 +122,16 @@ export function splitRingSides(el: any): { notationA: string; notationB: string;
   const notationB = `sr: ${el?.notationB || ''}`;
   const all: any[] = el?.picots || [];
   const split = splitPrefix(notationA);
-  const countA = split ? expandTokens(split.pattern).filter(tok => isZeroWidth(tok)).length : 0;
+  // Session 62: count side A's picots the way they are STORED — one per
+  // parsed picot. A bead sequence (bc:YZ, bc:2Y) is one token but one
+  // picot per bead, so counting tokens put side A's extra beads on side B.
+  const parsedA = split ? parseNotation(notationA, true) : null;
+  const countA = parsedA ? parsedA.picots.length
+    : split ? expandTokens(split.pattern).filter(tok => isZeroWidth(tok)).length : 0;
   const splitPos = el?.splitPosition || Math.floor((el?.stitchCount || 0) / 2);
   const picotsA = all.slice(0, countA)
-    .map(p => ({ ...p, stitchesBefore: splitPos - p.stitchesBefore }))
+    // Session 62: shared formula — slot beads take one stitch off (H5).
+    .map(p => ({ ...p, stitchesBefore: splitRingSideAPosition(p, splitPos) }))
     .reverse();
   const picotsB = all.slice(countA)
     .map(p => ({ ...p, stitchesBefore: p.stitchesBefore - splitPos }));

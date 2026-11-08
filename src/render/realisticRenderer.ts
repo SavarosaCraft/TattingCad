@@ -221,53 +221,80 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
   };
 
   // Calculate stitch positions for split rings (two separate paths)
+  //
+  // Session 62: each side is now walked exactly like a plain ring's notation
+  // (calculatePathStitches above) — half-stitch steps when the side has
+  // ss/lss/rss, rds/bds taking their 1.5 width and their 'rds-cont' slots
+  // skipped, ss pairs split into their own sub-stitches. The old loop
+  // stepped one whole stitch at a time and drew every stitch in a one-ds
+  // slot: each rds was squeezed to ds width, every second rds (which starts
+  // at a half position) was never drawn, and both halves of an ss pair
+  // landed on the same spot (user report, session 62).
+  //
+  // Each entry is ONE stitch (sub-stitches already split out) and carries
+  // dsPosition = where it STARTS along the whole split ring, side A first
+  // (0..countA) then side B (countA..) — what renderWedgeSplitRingShapes
+  // takes. Side A's notation reads from the END of paths[0] (the shared
+  // start point, H6), so a stitch at notation [s, s+w] starts at path
+  // position countA - s - w.
   const calculateSplitRingStitches = (element) => {
     if (!element || !element.paths || element.paths.length < 2) return [];
-    
+
     const stitches = [];
     const stitchCountA = element.splitPosition || Math.floor(element.stitchCount / 2);
     const stitchCountB = element.stitchCount - stitchCountA;
-    
+
     const notationA = element.notation || 'sr: 5ds';
     const notationB = element.notationB ? `sr: ${element.notationB}` : 'sr: 5ds';
-    const stitchTypeMapA = getStitchTypes(notationA);
-    const stitchTypeMapB = getStitchTypes(notationB);
-    
-    // Pre-sample each path ONCE
-    const pathA = element.paths[0];
-    const samplesA = [sampleBezierPath(pathA, 50)];
-    const lengthsA = [calculatePathLength(samplesA[0])];
-    const lengthA = lengthsA[0];
-    
+
     // Path A uses materialId, Path B uses materialIdB (fallback to materialId)
     const ecA = getElementColor({ ...element });
     const ecB = getElementColor({ ...element, materialId: element.materialIdB || element.materialId });
 
-    for (let i = 0; i < stitchCountA; i++) {
-      const distance = splitRingSideFraction(element, i + 0.5, stitchCountA) * lengthA;
-      const { x, y, angle } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, distance);
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, splitRingSideFraction(element, i, stitchCountA) * lengthA);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesA, lengthsA, splitRingSideFraction(element, i + 1, stitchCountA) * lengthA);
-      const color = ecA.isGradient ? getGradientColorAtPosition(ecA.id, i / stitchCountA) : ecA.color;
-      const type = stitchTypeMapA[i] || 'ds';
-      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
-    }
-    
-    const pathB = element.paths[1];
-    const samplesB = [sampleBezierPath(pathB, 50)];
-    const lengthsB = [calculatePathLength(samplesB[0])];
-    const lengthB = lengthsB[0];
-    
-    for (let i = 0; i < stitchCountB; i++) {
-      const distance = splitRingSideFraction(element, i + 0.5, stitchCountB) * lengthB;
-      const { x, y, angle } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, distance);
-      const { angle: startAngle, x: startX, y: startY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, splitRingSideFraction(element, i, stitchCountB) * lengthB);
-      const { angle: endAngle, x: endX, y: endY } = getPointAndAngleAtDistanceFast(samplesB, lengthsB, splitRingSideFraction(element, i + 1, stitchCountB) * lengthB);
-      const color = ecB.isGradient ? getGradientColorAtPosition(ecB.id, i / stitchCountB) : ecB.color;
-      const type = stitchTypeMapB[i] || 'ds';
-      stitches.push({ x, y, angle, startAngle, endAngle, startX, startY, endX, endY, color, type });
-    }
-    
+    const side = (path, count, stitchTypeMap, mirrored, globalOffset, ec) => {
+      // Pre-sample the path ONCE
+      const samples = [sampleBezierPath(path, 50)];
+      const lengths = [calculatePathLength(samples[0])];
+      const length = lengths[0];
+      const at = (s) => getPointAndAngleAtDistanceFast(samples, lengths, splitRingSideFraction(element, s, count) * length);
+
+      const hasHalfStitches = Object.keys(stitchTypeMap).some(k => parseFloat(k) % 1 !== 0);
+      const step = hasHalfStitches ? 0.5 : 1;
+      const totalSteps = Math.round(count / step);
+
+      const emit = (type, notationStart) => {
+        const w = STITCH_WIDTH_DS[type] || 1;
+        const localStart = mirrored ? count - notationStart - w : notationStart;
+        const mid = at(localStart + w / 2), a = at(localStart), b = at(localStart + w);
+        // Gradient position along the path, as before (side A from the
+        // far end — see getPicotPositionFraction in tattingindex.tsx).
+        const color = ec.isGradient ? getGradientColorAtPosition(ec.id, Math.max(0, localStart) / count) : ec.color;
+        stitches.push({ x: mid.x, y: mid.y, angle: mid.angle, startAngle: a.angle, endAngle: b.angle,
+          startX: a.x, startY: a.y, endX: b.x, endY: b.y, color, type, dsPosition: globalOffset + localStart });
+      };
+
+      for (let step_i = 0; step_i < totalSteps; step_i++) {
+        const i = step_i * step;
+        let type = stitchTypeMap[i];
+        if (type === undefined) {
+          // Tail half of a plain ds that started at the previous half-step
+          // (same rule as calculatePathStitches).
+          if (step === 0.5 && stitchTypeMap[i - 0.5] === 'ds') continue;
+          type = step === 0.5 ? 'ss' : 'ds';
+        }
+        if (type === 'rds-cont') continue;
+        if (Array.isArray(type)) {
+          // Sub-stitches spread over the slot, as effectiveIndex does for
+          // plain rings (dsPos + subIdx / len).
+          type.forEach((sub, k) => emit(sub, i + k / type.length));
+        } else {
+          emit(type, i);
+        }
+      }
+    };
+
+    side(element.paths[0], stitchCountA, getStitchTypes(notationA), true, 0, ecA);
+    side(element.paths[1], stitchCountB, getStitchTypes(notationB), false, stitchCountA, ecB);
     return stitches;
   };
 
@@ -766,7 +793,9 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
             if (isCircle) {
               wedgePaths = renderWedgeRingShapes(stitch, el, scale, offsetAmount, type);
             } else if (isSplitRing) {
-              wedgePaths = renderWedgeSplitRingShapes(el, scale, offsetAmount, type, i);
+              // dsPosition = where this stitch starts along the ring (session 62;
+              // the array index was used before, which forced one-ds slots).
+              wedgePaths = renderWedgeSplitRingShapes(el, scale, offsetAmount, type, dsPos);
             } else if (el.isClosed) {
               wedgePaths = renderWedgeTeardropShapes(el, scale, offsetAmount, type, effectiveIndex);
             } else {

@@ -12,6 +12,7 @@ import {
   thumbPathFor,
   checkFileExists,
   fileBaseName,
+  fileDisplayName,
   showSaveThemeDialog,
   writeTextToFile,
 } from './tauri/file';
@@ -133,6 +134,9 @@ import {
   normalizeNotationInput,
   isZeroWidth,
   STITCH_WIDTH_DS,
+  isSlotBead,
+  splitRingSideAPosition,
+  repairSplitRingSideABeads,
 } from './domain/parser';
 import {
   analyzeNotation as analyzeNotationForWizard,
@@ -149,6 +153,7 @@ import {
   suggestScalePresets,
   suggestScalePresetsMulti,
   totalRunDs,
+  splitRingSides,
 } from './domain/picotTools';
 const logoUrl = '/logo.png';
 
@@ -723,9 +728,34 @@ const APP_VERSION = '1.4.1';
       if (!d.elements || d.elements.length === 0) return null;
       // Name may be empty; the "Untitled" fallback is applied where it's
       // displayed — this runs before `t` is declared further down.
-      return { name: d.name || '', date: d.autoSaved ? new Date(d.autoSaved).toLocaleString() : '' };
+      // Session 61: a pattern that belongs to a file is named after the file
+      // ("Resume: My Ring") — the project-name field often still says
+      // "Untitled Pattern" after a save, which looked like a lost file.
+      const fileName = typeof d._resumeFilePath === 'string' && d._resumeFilePath
+        ? fileDisplayName(d._resumeFilePath, '') : '';
+      return { name: fileName || d.name || '', date: d.autoSaved ? new Date(d.autoSaved).toLocaleString() : '' };
     } catch { return null; }
   })();
+
+  // Session 62 (review H3): true while the autosave left by the LAST run
+  // holds unsaved work that hasn't been resumed or written over yet. A file
+  // handed over by the system (double-click, Open with, Share) used to close
+  // the splash without showing Resume, and the next autosave then wrote over
+  // that work. Now openSystemFileRef asks first while this is true. Set once
+  // at start; cleared by Resume, by the first autosave of this run (the old
+  // one is gone then) and by either answer to that question. An autosave
+  // from before session 61 has no _resumeUnsaved → treated as unsaved.
+  const unresumedWorkRef = useRef<boolean | null>(null);
+  if (unresumedWorkRef.current === null) {
+    unresumedWorkRef.current = (() => {
+      try {
+        const saved = localStorage.getItem('tatting-designer-autosave');
+        if (!saved) return false;
+        const d = JSON.parse(saved);
+        return Array.isArray(d.elements) && d.elements.length > 0 && d._resumeUnsaved !== false;
+      } catch { return false; }
+    })();
+  }
 
   // Tips — navigable with prev/next
   // SPLASH_TIP_KEYS replaced by SPLASH_TIP_COUNT from ./hooks/useViewState
@@ -753,6 +783,10 @@ const APP_VERSION = '1.4.1';
       ?? extraTranslations['en']?.[key]
       ?? key;
   }, [language, extraTranslations]);
+  // Confirm-dialog texts may be functions of t (see useUIState) — worked out
+  // at draw time so a dialog opened before the translations load still ends
+  // up in the right language.
+  const confirmText = (v: any): string => (typeof v === 'function' ? v(t) : v);
 
 
   // Hardcoded realistic rendering parameters:
@@ -821,6 +855,9 @@ const APP_VERSION = '1.4.1';
     && (elements.length > 0 || currentFilePath !== null);
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   hasUnsavedChangesRef.current = hasUnsavedChanges;
+  // For the autosave (session 61): which file the pattern belongs to.
+  const currentFilePathRef = useRef(currentFilePath);
+  currentFilePathRef.current = currentFilePath;
 
   // Window title: "*Snowflake.json — TattingCAD" (star = unsaved changes).
   // File name only (no folder); "Untitled" before the first save. Needs the
@@ -1006,9 +1043,17 @@ const APP_VERSION = '1.4.1';
         // buildProjectDataRef always points to the latest closure — no stale state.
         // Pass isAutoSave=true so serializeProject writes the 'autoSaved' timestamp key.
         const data = buildProjectDataRef.current(projectNameRef.current);
-        const payload = { ...data, autoSaved: new Date().toISOString() };
+        // Session 61: also remember the pattern's file and whether it had
+        // unsaved changes, so Resume reconnects to that file (Save writes
+        // there instead of asking) — see loadFromAutosave.
+        const payload = {
+          ...data, autoSaved: new Date().toISOString(),
+          _resumeFilePath: currentFilePathRef.current || null,
+          _resumeUnsaved: hasUnsavedChangesRef.current,
+        };
         delete (payload as any).created;
         localStorage.setItem('tatting-designer-autosave', JSON.stringify(payload));
+        unresumedWorkRef.current = false; // last run's autosave is gone now (H3)
       } catch (error) {
         console.error('Auto-save failed:', error);
       }
@@ -1037,6 +1082,7 @@ const APP_VERSION = '1.4.1';
 
   // Load auto-saved project — called by splash button, not auto-triggered
   const loadFromAutosave = () => {
+    unresumedWorkRef.current = false; // resumed (H3)
     try {
       const saved = localStorage.getItem('tatting-designer-autosave');
       if (!saved) return;
@@ -1050,12 +1096,13 @@ const APP_VERSION = '1.4.1';
       // enabled right after resuming. Skip that one auto-push.
       skipAutoHistoryRef.current = true;
       // Migrate legacy labelsInside → labelOffset; put stale chain/line
-      // centers back on the chord midpoint (session 58, same as file open).
-      setElements((projectData.elements || []).map(el => withChordCenter(
+      // centers back on the chord midpoint (session 58, same as file open);
+      // move old split-ring side-A beads to their slot (session 62, H5).
+      setElements((projectData.elements || []).map(el => withChordCenter(repairSplitRingSideABeads(
         'labelsInside' in el && !('labelOffset' in el)
           ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
           : el
-      )));
+      ))));
       setPicotConnections(projectData.picotConnections || []);
       setCamera(projectData.camera || canvasCenterCamera());
       setZoom(projectData.zoom || 1);
@@ -1097,9 +1144,15 @@ const APP_VERSION = '1.4.1';
       }
       setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [], polarGrids: projectData.polarGrids || [] }]);
       setHistoryIndex(0);
-      // A resumed autosave isn't in any file yet → unsaved (title star,
-      // close warning) until it is saved.
-      setLastSavedRev(-1);
+      // Session 61: reconnect to the pattern's file, if it had one — Save
+      // writes there (if the file was moved / deleted meanwhile, Save shows
+      // the "couldn't save" message and Save As is the way). Clean if it was
+      // saved when autosaved, otherwise unsaved (title star, close warning).
+      // No file (never saved / a sample copy) → unsaved, Save asks where.
+      const resumePath = typeof projectData._resumeFilePath === 'string' && projectData._resumeFilePath
+        ? projectData._resumeFilePath : null;
+      setCurrentFilePath(resumePath);
+      setLastSavedRev(resumePath && projectData._resumeUnsaved === false ? 0 : -1);
     } catch (error) {
       console.error('Error loading auto-save:', error);
     }
@@ -3040,7 +3093,16 @@ const APP_VERSION = '1.4.1';
   };
 
   const flipElements = (ids, axisAngleDeg, pivotX, pivotY) => {
-
+    // Session 62 (review H1): a flip used to give every picot a NEW id
+    // (the picots are re-parsed from the reversed notation), so every join
+    // on a flipped element was cut — the connection kept pointing at a
+    // picot id that no longer existed, and the join line vanished. Now each
+    // new picot takes over the id and joined state of the picot it is the
+    // mirror image of. A flip reverses the order along the path, so new
+    // picot i is old picot n-1-i — checked on teardrops, circles, chains and
+    // split rings, rotated or not, and for every picot / bead token (picot
+    // kinds mirror exactly; see handoff-session62). Computed outside a state
+    // updater: parseNotation makes ids, and React may run an updater twice.
 
     const isH = axisAngleDeg === 90;
 
@@ -3068,8 +3130,23 @@ const APP_VERSION = '1.4.1';
       return { ...path, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: ctrl.x, controlY: ctrl.y };
     };
 
-    setElements(prev => prev.map(el => {
-      if (!ids.includes(el.id)) return el;
+    // New picot i ↔ old picot n-1-i. Keeps the old id and joined state only
+    // where the counts agree and the two are the same kind of picot (always
+    // true for a reversal — anything else is left as parsed, and any join
+    // that can't follow is removed cleanly below instead of left dangling).
+    const carryPicotIdentity = (oldPicots: any[], newPicots: any[]): any[] => {
+      const n = (oldPicots || []).length;
+      if (n === 0 || n !== newPicots.length) return newPicots;
+      return newPicots.map((p, i) => {
+        const old = oldPicots[n - 1 - i];
+        if (!old || picotKind(old) !== picotKind(p)) return p;
+        return { ...p, id: old.id, isJoint: !!old.isJoint };
+      });
+    };
+
+    const flippedIds = new Set<string>(ids);
+    const updated = (elementsRef.current as any[]).map(el => {
+      if (!flippedIds.has(el.id)) return el;
       const newCenter = mirrorPt(el.center.x, el.center.y);
       const newAngle  = mirrorAngle(el.rotation || 0);
       // Track flip state so notation apply can re-mirror after path regeneration
@@ -3078,12 +3155,19 @@ const APP_VERSION = '1.4.1';
 
       // ── Split rings ──────────────────────────────────────────────────────
       if (el.isSplitRing) {
+        // Session 62 (review H4, user decision): the two sides SWAP and each
+        // keeps its notation exactly as it reads — no reversal. Both sides
+        // are read from the shared start point (the arrow's tail), and the
+        // flip below already turns the arrow into its mirror image, so a
+        // side's stitches still read the same way along it. The old code
+        // also reversed each side, which put asymmetric picots 1–2 ds off
+        // their mirror spots on every single flip, at every ring angle
+        // (a double flip hid it — the two reversals cancelled). Checked at
+        // 0/30/90/135/180/270° on both mirror lines: exact mirror every time.
         const notationAText = el.notation.replace(/^sr:\s*/, '');
         const notationBText = el.notationB || '5ds';
-        const reversedA = reverseNotation(`sr: ${notationAText}`).replace(/^sr:\s*/, '');
-        const reversedB = reverseNotation(`sr: ${notationBText}`).replace(/^sr:\s*/, '');
-        const parsedA = parseNotation(`sr: ${reversedB}`);
-        const parsedB = parseNotation(`sr: ${reversedA}`);
+        const parsedA = parseNotation(`sr: ${notationBText}`);
+        const parsedB = parseNotation(`sr: ${notationAText}`);
         if (!parsedA || !parsedB) return el;
         const sca = parsedA.stitchCount, scb = parsedB.stitchCount;
         // TRUE mirror of the existing two arcs — NOT a regenerate+rotate.
@@ -3095,14 +3179,20 @@ const APP_VERSION = '1.4.1';
         // paths array is the same shape as the generic branch's N-entry
         // case below, so the same proven mirrorPath+reverse composition
         // applies directly: new arc "A" is the mirror of the OLD arc B
-        // (matching reversedB now describing the A slot), new arc "B" is
+        // (so old B's notation now describes the A slot), new arc "B" is
         // the mirror of the OLD arc A.
         const newPaths = el.paths.map(mirrorPath).reverse();
-        const reversedAPicots = parsedA.picots.map(p => ({ ...p, stitchesBefore: sca - p.stitchesBefore })).reverse();
-        const allPicots = [...reversedAPicots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))];
+        const reversedAPicots = parsedA.picots.map(p => ({ ...p, stitchesBefore: splitRingSideAPosition(p, sca) })).reverse();
+        // Bead-element settings follow their picot too (session 62): the
+        // split-ring branch never copied them, so a flip reset every BE to a
+        // plain core bead — and then H1's id carrying missed that picot as
+        // well, since its kind no longer matched. The new picot list is the
+        // old one fully reversed, which is the order mergeBEConfigs expects.
+        const allPicots = carryPicotIdentity(el.picots, mergeBEConfigs(
+          [...reversedAPicots, ...parsedB.picots.map(p => ({ ...p, stitchesBefore: p.stitchesBefore + sca }))], el.picots));
         return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
           isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
-          notation: `sr: ${reversedB}`, notationB: reversedA,
+          notation: `sr: ${notationBText}`, notationB: notationAText,
           // Side squeezes travel with their arcs, like the notations: new
           // side A is the mirror of old arc B, so it takes old B's squeeze.
           // (Before session 57 these stayed put, so the next rebuild bent
@@ -3129,12 +3219,53 @@ const APP_VERSION = '1.4.1';
       if (el.type !== 'line' && el.notation) {
         reversedNotation = reverseNotation(el.notation);
         const parsed = parseNotation(reversedNotation);
-        if (parsed) picots = mergeBEConfigs(parsed.picots, el.picots);
+        if (parsed) picots = carryPicotIdentity(el.picots, mergeBEConfigs(parsed.picots, el.picots));
       }
       return { ...el, center: newCenter, paths: newPaths, rotation: newAngle,
         isFlippedH: newIsFlippedH, isFlippedV: newIsFlippedV,
         notation: reversedNotation, picots };
-    }));
+    });
+
+    // Joins on the flipped elements. A chain's two ends trade places (its
+    // path is reversed), so a join on its __start__ end must now point at
+    // __end__ and vice versa. (A ring's __anchor__ and a split ring's two
+    // points stay where they are.) A join whose picot is gone — which a
+    // normal flip never produces — is removed, and its other side loses its
+    // joined mark, the same as Break.
+    const updatedById = new Map(updated.filter(el => flippedIds.has(el.id)).map(el => [el.id, el]));
+    const PSEUDO = new Set(['__start__', '__end__', '__anchor__']);
+    const swapEnd = (id: string) => id === '__start__' ? '__end__' : id === '__end__' ? '__start__' : id;
+    let connsChanged = false;
+    const demoteKeys = new Map<string, boolean>();
+    const remapped = picotConnectionsRef.current.map(conn => {
+      let touched = false;
+      const picots = conn.picots.map(cp => {
+        const el = updatedById.get(cp.elementId);
+        if (!el || el.type !== 'chain' || !PSEUDO.has(cp.picotId)) return cp;
+        touched = true;
+        return { ...cp, picotId: swapEnd(cp.picotId) };
+      });
+      if (touched) connsChanged = true;
+      return touched ? { ...conn, picots } : conn;
+    });
+    const newConns = remapped.filter(conn => {
+      const broken = conn.picots.some(cp => {
+        const el = updatedById.get(cp.elementId);
+        return el && !PSEUDO.has(cp.picotId) && !(el.picots || []).some(p => p.id === cp.picotId);
+      });
+      if (broken) {
+        connsChanged = true;
+        conn.picots.forEach(cp => demoteKeys.set(`${cp.elementId}::${cp.picotId}`, false));
+      }
+      return !broken;
+    });
+
+    // One render, so the auto-history effect records the flip as one step.
+    setElements(demoteKeys.size > 0 ? applyJointFlags(updated, demoteKeys) : updated);
+    if (connsChanged) {
+      setPicotConnections(newConns);
+      picotConnectionsRef.current = newConns;
+    }
   };
 
   // Evaluate a rotation expression string.
@@ -3662,6 +3793,31 @@ const APP_VERSION = '1.4.1';
   };
   const openSystemFileRef = useRef<(filePath: string) => void>(() => {});
   openSystemFileRef.current = (filePath: string) => {
+    // H3: last run ended with unsaved work nobody has resumed yet, and this
+    // run has nothing unsaved of its own → ask before that work is lost.
+    // "Open file anyway" (red, the risky choice) opens the file; "Resume
+    // last session" brings the work back instead (the file stays closed —
+    // it can be opened again afterwards). Closing the box does neither, and
+    // the question comes back next time.
+    if (unresumedWorkRef.current && !hasUnsavedChangesRef.current) {
+      // Texts as functions of t: at start-up this can run before the
+      // translations have loaded, and the dialog redraws when they arrive.
+      const name = splashAutosave?.name || '';
+      setConfirmDialog({
+        title: tt => tt('resumeBeforeOpenTitle'),
+        message: tt => tt('resumeBeforeOpenBody').replace('{name}', name || tt('projectUntitled')),
+        confirmLabel: tt => tt('resumeBeforeOpenOpen'),
+        onConfirm: () => { unresumedWorkRef.current = false; openSystemFileNow(filePath); },
+        cancelLabel: tt => tt('resumeBeforeOpenResume'),
+        onCancel: () => {
+          setShowSampleGallery(false);
+          setShowRecentProjectsDialog(false);
+          loadFromAutosave();
+          setShowSplash(false);
+        },
+      });
+      return;
+    }
     if (hasUnsavedChangesRef.current) {
       setConfirmDialog({
         message: t('recentProjectsLoadConfirmBody'),
@@ -4638,9 +4794,10 @@ const APP_VERSION = '1.4.1';
         }
       }
 
+      // Session 62 (H5): shared formula — a slot bead takes one stitch off.
       const reversedAPicots = parsedA.picots.map(p => ({
         ...p,
-        stitchesBefore: stitchCountA - p.stitchesBefore,
+        stitchesBefore: splitRingSideAPosition(p, stitchCountA),
       })).reverse();
 
       const newPicotsRaw = [...reversedAPicots, ...parsedB.picots.map(p => ({
@@ -6013,7 +6170,11 @@ const APP_VERSION = '1.4.1';
 
       return element.picots.map(p => {
         const sb = beadSb(p);
-        const inA = p.stitchesBefore <= splitPos;
+        // Side by the bead's CENTRE (session 62): a slot bead that is the
+        // first thing on side B is stored at splitPos, which the plain
+        // stitchesBefore test put on side A. Same rule as
+        // elementStitchFraction and getSplitRingSide.
+        const inA = sb <= splitPos;
         const localFrac = inA
           ? splitRingSideFraction(element, sb, countA)
           : splitRingSideFraction(element, sb - splitPos, countB);
@@ -6144,12 +6305,16 @@ const APP_VERSION = '1.4.1';
         const offset = element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14);
         const labels = [];
 
-        const placeRunsOnPath = (runs, pathCurve, sectionStitchCount, keyPfx) => {
+        // mirrored (session 62, H6): side A's notation reads from the END
+        // of paths[0] (the shared start point), so its runs are placed at
+        // count - midDS along the path. Side B reads from its path's start.
+        const placeRunsOnPath = (runs, pathCurve, sectionStitchCount, keyPfx, mirrored = false) => {
           const sampleSet = [sampleBezierPath(pathCurve, 20)];
           const lenSet = [calculatePathLength(sampleSet[0])];
           const totalLen = lenSet[0];
           runs.forEach((run, j) => {
-            const dist = splitRingSideFraction(element, run.midDS, sectionStitchCount) * totalLen;
+            const at = mirrored ? sectionStitchCount - run.midDS : run.midDS;
+            const dist = splitRingSideFraction(element, at, sectionStitchCount) * totalLen;
             const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
             const perpAngle = angle - Math.PI / 2;
             labels.push(
@@ -6175,7 +6340,7 @@ const APP_VERSION = '1.4.1';
 
         const runsA = getSegmentRuns(element.notation || '', 0, splitPos);
         const runsB = getSegmentRuns(`sr: ${element.notationB || '5ds'}`, 0, stitchCountB);
-        if (element.paths[0]) placeRunsOnPath(runsA, element.paths[0], splitPos, `label-${element.id}-srnp0`);
+        if (element.paths[0]) placeRunsOnPath(runsA, element.paths[0], splitPos, `label-${element.id}-srnp0`, true);
         if (element.paths[1]) placeRunsOnPath(runsB, element.paths[1], stitchCountB, `label-${element.id}-srnp1`);
         return labels.length > 0 ? labels : null;
       } else {
@@ -6270,37 +6435,39 @@ const APP_VERSION = '1.4.1';
       const offset = element.labelOffset ?? (labelsInside === 'onPath' ? 8 : labelsInside === false ? 22 : -14);
       const labels = [];
 
-      // Section A: picots where stitchesBefore < splitPos → labels on path[0]
-      const picotsA = (element.picots || []).filter(p => p.stitchesBefore <= splitPos);
-      const segmentsA = [];
-      let lastA = 0;
-      for (let i = 0; i <= picotsA.length; i++) {
-        const endPos = i < picotsA.length ? picotsA[i].stitchesBefore : splitPos;
-        const cnt = endPos - lastA;
-        if (cnt > 0) segmentsA.push({ start: lastA, count: cnt });
-        lastA = endPos;
-      }
-
-      // Section B: picots where stitchesBefore > splitPos → labels on path[1]
-      const picotsB = (element.picots || []).filter(p => p.stitchesBefore > splitPos);
+      // Session 62 (H6): both sides' stretches are worked out in NOTATION
+      // order — each side's picots as Picot Tools sees them (splitRingSides:
+      // split by count, positions counted from the shared start point) — the
+      // same way plain rings do it below. The old code took side A's
+      // stretches in path order (from the far end) and then looked them up
+      // in the notation, which reads from the other end: plain ds came out
+      // right by luck, beads / rds / ss on side A did not.
+      const { picotsA, picotsB } = splitRingSides(element);
       const stitchCountB = element.stitchCount - splitPos;
-      const segmentsB = [];
-      let lastB = 0;
-      for (let i = 0; i <= picotsB.length; i++) {
-        const endPos = i < picotsB.length ? picotsB[i].stitchesBefore - splitPos : stitchCountB;
-        const cnt = endPos - lastB;
-        if (cnt > 0) segmentsB.push({ start: lastB, count: cnt });
-        lastB = endPos;
-      }
+      const segmentsBetween = (sidePicots, sideCount) => {
+        const segs = [];
+        let last = 0;
+        for (let i = 0; i <= sidePicots.length; i++) {
+          const endPos = i < sidePicots.length ? sidePicots[i].stitchesBefore : sideCount;
+          const cnt = endPos - last;
+          if (cnt > 0) segs.push({ start: last, count: cnt });
+          last = endPos;
+        }
+        return segs;
+      };
+      const segmentsA = segmentsBetween(picotsA, splitPos);
+      const segmentsB = segmentsBetween(picotsB, stitchCountB);
 
-      const renderSectionLabels = (segs, pathCurve, sectionStitchCount, sectionNotation, sectionId) => {
+      // mirrored: side A is placed from the END of paths[0] (see above).
+      const renderSectionLabels = (segs, pathCurve, sectionStitchCount, sectionNotation, sectionId, mirrored = false) => {
         const sampleSet = [sampleBezierPath(pathCurve, 20)];
         const lenSet = [calculatePathLength(sampleSet[0])];
         const totalLen = lenSet[0];
         segs.forEach((seg, i) => {
           const runs = getSegmentRuns(sectionNotation, seg.start, seg.start + seg.count);
           runs.forEach((run, j) => {
-            const dist = splitRingSideFraction(element, run.midDS, sectionStitchCount) * totalLen;
+            const at = mirrored ? sectionStitchCount - run.midDS : run.midDS;
+            const dist = splitRingSideFraction(element, at, sectionStitchCount) * totalLen;
             const { x, y, angle } = getPointAndAngleAtDistanceFast(sampleSet, lenSet, dist);
             const perpAngle = angle - Math.PI / 2;
             labels.push(
@@ -6325,7 +6492,7 @@ const APP_VERSION = '1.4.1';
         });
       };
 
-      if (element.paths[0]) renderSectionLabels(segmentsA, element.paths[0], splitPos, element.notation || 'sr: 5ds', 'A');
+      if (element.paths[0]) renderSectionLabels(segmentsA, element.paths[0], splitPos, element.notation || 'sr: 5ds', 'A', true);
       if (element.paths[1]) renderSectionLabels(segmentsB, element.paths[1], stitchCountB, `sr: ${element.notationB || '5ds'}`, 'B');
       return labels.length > 0 ? labels : null;
     }
@@ -6685,7 +6852,9 @@ const APP_VERSION = '1.4.1';
   const getSplitRingSide = (element, picot) => {
     if (!element?.isSplitRing || !picot) return null;
     const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
-    return picot.stitchesBefore <= splitPos ? 'A' : 'B';
+    // A slot bead is judged by its centre (session 62, H5) — see renderPicots.
+    const at = picot.stitchesBefore + (isSlotBead(picot) ? 0.5 : 0);
+    return at <= splitPos ? 'A' : 'B';
   };
 
   // Position (0–1) of a picot along its element's stitch sequence — same
@@ -8710,7 +8879,13 @@ const APP_VERSION = '1.4.1';
               {gridEnabled && renderMode !== 'realistic' && <rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)" />}
 
               {/* NEW: Render joint picot connection lines */}
-              {showEditingArtifacts && picotConnections.map(conn => {
+              {/* Join lines — ALWAYS drawn (session 61: they were hidden by
+                  View → Hide Editing Artifacts, which is meant for helpers
+                  only; a join is part of the pattern). Each join's group
+                  carries data-layer="joins" → its own "Joins" layer in the
+                  SVG export (render/svgExport.ts), with its beads / centre
+                  dot. Folds stay untagged → Design layer (a fold is a picot). */}
+              {picotConnections.map(conn => {
                 if (conn.picots.length < 2) return null;
                 
                 // Get positions of all connected picots
@@ -8818,7 +8993,7 @@ const APP_VERSION = '1.4.1';
                           in realistic mode the arcs themselves already show
                           where the fold reaches, an extra dashed guide line
                           would look out of place next to solid thread color. */}
-                      {renderMode !== 'realistic' && (
+                      {renderMode !== 'realistic' && showEditingArtifacts && (
                         <line
                           x1={originFrame.x} y1={originFrame.y} x2={anchorPos.x} y2={anchorPos.y}
                           stroke={theme.connectionLine} strokeWidth="2"
@@ -8887,7 +9062,7 @@ const APP_VERSION = '1.4.1';
                     ? ribbon(positions[0], positions[1])
                     : positions.map(pos => ribbon(pos, { x: cx, y: cy })).join(' ');
                   return (
-                    <g key={conn.id}>
+                    <g key={conn.id} data-layer="joins">
                       {connD && (
                         <path d={connD} fill={lineColor}
                           stroke={theme.markerOutline} strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
@@ -8900,16 +9075,21 @@ const APP_VERSION = '1.4.1';
                     </g>
                   );
                 } else {
-                  // Schematic mode: each picot → center, dotted orange
+                  // Schematic mode: each picot → center, a solid line in the
+                  // theme's join colour (yellow by default). Session 61: was
+                  // dashed (5,5) — now continuous, also under joined beads.
+                  // Flat line ends: the halves meet at the centre without
+                  // overlapping (round ends overlapped → a brighter dot,
+                  // the line is 70 % opaque).
                   const joinBeads = getConnectionBeads(conn);
                   return (
-                    <g key={conn.id}>
+                    <g key={conn.id} data-layer="joins">
                       {positions.map((pos, i) => (
                         <line
                           key={`${conn.id}-${i}`}
                           x1={pos.x} y1={pos.y} x2={cx} y2={cy}
                           stroke={theme.connectionLine} strokeWidth="3"
-                          strokeDasharray="5,5" opacity="0.7"
+                          opacity="0.7"
                         />
                       ))}
                       {/* Center dot only for 3+ picots — 2-picot joins are just a straight line */}
@@ -12843,17 +13023,17 @@ const APP_VERSION = '1.4.1';
     {confirmDialog && (
       <Modal show onClose={() => setConfirmDialog(null)} backdropZIndex={2147483647} wrapperZIndex={2147483647}
         contentClassName="px-6 py-5 flex flex-col gap-4" contentStyle={{ width: 'min(360px, 90vw)' }}>
-        {confirmDialog.title && <h2 className="text-lg font-bold text-white">{confirmDialog.title}</h2>}
-        <p className="text-white text-sm text-center">{confirmDialog.message}</p>
+        {confirmDialog.title && <h2 className="text-lg font-bold text-white">{confirmText(confirmDialog.title)}</h2>}
+        <p className="text-white text-sm text-center">{confirmText(confirmDialog.message)}</p>
         <div className="flex gap-2">
           <button
             onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
             className="flex-1 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-semibold"
-          >{confirmDialog.confirmLabel || t('confirmDelete')}</button>
+          >{confirmText(confirmDialog.confirmLabel) || t('confirmDelete')}</button>
           <button
-            onClick={() => setConfirmDialog(null)}
+            onClick={() => { const onCancel = confirmDialog.onCancel; setConfirmDialog(null); onCancel?.(); }}
             className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm"
-          >{t('confirmCancel')}</button>
+          >{confirmText(confirmDialog.cancelLabel) || t('confirmCancel')}</button>
         </div>
       </Modal>
     )}

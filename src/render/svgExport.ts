@@ -85,6 +85,9 @@ export function prepareSvgForExport(
     return g;
   };
 
+  // Session 61: join lines (with their beads / centre dots) in their own
+  // layer, placed UNDER Design — same stacking as on the canvas.
+  const layerJoins    = makeLayer('layer-joins',    'Joins');
   const layerDesign   = makeLayer('layer-design',   'Design');
   const layerNotation = makeLayer('layer-notation',  'Notation');
   const layerOrder    = makeLayer('layer-order',     'Order Numbers');
@@ -102,9 +105,11 @@ export function prepareSvgForExport(
       if (layer === 'notation')    layerNotation.appendChild(node);
       else if (layer === 'order')  layerOrder.appendChild(node);
       else if (layer === 'groups') layerGroups.appendChild(node);
+      else if (layer === 'joins')  layerJoins.appendChild(node);
     });
 
     while (mg.firstChild) layerDesign.appendChild(mg.firstChild);
+    mg.appendChild(layerJoins);
     mg.appendChild(layerDesign);
     mg.appendChild(layerNotation);
     mg.appendChild(layerOrder);
