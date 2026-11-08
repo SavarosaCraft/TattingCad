@@ -330,6 +330,26 @@ const readRecentFilenames = (): string[] => {
   } catch { return []; }
 };
 
+// Session 62 (review M5): removes one entry (the ✕ in Recent Projects) and
+// returns the list as it is now. Android: the removed file's kept access is
+// handed back — unless it is the file open right now (protectFileAccess).
+export const removeFromRecents = (id: string): RecentEntry[] => {
+  try {
+    const raw = localStorage.getItem('tcad_recent_projects');
+    const list = (raw ? (JSON.parse(raw) as any[]) : []).map(normaliseEntry).filter(e => e.id !== id);
+    localStorage.setItem('tcad_recent_projects', JSON.stringify(list));
+    void syncKeptAccess();
+    return list;
+  } catch { return []; }
+};
+
+// Session 62 (review M5): the file open right now keeps its access for the
+// rest of this run even when its Recent entry is removed — handing it back
+// made the next Save fail. Called whenever the open file changes.
+export const protectFileAccess = (path: string | null): void => {
+  if (path && isContentUri(path)) keptThisRun.add(path);
+};
+
 export const getRecents = (): RecentEntry[] => {
   try {
     const raw = localStorage.getItem('tcad_recent_projects');

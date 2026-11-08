@@ -28,7 +28,6 @@ import {
   hasRepeatGroups,
   scaleNotation,
   suggestScalePresets,
-  totalRunDs,
 } from '../domain/picotTools';
 import { updateSelected, updateElement } from '../utils/elementUpdates';
 import { resetElementShape } from '../geometry/paths';
@@ -244,8 +243,9 @@ export function GeneralElementPropertyBar({
                       const scalePreviewB = isSR && analysisB.supported && scaleFactor > 0 ? scaleNotation(notationBFull, picotsB, scaleFactor) : null;
                       const scaleActualTotal = (scalePreviewA?.actualTotalDs || 0) + (scalePreviewB?.actualTotalDs || 0);
                       const scaleAnyClamped = !!(scalePreviewA?.anyClamped || scalePreviewB?.anyClamped);
-                      const scaleTotalDs = totalRunDs(analysisA.segments) + (isSR ? totalRunDs(analysisB.segments) : 0);
-                      const { exact: exactPresets, rounded: roundedPresets } = suggestScalePresets(scaleTotalDs, [...picotsA, ...picotsB]);
+                      // Session 62: presets from the analysed sides (stitch counts,
+                      // each side scaled on its own, the same as Apply).
+                      const { exact: exactPresets, rounded: roundedPresets } = suggestScalePresets(isSR ? [analysisA, analysisB] : [analysisA]);
 
                       const anySupported = activeSides.some(s => analysisFor(s).supported);
 

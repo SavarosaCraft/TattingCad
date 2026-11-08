@@ -8,6 +8,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import {
   getRecents,
+  removeFromRecents,
+  protectFileAccess,
   thumbSrcFor,
   thumbPathFor,
   checkFileExists,
@@ -152,7 +154,7 @@ import {
   scaleNotation,
   suggestScalePresets,
   suggestScalePresetsMulti,
-  totalRunDs,
+  totalRunStitches,
   splitRingSides,
 } from './domain/picotTools';
 const logoUrl = '/logo.png';
@@ -173,6 +175,19 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
   if (el.isContentEditable) return true;
   if (el.tagName === 'INPUT') return TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
   return false;
+};
+
+// Session 62 (review M3): a focused dropdown (<select>) uses plain letters
+// and digits to jump to an option, and Space to open — after picking a
+// material with the mouse the focus stays on it, so "D" both jumped in the
+// list AND duplicated the element; Backspace deleted it. Those keys (and
+// Delete) stay with the dropdown. Shortcuts with Ctrl/Cmd/Alt still work,
+// and sliders are left alone on purpose (see TEXT_INPUT_TYPES above).
+const isDropdownKey = (e: KeyboardEvent): boolean => {
+  const el = e.target as HTMLElement | null;
+  if (!el || el.tagName !== 'SELECT') return false;
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  return e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete';
 };
 
 // Icons imported from ./components/icons
@@ -523,6 +538,10 @@ const TattingDesigner = () => {
   // dialog opens) rather than persistent UI state; candidate to fold in if
   // useUIState is revisited.
   const [missingRecentPaths, setMissingRecentPaths] = useState<Set<string>>(new Set());
+  // Session 62 (review M5): the Recent list, read ONCE when the dialog opens.
+  // getRecents() used to run inside the render — rewriting the stored list
+  // and (Android) going through the kept file access on every redraw.
+  const [recentList, setRecentList] = useState<ReturnType<typeof getRecents>>([]);
 
   // Named/colored spatial-group registry — { id, name, color }[], mirrors the
   // `rounds` registry shape (see useTattingOrder). Kept as local state here
@@ -967,7 +986,9 @@ const APP_VERSION = '1.4.1';
   useEffect(() => {
     if (!showRecentProjectsDialog) return;
     let cancelled = false;
-    const entries = getRecents().filter(e => e.filename);
+    const list = getRecents();
+    setRecentList(list);
+    const entries = list.filter(e => e.filename);
     Promise.all(entries.map(async e => ({
       filename: e.filename,
       exists: await checkFileExists(e.filename),
@@ -977,6 +998,10 @@ const APP_VERSION = '1.4.1';
     });
     return () => { cancelled = true; };
   }, [showRecentProjectsDialog]);
+
+  // Session 62 (review M5): Android — never hand back access to the file
+  // that is open (✕ on its Recent entry used to make the next Save fail).
+  useEffect(() => { protectFileAccess(currentFilePath); }, [currentFilePath]);
 
   // Auto-save to localStorage every 30 seconds
   // PERFORMANCE: Use refs to avoid recreating interval on every state change
@@ -1324,8 +1349,14 @@ const APP_VERSION = '1.4.1';
         }
       }, 0);
     };
+    // Session 62 (review M1): a cancelled pointer (the system took the touch
+    // away) never sends pointerup — listen for pointercancel too.
     document.addEventListener('pointerup', handleDocPointerUp);
-    return () => document.removeEventListener('pointerup', handleDocPointerUp);
+    document.addEventListener('pointercancel', handleDocPointerUp);
+    return () => {
+      document.removeEventListener('pointerup', handleDocPointerUp);
+      document.removeEventListener('pointercancel', handleDocPointerUp);
+    };
   }, []);
 
   // PERFORMANCE: Track canvas size via ResizeObserver for viewport culling.
@@ -1641,12 +1672,13 @@ const APP_VERSION = '1.4.1';
       // Plain R only: Shift+R adds a ring, Ctrl+R is blocked (reload). Not
       // while typing, and not in Tatting Order mode (R = repeat there).
       if ((e.key === 'r' || e.key === 'R') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
-          && !isTypingTarget(e.target) && activeModeRef.current !== 'tattingOrder') {
+          && !isTypingTarget(e.target) && !isDropdownKey(e) && activeModeRef.current !== 'tattingOrder') {
         setIsRotateKeyHeld(true);
       }
       if (e.key === ' ') {
         // Don't intercept Space when the user is typing in a field
-        if (isTypingTarget(e.target)) return;
+        // (or on a dropdown, where Space opens it — session 62, M3)
+        if (isTypingTarget(e.target) || isDropdownKey(e)) return;
         e.preventDefault(); // Prevent page scroll
         if (!spaceDownRef.current) {
           spaceDownRef.current = true;
@@ -1654,7 +1686,7 @@ const APP_VERSION = '1.4.1';
         }
       }
       if (e.key === 'z' || e.key === 'Z') {
-        if (isTypingTarget(e.target)) return;
+        if (isTypingTarget(e.target) || isDropdownKey(e)) return;
         if (e.ctrlKey || e.metaKey || e.shiftKey) return; // Don't intercept Ctrl+Z (undo) or Shift+Z (redo)
         if (!zDownRef.current) {
           zDownRef.current = true;
@@ -4321,7 +4353,7 @@ const APP_VERSION = '1.4.1';
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target) || isDropdownKey(e)) return;
       
       // Undo: Ctrl+Z (not Shift)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -4723,10 +4755,33 @@ const APP_VERSION = '1.4.1';
         return { ...p, id: old.id, isJoint: isStillJoint };
       });
     } else {
-      const oldBySb: Record<number, any> = {};
-      oldPicots.forEach(p => { oldBySb[p.stitchesBefore] = p; });
-      merged = newPicots.map(p => {
-        const old = oldBySb[p.stitchesBefore];
+      // Session 62 (review H2): a LIST per position, handed out in order.
+      // Two picots can share a stitch position (p-p, a picot next to a bead,
+      // bc:YZ). The old one-slot-per-position map let the second overwrite
+      // the first, so both new picots there took the SAME old id (and its
+      // join) and the first one's join was reported as dropped — duplicate
+      // ids inside one element. Likewise a picot added next to an existing
+      // one (3ds-p-3ds → 3ds-p-p-3ds) used to copy its id; now only the
+      // first takes it and the new one keeps its own fresh id.
+      // Two passes: the same kind first (so a picot removed from a spot it
+      // shares with a bead doesn't hand its join to the bead), then anything
+      // left at that spot (so p → lp at one spot still keeps its join, as
+      // before).
+      const oldBySb = new Map<number, any[]>();
+      oldPicots.forEach(p => {
+        const list = oldBySb.get(p.stitchesBefore);
+        if (list) list.push(p); else oldBySb.set(p.stitchesBefore, [p]);
+      });
+      const pick: any[] = newPicots.map(p => {
+        const list = oldBySb.get(p.stitchesBefore);
+        const at = list ? list.findIndex(o => picotKind(o) === picotKind(p)) : -1;
+        return at >= 0 ? list!.splice(at, 1)[0] : null;
+      });
+      newPicots.forEach((p, i) => {
+        if (!pick[i]) pick[i] = oldBySb.get(p.stitchesBefore)?.shift() ?? null;
+      });
+      merged = newPicots.map((p, i) => {
+        const old = pick[i];
         if (!old) return p;
         const isStillJoint = old.isJoint && survivingConnKeys.has(`${elementId}::${old.id}`);
         return { ...p, id: old.id, isJoint: isStillJoint };
@@ -6633,20 +6688,49 @@ const APP_VERSION = '1.4.1';
   const escapeActionRef = useRef<() => void>(() => {});
   useEffect(() => {
     escapeActionRef.current = () => {
+      // Session 62 (review M2): every dialog, popover and menu is in the
+      // list now (Confirm/Alert, Recent Projects and its confirm, the array
+      // dialogs, Array Manager, Picot Tools, the theme editor, the menus …),
+      // top layer first. Esc on a Confirm box closes it without choosing
+      // either button — the same as clicking outside it. Realistic view moved
+      // below every dialog and menu (Esc in Help used to leave realistic view
+      // and keep Help open) but stays above the editing modes: a mode stays
+      // on under realistic view, and Esc there should leave the view you can
+      // see, not end a mode you can't.
       const closers: Array<[boolean, () => void]> = [
         [showSetup,                       () => { /* SetupScreen handles Escape (= Skip) itself */ }],
+        [!!confirmDialog,                  () => setConfirmDialog(null)],
+        [!!alertDialog,                    () => setAlertDialog(null)],
+        [!!tattingOrderConflict,           () => resolveTattingOrderConflict('cancel')],
+        [!!convertConfirm,                 () => setConvertConfirm(null)],
+        [showArrayManager,                 () => setShowArrayManager(false)],
+        [showRecentLoadConfirm,            () => setShowRecentLoadConfirm(false)],
+        [showRemoveConfirm,                () => setShowRemoveConfirm(false)],
+        [showUpdatePopup,                  () => { localStorage.setItem('tcad_update_seen', APP_VERSION); setShowUpdatePopup(false); }],
         [showSplash,                      () => setShowSplash(false)],
         [showSampleGallery,               () => setShowSampleGallery(false)],
-        [renderMode === 'realistic',       () => handleSetRenderMode('schematic')],
+        [showRecentProjectsDialog,         () => setShowRecentProjectsDialog(false)],
+        [showThemeEditor,                  () => setShowThemeEditor(false)],
         [showColorPicker,                  () => { setShowColorPicker(false); setPickerCallback(null); setPickerGradientCallback(null); setPickerTabsAllowed(null); }],
         [showMaterialsPanel,               () => setShowMaterialsPanel(false)],
         [showAbout,                        () => setShowAbout(false)],
-        [showHelpMenu,                     () => setShowHelpMenu(false)],
         [showHelp,                         () => setShowHelp(false)],
         [showUiGuide,                      () => setShowUiGuide(false)],
         [showBeadLibrary,                  () => setShowBeadLibrary(false)],
         [showPolarGridPanel,               () => setShowPolarGridPanel(false)],
         [showThreadProperties,             () => setShowThreadProperties(false)],
+        [showPolarArrayDialog,             () => setShowPolarArrayDialog(false)],
+        [showLinearArrayDialog,            () => setShowLinearArrayDialog(false)],
+        [showSpiralArrayDialog,            () => setShowSpiralArrayDialog(false)],
+        [showPicotWizard,                  () => setShowPicotWizard(false)],
+        [showMultiScaleWizard,             () => setShowMultiScaleWizard(false)],
+        [showFileMenu,                     () => setShowFileMenu(false)],
+        [showViewMenu,                     () => setShowViewMenu(false)],
+        [showArrangeMenu,                  () => setShowArrangeMenu(false)],
+        [showOptionsMenu,                  () => setShowOptionsMenu(false)],
+        [showHelpMenu,                     () => setShowHelpMenu(false)],
+        [showPhoneMenu,                    () => setShowPhoneMenu(false)],
+        [renderMode === 'realistic',       () => handleSetRenderMode('schematic')],
         [activeMode === 'picotJoin',       () => { setActiveMode(null); setShowJoinTip(false); setSelectedPicots([]); setFoldModeArmed(false); }],
         [activeMode === 'beading',         () => { setActiveMode(null); setSelectedBEs([]); }],
         [activeMode === 'tattingOrder',    () => { setActiveMode(null); setSelectedIds([]); }],
@@ -8058,7 +8142,7 @@ const APP_VERSION = '1.4.1';
                 showMultiScaleWizard={showMultiScaleWizard}
                 setShowMultiScaleWizard={setShowMultiScaleWizard}
                 analyzeNotationForWizard={analyzeNotationForWizard}
-                totalRunDs={totalRunDs}
+                totalRunStitches={totalRunStitches}
                 suggestScalePresetsMulti={suggestScalePresetsMulti}
                 scaleNotation={scaleNotation}
                 autoCompact={autoCompact}
@@ -8737,6 +8821,17 @@ const APP_VERSION = '1.4.1';
             if (e.touches.length === 0) {
               handleMouseUp(null);
             }
+          }}
+          // Session 62 (review M1): the system can cancel a touch (Android
+          // back-swipe, notification shade, incoming call, palm rejection) —
+          // then no touchend ever comes. End everything as if every finger
+          // had lifted: the drag commits where it is (one undo step) and a
+          // cancelled pinch no longer leaves touchState.dist set, which made
+          // one-finger moves do nothing until the next two-finger gesture.
+          onTouchCancel={() => {
+            dragTouchIdRef.current = null;
+            setTouchState({ dist: 0, zoom: zoom, centerX: 0, centerY: 0, worldX: 0, worldY: 0 });
+            handleMouseUp(null);
           }}
         >
           <svg width="100%" height="100%" style={{ backgroundColor: bgColor, userSelect: 'none' }}>
@@ -10528,15 +10623,11 @@ const APP_VERSION = '1.4.1';
 
       {/* ── Recent Projects Dialog ────────────────────────────────────────── */}
       {showRecentProjectsDialog && (() => {
-        const recents = getRecents();
+        const recents = recentList;
 
-        const removeEntry = (id: string) => {
-          const updated = recents.filter(e => e.id !== id);
-          localStorage.setItem('tcad_recent_projects', JSON.stringify(updated));
-          // Force re-render by toggling dialog (quick trick — dialog reads fresh each render)
-          setShowRecentProjectsDialog(false);
-          setTimeout(() => setShowRecentProjectsDialog(true), 0);
-        };
+        // Session 62 (review M5): updates the stored list and the shown one
+        // (was: close + reopen the dialog so the render read it again).
+        const removeEntry = (id: string) => setRecentList(removeFromRecents(id));
 
         const doLoad = (pendingAction: () => void) => {
           // Ask only when something would be lost (session 58; was: any

@@ -5,15 +5,23 @@
 // dialog when the element has existing joins — this file doesn't duplicate any
 // of that, it only computes the new notation string.
 //
-// SCOPE (v1 — "add" and "clear/reduce"): plain ds runs and plain picot tokens
-// only (split rings: one side at a time — session 60). rds stitch types, and bead
-// tokens (be, bc:, bp:, bjp:, sb:, bcp:) are out of scope — analyzeNotation
-// reports `supported: false` for any of these rather than guessing. Fill
-// density and length-aware scaling (which need the "protected zone" floor
-// around joined end picots) are not implemented here; they're a separate,
-// larger pass.
+// SCOPE: every stitch type (ds, ss, lss, rss, rds, bds) and plain picot
+// tokens; split rings one side at a time (session 60). Bead tokens (be, bc:,
+// bp:, bjp:, sb:, bcp:) are fixed "barriers" — never added, removed or moved
+// past. A bead sequence (bc:YZ — one token, one picot per bead) is refused
+// ("picotMismatch") rather than guessed at.
+//
+// Session 62 (review H7): a run keeps its stitches IN ORDER (2ds, 3rds,
+// 1ss …) and every action writes them back with their own types. It used to
+// keep one ds total per run and write "Nds", which turned half stitches into
+// ds (r: 2ss-3ds-p-3ds → Clear → r: 7ds), gave fractions the parser rejects
+// (1ss → "9.5ds"), and refused rds/bds outright. Rules that cut a run (Add,
+// Fill, Scale) count STITCHES, not length (user's decision): a cut falls
+// between stitches only, "4rds" → "2rds-p-2rds". For ds-only notation a
+// stitch count and a length are the same number, so the output there is
+// exactly what it was.
 
-import { expandTokens, isZeroWidth, splitRingSideAPosition, parseNotation } from './parser';
+import { expandTokens, isZeroWidth, splitRingSideAPosition, parseNotation, STITCH_WIDTH_DS } from './parser';
 
 // Editable picot tokens — the ones this tool is allowed to add or remove.
 // (jp/jpg/cj/cjp are included because a token typed as one of these is
@@ -21,16 +29,82 @@ import { expandTokens, isZeroWidth, splitRingSideAPosition, parseNotation } from
 // it's "joined" for our purposes comes from the runtime picot's isJoint flag,
 // not from which of these token spellings was used.)
 const EDITABLE_PICOT_RE = /^(sp|cp|p|lp|jp|jpg|cj|cjp|gp)$/i;
-const DS_RE = /^(\d+)?\s*ds$/i;
-const SS_RE = /^(\d+)?\s*(ss|lss|rss)$/i;  // half-stitches: count as 0.5ds each
+// Any stitch token: optional count + one of the six stitch types (same
+// alternation as the parser's STITCH_TOKEN_RE).
+const STITCH_RE = /^(\d+)?\s*(bds|rds|ds|lss|rss|ss)$/i;
 const PREFIX_RE = /^(r|c|sc|sr|jk|fr|mr):\s*/i;
+
+// One stitch token of a run: `n` stitches of `type` (lower case).
+export interface WizardStitch { type: string; n: number; }
 
 export interface WizardSegment {
   kind: 'run' | 'picot' | 'barrier';
   raw: string;
+  // run only — ds: LENGTH in ds widths (rds/bds 1.5, ss/lss/rss 0.5);
+  // count: number of stitches; stitches: the stitch tokens in order.
   ds?: number;
+  count?: number;
+  stitches?: WizardStitch[];
   joined?: boolean;
 }
+
+// ── Stitch lists (session 62) ─────────────────────────────────────────────
+const stitchWidth = (type: string): number => STITCH_WIDTH_DS[type] ?? 1;
+const stitchesCount = (st: WizardStitch[]): number => st.reduce((s, x) => s + x.n, 0);
+const stitchesLength = (st: WizardStitch[]): number => st.reduce((s, x) => s + x.n * stitchWidth(x.type), 0);
+
+// Appends `add` to `into`, joining a stitch of the same type at the seam
+// (2ds + 3ds → 5ds). Zero counts are dropped.
+function appendStitches(into: WizardStitch[], add: WizardStitch[]): WizardStitch[] {
+  for (const s of add) {
+    if (s.n <= 0) continue;
+    const last = into[into.length - 1];
+    if (last && last.type === s.type) last.n += s.n;
+    else into.push({ type: s.type, n: s.n });
+  }
+  return into;
+}
+
+function makeRun(stitches: WizardStitch[]): WizardSegment {
+  const st = appendStitches([], stitches);
+  return { kind: 'run', raw: stitchesText(st), ds: stitchesLength(st), count: stitchesCount(st), stitches: st };
+}
+
+// "2ds-1rds" — the text of a run, every token with its count.
+function stitchesText(st: WizardStitch[]): string {
+  return st.map(s => `${s.n}${s.type}`).join('-');
+}
+
+// Cuts a run's stitches after `k` stitches. A token the cut falls inside is
+// split ("4rds" at 2 → "2rds" | "2rds").
+function cutStitches(st: WizardStitch[], k: number): [WizardStitch[], WizardStitch[]] {
+  const left: WizardStitch[] = [], right: WizardStitch[] = [];
+  let left_n = k;
+  for (const s of st) {
+    if (left_n >= s.n) { left.push({ ...s }); left_n -= s.n; }
+    else if (left_n > 0) { left.push({ type: s.type, n: left_n }); right.push({ type: s.type, n: s.n - left_n }); left_n = 0; }
+    else right.push({ ...s });
+  }
+  return [left, right];
+}
+
+// Splits a run into pieces of the given stitch counts (summing to its count).
+function splitRun(seg: WizardSegment, pieces: number[]): WizardSegment[] {
+  let rest = seg.stitches || [];
+  return pieces.map(k => {
+    const [left, right] = cutStitches(rest, k);
+    rest = right;
+    return makeRun(left);
+  });
+}
+
+// Merges two runs (Clear: the picot between them was removed).
+function joinRuns(a: WizardSegment, b: WizardSegment): WizardSegment {
+  return makeRun(appendStitches(appendStitches([], a.stitches || []), b.stitches || []));
+}
+
+const runsEqual = (a: WizardSegment, b: WizardSegment): boolean =>
+  a.kind === 'run' && b.kind === 'run' && stitchesText(a.stitches || []) === stitchesText(b.stitches || []);
 
 export interface WizardAnalysis {
   supported: boolean;
@@ -64,22 +138,13 @@ export function analyzeNotation(notation: string, picots: any[] | undefined): Wi
   let zwIndex = 0;
 
   for (const token of tokens) {
-    if (DS_RE.test(token)) {
-      const m = token.match(/^(\d+)/);
-      const n = m ? parseInt(m[1], 10) : 1;
+    const st = STITCH_RE.exec(token);
+    if (st) {
+      // Session 62: any stitch type, kept as itself in the current run.
+      const stitch = { type: st[2].toLowerCase(), n: st[1] ? parseInt(st[1], 10) : 1 };
       const last = segments[segments.length - 1];
-      if (last && last.kind === 'run') last.ds = (last.ds || 0) + n;
-      else segments.push({ kind: 'run', raw: token, ds: n });
-      continue;
-    }
-    const ssMatch = SS_RE.exec(token);
-    if (ssMatch) {
-      // Each ss/lss/rss = 0.5ds. Accumulate as fractional ds in the current run.
-      const n = ssMatch[1] ? parseInt(ssMatch[1], 10) : 1;
-      const ds = n * 0.5;
-      const last = segments[segments.length - 1];
-      if (last && last.kind === 'run') last.ds = (last.ds || 0) + ds;
-      else segments.push({ kind: 'run', raw: token, ds });
+      if (last && last.kind === 'run') segments[segments.length - 1] = joinRuns(last, makeRun([stitch]));
+      else segments.push(makeRun([stitch]));
       continue;
     }
     if (isZeroWidth(token)) {
@@ -93,7 +158,7 @@ export function analyzeNotation(notation: string, picots: any[] | undefined): Wi
       }
       continue;
     }
-    // rds / malformed — not handled by the Wizard.
+    // Malformed / unknown token — not handled by the Wizard.
     return { supported: false, reason: 'unsupportedToken', segments: [], type: split.type };
   }
 
@@ -139,7 +204,7 @@ export function splitRingSides(el: any): { notationA: string; notationB: string;
 }
 
 function segmentsToNotation(type: string, segments: WizardSegment[]): string {
-  const parts = segments.map(s => (s.kind === 'run' ? `${s.ds}ds` : s.raw));
+  const parts = segments.map(s => (s.kind === 'run' ? stitchesText(s.stitches || []) : s.raw)).filter(Boolean);
   return `${type}: ${parts.join('-')}`;
 }
 
@@ -156,6 +221,13 @@ function pushZeroWidth(out: Array<{ isJoint: boolean }>, seg: WizardSegment): vo
 // multi-element) don't each re-derive it with their own reduce().
 export function totalRunDs(segments: WizardSegment[]): number {
   return segments.reduce((sum, s) => sum + (s.kind === 'run' ? (s.ds || 0) : 0), 0);
+}
+
+// Session 62: total STITCHES across every run — what Scale works in (the
+// multi-element Scale's common-divisor presets use this). Same number as
+// totalRunDs for ds-only notation.
+export function totalRunStitches(segments: WizardSegment[]): number {
+  return segments.reduce((sum, s) => sum + (s.kind === 'run' ? (s.count || 0) : 0), 0);
 }
 
 // ── Clear unjoined picots ───────────────────────────────────────────────────
@@ -182,10 +254,10 @@ export function clearUnjoinedPicots(notation: string, picots: any[] | undefined)
     if (seg.kind === 'picot' && !seg.joined) continue;
     const last = kept[kept.length - 1];
     if (seg.kind === 'run' && last && last.kind === 'run') {
-      last.ds = (last.ds || 0) + (seg.ds || 0);
+      kept[kept.length - 1] = joinRuns(last, seg);
       continue;
     }
-    kept.push({ ...seg });
+    kept.push(seg.kind === 'run' ? makeRun(seg.stitches || []) : { ...seg });
     if (seg.kind === 'picot' || seg.kind === 'barrier') resultZeroWidth.push({ isJoint: !!seg.joined });
   }
   return { notation: segmentsToNotation(a.type, kept), resultZeroWidth };
@@ -198,12 +270,13 @@ export function hasUnjoinedPicots(notation: string, picots: any[] | undefined): 
 }
 
 // ── Add picots ───────────────────────────────────────────────────────────
-// Every ds run of 2 or more gets new plain "p" picot(s):
+// Every run of 2 or more STITCHES gets new plain "p" picot(s):
 //   even N        -> N/2 - p - N/2                (one picot, centred)
 //   odd N, asym   -> floor(N/2) - p - ceil(N/2)    (one picot, off-centre)
-//   odd N, sym    -> k - p - 1 - p - k, N = 2k+1   (two picots, 1ds gap)
-// Runs under 2ds are left untouched — there's no room for a new picot with
-// at least 1ds on each side of it.
+//   odd N, sym    -> k - p - 1 - p - k, N = 2k+1   (two picots, 1-stitch gap)
+// Runs under 2 stitches are left untouched — there's no room for a new picot
+// with at least one stitch on each side of it. Counted in stitches of
+// whatever type (session 62): "4rds" -> "2rds-p-2rds".
 export interface AddResult {
   notation: string;
   // Same shape/purpose as ClearResult.resultZeroWidth — new picots are
@@ -218,22 +291,24 @@ export function addPicotsToRuns(notation: string, picots: any[] | undefined, sym
   const out: WizardSegment[] = [];
   const resultZeroWidth: Array<{ isJoint: boolean }> = [];
   const newPicot = (): WizardSegment => ({ kind: 'picot', raw: 'p', joined: false });
-  const run = (ds: number): WizardSegment => ({ kind: 'run', raw: `${ds}ds`, ds });
+  // pieces of this run, in stitches, with a new picot between each
+  const withPicots = (seg: WizardSegment, pieces: number[]): WizardSegment[] =>
+    splitRun(seg, pieces).flatMap((r, i) => (i === 0 ? [r] : [newPicot(), r]));
 
   a.segments.forEach((seg, idx) => {
-    if (seg.kind !== 'run' || (seg.ds || 0) < 2 || isRunProtected(a.segments, idx, zones)) {
+    if (seg.kind !== 'run' || (seg.count || 0) < 2 || isRunProtected(a.segments, idx, zones)) {
       out.push({ ...seg }); pushZeroWidth(resultZeroWidth, seg); return;
     }
-    const n = seg.ds as number;
+    const n = seg.count as number;
     let newSegs: WizardSegment[];
     if (n % 2 === 0) {
-      newSegs = [run(n / 2), newPicot(), run(n / 2)];
+      newSegs = withPicots(seg, [n / 2, n / 2]);
     } else if (!symmetric || n < 3) {
       const left = Math.floor(n / 2), right = n - left;
-      newSegs = [run(left), newPicot(), run(right)];
+      newSegs = withPicots(seg, [left, right]);
     } else {
       const k = (n - 1) / 2;
-      newSegs = [run(k), newPicot(), run(1), newPicot(), run(k)];
+      newSegs = withPicots(seg, [k, 1, k]);
     }
     out.push(...newSegs);
     newSegs.forEach(seg => pushZeroWidth(resultZeroWidth, seg));
@@ -245,13 +320,14 @@ export function hasAddablePicotRuns(notation: string, picots: any[] | undefined)
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return false;
   const zones = getProtectedZones(a.segments);
-  return a.segments.some((s, idx) => s.kind === 'run' && (s.ds || 0) >= 2 && !isRunProtected(a.segments, idx, zones));
+  return a.segments.some((s, idx) => s.kind === 'run' && (s.count || 0) >= 2 && !isRunProtected(a.segments, idx, zones));
 }
 
 // ── Protected zones ──────────────────────────────────────────────────────
-// Rule: if the FIRST picot in the element is joined, and the run of ds
-// between the very start of the element and that picot is <= 3ds, that
-// leading run is "protected" — it can be compressed but never below 1ds,
+// Rule: if the FIRST picot in the element is joined, and the run between the
+// very start of the element and that picot is <= 3 stitches (session 62:
+// counted in stitches, as everywhere in this file — the same as 3ds for ds),
+// that leading run is "protected" — it can be compressed but never below 1,
 // and the picot itself is never a candidate for removal. Same rule
 // independently for the LAST picot and the trailing run at the end of the
 // element.
@@ -298,14 +374,14 @@ export function getProtectedZones(segments: WizardSegment[]): ProtectedZones {
   let firstRunProtected = false;
   if (firstPicotIdx >= 0 && segments[firstPicotIdx].joined) {
     let ds = 0;
-    for (let i = 0; i < firstPicotIdx; i++) if (segments[i].kind === 'run') ds += segments[i].ds || 0;
+    for (let i = 0; i < firstPicotIdx; i++) if (segments[i].kind === 'run') ds += segments[i].count || 0;
     firstRunProtected = ds <= PROTECTED_ZONE_MAX_DS;
   }
 
   let lastRunProtected = false;
   if (lastPicotIdx >= 0 && segments[lastPicotIdx].joined) {
     let ds = 0;
-    for (let i = lastPicotIdx + 1; i < segments.length; i++) if (segments[i].kind === 'run') ds += segments[i].ds || 0;
+    for (let i = lastPicotIdx + 1; i < segments.length; i++) if (segments[i].kind === 'run') ds += segments[i].count || 0;
     lastRunProtected = ds <= PROTECTED_ZONE_MAX_DS;
   }
 
@@ -383,16 +459,17 @@ export function previewFillDensity(
 
   for (const seg of a.segments) {
     if (seg.kind !== 'run') { out.push({ ...seg }); pushZeroWidth(resultZeroWidth, seg); continue; }
-    const n = seg.ds || 0;
+    // Session 62: in stitches of any type (the gap is "every g stitches").
+    const n = seg.count || 0;
     if (n <= g) { out.push({ ...seg }); continue; }
 
     let numPicots = Math.round(n / g) - 1;
     numPicots = Math.max(0, Math.min(n - 1, numPicots));
     if (numPicots <= 0) { out.push({ ...seg }); continue; }
 
-    const parts = distributeEvenly(n, numPicots + 1);
-    parts.forEach((partDs, idx) => {
-      out.push({ kind: 'run', raw: `${partDs}ds`, ds: partDs });
+    const parts = splitRun(seg, distributeEvenly(n, numPicots + 1));
+    parts.forEach((part, idx) => {
+      out.push(part);
       if (idx < parts.length - 1) {
         const p: WizardSegment = { kind: 'picot', raw: 'p', joined: false };
         out.push(p);
@@ -410,7 +487,7 @@ export function previewFillDensity(
 export function maxUsefulFillGap(notation: string, picots: any[] | undefined): number {
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return 1;
-  const longest = a.segments.reduce((m, s) => (s.kind === 'run' ? Math.max(m, s.ds || 0) : m), 1);
+  const longest = a.segments.reduce((m, s) => (s.kind === 'run' ? Math.max(m, s.count || 0) : m), 1);
   return Math.max(1, longest - 1);
 }
 
@@ -445,19 +522,21 @@ function foldRepeats(segments: WizardSegment[], minRepeat: number, symbol: 'x' |
     const seg = segments[i];
     const next = segments[i + 1];
     if (seg.kind === 'run' && next && next.kind === 'picot') {
-      const unitDs = seg.ds as number;
+      // Session 62: a run matches only with the very same stitches
+      // ("2rds" ≠ "2ds", "1ds-1rds" ≠ "1rds-1ds").
+      const unitText = stitchesText(seg.stitches || []);
       const unitRaw = next.raw;
       let count = 1;
       let j = i + 2;
       while (
-        segments[j] && segments[j].kind === 'run' && segments[j].ds === unitDs &&
+        segments[j] && runsEqual(segments[j], seg) &&
         segments[j + 1] && segments[j + 1].kind === 'picot' && segments[j + 1].raw === unitRaw
       ) {
         count++;
         j += 2;
       }
       if (count >= minRepeat) {
-        parts.push(`${count}${symbol}(${unitDs}ds-${unitRaw})`);
+        parts.push(`${count}${symbol}(${unitText}-${unitRaw})`);
         groupsCreated++;
         i = j;
         continue;
@@ -465,11 +544,11 @@ function foldRepeats(segments: WizardSegment[], minRepeat: number, symbol: 'x' |
       // Below threshold — emit just this one unit literally and let the
       // loop re-examine from i+2 (handles the rest of a short run one at a
       // time, and still finds a *different* repeated pattern starting there).
-      parts.push(`${unitDs}ds`, unitRaw);
+      parts.push(unitText, unitRaw);
       i += 2;
       continue;
     }
-    parts.push(seg.kind === 'run' ? `${seg.ds}ds` : seg.raw);
+    parts.push(seg.kind === 'run' ? stitchesText(seg.stitches || []) : seg.raw);
     i += 1;
   }
   return { parts, groupsCreated };
@@ -530,16 +609,20 @@ export function hasRepeatGroups(notation: string): boolean {
 export function expandRepeatGroups(notation: string): string | null {
   const split = splitPrefix(notation || '');
   if (!split || !REPEAT_GROUP_RE.test(split.pattern)) return null;
+  // Session 62: stitches of the same type that end up side by side are added
+  // together, for every stitch type (was ds only: "2*(p-2rds)-2rds" kept
+  // "2rds-2rds"). Other stitches are no longer passed through as typed —
+  // each comes back as count + type ("rds" → "1rds"), as ds always did.
   const parts: string[] = [];
-  let pendingDs = 0;
-  const flushDs = () => { if (pendingDs > 0) { parts.push(`${pendingDs}ds`); pendingDs = 0; } };
+  let pending: WizardStitch[] = [];
+  const flush = () => { if (pending.length) { parts.push(stitchesText(pending)); pending = []; } };
   for (const token of expandTokens(split.pattern)) {
-    const m = token.match(DS_RE);
-    if (m) { pendingDs += m[1] ? parseInt(m[1], 10) : 1; continue; }
-    flushDs();
+    const m = STITCH_RE.exec(token);
+    if (m) { appendStitches(pending, [{ type: m[2].toLowerCase(), n: m[1] ? parseInt(m[1], 10) : 1 }]); continue; }
+    flush();
     parts.push(token);
   }
-  flushDs();
+  flush();
   return `${split.type}: ${parts.join('-')}`;
 }
 
@@ -566,6 +649,16 @@ export function expandRepeatGroups(notation: string): string | null {
 // Connections are safe: since we never add, remove, or reorder picots,
 // callers commit the result with { picotMatchMode: 'order' } which matches
 // old↔new picots by sequential index regardless of stitchesBefore shift.
+// Session 62 (review H7): Scale works in STITCHES — totals, picot positions
+// and the nudge rule — and each new run keeps the stitch types of the run it
+// came from: "2rds-p-6ds" ×2 → "4rds-p-12ds", ÷2 → "1rds-p-3ds". A run of
+// several types keeps them in order, each given its share ("2ds-2rds" ÷2 →
+// "1ds-1rds"). A gap that had no stitches (two picots side by side) and
+// gets one from the nudge rule gets ds (ss on a Josephine knot — the old
+// "jk" special case, now just the stitch type of the runs). For ds-only
+// notation this is exactly the old result. RunScaleDetail's *Ds fields are
+// stitch counts; ScaleResult's *TotalDs are LENGTHS (rds 1.5, ss 0.5), which
+// is what the panel shows ("→ 4.5ds").
 export interface RunScaleDetail {
   segmentIndex: number;
   originalDs: number;
@@ -580,113 +673,153 @@ export interface ScaleResult {
   originalTotalDs: number;
   idealTotalDs: number;
   actualTotalDs: number;
+  originalStitches: number;
+  actualStitches: number;
   runs: RunScaleDetail[];
   anyClamped: boolean;
+}
+
+// One run's stitches scaled to `newCount` stitches, types kept in order:
+// each token's share by cumulative rounding, so the shares add up to exactly
+// newCount. `fallback` is the type for a run that had no stitches.
+function scaleStitches(st: WizardStitch[], newCount: number, fallback: string): WizardStitch[] {
+  if (newCount <= 0) return [];
+  const oldCount = stitchesCount(st);
+  if (oldCount <= 0) return [{ type: fallback, n: newCount }];
+  const out: WizardStitch[] = [];
+  let cumOld = 0, prevNew = 0;
+  for (const s of st) {
+    cumOld += s.n;
+    const cumNew = Math.round((cumOld * newCount) / oldCount);
+    appendStitches(out, [{ type: s.type, n: cumNew - prevNew }]);
+    prevNew = cumNew;
+  }
+  return out;
+}
+
+function scaleSegments(type: string, segments: WizardSegment[], scaleFactor: number): ScaleResult {
+  const originalTotal = totalRunStitches(segments);
+  const newTotal = Math.max(1, Math.round(originalTotal * scaleFactor));
+
+  // Collect zero-width segments (picots/barriers) in order, paired with
+  // their original position in stitches.
+  interface ZwEntry { segIdx: number; raw: string; originalSb: number; }
+  const zwEntries: ZwEntry[] = [];
+  let cum = 0;
+  segments.forEach((seg, idx) => {
+    if (seg.kind === 'run') { cum += seg.count || 0; return; }
+    zwEntries.push({ segIdx: idx, raw: seg.raw, originalSb: cum });
+  });
+
+  // Compute each picot's new position proportionally.
+  const newSbList: number[] = zwEntries.map(zw =>
+    originalTotal > 0
+      ? Math.round((zw.originalSb / originalTotal) * newTotal)
+      : 0
+  );
+
+  // Nudge: ensure strictly increasing positions with minimum 1-stitch gap.
+  // Work forward — each position must be > the previous one.
+  for (let i = 1; i < newSbList.length; i++) {
+    if (newSbList[i] <= newSbList[i - 1]) newSbList[i] = newSbList[i - 1] + 1;
+  }
+  // Also ensure the last picot leaves at least 1 stitch before the end.
+  // (Work backward if the nudges pushed too far.)
+  for (let i = newSbList.length - 1; i >= 0; i--) {
+    const maxSb = newTotal - (newSbList.length - i); // at least 1 stitch for each remaining gap
+    if (newSbList[i] > maxSb) newSbList[i] = Math.max(i > 0 ? newSbList[i - 1] + 1 : 0, maxSb);
+  }
+
+  const fallback = /^jk$/i.test(type) ? 'ss' : 'ds';
+  const runAt = (idx: number): WizardSegment | null => {
+    const s = segments[idx];
+    return s && s.kind === 'run' ? s : null;
+  };
+
+  const outParts: string[] = [];
+  let actualLength = 0;
+  const addRun = (template: WizardSegment | null, runCount: number) => {
+    const st = scaleStitches(template?.stitches || [], runCount, fallback);
+    if (st.length) { outParts.push(stitchesText(st)); actualLength += stitchesLength(st); }
+  };
+  let prevSb = 0;
+  const runs: RunScaleDetail[] = [];
+  const zones = getProtectedZones(segments);
+
+  zwEntries.forEach((zw, i) => {
+    const runCount = newSbList[i] - prevSb;
+    const originalRun = zw.originalSb - (i === 0 ? 0 : zwEntries[i - 1].originalSb);
+    const idealDs = originalRun * scaleFactor;
+    const protectedRun = isRunProtected(segments, zw.segIdx - 1, zones);
+    const clamped = runCount !== Math.round(idealDs);
+    runs.push({ segmentIndex: zw.segIdx - 1, originalDs: originalRun, idealDs, actualDs: runCount, protectedRun, clamped });
+    addRun(runAt(zw.segIdx - 1), runCount);
+    outParts.push(zw.raw);
+    prevSb = newSbList[i];
+  });
+
+  // Trailing run (after last picot/barrier to end of element)
+  const trailing = newTotal - prevSb;
+  const originalTrailing = originalTotal - (zwEntries.length > 0 ? zwEntries[zwEntries.length - 1].originalSb : 0);
+  const trailingIdeal = originalTrailing * scaleFactor;
+  const trailingProtected = isRunProtected(segments, segments.length - 1, zones);
+  runs.push({ segmentIndex: segments.length - 1, originalDs: originalTrailing, idealDs: trailingIdeal, actualDs: trailing, protectedRun: trailingProtected, clamped: trailing !== Math.round(trailingIdeal) });
+  addRun(runAt(segments.length - 1), trailing);
+
+  const originalLength = totalRunDs(segments);
+  return {
+    notation: `${type}: ${outParts.join('-')}`,
+    originalTotalDs: originalLength,
+    idealTotalDs: originalLength * scaleFactor,
+    actualTotalDs: actualLength,
+    originalStitches: originalTotal,
+    actualStitches: newTotal,
+    runs,
+    anyClamped: runs.some(r => r.clamped),
+  };
 }
 
 export function scaleNotation(notation: string, picots: any[] | undefined, scaleFactor: number): ScaleResult | null {
   const a = analyzeNotation(notation, picots);
   if (!a.supported) return null;
   if (!(scaleFactor > 0)) return null;
-
-  const originalTotalDs = totalRunDs(a.segments);
-  const newTotalDs = Math.max(1, Math.round(originalTotalDs * scaleFactor));
-
-  // Collect zero-width segments (picots/barriers) in order, paired with
-  // their original cumulative stitchesBefore position.
-  interface ZwEntry { segIdx: number; raw: string; originalSb: number; }
-  const zwEntries: ZwEntry[] = [];
-  let cumDs = 0;
-  a.segments.forEach((seg, idx) => {
-    if (seg.kind === 'run') { cumDs += seg.ds || 0; return; }
-    zwEntries.push({ segIdx: idx, raw: seg.raw, originalSb: cumDs });
-  });
-
-  // Compute each picot's new stitchesBefore proportionally.
-  const newSbList: number[] = zwEntries.map(zw =>
-    originalTotalDs > 0
-      ? Math.round((zw.originalSb / originalTotalDs) * newTotalDs)
-      : 0
-  );
-
-  // Nudge: ensure strictly increasing positions with minimum 1ds gap.
-  // Work forward — each position must be > the previous one.
-  for (let i = 1; i < newSbList.length; i++) {
-    if (newSbList[i] <= newSbList[i - 1]) newSbList[i] = newSbList[i - 1] + 1;
-  }
-  // Also ensure the last picot leaves at least 1ds before the end.
-  // (Work backward if the nudges pushed too far.)
-  for (let i = newSbList.length - 1; i >= 0; i--) {
-    const maxSb = newTotalDs - (newSbList.length - i); // at least 1ds for each remaining gap
-    if (newSbList[i] > maxSb) newSbList[i] = Math.max(i > 0 ? newSbList[i - 1] + 1 : 0, maxSb);
-  }
-
-  // Build the output segment list from the new picot positions.
-  // For jk: elements, runs are internally tracked in ds units (each ss = 0.5ds)
-  // but must be serialized back as ss tokens (Nds → 2N ss).
-  const isJk = /^jk$/i.test(a.type);
-  const runToken = (ds: number) => isJk ? `${Math.round(ds * 2)}ss` : `${ds}ds`;
-
-  const outParts: string[] = [];
-  let prevSb = 0;
-  const runs: RunScaleDetail[] = [];
-  const zones = getProtectedZones(a.segments);
-
-  zwEntries.forEach((zw, i) => {
-    const runDs = newSbList[i] - prevSb;
-    const originalRunDs = zw.originalSb - (i === 0 ? 0 : zwEntries[i - 1].originalSb);
-    const idealDs = originalRunDs * scaleFactor;
-    const protectedRun = isRunProtected(a.segments, zw.segIdx - 1, zones);
-    const clamped = runDs !== Math.round(idealDs);
-    runs.push({ segmentIndex: zw.segIdx - 1, originalDs: originalRunDs, idealDs, actualDs: runDs, protectedRun, clamped });
-    if (runDs > 0) outParts.push(runToken(runDs));
-    outParts.push(zw.raw);
-    prevSb = newSbList[i];
-  });
-
-  // Trailing run (after last picot/barrier to end of element)
-  const trailingDs = newTotalDs - prevSb;
-  const originalTrailingDs = originalTotalDs - (zwEntries.length > 0 ? zwEntries[zwEntries.length - 1].originalSb : 0);
-  const trailingIdeal = originalTrailingDs * scaleFactor;
-  const trailingProtected = isRunProtected(a.segments, a.segments.length - 1, zones);
-  runs.push({ segmentIndex: a.segments.length - 1, originalDs: originalTrailingDs, idealDs: trailingIdeal, actualDs: trailingDs, protectedRun: trailingProtected, clamped: trailingDs !== Math.round(trailingIdeal) });
-  if (trailingDs > 0) outParts.push(runToken(trailingDs));
-
-  const actualTotalDs = newSbList.reduce((sum, sb, i) => {
-    const prev = i === 0 ? 0 : newSbList[i - 1];
-    return sum + (sb - prev);
-  }, 0) + trailingDs;
-
-  return {
-    notation: `${a.type}: ${outParts.join('-')}`,
-    originalTotalDs,
-    idealTotalDs: originalTotalDs * scaleFactor,
-    actualTotalDs: newTotalDs,
-    runs,
-    anyClamped: runs.some(r => r.clamped),
-  };
+  return scaleSegments(a.type, a.segments, scaleFactor);
 }
 
 // "Common divisors/multiples" preset suggestions, categorised as exact vs
-// rounded based on proportional placement (not per-run divisibility).
+// rounded.
 //
-// A preset is "exact" when:
-//   1. Math.round(totalDs * factor) == totalDs * factor (total is a whole ds)
-//   2. Every picot's proportional position Math.round(sb/total * newTotal)
-//      lands on a whole ds with no nudging needed (i.e. sb/total * newTotal
-//      is already a whole number)
-//   3. Every resulting run is ≥ 1ds (no zero-length gaps)
+// A preset is "exact" when, on every side:
+//   1. the new total (in stitches) is a whole number, at least 1
+//   2. every picot's proportional position lands on a whole stitch with no
+//      nudging needed
+//   3. every resulting run is ≥ 1 stitch (no zero-length gaps)
+//   4. (session 62) every stitch token scales to a whole number — so a run
+//      of several types keeps exactly its proportions
 //
 // This means "÷2" for "6ds-p-6ds" is exact (picot at 50% → 3ds, all runs=3),
 // but "÷4" for "6ds-p-6ds" is rounded (picot at 50% of 6ds = 1.5ds → rounds
 // to 2ds, leaving runs of 2 and 1 rather than the ideal 1.5/1.5).
-function isExactPreset(totalDs: number, picotSbList: number[], factor: number): boolean {
-  const newTotal = totalDs * factor;
+//
+// Session 62: takes the analysed sides (one for a ring or chain, two for a
+// split ring — each side scales on its own, exactly as Apply does) and works
+// in stitches like Scale itself; resultingTotalDs is the LENGTH Apply gives.
+// It used to take one total and the picots' stored positions: in length, and
+// for a split ring with side B's positions restarting at 0, so a split ring
+// with picots on both sides never got an exact preset.
+function isExactSide(segments: WizardSegment[], factor: number): boolean {
+  const total = totalRunStitches(segments);
+  const newTotal = total * factor;
   if (!Number.isInteger(newTotal)) return false;
   if (newTotal < 1) return false;
-  let prevSb = 0;
-  for (const sb of picotSbList) {
-    const newSb = (sb / totalDs) * newTotal;
+  let pos = 0, prevSb = 0;
+  for (const seg of segments) {
+    if (seg.kind === 'run') {
+      if ((seg.stitches || []).some(s => !Number.isInteger(s.n * factor))) return false;
+      pos += seg.count || 0;
+      continue;
+    }
+    const newSb = pos * factor;
     if (!Number.isInteger(newSb)) return false;
     if (newSb - prevSb < 1) return false;
     prevSb = newSb;
@@ -708,29 +841,29 @@ export interface ScalePresetRows {
   rounded: ScalePreset[];
 }
 
-export function suggestScalePresets(totalDs: number, picots?: any[]): ScalePresetRows {
+export function suggestScalePresets(sides: Array<{ type: string; segments: WizardSegment[] }>): ScalePresetRows {
   const exact: ScalePreset[] = [];
   const rounded: ScalePreset[] = [];
-
-  // Extract picot stitchesBefore positions for the exactness check.
-  // If no picots provided, only the total divisibility matters.
-  const sbList = (picots || []).map(p => p.stitchesBefore as number);
+  const totalStitches = sides.reduce((sum, s) => sum + totalRunStitches(s.segments), 0);
+  // (a side with no stitches — an unsupported one comes with no segments —
+  // adds nothing, as before)
+  const resultLength = (factor: number) =>
+    sides.reduce((sum, s) => sum + (totalRunStitches(s.segments) > 0 ? scaleSegments(s.type, s.segments, factor).actualTotalDs : 0), 0);
 
   for (const divisor of [2, 3, 4]) {
-    const newTotal = totalDs / divisor;
-    if (newTotal < 1) continue;
+    if (totalStitches / divisor < 1) continue;
     const factor = 1 / divisor;
-    const resultingTotalDs = Math.round(newTotal);
-    if (isExactPreset(totalDs, sbList, factor)) {
-      exact.push({ label: `:${divisor}`, factor, resultingTotalDs, isRounded: false });
+    const preset = { label: `:${divisor}`, factor, resultingTotalDs: resultLength(factor) };
+    if (sides.every(s => isExactSide(s.segments, factor))) {
+      exact.push({ ...preset, isRounded: false });
     } else {
-      rounded.push({ label: `:${divisor}`, factor, resultingTotalDs, isRounded: true });
+      rounded.push({ ...preset, isRounded: true });
     }
   }
 
-  // Multiples: always exact since newSb = sb * multiplier is always a whole number
+  // Multiples: always exact since every count × a whole multiplier is whole
   for (const multiplier of [2, 3]) {
-    exact.push({ label: `x${multiplier}`, factor: multiplier, resultingTotalDs: totalDs * multiplier, isRounded: false });
+    exact.push({ label: `x${multiplier}`, factor: multiplier, resultingTotalDs: resultLength(multiplier), isRounded: false });
   }
 
   return { exact, rounded };

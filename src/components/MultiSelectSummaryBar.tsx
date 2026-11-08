@@ -85,7 +85,7 @@ interface MultiSelectSummaryBarProps {
   showMultiScaleWizard: boolean;
   setShowMultiScaleWizard: (fn: ((prev: boolean) => boolean) | boolean) => void;
   analyzeNotationForWizard: (notation: string, picots: any[]) => any;
-  totalRunDs: (segments: any[]) => number;
+  totalRunStitches: (segments: any[]) => number;
   suggestScalePresetsMulti: (totalDsList: number[]) => any[];
   scaleNotation: (notation: string, picots: any[], factor: number) => any;
   autoCompact: (notation: string, resultZeroWidth: any[]) => string;
@@ -130,7 +130,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
   showMultiScaleWizard,
   setShowMultiScaleWizard,
   analyzeNotationForWizard,
-  totalRunDs,
+  totalRunStitches,
   suggestScalePresetsMulti,
   scaleNotation,
   autoCompact,
@@ -678,7 +678,9 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             // Clear/Add/Fill/Compact here — just Scale, since that's what was
             // actually asked for. Split rings, rds/ss stitches, and anything
             // with a picot-count mismatch are silently skipped (counted, not
-            // touched) rather than blocking the whole batch.
+            // touched) rather than blocking the whole batch. (Session 62: rds
+            // and half stitches are scaled now, keeping their types — only bead
+            // sequences and malformed notation are skipped.)
             // Session 60: split rings are scaled on BOTH sides (each side
             // analysed on its own via splitRingSides). They used to be
             // skipped; with the engine accepting "sr:" now, analysing only
@@ -699,8 +701,9 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
             });
             const supported = analyzed.filter(a => a.analysis.supported);
             const skippedCount = analyzed.length - supported.length;
-            const totalDsList = supported.map(({ analysis }) => totalRunDs(analysis.segments));
-            const presets = suggestScalePresetsMulti(totalDsList);
+            // Session 62: in stitches, which is what Scale works in.
+            const totalStitchList = supported.map(({ analysis }) => totalRunStitches(analysis.segments));
+            const presets = suggestScalePresetsMulti(totalStitchList);
             const factor = multiScalePct / 100;
             const previews = factor > 0
               ? supported.map(({ el, sides }) => {
