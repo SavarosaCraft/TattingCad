@@ -1,0 +1,174 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "deny-sensitive",
+  "description": "Session 61 security: folders TattingCAD may never read or write, on every system, even though default.json allows \"**\". Deny always wins over allow. A folder name a system doesn't have is skipped. Keep in step with assetProtocol.scope.deny in tauri.conf.json.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    {
+      "identifier": "fs:scope",
+      "deny": [
+        {
+          "path": "$HOME/.ssh/**"
+        },
+        {
+          "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "C:/Windows/**"
+        },
+        {
+          "path": "C:/Program Files/**"
+        },
+        {
+          "path": "C:/Program Files (x86)/**"
+        },
+        {
+          "path": "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/StartUp/**"
+        },
+        {
+          "path": "$CONFIG/Microsoft/Windows/Start Menu/Programs/Startup/**"
+        },
+        {
+          "path": "$CONFIG/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$CONFIG/Microsoft/Protect/**"
+        },
+        {
+          "path": "$LOCALDATA/Microsoft/Credentials/**"
+        },
+        {
+          "path": "$DOCUMENT/WindowsPowerShell/**"
+        },
+        {
+          "path": "$DOCUMENT/PowerShell/**"
+        },
+        {
+          "path": "$LOCALDATA/Google/Chrome/**"
+        },
+        {
+          "path": "$LOCALDATA/Microsoft/Edge/**"
+        },
+        {
+          "path": "$LOCALDATA/BraveSoftware/**"
+        },
+        {
+          "path": "$CONFIG/Mozilla/**"
+        },
+        {
+          "path": "$CONFIG/Opera Software/**"
+        },
+        {
+          "path": "$APPLOCALDATA/EBWebView/**"
+        },
+        {
+          "path": "$HOME/Library/LaunchAgents/**"
+        },
+        {
+          "path": "$HOME/Library/Keychains/**"
+        },
+        {
+          "path": "$HOME/Library/Cookies/**"
+        },
+        {
+          "path": "$HOME/Library/WebKit/**"
+        },
+        {
+          "path": "$HOME/Library/Safari/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Google/Chrome/**"
+        },
+        {
+          "path": "$HOME/Library/Application Support/Firefox/**"
+        },
+        {
+          "path": "/System/**"
+        },
+        {
+          "path": "/Library/**"
+        },
+        {
+          "path": "/Applications/**"
+        },
+        {
+          "path": "/private/etc/**"
+        },
+        {
+          "path": "$HOME/.bashrc"
+        },
+        {
+          "path": "$HOME/.bash_profile"
+        },
+        {
+          "path": "$HOME/.profile"
+        },
+        {
+          "path": "$HOME/.zshrc"
+        },
+        {
+          "path": "$HOME/.zprofile"
+        },
+        {
+          "path": "$HOME/.config/autostart/**"
+        },
+        {
+          "path": "$HOME/.config/systemd/**"
+        },
+        {
+          "path": "$HOME/.local/share/applications/**"
+        },
+        {
+          "path": "$HOME/.mozilla/**"
+        },
+        {
+          "path": "$HOME/.config/google-chrome/**"
+        },
+        {
+          "path": "$HOME/.config/chromium/**"
+        },
+        {
+          "path": "/etc/**"
+        },
+        {
+          "path": "/usr/**"
+        },
+        {
+          "path": "/bin/**"
+        },
+        {
+          "path": "/sbin/**"
+        },
+        {
+          "path": "/lib/**"
+        },
+        {
+          "path": "/boot/**"
+        },
+        {
+          "path": "$APPDATA/app_webview/**"
+        },
+        {
+          "path": "$APPDATA/shared_prefs/**"
+        },
+        {
+          "path": "$APPDATA/databases/**"
+        },
+        {
+          "path": "$APPDATA/no_backup/**"
+        },
+        {
+          "path": "$APPDATA/code_cache/**"
+        },
+        {
+          "path": "/system/**"
+        },
+        {
+          "path": "/vendor/**"
+        }
+      ]
+    }
+  ]
+}

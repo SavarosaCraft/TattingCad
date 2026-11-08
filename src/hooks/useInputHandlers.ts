@@ -43,6 +43,7 @@ export interface UseInputHandlersParams {
   snapRadius: number;
   orthoLock: boolean;
   isShiftHeld: boolean;
+  isRotateKeyHeld: boolean;
   showRotationHandles: boolean;
   polarGrids: any[];
   picotConnections: any[];
@@ -208,7 +209,7 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           return;
         }
 
-        const shouldShowRotationHandles = p.isShiftHeld || p.showRotationHandles;
+        const shouldShowRotationHandles = p.isRotateKeyHeld || p.showRotationHandles;
         if (shouldShowRotationHandles) {
           const corners = [
             { x: bbox.x,              y: bbox.y,               name: 'tl' },
@@ -692,13 +693,25 @@ export function useInputHandlers(p: UseInputHandlersParams) {
       if (p.draggedElement && p.lastMousePosRef.current) {
         let deltaX = world.x - p.lastMousePosRef.current.x;
         let deltaY = world.y - p.lastMousePosRef.current.y;
-        if (p.orthoLock || p.isShiftHeld) {
-          const origin = p.dragOriginRef.current;
-          if (origin) {
-            const totalDX = world.x - origin.x, totalDY = world.y - origin.y;
-            if (Math.abs(totalDX) >= Math.abs(totalDY)) deltaY = 0; else deltaX = 0;
-          }
+        // Move lock (session 61). Shift held → 45° steps (0/45/90/135…);
+        // the Ortho button alone → X or Y only. Shift wins while held. The
+        // locked offset is worked out from the whole drag (start → pointer)
+        // and this step's delta is the difference to what's applied so far
+        // — so changing direction mid-drag follows cleanly (the old per-step
+        // zeroing kept the movement made along the earlier axis).
+        let lockAngle: number | null = null;
+        const origin = p.dragOriginRef.current;
+        if ((p.orthoLock || p.isShiftHeld) && origin) {
+          const tx = world.x - origin.x, ty = world.y - origin.y;
+          const step = p.isShiftHeld ? Math.PI / 4 : Math.PI / 2;
+          lockAngle = Math.round(Math.atan2(ty, tx) / step) * step;
+          const c = Math.round(Math.cos(lockAngle) * 1e9) / 1e9; // exact 0 / ±1 / ±0.7071…
+          const s = Math.round(Math.sin(lockAngle) * 1e9) / 1e9;
+          const len = tx * c + ty * s;
+          deltaX = len * c - p.dragOffsetRef.current.dx;
+          deltaY = len * s - p.dragOffsetRef.current.dy;
         }
+        p.dragOffsetRef.current.lockAngle = lockAngle;
         p.dragOffsetRef.current.dx += deltaX;
         p.dragOffsetRef.current.dy += deltaY;
         p.dragOffsetRef.current.active = true;

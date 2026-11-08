@@ -158,6 +158,16 @@ export function useProjectFile(p: UseProjectFileParams) {
   const buildProjectDataRef = useRef(buildProjectData);
   useEffect(() => { buildProjectDataRef.current = buildProjectData; });
 
+  // Session 61: a failed save used to be silent (console only), so a
+  // refused folder (the deny list in capabilities/deny-sensitive.json), a
+  // full disk or a read-only stick looked like a successful save. Now a red
+  // message. The pattern is still on screen and still counts as unsaved
+  // (setLastSavedRev only runs after the write succeeded).
+  const reportSaveError = (err: unknown) => {
+    console.error('Save failed:', err);
+    p.showLoadMsg('error', p.t('saveErrFailed'));
+  };
+
   const saveToPath = useCallback(async (filePath: string, finalName: string) => {
     // Remember which history entry is being written BEFORE the awaits below:
     // an edit made while the file/thumbnail are being written isn't in the
@@ -185,13 +195,13 @@ export function useProjectFile(p: UseProjectFileParams) {
       await saveToPath(filePath, finalName);
       p.setCurrentFilePath(filePath);
     } catch (err) {
-      console.error('Save failed:', err);
+      reportSaveError(err);
     }
   }, [p.projectName, saveToPath, p.t]);
 
   const saveProject = useCallback(() => {
     if (p.currentFilePath) {
-      saveToPath(p.currentFilePath, p.projectName).catch(console.error);
+      saveToPath(p.currentFilePath, p.projectName).catch(reportSaveError);
     } else {
       performSave();
     }

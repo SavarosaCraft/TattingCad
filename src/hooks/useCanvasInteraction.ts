@@ -37,7 +37,8 @@ export function useCanvasInteraction() {
   const [touchState, setTouchState] = useState({ dist: 0, zoom: 1, centerX: 0, centerY: 0, worldX: 0, worldY: 0 });
 
   // ── Key modifiers ──────────────────────────────────────────────────────
-  const [isShiftHeld, setIsShiftHeld] = useState(false);
+  const [isShiftHeld, setIsShiftHeld] = useState(false);   // Shift: drag in 45° steps
+  const [isRotateKeyHeld, setIsRotateKeyHeld] = useState(false); // R held: rotation handles (session 61)
   const [spaceDown, setSpaceDown] = useState(false);
   const [zDown, setZDown] = useState(false);
 
@@ -67,6 +68,7 @@ export function useCanvasInteraction() {
     zoomRectBox, setZoomRectBox,
     touchState, setTouchState,
     isShiftHeld, setIsShiftHeld,
+    isRotateKeyHeld, setIsRotateKeyHeld,
     spaceDown, setSpaceDown,
     zDown, setZDown,
     rulerPoints, setRulerPoints,

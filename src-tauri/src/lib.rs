@@ -74,6 +74,7 @@ fn take_pending_files(state: tauri::State<'_, PendingFiles>) -> Vec<String> {
 pub fn run() {
   let mut builder = tauri::Builder::default();
 
+
   // Must be the first plugin registered (Tauri docs). A second launch —
   // e.g. double-clicking another .tatcad while TattingCAD is open — ends
   // here: bring the window forward and open the file in it.
@@ -96,6 +97,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_android_fs::init())
     .plugin(tauri_plugin_clipboard_manager::init())
     .setup(|app| {
       if cfg!(debug_assertions) {

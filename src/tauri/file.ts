@@ -31,6 +31,56 @@ export const readClipboardText = (): Promise<string> => readText();
 // showOpenDialog) — its pickers work by MIME type, not extension.
 export const PATTERN_EXT = 'tatcad';
 const isAndroid = () => typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
+
+// ── Android: keep access to picked / saved files (session 61) ─────────────
+// Tauri's own dialog plugin opens files with Android's GET_CONTENT, whose
+// access ends when the app closes — so after a restart every Recent entry
+// was unreadable ("File missing"). On Android, Open / Save now use
+// tauri-plugin-android-fs (OPEN_DOCUMENT / CREATE_DOCUMENT) and ask Android
+// to KEEP the access ("persist"), so Recent opens the real file after a
+// restart and Save overwrites it. Reads / writes of content:// addresses go
+// through the same plugin (its write truncates first — a shorter save can't
+// leave old bytes at the end). Access no longer needed (the entry left
+// Recent) is handed back: Android allows an app only a limited number.
+// Needs: Cargo `tauri-plugin-android-fs = "=30.2.0"`, `.plugin(
+// tauri_plugin_android_fs::init())` in lib.rs, npm `tauri-plugin-android-fs-api`
+// 30.2.0 (exact, same as the crate), capabilities/android-files.json.
+// Loaded only on Android (dynamic import), so desktop never touches it.
+type AfsModule = typeof import('tauri-plugin-android-fs-api');
+type AfsUri = { uri: string; documentTopTreeUri: string | null };
+let afsModule: Promise<AfsModule> | null = null;
+const afs = (): Promise<AfsModule> => (afsModule ??= import('tauri-plugin-android-fs-api'));
+const toAfsUri = (uri: string): AfsUri => ({ uri, documentTopTreeUri: null });
+const isContentUriPath = (p: string): boolean => /^content:\/\//i.test(p || '');
+const useAndroidFs = (p: string): boolean => isAndroid() && isContentUriPath(p);
+
+// Addresses whose access was kept in THIS run — never handed back by
+// syncKeptAccess, even if not (yet) in Recent (Save adds it a moment later).
+const keptThisRun = new Set<string>();
+const keepAccess = async (uri: AfsUri): Promise<void> => {
+  keptThisRun.add(uri.uri);
+  try { await (await afs()).persistPickerUriPermission(uri); }
+  catch (err) { console.warn('[android] could not keep access to', uri.uri, err); }
+};
+
+let syncing = false;
+/** Hands back kept access for files no longer in Recent (Android only). */
+const syncKeptAccess = async (): Promise<void> => {
+  if (!isAndroid() || syncing) return;
+  syncing = true;
+  try {
+    const A = await afs();
+    const inRecent = new Set(readRecentFilenames());
+    for (const perm of await A.listAllPersistedPickerUriPermissions()) {
+      const u = perm.uri.uri;
+      if (!inRecent.has(u) && !keptThisRun.has(u)) {
+        await A.releasePersistedPickerUriPermission(perm.uri).catch(() => false);
+      }
+    }
+  } catch (err) {
+    console.warn('[android] syncKeptAccess failed', err);
+  } finally { syncing = false; }
+};
 /** "MyPattern.tatcad" / "MyPattern.json" → "MyPattern" */
 export const stripPatternExt = (name: string): string => name.replace(/\.(tatcad|json)$/i, '');
 
@@ -73,6 +123,17 @@ export const fileDisplayName = (path: string, fallback: string): string =>
   stripPatternExt(fileBaseName(path)) || fallback;
 
 export const showSaveDialog = async (defaultName: string): Promise<string | null> => {
+  // Android (session 61): the android-fs saver, and the access is kept so
+  // Recent still opens it after a restart. "application/octet-stream" keeps
+  // the name exactly as given (Android knows no type for .tatcad).
+  if (isAndroid()) {
+    const A = await afs();
+    const picked = await A.showSaveFilePicker(
+      `${defaultName.replace(/[^a-z0-9]/gi, '_')}.${PATTERN_EXT}`, 'application/octet-stream');
+    if (!picked) return null;
+    await keepAccess(picked);
+    return picked.uri;
+  }
   // Android (session 60, 1.4): .tatcad too. Its save dialog needs a MIME
   // type, and Android knows none for .tatcad — "application/octet-stream"
   // (any file) makes it keep the name exactly as given instead of adding
@@ -87,6 +148,16 @@ export const showSaveDialog = async (defaultName: string): Promise<string | null
 };
 
 export const showOpenDialog = async (): Promise<string | null> => {
+  // Android (session 61): the android-fs picker (OPEN_DOCUMENT, with write
+  // access so Save can overwrite it), access kept for Recent. Any file can
+  // be picked — Android has no type for .tatcad.
+  if (isAndroid()) {
+    const A = await afs();
+    const [picked] = await A.showOpenFilePicker({ needWritePermission: true });
+    if (!picked) return null;
+    await keepAccess(picked);
+    return picked.uri;
+  }
   // Android: no filter. Its picker filters by MIME type, and a .tatcad has
   // none it knows, so with the .json filter a .tatcad couldn't be picked
   // (tested on a phone). Any file can be chosen; one that isn't a pattern
@@ -120,16 +191,33 @@ export const showSaveThemeDialog = async (): Promise<string | null> => {
 
 // ── File I/O ───────────────────────────────────────────────────────────────
 
+// content:// on Android → android-fs (falls back to plugin-fs if the address
+// isn't one android-fs accepts); everything else → plugin-fs as before.
+const writeTextAnywhere = async (filePath: string, text: string): Promise<void> => {
+  if (useAndroidFs(filePath)) {
+    try { await (await afs()).writeTextFile(toAfsUri(filePath), text); return; }
+    catch (err) { console.warn('[android] android-fs write failed, trying plugin-fs', err); }
+  }
+  await writeTextFile(filePath, text);
+};
+const readTextAnywhere = async (filePath: string): Promise<string> => {
+  if (useAndroidFs(filePath)) {
+    try { return await (await afs()).readTextFile(toAfsUri(filePath)); }
+    catch (err) { console.warn('[android] android-fs read failed, trying plugin-fs', err); }
+  }
+  return readTextFile(filePath);
+};
+
 export const writeProjectFile = async (filePath: string, data: object): Promise<void> => {
-  await writeTextFile(filePath, JSON.stringify(data, null, 2));
+  await writeTextAnywhere(filePath, JSON.stringify(data, null, 2));
 };
 
 export const writeTextToFile = async (filePath: string, text: string): Promise<void> => {
-  await writeTextFile(filePath, text);
+  await writeTextAnywhere(filePath, text);
 };
 
 export const readProjectFile = async (filePath: string): Promise<any> => {
-  const text = await readTextFile(filePath);
+  const text = await readTextAnywhere(filePath);
   return JSON.parse(text);
 };
 
@@ -149,7 +237,7 @@ export const checkFileExists = async (filePath: string): Promise<boolean> => {
   // Reading it is the real test: it fails if the file is gone OR the app
   // may no longer open it. Patterns are small; the list holds at most 20.
   if (isContentUri(filePath)) {
-    try { await readTextFile(filePath); return true; } catch { return false; }
+    try { await readTextAnywhere(filePath); return true; } catch { return false; }
   }
   try {
     return await exists(filePath);
@@ -231,6 +319,15 @@ export const addToRecents = (name: string, filename: string, thumbPath: string):
       localStorage.setItem('tcad_recent_projects', JSON.stringify(lean));
     }
   } catch (_) {}
+  void syncKeptAccess();
+};
+
+// Filenames in the stored Recent list, without normalising / rewriting it.
+const readRecentFilenames = (): string[] => {
+  try {
+    const raw = localStorage.getItem('tcad_recent_projects');
+    return raw ? (JSON.parse(raw) as any[]).map(e => normalizePath(e.filename ?? e.path ?? e.filePath ?? e.file ?? '')) : [];
+  } catch { return []; }
 };
 
 export const getRecents = (): RecentEntry[] => {
@@ -239,6 +336,9 @@ export const getRecents = (): RecentEntry[] => {
     if (!raw) return [];
     const normalised = (JSON.parse(raw) as any[]).map(normaliseEntry);
     localStorage.setItem('tcad_recent_projects', JSON.stringify(normalised));
+    // Android: entries removed from Recent (✕, Clear unavailable) since the
+    // last look give their kept access back.
+    void syncKeptAccess();
     return normalised;
   } catch { return []; }
 };

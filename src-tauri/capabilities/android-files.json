@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "android-files",
+  "description": "Session 61: Android Open / Save through tauri-plugin-android-fs, so access to picked files is kept after a restart (Recent). Only what TattingCAD uses: the two pickers, keep / list / hand back access, read and write text.",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "android"
+  ],
+  "permissions": [
+    "android-fs:allow-show-open-file-picker",
+    "android-fs:allow-show-save-file-picker",
+    "android-fs:allow-persist-picker-uri-permission",
+    "android-fs:allow-list-all-persisted-picker-uri-permissions",
+    "android-fs:allow-release-persisted-picker-uri-permission",
+    "android-fs:allow-read-text-file",
+    "android-fs:allow-write-text-file"
+  ]
+}

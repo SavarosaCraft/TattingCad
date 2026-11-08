@@ -32,6 +32,7 @@ tauri-plugin-dialog = "2.8"
 tauri-plugin-fs = "2.7"
 tauri-plugin-opener = "2.7"
 tauri-plugin-clipboard-manager = "2.5"
+tauri-plugin-android-fs = "=30.2.0"
 
 # Session 60: one TattingCAD at a time on desktop — double-clicking a
 # .tatcad while the app is open opens it in that window (src/lib.rs).

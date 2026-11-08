@@ -553,6 +553,7 @@ const TattingDesigner = () => {
     zoomRectBox, setZoomRectBox,
     touchState, setTouchState,
     isShiftHeld, setIsShiftHeld,
+    isRotateKeyHeld, setIsRotateKeyHeld,
     spaceDown, setSpaceDown,
     zDown, setZDown,
     rulerPoints, setRulerPoints,
@@ -844,7 +845,7 @@ const APP_VERSION = '1.4.1';
   // PERFORMANCE: During element translate-drag, accumulate offset in a ref instead of
   // calling setElements every frame. SVG transform handles the visual update.
   // setElements is called once on mouseup. This keeps elementById valid all drag.
-  const dragOffsetRef = useRef({ active: false, dx: 0, dy: 0 });
+  const dragOffsetRef = useRef<{ active: boolean; dx: number; dy: number; lockAngle?: number | null }>({ active: false, dx: 0, dy: 0 });
   const dragTouchIdRef = useRef(null); // identifier of the touch that started the drag
 
   const canvasRef = useRef(null);
@@ -1018,8 +1019,20 @@ const APP_VERSION = '1.4.1';
     
     // Then save every 3 minutes — interval only created ONCE
     const interval = setInterval(autoSave, 180000);
-    
-    return () => clearInterval(interval);
+
+    // Session 61: also save when the app goes to the background or the page
+    // is closing. On Android, leaving / swiping the app away usually ends it
+    // with no warning — a session shorter than 3 minutes left NO autosave,
+    // so the splash said there was none. Desktop: minimising / closing too.
+    const onHidden = () => { if (document.visibilityState === 'hidden') autoSave(); };
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', autoSave);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', autoSave);
+    };
   }, []); // Empty deps - only runs once on mount!
 
   // Load auto-saved project — called by splash button, not auto-triggered
@@ -1563,11 +1576,20 @@ const APP_VERSION = '1.4.1';
     }
   }, [patternNotes]);
 
-  // Track Shift key (rotation handles) and Space key (temporary pan)
+  // Track Shift (drag in 45° steps), R (rotation handles) and Space
+  // (temporary pan). Session 61: rotation handles moved from Shift to a held
+  // R — Shift did both, so pressing Shift to move straight brought up the
+  // handles and grabbing near a corner rotated instead of moving.
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Shift') {
         setIsShiftHeld(true);
+      }
+      // Plain R only: Shift+R adds a ring, Ctrl+R is blocked (reload). Not
+      // while typing, and not in Tatting Order mode (R = repeat there).
+      if ((e.key === 'r' || e.key === 'R') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !isTypingTarget(e.target) && activeModeRef.current !== 'tattingOrder') {
+        setIsRotateKeyHeld(true);
       }
       if (e.key === ' ') {
         // Don't intercept Space when the user is typing in a field
@@ -1592,6 +1614,9 @@ const APP_VERSION = '1.4.1';
       if (e.key === 'Shift') {
         setIsShiftHeld(false);
       }
+      if (e.key === 'r' || e.key === 'R') {
+        setIsRotateKeyHeld(false);
+      }
       if (e.key === ' ') {
         spaceDownRef.current = false;
         setSpaceDown(false);
@@ -1614,6 +1639,7 @@ const APP_VERSION = '1.4.1';
       // axis-locking drags (isShiftHeld), or leaving pan/zoom-rect mode
       // stuck on. Reset all three whenever we lose focus.
       setIsShiftHeld(false);
+      setIsRotateKeyHeld(false);
       spaceDownRef.current = false;
       setSpaceDown(false);
       zDownRef.current = false;
@@ -3978,7 +4004,7 @@ const APP_VERSION = '1.4.1';
     camera, zoom, dsWidth, renderMode, activeMode, currentTool,
     isDragging, dragStart, draggedElement, selectionBox, zoomRectBox,
     movingPivot, rotationHandle, pivotOffset, rulerPoints, rulerDone,
-    snapEnabled, snapRadius, orthoLock, isShiftHeld, showRotationHandles,
+    snapEnabled, snapRadius, orthoLock, isShiftHeld, isRotateKeyHeld, showRotationHandles,
     polarGrids, picotConnections, selectedBEs, selectedPicots,
     chainPresetSymmetric, rounds,
     pathDragStartRef, lastMousePosRef, isInteractingRef, draggedHandleRef,
@@ -6410,7 +6436,7 @@ const APP_VERSION = '1.4.1';
   };
 
   // PERFORMANCE OPTIMIZATION: Memoize rotation handles visibility
-  const shouldShowRotationHandles = isShiftHeld || showRotationHandles;
+  const shouldShowRotationHandles = isRotateKeyHeld || showRotationHandles;
 
   // PERFORMANCE OPTIMIZATION: Debounced search for DMC colors
   // Prevents expensive filtering on every keystroke
@@ -9747,6 +9773,20 @@ const APP_VERSION = '1.4.1';
                 </g>
               ))}
 
+              {/* ── Move lock guide (session 61) ─────────────────────────────────
+                  While a move is locked (Shift = 45° steps, Ortho = X / Y), a
+                  faint dashed line through the start point shows the
+                  direction it snapped to. Set by useInputHandlers. */}
+              {dragOffsetRef.current.active && dragOffsetRef.current.lockAngle != null && dragOriginRef.current && (() => {
+                const o = dragOriginRef.current, a = dragOffsetRef.current.lockAngle;
+                const L = 4000 / zoom, cx = Math.cos(a) * L, cy = Math.sin(a) * L;
+                return (
+                  <line x1={o.x - cx} y1={o.y - cy} x2={o.x + cx} y2={o.y + cy}
+                    stroke="#fb923c" strokeOpacity={0.8} strokeWidth={1 / zoom}
+                    strokeDasharray={`${6 / zoom} ${4 / zoom}`} pointerEvents="none" />
+                );
+              })()}
+
               {/* ── Ruler tool overlay ─────────────────────────────────────────── */}
               {currentTool === 'ruler' && (() => {
                 // Session 60: multi-point ruler. The chain is the placed
@@ -9943,7 +9983,7 @@ const APP_VERSION = '1.4.1';
                 const pivotY = bbox.centerY + pivotOffset.y;
                 
                 // Show rotation handles when Shift is held OR manual toggle is on (for mobile)
-                const shouldShowRotationHandles = isShiftHeld || showRotationHandles;
+                const shouldShowRotationHandles = isRotateKeyHeld || showRotationHandles;
                 
                 return (
                   <g data-ui="1">
