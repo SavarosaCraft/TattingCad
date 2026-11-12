@@ -8,6 +8,11 @@
 // Session 60 security fix: every colour written into this SVG TEXT goes
 // through safeColor (the text is inserted as markup — see utils/safeColor.ts).
 import { safeColor } from '../utils/safeColor';
+// Session 63 security fix (review #1): coordinates written into this SVG TEXT
+// without their own number formatting (.toFixed) go through markupNum — a
+// "number" from a file that is really text can't be joined into the markup.
+// Numbers pass through untouched (utils/safeNumber.ts).
+import { markupNum as n } from '../utils/safeNumber';
 import {
   sampleBezierPath,
   calculatePathLength,
@@ -383,8 +388,8 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
   // Returns an array of SVG "d" path strings (one per sub-shape: bar + posts).
   const renderWedgeRingShapes = (stitch, el, scale, offsetAmount, stitchType) => {
     const shapes = WEDGE_SHAPES[stitchType] || WEDGE_SHAPES['ds'];
-    const cx = el.center.x;
-    const cy = el.center.y;
+    const cx = n(el.center.x);
+    const cy = n(el.center.y);
     const r = el.stitchCount * dsWidth / (2 * Math.PI);
     const baseRadius = r + offsetAmount;
 
@@ -424,7 +429,7 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       const p4x = cx + d_inner * Math.cos(a_left);
       const p4y = cy + d_inner * Math.sin(a_left);
 
-      return `M ${p1x},${p1y} L ${p2x},${p2y} L ${p3x},${p3y} L ${p4x},${p4y} Z`;
+      return `M ${n(p1x)},${n(p1y)} L ${n(p2x)},${n(p2y)} L ${n(p3x)},${n(p3y)} L ${n(p4x)},${n(p4y)} Z`;
     });
   };
 
@@ -544,13 +549,13 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
       if (outerSlice.length < 2 || innerSlice.length < 2) return '';
 
       // Build closed path: outer curve forward, inner curve backward
-      let pathD = `M ${outerSlice[0].x},${outerSlice[0].y}`;
+      let pathD = `M ${n(outerSlice[0].x)},${n(outerSlice[0].y)}`;
       for (let j = 1; j < outerSlice.length; j++) {
-        pathD += ` L ${outerSlice[j].x},${outerSlice[j].y}`;
+        pathD += ` L ${n(outerSlice[j].x)},${n(outerSlice[j].y)}`;
       }
-      pathD += ` L ${innerSlice[innerSlice.length - 1].x},${innerSlice[innerSlice.length - 1].y}`;
+      pathD += ` L ${n(innerSlice[innerSlice.length - 1].x)},${n(innerSlice[innerSlice.length - 1].y)}`;
       for (let j = innerSlice.length - 2; j >= 0; j--) {
-        pathD += ` L ${innerSlice[j].x},${innerSlice[j].y}`;
+        pathD += ` L ${n(innerSlice[j].x)},${n(innerSlice[j].y)}`;
       }
       return pathD + ' Z';
     });
@@ -683,7 +688,8 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
     // ── per-element SVG fragments ──
     const fragments: string[] = [];
 
-    for (const el of elements) {
+    for (let elIndex = 0; elIndex < elements.length; elIndex++) {
+      const el = elements[elIndex];
       const elColor = getElementColor(el);
 
       // ── helper: picot SVG for a path element ──
@@ -1011,7 +1017,11 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
         }
       }
 
-      if (frag) fragments.push(frag);
+      // Session 63: one group per element, tagged with its place in
+      // `elements` (a number — nothing from the file goes into the markup),
+      // so the SVG export can sort the pieces into one layer per round
+      // (render/svgExport.ts). Purely structural: nothing is drawn differently.
+      if (frag) fragments.push(`<g data-el="${elIndex}">${frag}</g>`);
     }
 
     // ── fallback bounds ──

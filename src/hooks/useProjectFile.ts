@@ -10,11 +10,13 @@ import {
   addToRecents, generateThumbnailPng, stripPatternExt, patternNameFromUri, fileDisplayName,
 } from '../tauri/file';
 import { sanitizeProjectColors } from '../utils/safeColor';
+import { sanitizeProjectNumbers } from '../utils/safeNumber';
 import { serializeProject } from '../domain/patternOutput';
 import { prepareSvgForExport } from '../render/svgExport';
 import { sampleBezierPath } from '../geometry/bezier';
 import { withChordCenter } from '../geometry/stitchGeometry';
 import { repairSplitRingSideABeads } from '../domain/parser';
+import { shrinkReferenceImage } from '../utils/refImage';
 
 const DEFAULT_MATERIALS = [
   { id: 'default', name: 'Default Thread', color: '#FFFFFF', type: 'solid' },
@@ -88,7 +90,7 @@ export interface UseProjectFileParams {
   setBgColor: (v: string) => void;
   setGridEnabled: (v: boolean) => void;
   setCustomColors: (v: string[]) => void;
-  setReferenceImage: (v: string | null) => void;
+  setReferenceImage: (v: string | null | ((cur: string | null) => string | null)) => void;
   setRefImageProps: (v: any) => void;
   setProjectName: (v: string) => void;
   setRenderMode: (v: string) => void;
@@ -223,6 +225,11 @@ export function useProjectFile(p: UseProjectFileParams) {
       p.showLoadMsg('error', p.t('loadErrMissingElements'));
       return;
     }
+    // Security (session 63, review #1): numbers that aren't real numbers —
+    // an element with such geometry is left out (with its joins), lesser
+    // values go back to their default (utils/safeNumber.ts). The user is
+    // told below when anything was left out.
+    const numberCheck = sanitizeProjectNumbers(projectData);
 
     // 'ghost' elements are a valid saved element type (ghost-array instances)
     // — they were missing from this whitelist, which meant any project using
@@ -298,6 +305,15 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
     p.setCustomColors(projectData.customColors || []);
     p.setReferenceImage(projectData.referenceImage || null);
+    // Session 62 (review M6): an image stored before the size cap is reduced
+    // now, quietly (it looks the same; the file gets the small one at the
+    // next Save) — unless another project was opened meanwhile.
+    if (projectData.referenceImage) {
+      const original = projectData.referenceImage;
+      void shrinkReferenceImage(original).then(r => {
+        if (r.changed) p.setReferenceImage(cur => (cur === original ? r.src : cur));
+      });
+    }
     p.setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
     p.setProjectName(opts?.name || projectData.name || p.t('projectUntitled'));
     // Always load into schematic mode, regardless of what was saved.
@@ -349,7 +365,13 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.cleanupDuplicates({ silent: true, elementsOverride: migratedElements });
 
     const count = (projectData.elements || []).length;
-    setTimeout(() => p.showLoadMsg('success', p.t('loadSuccess').replace('{n}', String(count))), 50);
+    setTimeout(() => {
+      if (numberCheck.dropped > 0) {
+        p.showLoadMsg('error', p.t('loadWarnDamagedElements').replace('{n}', String(numberCheck.dropped)));
+      } else {
+        p.showLoadMsg('success', p.t('loadSuccess').replace('{n}', String(count)));
+      }
+    }, 50);
     if (filePath === null) return; // sample: nothing on disk to list in Recent
 
     const displayName = fileDisplayName(filePath, projectData.name || 'Project');

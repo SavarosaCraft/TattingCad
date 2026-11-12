@@ -98,22 +98,112 @@ export function prepareSvgForExport(
     c => c.tagName.toLowerCase() === 'g'
   ) as SVGGElement | undefined;
 
+  // ── Rounds as layers (session 63) ─────────────────────────────────────────
+  // When the pattern's elements sit in two or more rounds, Design, Notation
+  // and Order Numbers each get one SUB-layer per round (named like the
+  // round, in round order — Round 1 at the bottom). An element in no round
+  // goes with the first round (user's decision). With one round or none the
+  // file is laid out exactly as before.
+  // How a node's round is known: the canvas tags every element's group
+  // with data-round (its round id); the baked realistic pieces carry
+  // data-el (the element's place in `elements`).
+  const roundIndexOfId = (id: any): number => {
+    const i = id ? rounds.findIndex(r => r.id === id) : -1;
+    return i >= 0 ? i : 0;
+  };
+  const roundIndexOfElement = (el: any): number => roundIndexOfId(getRoundId(el));
+  const roundIndexOfNode = (node: Element): number => {
+    const tagged = node.closest('[data-round],[data-el]');
+    if (!tagged) return 0;
+    if (tagged.hasAttribute('data-el')) {
+      return roundIndexOfElement(elements[Number(tagged.getAttribute('data-el'))]);
+    }
+    return roundIndexOfId(tagged.getAttribute('data-round'));
+  };
+  const splitByRound = rounds.length >= 2
+    && new Set(elements.map(roundIndexOfElement)).size >= 2;
+  // parent layer → (round index → its sub-layer), made on first use
+  const roundSubLayers = new Map<Element, Map<number, SVGGElement>>();
+  const layerFor = (parent: SVGGElement, key: string, roundIndex: number): SVGGElement => {
+    if (!splitByRound) return parent;
+    let byRound = roundSubLayers.get(parent);
+    if (!byRound) { byRound = new Map(); roundSubLayers.set(parent, byRound); }
+    let sub = byRound.get(roundIndex);
+    if (!sub) {
+      const name = String(rounds[roundIndex]?.name || '').trim() || `Round ${roundIndex + 1}`;
+      sub = makeLayer(`layer-${key}-round-${roundIndex + 1}`, name);
+      byRound.set(roundIndex, sub);
+    }
+    return sub;
+  };
+  // Sub-layers go into their parent in round order, whatever order their
+  // first node happened to arrive in.
+  const attachRoundSubLayers = (parent: SVGGElement, before: Node | null = null) => {
+    const byRound = roundSubLayers.get(parent);
+    if (!byRound) return;
+    [...byRound.keys()].sort((a, b) => a - b)
+      .forEach(i => parent.insertBefore(byRound.get(i)!, before));
+  };
+
   if (mg) {
+    // All joins in ONE group inside the Joins layer (session 63, user
+    // request) — one click selects every join line.
+    const joinsGroup = document.createElementNS(ns, 'g');
+    joinsGroup.setAttribute('id', 'joins');
+
     Array.from(mg.querySelectorAll('[data-layer]')).forEach(node => {
       const layer = node.getAttribute('data-layer');
+      // The round is read BEFORE the node leaves its element's group.
+      const roundIndex = splitByRound ? roundIndexOfNode(node) : 0;
       node.removeAttribute('data-layer');
-      if (layer === 'notation')    layerNotation.appendChild(node);
-      else if (layer === 'order')  layerOrder.appendChild(node);
+      // An empty group (a hidden label) would only make an empty sub-layer.
+      if (splitByRound && node.childNodes.length === 0 && node.tagName.toLowerCase() === 'g') { node.remove(); return; }
+      if (layer === 'notation')    layerFor(layerNotation, 'notation', roundIndex).appendChild(node);
+      else if (layer === 'order')  layerFor(layerOrder, 'order', roundIndex).appendChild(node);
       else if (layer === 'groups') layerGroups.appendChild(node);
-      else if (layer === 'joins')  layerJoins.appendChild(node);
+      else if (layer === 'joins')  joinsGroup.appendChild(node);
     });
+    if (joinsGroup.childNodes.length > 0) layerJoins.appendChild(joinsGroup);
+    attachRoundSubLayers(layerNotation);
+    attachRoundSubLayers(layerOrder);
 
     while (mg.firstChild) layerDesign.appendChild(mg.firstChild);
+
+    if (splitByRound) {
+      // Each tagged group moves into its round's Design sub-layer, keeping
+      // its order within the round. The sub-layers take the place of the
+      // first tagged group, so anything drawn under the elements stays under.
+      const tagged = (Array.from(layerDesign.querySelectorAll('[data-round],[data-el]')) as Element[])
+        .filter(node => !node.parentElement?.closest('[data-round],[data-el]'));
+      if (tagged.length > 0) {
+        let anchor: Node = tagged[0];
+        while (anchor.parentNode && anchor.parentNode !== layerDesign) anchor = anchor.parentNode;
+        const marker = document.createComment('rounds');
+        layerDesign.insertBefore(marker, anchor);
+        const emptied = new Set<Element>();
+        tagged.forEach(node => {
+          const parent = node.parentNode as Element | null;
+          if (parent && (parent as Node) !== (layerDesign as Node)) emptied.add(parent);
+          // Nothing drawn for this element here (e.g. no beads) — drop it.
+          if (node.childNodes.length === 0) { node.remove(); return; }
+          layerFor(layerDesign, 'design', roundIndexOfNode(node)).appendChild(node);
+        });
+        attachRoundSubLayers(layerDesign, marker);
+        marker.remove();
+        // Wrapper groups left with nothing in them are dropped.
+        emptied.forEach(parent => { if (parent.childNodes.length === 0) parent.remove(); });
+      }
+    }
+
     mg.appendChild(layerJoins);
     mg.appendChild(layerDesign);
     mg.appendChild(layerNotation);
     mg.appendChild(layerOrder);
     mg.appendChild(layerGroups);
+    // The tags were only for sorting — not part of the exported file
+    // (removed here, once the layers are back in the document).
+    clonedSvg.querySelectorAll('[data-round]').forEach(n => n.removeAttribute('data-round'));
+    clonedSvg.querySelectorAll('[data-el]').forEach(n => n.removeAttribute('data-el'));
   }
 
   clonedSvg.setAttribute('xmlns:inkscape', inkNs);
@@ -204,8 +294,10 @@ export function prepareSvgForExport(
       bg.setAttribute('paint-order', 'stroke');
       bg.setAttribute('fill', fillColor);
       bg.textContent = String(el.orderNumber);
-      layerOrder.appendChild(bg);
+      // Session 63: into its round's sub-layer when the file is split by round.
+      layerFor(layerOrder, 'order', roundIndexOfElement(el)).appendChild(bg);
     });
+    attachRoundSubLayers(layerOrder);
   }
 
   // ── Serialize ─────────────────────────────────────────────────────────────

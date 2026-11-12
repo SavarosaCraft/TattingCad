@@ -1,6 +1,29 @@
 # TattingCAD — Architecture
 
-Last updated: **session 58** (beginner-friendly layout + unsaved-changes
+Last updated: **session 63** (code review #1 fixed: numbers from pattern
+files are checked — see "Security: numbers from pattern files (session 63)"
+under Rules, `utils/safeNumber.ts`; SVG export: one sub-layer per round and
+all joins in one group — see "SVG export: rounds as layers (session 63)"). Before that: **session 62** (code review + fixes: flip keeps joins and a
+split-ring flip swaps its sides, split-ring side A counted from the shared
+start, Picot Tools keeps every stitch type (rds, bds, half stitches),
+"resume before open" question, Escape order, dropdown keys, touch cancel,
+the main shortcut handler registered once, Recent list read once, reference
+image size cap, one zoom range — see "Code review and fix tracker
+(session 62)" under Rules and the "(session 62)" sections after it).
+Before that: **session 61** (Android files + Recent that survive a
+restart, autosave on leaving + Resume back to its file, the third security
+wall — the deny list —, floating / mock ring kinds, Shift = 45° move lock
+with rotation handles on R, join lines solid and always drawn + their own
+SVG layer, tablet property bar on 2 lines — see the "(session 61)" sections
+under Rules, starting at "Ring kinds: floating / mock ring").
+Before that: **session 60** (first-run setup screen and sample patterns —
+see "First-run setup screen (session 60)" and "Sample patterns (session 60)"
+under Rules, `components/SetupScreen.tsx`, `components/SampleGallery.tsx`;
+and "Large size → bigger dialogs (session 60)").
+Before that: **session 59** (layout polish + rail rebuilt on the shared
+tool descriptors — see "Tool rail and phone bottom bar", now marked
+sessions 58–59; and every indicator colour moved into the theme — see
+"Colour theme — every indicator colour"). Before that: **session 58** (beginner-friendly layout + unsaved-changes
 rework — see the session-58 sections under Rules: "Tool rail and phone
 bottom bar", "Simple / Full toolbar and the getting-started hint",
 "Unsaved changes — history edit numbers", "Window title", "Two-finger
@@ -65,6 +88,16 @@ src/
                           instead, since moving it wasn't necessary for that
                           extraction; candidate for promotion here later if
                           another caller needs it.
+    refImage.ts           Session 62. shrinkReferenceImage(src) — keeps the
+                          reference image small enough for the autosave
+                          (≤ 2048 px, ≤ ~1.1 MB). See "Reference image size cap
+                          (session 62)" under Rules.
+
+    safeNumber.ts         Session 63 (review #1). isRealNumber, safeNum,
+                          markupNum (for coordinates written into markup
+                          text), sanitizeProjectNumbers(data) — the number
+                          twin of safeColor.ts. See "Security: numbers from
+                          pattern files (session 63)" under Rules.
 
   geometry/
     bezier.ts             sampleBezierPath, calculatePathLength,
@@ -133,12 +166,17 @@ src/
     parser.ts             parseNotation, reverseNotation, buildSegmentLabel,
                           getSegmentRuns, countActualStitches, countStitchesInRange,
                           getStitchTypes, expandTokens, isZeroWidth, isNotationValid,
-                          normalizePattern, normalizeNotationInput
+                          normalizePattern, normalizeNotationInput, STITCH_WIDTH_DS
+                          Session 62: isSlotBead, splitRingSideAPosition,
+                          repairSplitRingSideABeads — see "Split-ring side A:
+                          counted from the shared start (session 62)" under Rules.
     patternOutput.ts      generatePatternText() — pure pattern text builder
     picotTools.ts         Picot Wizard pure transforms — all notation-text operations.
                           No React dependencies. 93 unit tests in test_picotTools.js.
                           Exports (grouped by feature):
-                          — Analysis: analyzeNotation, totalRunDs
+                          — Analysis: analyzeNotation, totalRunDs (LENGTH in ds),
+                            totalRunStitches (session 62 — what Scale works in),
+                            splitRingSides (session 60)
                           — Clear: clearUnjoinedPicots, hasUnjoinedPicots
                           — Add: addPicotsToRuns, hasAddablePicotRuns
                           — Protected zones: getProtectedZones, isRunProtected,
@@ -146,8 +184,15 @@ src/
                           — Fill density: previewFillDensity, maxUsefulFillGap
                           — Compact: compactRepeatedPicots, hasCompactableGroups,
                             autoCompact (auto-compacts any transform result before commit)
+                          — Expand (opposite of Group, session 60): expandRepeatGroups,
+                            hasRepeatGroups — never auto-compacted (see Rules)
                           — Scale: scaleNotation, suggestScalePresets (returns
-                            { exact, rounded } rows), suggestScalePresetsMulti
+                            { exact, rounded } rows; session 62: takes the
+                            analysed sides, [{ type, segments }]),
+                            suggestScalePresetsMulti
+                          Session 62: every stitch type — a run keeps its
+                          stitches in order and Add/Fill/Scale count stitches.
+                          See "Picot Tools — every stitch type (session 62)".
                           All transform functions (clearUnjoinedPicots, addPicotsToRuns,
                           previewFillDensity) return a resultZeroWidth array alongside
                           the new notation string — required for autoCompact to know
@@ -205,6 +250,10 @@ src/
                           not appear in realistic view at all (by decision). When
                           the bake runs is decided by tattingindex.tsx — see
                           "Realistic view — what renders, and the bake cache".
+                          Session 62: calculateSplitRingStitches steps like
+                          calculatePathStitches (rds 1.5 wide, ss sub-stitches)
+                          and counts side A from the shared start — see
+                          "Split-ring side A: counted from the shared start".
 
   components/
     ScaleControls.tsx     Shared presentational Scale UI — two rows of preset buttons
@@ -484,6 +533,9 @@ src/
                           - For an all-split-ring selection there is now a "B:"
                             box next to "A:" (prefilled when all share side B;
                             a typed "sr:" prefix is stripped).
+                          Session 62: the Scale presets take totalRunStitches
+                          (new prop, replaces totalRunDs) — Scale works in
+                          stitches now; rds / half-stitch rings are scaled too.
     GradientSwatch.tsx     The gradient-stops SVG (parse stops -> linearGradient
                           -> rect) — appeared 4 times identically (swatch grid
                           item + preview, in both the Swatches and Gradients
@@ -578,7 +630,8 @@ src/
                           NotationRotationControls/RoundGroupPicker/
                           RwToggleButton/ShapeAndSqueezeControls. Does NOT
                           include the material-assignment dropdown — see next
-                          entry.
+                          entry. Session 62: Scale presets come from
+                          suggestScalePresets([analysisA, analysisB?]).
     MaterialAssignmentDropdown.tsx  Newly discovered during this batch: the
                           material A/B selector at the end of the property bar
                           is NOT part of the general-element branch — it's a
@@ -629,6 +682,15 @@ src/
                           {splitRing}, {chain}, {refImage}, {select}, {join}
                           tokens, so each language places them itself.
                           getHintStage(count, hasConnections) is exported.
+    SampleGallery.tsx     Session 60. Sample-pattern gallery (cards with
+                          thumbnail, title, description) + loadSampleList /
+                          pickText / sampleUrl helpers. See "Sample patterns
+                          (session 60)" under Rules.
+    SetupScreen.tsx       Session 60. First-run setup screen (language,
+                          toolbar, size, background, indicator colours). No
+                          state of its own beyond "what changed here" — it
+                          gets the app's current values + setters as props.
+                          See "First-run setup screen (session 60)" under Rules.
     PhoneToolBar.tsx      Session 58. Bottom tool bar for upright phones: one
                           row (icon over label) + a "More" button that opens a
                           tile panel above the bar; tapping a tile or the
@@ -712,8 +774,16 @@ src/
   tauri/
     file.ts               showSaveDialog, showOpenDialog, showSaveSvgDialog,
                           writeProjectFile, writeTextToFile, readProjectFile,
-                          addToRecents, getRecents, generateThumbnail,
-                          writeClipboardText, readClipboardText
+                          checkFileExists, addToRecents, getRecents,
+                          generateThumbnailPng, thumbSrcFor, fileBaseName /
+                          fileDisplayName / patternNameFromUri,
+                          writeClipboardText, readClipboardText.
+                          Session 61: on Android, Open / Save / read / write
+                          of content:// go through tauri-plugin-android-fs
+                          (dynamic import) with kept access — see "Android
+                          files: kept access" under Rules.
+                          Session 62: removeFromRecents, protectFileAccess —
+                          see "Recent Projects list read once (session 62)".
 
   hooks/
     useUIState.ts         All dialog, menu, and UI visibility state
@@ -721,6 +791,10 @@ src/
                             destructure whenever adding new state — missing declarations
                             crash silently mid-function (dialog never closes, state never
                             updates). See session 37 for the cross-check script.
+                          Session 62: confirmDialog texts may be functions of t
+                          (ConfirmText) and it takes an optional cancelLabel /
+                          onCancel — see "Opening a file while last session's
+                          work is unsaved (session 62)".
     useCanvasInteraction.ts  Canvas drag, pivot, selection, rotation handle state.
                           `singleRotationInput` state removed (session — property
                           bar cleanup, later session): confirmed zero references
@@ -1109,6 +1183,8 @@ src/
                           alignSelection(mode) ('left'|'right'|'top'|'bottom'|
                           'centerX'|'centerY'); the six names remain as one-line
                           wrappers. Output verified identical for all six.
+                          Session 62: a system-clipboard paste runs
+                          repairSplitRingSideABeads on each element.
     useInputHandlers.ts   handleMouseDown/Move/Up. Zero state-mirror ref reads.
                           Reviewed later session by an external AI (standalone, no
                           access to this doc or the checklist) plus independent
@@ -1213,6 +1289,9 @@ src/
     useProjectFile.ts     buildProjectData, saveToPath, performSave, saveProject,
                           saveProjectAs, applyProjectData, loadFromPath, loadProject,
                           exportSVG
+                          Session 62: applyProjectData runs repairSplitRingSideABeads
+                          and quietly shrinks an over-size reference image
+                          (shrinkReferenceImage, utils/refImage.ts).
                           Session 58: saveToPath records the saved history rev
                           BEFORE its awaits (getCurrentHistoryRev param), loading
                           sets lastSavedRev(0), load applies withChordCenter to
@@ -1340,6 +1419,11 @@ repeat-group syntax automatically, so the user sees clean grouped notation witho
 a manual "Group repeated picots" step. `autoCompact` falls back to the uncompacted
 notation if analysis fails — it is always safe to call.
 
+**Exception — Expand** (session 60): `expandRepeatGroups` writes the groups out
+in full, so its result must NOT go through `autoCompact` (or through
+`transformSides` / `applyToSides` in GeneralElementPropertyBar, which call it) —
+that would group it straight back. It has its own `expandResult()` there.
+
 The `resultZeroWidth` array comes from the transform function's return value
 (Clear, Add, Fill). For Scale (which never changes picot count or order), pass the
 original `el.picots` array directly.
@@ -1355,9 +1439,13 @@ rebuild from the pristine original upload and reapply all fixes in one traceable
 then diff against the original to confirm zero unexpected changes. Session 38 had a
 silent key-loss bug caught this way.
 
-Translation files are currently at **642 keys** in en, **640** in hu/es
-(session 58; hu/es lack only the two `_comment_folded_picots` /
-`_comment_cleanup_duplicates` notes). Session 58 added 30 keys to all three
+Translation files are currently at **793 keys** in en, **791** in hu/es
+(session 63 added `loadWarnDamagedElements` — es/hu by Claude, user to
+check; before that counted in session 62: 792 / 790; hu/es lack only the two `_comment_folded_picots` /
+`_comment_cleanup_duplicates` notes; the `src/i18n` and `public/` copies are
+identical). Session 62 added `resumeBeforeOpenTitle/Body/Open/Resume` and
+`refImageReduced`, and reworded `picotWizardUnsupported` (es/hu by Claude —
+user to check). Session 58 added 30 keys to all three
 (`toolLabel*`, `toolbar*`, `hint*`, `windowTitleUntitled`) and removed the
 unused `propEndAllowanceCurrent` from hu/es (en had dropped it in session 57).
 
@@ -1368,7 +1456,51 @@ unused `propEndAllowanceCurrent` from hu/es (en had dropped it in session 57).
 3. `extraTranslations['en'][key]` — bundled `translations_en.json`
 4. `key` itself — last resort, visible to user as a string
 
-`translations_en.json` is loaded unconditionally at startup before any manifest check. External `translations_en.json` in the user's app folder merges over it (allowing overrides) but cannot break the fallback since the bundled file is always loaded first.
+**Session 60:** `translations_es.json` and `translations_hu.json` are
+bundled too (static imports in tattingindex.tsx, `_` comment keys dropped).
+For each language the manifest lists, the bundled copy goes in first and the
+`public/` file merges over it key by key. So a `public/` file from an older
+version can't hide new keys (they used to fall back to English — reported
+for the setup screen), and wording changed in `public/` still wins. Keep
+`src/i18n/` up to date: it is now the fallback for es/hu as well as en.
+
+`translations_en.json` is loaded unconditionally at startup before any manifest check. The `public/` copy of `translations_en.json` merges over it (allowing overrides) but cannot break the fallback since the bundled file is always loaded first.
+
+**Correction (session 60, tested on an installed Linux build):** "external"
+here means the files in `public/`, which are packed INTO the app at build
+time. The installed app never reads translation, `languages.json`, help,
+sample or `tatting-theme.json` files from disk: `fetch('./…')` is answered
+from the copies inside the executable. The copies that `bundle.resources`
+installs next to the program (`_up_/dist/*.json|md|html`) are not read by
+anything — a fake extra language added there did not appear. Adding or
+changing a language = edit `public/` + rebuild — OR, since session 60, the
+user languages folder (next section).
+
+### User languages folder (session 60)
+
+`tauri/userLanguages.ts` — the one place the installed app reads language
+files from disk: `appDataDir()/languages/` (not Documents: reading it makes
+macOS ask permission at every start). Desktop app only (`isDesktopApp()` —
+Tauri and not Android/iOS); the browser and Android skip it.
+- `readUserLanguages(builtInCodes)` → `{ manifest, files, errors }`:
+  `languages.json` (codes checked: 2–3 letters, optional region) adds or
+  renames languages; `translations_<code>.json` for every built-in + added
+  code; `_` keys dropped; never throws.
+- Start-up (tattingindex.tsx, loadTranslations): read right after the
+  built-in manifest, BEFORE the language is chosen (a saved user language
+  must not reset to English); manifest = built-in ∪ user; Step 3 merges each
+  user file over bundled + public texts key by key. Capped at 3 s
+  (Promise.race). Errors → `userLangErrors` state → one toast once texts
+  exist (`userLangFileErrors`).
+- Options → `optionsUserLanguages` → `openUserLanguagesFolder(enStrings)`:
+  mkdir, `README.txt`, `translations_TEMPLATE.json` (the English file as
+  shipped, order + `_comment` keys kept; rewritten every time), then
+  `plugin:opener|open_path`; if that fails → toast with the path
+  (`userLangFolderReady`).
+- Permissions (src-tauri capabilities/default.json): `fs:allow-mkdir`
+  `$APPDATA`, `$APPDATA/**`; `opener:allow-open-path` `$APPDATA/languages`,
+  `…/**`. Reading uses the existing read/exists `**` permissions.
+- Tested in a real Linux build (see handoff item 23).
 
 ### Ghost array regeneration — critical rule
 **Never call `generateId()` inside a `setElements(fn)` functional updater.**
@@ -1730,7 +1862,8 @@ via the `orthoLock || isShiftHeld` check in useInputHandlers.ts, with the
 ortho-lock toolbar button not even showing as active, since `orthoLock`
 itself was never touched. Fixed with a `window` `blur` handler that resets
 all three flags (`isShiftHeld`, `spaceDown`/`spaceDownRef`,
-`zDown`/`zDownRef`) whenever the window loses focus.
+`zDown`/`zDownRef`) whenever the window loses focus. Session 61: the same
+handler resets `isRotateKeyHeld` (hold R = rotation handles).
 
 This is the same underlying bug shape as useHistoryActions.ts's Addendum 4
 (`isInteractingRef`/`pointerup` vs `mouseup`) — a flag that's supposed to be
@@ -1876,9 +2009,8 @@ Closes both "STILL OPEN" items from useHistoryActions.ts's Addendum 4
   commit has had its chance.
 User-tested: drag + Alt+Tab, ±1° hold + Alt+Tab, squeeze slider + Alt+Tab
 — each leaves exactly one correct undo step. Not covered:
-**NumberStepper.tsx** (never obtained) may keep auto-repeating after focus
-loss; history stays correct either way, but stopping the repeat needs that
-file.
+**NumberStepper.tsx** — session 62 review: the file is in the repo and
+already ends a hold on window blur (`blurListenerRef`); nothing left to do.
 
 ### Ghost arrays — benched (session 56)
 
@@ -2071,7 +2203,7 @@ changes after that push). It moves like a mouse drag, incl. ghost-array
 regeneration. Skipped for form-control focus, realistic view, the special
 modes and mid-drag.
 
-### Tool rail and phone bottom bar (session 58)
+### Tool rail and phone bottom bar (sessions 58–59)
 
 The left toolbar is no longer a floating box on the canvas. It is a fixed,
 full-height strip, `<aside class="tool-rail">` (logo on top, tools below in
@@ -2080,16 +2212,51 @@ Everything else is pushed right by padding on `.app-root` (the outermost div):
 `padding-left: var(--rail-w)`. The rail JSX still sits where the old toolbar
 was (inside the canvas container); position: fixed makes that irrelevant.
 
-`--rail-w` per toolbar mode (`rail-simple` / `rail-full` on `.app-root`) and
-screen shape (CSS block "Tool rail (session 58)" in the `<style>` of
-tattingindex.tsx; all include `env(safe-area-inset-left)`):
+`--rail-w` depends on screen shape only — since session 59 Simple and Full
+have the SAME width, so switching never moves the canvas sideways (CSS block
+"Tool rail (session 58)" in the `<style>` of tattingindex.tsx; all include
+`env(safe-area-inset-left)`). `rail-simple` / `rail-full` classes are still on
+`.app-root` (used by a few sideways-phone label rules), not for width:
 
-| Screen | Simple | Full |
-|---|---|---|
-| Desktop / tablet | 150 px | 100 px |
-| Large UI (desktop only) | 188 px (grid `zoom: 1.25`) | 125 px |
-| Phone sideways (height ≤ 500) | 124 px | 84 px |
-| Phone upright (width ≤ 768 and height > 500) | 0 — bottom bar instead | 0 |
+| Screen | Rail width (Simple and Full) |
+|---|---|
+| Desktop / tablet | 120 px (was 150 until the zoom buttons became two rows) |
+| Large UI (desktop only) | 136 px (grid `zoom: 1.12`; was 188 / 1.25 — too big) |
+| Phone sideways (height ≤ 500) | 112 px |
+| Phone upright (width ≤ 768 and height > 500) | 0 — bottom bar instead |
+
+**Full mode layout (session 59):** every icon centred (`fullIcon`); the
+2-column buttons show icon + short label (`fullWide`): Join
+(`toolLabelJoinShort`), Beads (`toolLabelBeadsShort`), Delete, Ref. img.
+(`toolLabelRefImageShort`), Notes. No label clipped in en / hu / es.
+
+**Large UI text (session 59):** `.ui-large { font-size: 17.6px }` on the
+app root does NOT scale rem-based Tailwind text (rem = the html element's
+size) — so Large used to grow the controls but not the text. Large text
+sizes are now px: property-bar inputs 18 px (Normal 14), buttons/selects/
+text-sm 17 px, labels/text-xs 15 px (12), top-row words 17 px (14), rail
+labels 13 px × zoom 1.12. Bar height unchanged (104 px).
+Large top-row buttons are 50 px (were 56): the row stays on one line down
+to 1366 px wide (it wrapped below ~1600 before); at ≤ 1280 it still wraps
+(Normal wraps at 1024, as before).
+
+**Large UI and the property bar (session 59):** Large keeps its bigger
+controls (2.5rem) but uses `row-gap: 0.25rem` and 0.3rem top/bottom
+padding, so two rows still fit the normal 6.5rem (104 px) bar — measured
+104 px empty / chain / ring / multi-select at 1366–1920 wide (was 122–124
+with a ring or chain selected).
+
+Simple mode's Zoom out / Zoom in are two labelled rows (not a side-by-side
+pair — that pair set the old width). Measured: at normal size the rail fits
+1280×720 … 1920×1080 in en / hu / es with no scrolling and no clipped label
+(long hu/es labels wrap to two lines). Large scrolls a little on ≤ 768 px
+tall screens (≈ 60 px en, ≈ 100 px hu/es) — accepted.
+
+To keep the wider Full rail from wrapping the top row at ~1280 px, the top
+row's column gap is halved between 769 and 1439 px wide (this also unwrapped
+Simple at 1280×720). On screens 501–800 px tall the rail buttons' vertical
+padding is trimmed to 0.3rem so every tool fits (checked: 1280×720,
+1366×768, 1024×768 — no rail scrolling in either mode).
 
 Upright phone = `(max-width: 768px) and (min-height: 501px)`. There the rail
 is `display: none`, `.phone-toolbar` (PhoneToolBar.tsx) shows, and
@@ -2098,15 +2265,60 @@ Both are always rendered; only CSS chooses.
 
 - **Logo:** `public/app-icon_sm.png` (~200 px square; Vite serves `public/`,
   not the project root). Hidden via onError if missing. Tooltip "TattingCAD
-  {APP_VERSION}"; no click action.
+  {APP_VERSION}"; no click action. Session 59: sized by max-width (rail − 16
+  px) and max-height (100% of the logo area) only, keeping proportions, so
+  any shape fills the area — the branded logo (icon + "tatting CAD" text,
+  taller than wide) shows at ≈ 104 × 148 px (Normal). (An earlier 72 px cap
+  for the old square logo was removed.) It sits in a logo area exactly as tall as the header (top row + property bar), so the first
+  tool lines up with the top of the canvas. The header height is measured by
+  `observeHeaderHeight` (module-level callback ref + ResizeObserver, just
+  above `TattingDesigner`) and published as `--header-h` on `.app-root`; it
+  follows the top row wrapping and the property bar growing. Sideways phones
+  keep the small 30 px logo with no alignment (height is too scarce).
 - **The old floating-toolbar CSS is gone:** `.toolbar-scalable-left`
   transform scales (6 media rules + 3 ui-large rules) and
   `.mobile-toolbar-compact`. Don't reintroduce transform scaling for the rail;
   it doesn't shrink the layout box, which is what made the old toolbar
   overflow on short screens.
-- **Phone bottom bar contents** (descriptors `phoneTools` in tattingindex.tsx,
-  just before the main return): main row Select · Pan · Ring · Split ring ·
-  Chain · Picot Join (+ More). More panel: Delete, Show all, Zoom −/+,
+- **Top row on upright phones** (session 59): TopMenuBar renders a ☰
+  button (`.tmb-phone`, shown only under `(max-width: 768px) and
+  (min-height: 501px)`) and marks File / View / send-to-back /
+  bring-to-front / Fit All / Arrange / Options / Help and the dividers
+  `.tmb-desktop` (hidden there). Undo, Redo, Copy, Cut, Paste, Delete stay —
+  always visible (user: paste must work with nothing selected). ☰ opens the
+  phone menu (tattingindex.tsx, `showPhoneMenu`): File › View › Arrange ›
+  Options › Help & Info ›, which open the existing dropdowns, then Bring to
+  front, Send to back, Show all. `menuAnchor(ref)` makes the five dropdowns
+  hang under the ☰ button on an upright phone (their own buttons are
+  hidden). Checked 360 / 390 / 768 px upright: one line, no overflow.
+  **Not only phones:** the compact ☰ row applies whenever the full row
+  would wrap — `(max-width: 1139px) and (min-height: 501px)`, Large up to
+  1274 px (measured: without separators the full row fits one line from
+  1140 px Normal / 1275 px Large; it was 1190 / 1320 with them). **The top
+  row has no separators any more** (`.top-row-buttons .w-px` hidden — user;
+  they cost ~50 px). The property bar has its own, wider limit (its labels):
+  in 769–1199 px windows (Large up to 1359) it drops its small labels and
+  uses the phone overlay (fixed 6.5rem slot, bar laid over the canvas when
+  it needs more rows). The two limits are deliberately separate. Result: header
+  165 px (Large 171) at every width ≥ 769 — it was up to ~300 px there
+  (user screenshot: a window just over 768 px). `menuAnchor` uses the same
+  widths. Sideways phones (height ≤ 500) keep their one-line icon row.
+- **One tool list for both** (session 59): the descriptors `phoneTools` in
+  tattingindex.tsx (just before the main return) define every rail / phone
+  tool once — label, optional `shortLabel`, tooltip, icon, action,
+  active/disabled. Layout-only lists pick from them: `phoneMainTools` /
+  `phoneMoreTools` (phone bar) and `railSimple` / `railFull` /
+  `railRealistic` (rail, rendered by `renderRailEntry`: a tool, optionally
+  wide / labelled / with an inline label, a divider, a side-by-side pair, or
+  the Simple ↔ Full text link). **Add or change a tool in `phoneTools`, then
+  place it in the layout lists.** Two behaviour changes from unifying: Delete
+  in the rail is now also disabled when nothing is selected (as on the
+  phone); the Reference image toggle returns to Select in Simple and Pan in
+  Full everywhere (the phone bar always went to Select before).
+- **Phone bottom bar contents:** main row Select · Pan · Ring · Split ring ·
+  Chain · Join (+ More). "Join" is `toolLabelJoinShort` (the row uses
+  `shortLabel` when set; the More panel and rail use the full label). Row
+  labels may wrap to two lines (line-clamp) rather than being cut with "…". More panel: Delete, Show all, Zoom −/+,
   Reference image, Notes, "More tools"; in Full mode also every Full tool and
   "Simple". Realistic view: Pan + zoom + Show all, no More.
 - **Shared toggles:** `togglePicotJoinMode` and `toggleBeadingMode` (defined
@@ -2120,12 +2332,1118 @@ Both are always rendered; only CSS chooses.
   (useProjectFile.ts) for the file-load fallbacks. `getViewportCenter`,
   `screenToWorld` and touch handling already used the canvas rect.
 - **Phone clean-up:** `.info-bar` (status bar) hidden on phones (width ≤ 768
-  or height ≤ 500). `.prop-bar` (the property bar) has a FIXED height on
-  phones (6.5rem upright, 4.5rem sideways, scrolls inside) so
-  selecting/deselecting no longer moves the canvas (it used to jump ~63 px).
+  or height ≤ 500). The property bar sits in a `.prop-bar-slot` wrapper
+  (session 59). On phones the slot has a FIXED height (6.5rem upright, 4.5rem
+  sideways) so selecting/deselecting never moves the canvas, and `.prop-bar`
+  is absolutely positioned inside it (z-index 25, own background + shadow),
+  growing down OVER the canvas when a selection has more settings (a ring:
+  ~170 px upright, ~133 px sideways). Nothing scrolls inside it any more, so
+  Shape / Squeeze / Material are visible and the colour / material pop-ups
+  (absolute, inside the bar) aren't clipped. Menus (z-50), the More panel
+  (31) and its backdrop (29) stay above it. On desktop/tablet the slot is an
+  inert div.
   Sideways phones: top row on one line (icons only, scrolls sideways).
-- **Known duplication:** the rail has its own JSX; the phone bar uses the
-  descriptors. Rebuilding the rail on the descriptors would remove it.
+
+### Colour theme — every indicator colour (session 59)
+
+`DEFAULT_THEME` (hooks/useViewState.ts) now holds **every on-canvas
+indicator colour** (17 keys before, ~70 now), grouped with comments: warning
+glows, selection, markers, beads, array previews, ruler, fold line, Tatting
+Order, stitch-count labels, thread outline, Path Edit guides, grid lines.
+Default values are exactly the colours that were hard-coded before (checked:
+six canvas scenes pixel-identical to the pre-change build, and identical
+again when the full template `tatting-theme.json` is loaded).
+
+- **Loading:** unchanged — `tatting-theme.json` next to the app (fetched at
+  start) or Options → load theme. Only keys present in DEFAULT_THEME are read;
+  values are any CSS colour text (hex or rgba). A new key added to
+  DEFAULT_THEME is therefore automatically loadable.
+- **Round colours** are one key, `orderRoundColors`:
+  `"fill/outline, fill/outline, …"` (hex only — rgba's commas would break the
+  split). Parsed by `parseRoundColors` (utils/roundColors.ts) into
+  `roundColors` (memo right after useViewState in tattingindex.tsx). Slot 0 =
+  elements in no round, 1+ = Round 1, 2, … Used by getRoundBadgeColor, SVG
+  export (`roundColors` param → prepareSvgForExport) and, via
+  `RoundColorsContext` (provider wraps the main return),
+  RoundGroupPicker and TattingOrderModeBar. **Group** colours are NOT themed:
+  they're data (the `groups` registry, set at group creation), so
+  getGroupColor / MultiSelectSummaryBar / useEditorActions keep
+  ORDER_GROUP_COLORS. **Correction (session 62 review #3):** that registry is
+  NOT saved in the pattern file, nor set on load or New — group names and
+  colours are lost when the file is reopened. Open item, review #3.
+- **Export rule:** svgExport strips UI by `[data-ui]` and, historically, by
+  `stroke="#3B82F6"` (selection) and `stroke="#888"` (Path Edit guides). Both
+  colours are themeable now, so those elements also carry `data-ui="1"`.
+  **Any new on-screen-only element must have `data-ui`** — don't rely on its
+  colour. Layers: `data-layer="notation" | "order" | "groups" | "joins"`
+  move a node into that Inkscape layer; everything else lands in Design.
+  Order in the file: Joins (under) · Design · Notation · Order Numbers ·
+  Group Markers (session 61 added Joins). Session 63: Design / Notation /
+  Order Numbers split into one sub-layer per round, joins in one group —
+  see "SVG export: rounds as layers (session 63)".
+- **Deliberately not themed:** thread / material / bead / DMC / Lizbeth
+  colours (pattern data), polar grid colours (per grid, data), bead shading
+  (shadow / highlight / `#111` rim in renderBeadShape), realistic stitch
+  drawings (`<defs>` ds-stitch etc.), dark contrast halos behind ruler marks,
+  gradient `#FFFFFF` fallbacks, SVG-export notes text, and UI chrome
+  (Tailwind greys, Notes drawer, dialogs).
+- **Template:** `tatting-theme.json` (session 59 deliverable) lists every key
+  at its default, with `_section` spacer keys (ignored by the loader).
+- **Choices** (useViewState, `themePreset`): `standard` / `pastel`
+  (built-in, read-only), `file` (Standard ← `themeFileColors`, a
+  tatting-theme.json next to the app read once at start via
+  `applyThemeFile`; chosen automatically on a first start), `custom`
+  (`themeCustom = {base: 'standard'|'pastel', colors}` — the user's own
+  theme: base preset + changed colours, so ↺ returns to the starting
+  colour). `theme = themeFor(themePreset)`. **The file is its own choice,
+  not a layer over every preset** (as a layer it masked whichever preset was
+  picked). Saved as `tcad_theme = {preset, custom}`; Custom is kept when
+  switching away. `copyThemeToCustom(from)` makes/replaces Custom (from
+  'file' → base standard + the file's colours baked in);
+  `setCustomThemeColors` edits it; `loadThemeIntoCustom` = Options → Load
+  Theme…; `resetTheme` = Standard (Custom kept). Older saves
+  `{preset, colors}` migrate to Custom. **Why not write tatting-theme.json
+  next to the app:** the install folder is read-only and the app's own
+  files are packed into the executable, so Custom lives in app storage and
+  "Save as file…" (`showSaveThemeDialog` in tauri/file.ts, browser falls
+  back to a download) exports it. Note: `setCustomColors` is a different,
+  older thing (custom THREAD colours) — don't confuse.
+  `setTheme` no longer exists.
+  `pickThemeKeys()` filters any object to known string keys.
+- **Presets:** `standard` (= DEFAULT_THEME) and `pastel` (`PASTEL_THEME`,
+  from the user's palette #4B79A1 #E1B12C #F39C12 #A1D69E #2C3E50 #E67E22
+  #D9BF77 #BB8E2D #95A5A6 #34495E plus lighter/darker variants). **Pastel
+  is the colour-blind-friendly preset.** Conventions: picot not joined =
+  mint #A1F3A1, core join not joined = soft grey #9BA3A3, joined + connection
+  lines = steel blue #4B79A1, selected = carrot #E67E22; warnings: invalid
+  red #E74C3C, too short sand #F4D98E, unnumbered icy #D0EAEC; Tatting Order
+  "R" bronze #BB8E2D; finished ruler #CADBDC; dark navies only for
+  outlines/label backgrounds. Checked with a CVD simulator (colorspacious,
+  CAM02-UCS ΔE, deutan / protan / tritan at full severity, script
+  `cvdcheck.py` logic) for every group that must be told apart, including
+  pairs shown together (Tatting Order: unnumbered glow / selection / "R";
+  joins: connection line / unjoined picot / unjoined core join / selected;
+  glows vs selection): **all ≥ 23.1**. Both presets are made for dark
+  backgrounds — on a white background several light colours fade (Standard:
+  yellow "joined"; Pastel: mint, icy, sand); a light-background preset would
+  be a separate job.
+  Standard's own weak pairs (for the record): invalid vs unnumbered glow 3.7
+  (tritan), path start vs control 2 8.0, bead marker vs beading-mode marker
+  8.9 (deutan), picot unjoined vs joined 14.3 (protan).
+- **Editor:** `components/ThemeEditor.tsx`, Options → Indicator colours….
+  Choice buttons (Standard · Pastel · My file · Custom, or "+ Custom" until
+  one exists). Only Custom is editable; other choices show their colours
+  read-only with "Copy to Custom" / "Replace Custom with these colours"
+  (asks first if Custom has changes). Sections with plain names (reuses
+  existing translation keys where the wording fits; the rest are `theme*`
+  keys), native colour picker per key, opacity slider for rgba() keys, ↺ per
+  changed key, "Undo my changes (n)", Save as file…, Load Theme…, round
+  colours as Ungrouped / Round n rows. `jpgArm` /
+  `jpgArmSelected` are not listed — nothing draws with them.
+
+### First-run setup screen (session 60)
+
+- **When:** `showSetup` (tattingindex.tsx, local state next to
+  `showThemeEditor`) starts true while localStorage `tcad_setup_seen` is
+  missing — so it shows once to everyone on the first start of this version,
+  existing installs included. Start / Skip / ✕ / Escape write
+  `tcad_setup_seen = '1'`. **Options → Setup…** (first item in Options)
+  reopens it.
+- **Where:** a Modal at z 2147483633/34, above the welcome splash
+  (…30–32), so on first start it shows first and the splash is under it. No
+  close on backdrop click.
+- **Values:** opens with the app's current values (`language`,
+  `toolbarMode`, `uiScale`, `bgColor`, `themePreset`) — fresh installs
+  therefore see the defaults (computer language, Simple from
+  getInitialToolbarMode, Normal, #1F2937, Standard or "My file").
+- **Live:** each pick calls the same setter + storage key the Options menu
+  uses (`tcad_language`, `tcad_toolbar_mode`, `tcad_ui_scale`,
+  `tcad_bg_color`, `tcad_theme`); the wrappers are in the `<SetupScreen>`
+  props in tattingindex.tsx. Nothing new is read anywhere else.
+- **Start** keeps the picks and also stores the shown language (it may
+  have come from the computer and not been stored yet).
+- **Skip / ✕ / Escape** put back only the settings changed *in this
+  screen* (a `changed` set), not all five — a tatting-theme.json that loads
+  while the screen is open (it arrives async and selects "My file" on a
+  first start) must not be undone by Skip.
+- **Escape:** the component listens on `document` in the capture phase and
+  stops the event, so the app's Escape closer list doesn't also close the
+  splash; the closer list has a no-op `[showSetup, …]` entry first as a
+  second guard. (Session 62: the list now covers every dialog and menu —
+  see "Escape order (session 62)".)
+- **Choices:** background = `SETUP_BG_CHOICES` (default #1F2937 + the
+  `BG_COLORS` cycle, module level in tattingindex.tsx). Colour theme =
+  Standard / Pastel (colour-blind friendly), plus My file and Custom only
+  when they exist. Previews: tiny toolbar pictures, "Aa" sizes, a ring on
+  each background, five indicator dots per theme drawn on the current
+  background.
+- **Strings:** `setup*` keys (en/es/hu); reuses languagePickerLabel,
+  uiScaleNormal, optionsSizeLarge, themePresetStandard/File/Custom.
+
+### Large size → bigger dialogs, menus, toasts, pop-ups (session 60)
+
+- `uiScale === 'large'` toggles `tcad-ui-large` on **`<html>`** (effect in
+  tattingindex.tsx) — dialogs are rendered outside `.app-root`, so the
+  app-root `.ui-large` rules never reached them.
+- Every dialog box carries **`.tcad-dialog`**: the `Modal` content box
+  (Modal.tsx, so every Modal user and ArrayDialogShell), plus the
+  hand-built ones — splash card, update popup, Materials Manager, Recent
+  "load?" confirm, Convert-ghost confirm, Join tip, Tatting Order conflict,
+  Ghost Array Manager, Help, UI Reference Guide. **A new dialog not built on
+  Modal needs the class added by hand.**
+- `index.css`: `zoom` 1.12 when the window is ≥ 700×700, 1.2 when ≥ 900×860;
+  phones / short windows keep normal dialogs. `max-width` / `max-height` are
+  capped (`!important`) at 96vw / 92dvh divided by the zoom, so the scaled
+  box still fits — tall dialogs scroll inside as before.
+- Checked at 1600×900, 1366×768, 1280×720 (Large): every dialog on screen,
+  nothing spilling; Thread Properties scrolls; typing, scrolling and
+  sliders hit the right spot (Chromium's zoom keeps getBoundingClientRect
+  and clientX in the same space — the colour picker uses exactly that).
+- **Also scaled (same session, user: "UI scale is for people who can't see
+  well"):** the shared scale is the CSS variable **`--tcad-zoom`** on
+  `<html>` (1.12 / 1.2, unset = 1; read in JS with `getUiZoom()`,
+  utils/uiZoom.ts). `.tcad-zoom` = zoom by it:
+  - **Top menus (DropdownMenu.tsx, CRLF):** the outer fixed box keeps the
+    measured px position / scrolling; an inner `.tcad-zoom` wrapper holds the
+    items (`minWidth: width`, `maxWidth: max(width, 320)`). Flip-left test
+    uses `width × zoom`. Max height is now all the space below the button
+    (was 80vh). The 320 cap also fixes an older quirk: a flipped
+    (right-anchored) menu stretched to its longest line. At normal size every
+    menu measures exactly as before (widest: Arrange 287 px).
+  - Load toast (inner box), remove-image confirm (`.tcad-dialog`), the Path
+    preset panel on the canvas, the Notes drawer.
+  - Status bar: `.ui-large .info-bar` 14 px (was 12) — CSS, not zoom.
+- **Deliberately NOT zoomed:** the property bar and anything inside it
+  (Picot Tools / multi-select Scale pop-overs, round pickers in the bar and
+  in Tatting Order) — the `.ui-large` property-bar rules already enlarge
+  them; zoom would double it. Picot Tools at Large used to run off the
+  bottom of the screen: both pop-overs now have `maxHeight: calc(100dvh -
+  9rem)` + scroll. Native tooltips (`title=`) and the OS list of a `<select>`
+  can't be styled. Phones / short windows: zoom 1 (unchanged).
+
+### Picot Tools panel — wide layout + result preview (session 60)
+
+Mockup approved by the user (`picot-tools-mockup.png`). Single-element
+Picot Tools pop-over (GeneralElementPropertyBar.tsx):
+- **Layout:** header (title · current notation · ✕), Reverse + Clear in one
+  row, Add + Fill as two cards side by side (each with a one-line hint;
+  Symmetric first; Fill's count is on its button), Compact on one line with
+  a short "Group" button, Scale in two rows (`ScaleControls layout="wide"`:
+  exact | rounded presets on one line + "~" legend, then % box · → new
+  length · Apply), then a **Result** line.
+- **Size:** `.picot-wizard-pop` 460 px (Large 560 px; property-bar Large
+  rules already enlarge its text/controls — it is NOT zoomed), max
+  `100vw − 16px`; `.picot-wizard-grid` 2 columns, 1 under 640 px. A ref
+  callback slides it left when it would run off the right edge (phones,
+  narrow windows). The ≤ 768 px property-bar rules (sliders 40 px, number
+  boxes 44 px, tiny button text) are overridden inside the panel.
+- **Result preview:** `wizardTool` state (component level, reset when the
+  panel opens) is set by pointer-enter / focus / press on each tool (and by
+  the slider, presets, % box). `previewFor(tool)` computes the notation
+  WITHOUT committing, using the same helpers Apply uses — `transformSides`
+  (= applyToSides without the commit), `fillResult`, `scaleResult`
+  (`bChanged`: side B only sent when scaled, as before), reverse — so the
+  preview is exactly what Apply produces (checked: Add, Fill, Group,
+  Reverse, Scale ×2 — preview text == notation after Apply).
+- **Split rings (same session, user request):** they now get the wand
+  button too (`renderPicotTools()` is shared by the regular and split-ring
+  notation rows). They had never worked: `analyzeNotation` refused any
+  `sr:` notation ("out of scope v1"), only the panel's side handling
+  existed. Now:
+  - `analyzeNotation` accepts `sr:` — the panel hands over ONE side at a
+    time as "sr: <side>", which is a plain ds + picot run like any ring.
+  - **`splitRingSides(el)`** (picotTools.ts) splits a split ring into
+    sides **by count**: the element stores `[...A reversed, ...B]`
+    (computeElementAfterNotationEdit), so A = the first n picots, n = zero-
+    width tokens in A's notation. The old position test (`sb < splitPos`)
+    put a picot at the very START of side A (stored at sb === splitPos) on
+    side B. Used by the panel and the multi-select Scale.
+  - Tested: Add (Both / A / B), Clear, Fill, Group, Reverse, Scale ×2 —
+    preview == result; and a split ring whose side A starts with a JOINED
+    picot: Clear unjoined keeps it and the join stays on the same picot.
+  - The panel calls the app's `parseNotation(…, true)` (silent): without
+    `silent` it sets the app's error state during render (React warning).
+- **Multi-select Scale** (MultiSelectSummaryBar.tsx): same wide layout
+  (card, presets on one line, ✕), slides right if it would pass the left
+  edge. Split rings are now scaled on **both** sides (each analysed via
+  splitRingSides; both must be supported) — `updateNotationForMultiple`
+  targets take an optional `notationB`. They used to be skipped; with
+  `sr:` accepted, analysing only `el.notation` would have scaled side A
+  alone. Tested ring + joined split ring ×2: both sides doubled, join kept.
+  Presets with no single resulting length no longer show a bare "ds".
+- `picotWizardUnsupported` no longer lists split rings / ss / beads (ss runs
+  and bead tokens were already handled; rds is what's refused). Session 62:
+  rds / bds are handled too, and the message names a bead sequence
+  (`bc:YZ`) instead — see "Picot Tools — every stitch type (session 62)".
+- Section components (AddPicotsSection / FillPicotsSection /
+  CompactPicotsSection, CRLF) are card-shaped now with `hintText` /
+  `onActivate` props; they're used only here (tattingindex.tsx imports them
+  but doesn't render them). Shared classes in ScaleControls.tsx:
+  `WIZARD_CARD_CLASS`, `WIZARD_SECTION_TITLE_CLASS`, `WIZARD_HINT_CLASS`,
+  `WIZARD_APPLY_CLASS`, `WIZARD_SHORT_BUTTON_CLASS`. The multi-select Scale
+  pop-over keeps the old stacked ScaleControls (default layout).
+- Strings: `picotWizardSideA/B`, `picotWizardAddHint`, `picotWizardFillHint`,
+  `picotWizardFillApplyCount`, `picotWizardCompactHint/Short/Nothing`,
+  `picotWizardScaleCustomShort`, `scaleRoundedLegend`,
+  `picotWizardResult/ResultHint/ResultSame` (en/es/hu).
+
+### Picot Tools — Expand repeats (session 60)
+
+- The "Repeats" card (CompactPicotsSection.tsx, CRLF) has two buttons:
+  **Group** (as before) and **Expand**, its opposite:
+  `r: 3*(3ds-p)-3ds` → `r: 3ds-p-3ds-p-3ds-p-3ds`.
+- `expandRepeatGroups(notation)` (picotTools.ts) uses the parser's own
+  `expandTokens`, so every spelling the parser accepts (`3x(…)`, `3*(…)`,
+  `(…)x3`) expands, and the result is the exact token list the app already
+  works from. Ds runs that end up side by side are added together
+  (`2*(3ds-p-3ds)` → `3ds-p-6ds-p-3ds`) — same stitches. Returns null with no
+  repeat group (`hasRepeatGroups`; bare grouping parens like `2ds-(p-2ds)`
+  don't count). Never moves a picot → join-safe; committed like Group
+  (`preservesExistingPicots: true`). Split rings: per side (Side A / Both / B).
+- Result preview: tool `'expand'` (the Expand button's hover/focus).
+- Tested: ring and split ring (each side + both), Expand → Group round trip,
+  joined picot kept, undo. Strings: `picotWizardExpandShort`,
+  `picotWizardExpandNothing`; `picotWizardCompactSection` is now "Repeats",
+  the hint mentions both buttons (en/es/hu).
+
+### Split-ring A / B boxes refresh (session 60 fix)
+
+`SplitRingNotationInput` is uncontrolled (`defaultValue`). Its key was only
+the element id + side, so after a change from elsewhere (any Picot Tools
+action on a split ring, Undo/Redo) the box kept showing the old text, while
+the element itself was right. The key now also includes that side's
+notation (GeneralElementPropertyBar.tsx), so the box remounts with the new
+text. Safe: the notation only changes on commit, when the box has lost
+focus anyway.
+
+### Group includes joined picots (session 60, user's decision)
+
+`foldRepeats` (picotTools.ts) no longer treats a joined picot as a break —
+joins live in `picotConnections` / `isJoint`, not in the notation text, so
+`3ds-p-3ds-p` groups to `2*(3ds-p)` whether or not those picots are joined,
+and every picot keeps its position (joins and folds kept, committed with
+`preservesExistingPicots: true`). This also applies to `autoCompact` after
+Clear / Add / Fill / Scale. Tested on the user's file (ring with 4 of 5
+picots joined, two chains with one each, one fold).
+
+### Pattern file extension `.tatcad` (session 60)
+
+Pattern files are JSON with the extension `.tatcad` (`PATTERN_EXT`,
+tauri/file.ts), Android included since 1.4 (see the file-type section).
+Save dialog: `.tatcad` only; Open: `.tatcad` + `.json` (old files); Android
+open: no filter. Saving to an
+existing path keeps its extension. Name stripping: `stripPatternExt`
+(Recent, window/project name) and patternOutput.ts (inline regex — domain
+doesn't import tauri/). `thumbPathFor`: either extension → `_thumb.png`.
+Sample patterns, themes, translations stay `.json`. File-type icon and
+double-click opening are not done yet (handoff → Still open).
+
+### `.tatcad` file type — icon + open from the system (session 60)
+
+**src-tauri** (delivered as `tatcad-filetype.zip`; not in src):
+- `tauri.conf.json` → `bundle.fileAssociations`: ext `tatcad`, name
+  **"TattingCAD Pattern"** (= the Windows file-type key — `windows/hooks.nsh`
+  uses the same string; keep them equal), mimeType `application/x-tatcad`,
+  macOS `exportedType` `com.savarosa.tattingcad.pattern` conforming to
+  `public.json`. `resources` + `icons/tatcad-document.ico` (installed at
+  `<app>/icons/`).
+- Windows: `bundle.windows.nsis.installerHooks` = `windows/hooks.nsh` —
+  NSIS_HOOK_POSTINSTALL sets `SHCTX\Software\Classes\TattingCAD Pattern\
+  DefaultIcon` to the bundled .ico (only if it exists) + SHChangeNotify.
+  Tauri's own association uses `TattingCAD.exe,0`; its uninstaller deletes
+  the whole key. MSI template: no icon for the type.
+- Linux .deb: `desktopTemplate` `linux/main.desktop` (Tauri's built-in one
+  has `Exec=tattingcad` with no `%F`, so the file never reached the app),
+  `files` → MIME XML + mimetypes icon, post-install/remove scripts refresh
+  the databases.
+- **Android result (tested on the user's phone, 1.4):** the manifest has
+  both filters, saving `.tatcad` works, File → Open picks it — but Samsung My
+  Files neither offers TattingCAD on tap nor in Share for a `.tatcad`
+  (old `.json` files weren't offered either). A catch-all `*/*` "Open with"
+  filter would fix it but puts TattingCAD in Open with for every file — the
+  user declined. Not tried: other file managers.
+- Android (1.4): `tauri.android.conf.json` REPLACES the list (arrays are
+  replaced by the merge) with two entries: `application/x-tatcad` (all
+  actions) and `application/octet-stream` with `androidIntentActionFilters:
+  ["view"]`. Why both: tauri-build writes `<data android:mimeType>` +
+  `<data android:pathPattern=".*\\.tatcad">`, but Android ignores
+  pathPattern without a scheme, so only the MIME type matches — and file
+  managers label an unknown `.tatcad` octet-stream. Manifest updated at every
+  build (`update_android_manifest("tauri-file-associations", …)`).
+- Android opened files: tao handles VIEW / SEND / SEND_MULTIPLE in onCreate
+  and onNewIntent → `RunEvent::Opened`; lib.rs passes `content://` URLs on as
+  strings. The fs plugin reads `content://` through ContentResolver without a
+  scope check (mobile `resolve_file`). The page opens them as an untitled
+  copy (`openHandedOverFile`): read-only grant, not in Recent; name via
+  `patternNameFromUri`. (Session 61: File → Open / Save now use
+  tauri-plugin-android-fs with kept access — "Android files: kept access".
+  Files handed over by other apps still get only a temporary grant.)
+- Android save: filter value `application/octet-stream` (a value containing
+  "/" is passed to Android as a MIME type by the dialog plugin), so
+  ACTION_CREATE_DOCUMENT keeps `Name.tatcad`; open: no filter.
+- `src/lib.rs`: `PendingFiles` state; start-up args (desktop) and macOS
+  `RunEvent::Opened` → `hand_over_files` — kept until the page calls
+  `take_pending_files` once, after that emitted as `open-files`.
+  `tauri-plugin-single-instance` (first plugin; desktop only): a 2nd launch
+  focuses the window and hands its file over.
+**Frontend** (tattingindex.tsx, next to openSample): listen `open-files`
+first, then `invoke('take_pending_files')` once (`systemFilesTakenRef` —
+dev double-mount); opens the first path via `loadFromPath`, closing the
+splash / gallery / recent dialog; asks first with unsaved changes.
+Tested: real Linux .deb (install, launcher open, 2nd file while open).
+
+### Dropdowns on Linux (session 60 fix)
+
+WebKitGTK (Linux desktop app) draws native `<select>` with the system's
+light style, ignoring Tailwind background classes but keeping `text-white`.
+`index.css`: `select { color-scheme: dark }` (dark native control) and
+`select option` dark colours. Applies to all dropdowns. Checked in a real
+Linux build.
+
+### Ruler — several points (session 60)
+
+- State: `rulerPoints` (each `{x, y, t, sx, sy}` — world position, click
+  time, screen position), `rulerMousePos`, and `rulerDone`
+  (useCanvasInteraction.ts, CRLF).
+- Clicks (useInputHandlers.ts, ruler branch): add a point; a click within
+  10 screen px of the last point never adds one — within 450 ms (and ≥ 2
+  points) it **finishes** (`rulerDone`), otherwise it restarts the timer.
+  Done here, not in `onDoubleClick`, so a double-tap works the same (taps
+  arrive via onTouchStart). The tap's compatibility mouse event is ignored
+  (`nativeEvent.sourceCapabilities.firesTouchEvents`).
+- When done, the next click starts a new ruler. Escape and switching tools
+  clear it (and reset `rulerDone`).
+- Drawing (tattingindex.tsx overlay): placed segments solid, the live one to
+  the pointer dashed; small corner dots; the label shows the total along
+  the chain (+ "n segments"); one segment → label beside its middle, more →
+  just past the end point along the last segment. Status bar uses the same
+  chain.
+- mm = world units × (preset `ds20Core` / 20) / `dsWidth`.
+
+### Fold thread length (session 60)
+
+PicotJoinModeBar row 2 (fold selected): quiet grey "Thread ≈ X mm · Y″" at
+the right, before Copy / Paste; tooltip = outer + inside = total and the
+preset name (`presetDisplayName`). Props `mmPerUnit`, `presetName` from
+tattingindex.tsx — same conversion as the ruler. outer/innerLength are the
+arc lengths the fold is drawn with (buildFixedFeetArcD targets them), so
+this is the drawn thread length.
+
+### Opened files centred for the screen (session 60)
+
+useProjectFile `applyProjectData` calls `p.onFileApplied?.()` (files and
+samples only — not autosave resume). tattingindex.tsx sets
+`settleViewOnOpenRef`; an effect on `[elements]` then keeps the saved zoom
+if the bounding box fits the canvas (25 px padding) and centres it, else
+`fitAllElements()`. Reason: a saved camera is a pixel offset for the saving
+window's size.
+
+### Picot ids are not unique across elements
+
+Copy / paste / duplicate keep picot ids, so the same picot id appears in
+several elements. Anything that identifies a picot must use **element id +
+picot id** (selection, connections, highlights). Session 60 fixed renderBE's
+selected-diamond test, which used the picot id alone (all copies lit up).
+
+### Beads on joins (session 60 fix)
+
+- `getConnectionBeads(conn)` (tattingindex.tsx; replaced getConnectionBeadSeq)
+  → `[{size, color, shape}]` for a join that includes a bjp/bcjp (beadSeq,
+  size-class colours) or a **BE with beIsJoint** (picotBeads via
+  `resolveLibraryBeads`, shared with renderBE). `renderBeadsOnJoin`: 2 picots
+  → a row along the join line centred on its middle; 3+ → cluster at the
+  centroid. Used by the schematic and realistic join drawing.
+- `renderBE(…, beadsOnJoin)`: a joined BE with beIsJoint draws only the core
+  bead + diamond (no picot arm / beads). renderOnePicot passes it.
+- `bjp` branch in renderOnePicot (before the generic beadSeq one): joined →
+  nothing on the ring (dot in Join mode); unjoined → beaded picot + a join dot
+  in Join mode.
+- Join-mode selection (useInputHandlers.ts mouse-up): bjp / bcjp are always
+  selectable, like a BE with beIsJoint. **Why:** `isJoint` means "currently
+  joined" — loading a file and cutting a join clear it — so it can't also be
+  the "may be joined" flag for bead picots.
+
+### Exit confirmation — one listener (session 60 fix)
+
+The `close-requested` listener (tattingindex.tsx) is registered ONCE (`[]`
+deps) and reads `t` through `closeTRef`. Tauri's `listen()` resolves
+asynchronously, so cleanup sets `disposed` and a listener that arrives late
+is removed in `.then()`. A second close click while the dialog is open is
+ignored (`asking`). **Rule for any `listen()`:** never re-register on
+changing values (use a ref), and handle the late `.then()` after cleanup.
+Before: deps `[t]` + no late cleanup → a stale listener per `t` change
+(language file load) and per StrictMode mount → 2–3 dialogs, one with raw
+keys.
+
+### Pasting keeps folds (session 60 fix)
+
+`pasteFromClipboard` (useEditorActions.ts) now spreads the whole connection
+(`{ ...rest, id, picots }`, dropping only `isInheritedJoin`), like
+`duplicateInPlace`. It used to rebuild `{ id, picots }`, which dropped
+`connectionType: 'fold'` and the fold properties. **Rule:** any code that
+copies a connection must spread it, never rebuild it from id + picots.
+
+### Security: colours from pattern files (session 60, after 1.4.0)
+
+Pattern files are shared, so their contents are untrusted. The realistic
+view is built as SVG **text** (`render/realisticRenderer.ts`) and put on the
+page with `dangerouslySetInnerHTML` (tattingindex.tsx, `bakedRealisticSVG`).
+A colour like `red"/><image href=x onerror="…">` used to become live markup
+and run code — and with `withGlobalTauri` + the fs plugin's `"**"` scope,
+that code could read and write any file. Reported via Reddit (1.4.0 thread).
+Fixed in two layers, `utils/safeColor.ts`:
+1. `safeColor(v)` at each place a colour goes into markup text (the three
+   `fill="${…}"` in realisticRenderer.ts). Only hex, `rgb()/rgba()/hsl()/
+   hsla()` with numbers, or a plain colour word pass; else `#888888`.
+2. `sanitizeProjectColors(data)` when a pattern comes in — `applyProjectData`
+   (files, samples, recent, handed-over files), `loadFromAutosave`, and
+   pasting from the system clipboard (`pasteFromClipboard`). Replaces
+   invalid `bgColor`, element `color`/`colorB`, material colours and
+   gradient stops, bead library, polar grid colours, custom colours; a
+   console warning gives the count.
+**Rule:** never put file data into markup text without escaping it; anything
+new built as text for `dangerouslySetInnerHTML` must pass colours through
+`safeColor` (and other strings through an escape). React-rendered attributes
+are already escaped. `svgExport.ts` uses XMLSerializer (safe); the
+calculators' `new Function` only allows digits and `+-*/().` (safe).
+**Second wall — Content Security Policy (session 60, `tauri.conf.json` →
+`app.security`).** Even if some markup slips through, the page refuses to
+run scripts that aren't the app's own files:
+```
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:;
+connect-src 'self' ipc: http://ipc.localhost; frame-src 'self';
+object-src 'none'; base-uri 'self'; form-action 'none'
+```
+- `script-src 'self'`: no inline scripts, no `onerror=`/`onclick=` attributes,
+  no `eval` / `new Function` (Tauri adds hashes for the app's own inline
+  scripts at build time). The two calculators now use `utils/calcExpr.ts`
+  (`evalArithmetic`, a small parser: numbers, `+ - * /`, brackets) instead
+  of `new Function`. **Rule:** never add `eval`/`new Function`/inline event
+  attributes — they won't run.
+- `style-src 'unsafe-inline'` + `"dangerousDisableAssetCspModification":
+  ["style-src"]`: React `style={…}` and the SVG `style="…"` need inline
+  styles; without the second setting Tauri adds a nonce, which makes
+  browsers ignore `'unsafe-inline'`. Styles can't run code.
+- `img-src`: the app's files, thumbnails (`asset:` / `http://asset.localhost`
+  via convertFileSrc), the reference image (`data:`), blobs.
+- `connect-src`: the app's own files (fetch of translations, samples, help)
+  and Tauri's IPC (`ipc:` on macOS/Linux, `http://ipc.localhost` on Windows/
+  Android). **No outside web addresses** — anything that must fetch from the
+  internet needs its address added here. Opening a link in the browser goes
+  through the opener plugin, not fetch, so it's unaffected.
+- `frame-src 'self'`: the Help / UI guide pages (iframes of the app's own
+  files). Their inline `<script>` blocks are hashed by Tauri; inline
+  `onclick=` / `oninput=` in them are blocked. Print, Search, Next and ✕
+  used them (broke in the user's test) → `scripts/fix-help-pages.mjs` adds a
+  block to each page's script that removes those attributes and connects
+  the controls with addEventListener (all languages; safe to rerun). The
+  tabs connect themselves already. **Rule for help pages:** no `on…=`
+  attributes — connect controls in the page's script.
+- `devCsp: null`: the dev server (`npm run tauri dev`) keeps working as before.
+- `withGlobalTauri: false`: no `window.__TAURI__`; the app imports
+  `@tauri-apps/api` instead (the one check that used it now looks for
+  `__TAURI_INTERNALS__`).
+Tested on a real Linux build: with the colour checks switched off on
+purpose, a crafted file's markup got in but its script did NOT run; the same
+build without the policy did run it (page turned red). Normal use: files,
+realistic view, user languages, images all fine.
+**Numbers (session 63):** the same two layers exist for numbers — see
+"Security: numbers from pattern files (session 63)".
+**Third wall — the deny list (session 61):** see "Security: deny list —
+folders the app may never touch". A narrower *allow* list (Documents + picked
+files only) was considered and rejected by the user: patterns live all over
+the disk, and thumbnails / double-click / Recent would need extra plumbing.
+
+### Security: numbers from pattern files (session 63, review #1)
+
+A "number" in a pattern file can be text. In markup built as text,
+`cx + radius` with a text `cx` JOINS the text in: a circle ring's
+`center.x` (circle, JK, ghost copies of them) became live markup in the
+realistic view. The CSP stopped scripts, but a fake link / fake dialog could
+be drawn. Fixed in two layers, `utils/safeNumber.ts`, like the colours:
+1. **Output:** `markupNum(v)` (imported as `n` in realisticRenderer.ts) at
+   the two places that write coordinates into the SVG text without
+   `.toFixed` — `renderWedgeRingShapes` and `renderWedgePathShapes`. A value
+   of the number type passes exactly as it is (output byte-identical for
+   sound patterns); anything else becomes 0. The other writers use
+   `.toFixed`, which only exists on numbers.
+2. **Input:** `sanitizeProjectNumbers(data)` on every way in, right after
+   `sanitizeProjectColors`: `applyProjectData` (files, samples, Recent,
+   handed-over files), `loadFromAutosave` (Resume) and the system-clipboard
+   paste (`pasteFromClipboard`; handles `connections` as well as
+   `picotConnections`).
+   - **Element left out** (user's decision: leave it out, open the rest)
+     when its geometry isn't real, finite numbers: `center.x/y`; each path's
+     `x`, `y`, `endX`, `endY` and its control points (cubic: `control1/2`;
+     anything else: `controlX/Y`); `stitchCount`, `splitPosition`,
+     `picots[].stitchesBefore` when present; or it isn't an object. Its
+     joins go with it, and picots on their far side lose `isJoint` unless
+     another join still holds them.
+   - **Reset to default:** `rotation` 0, `lineWidth` 2, `labelOffset` 8,
+     `picotSideMultiplier` 1, `endAllowance` 0, `squeeze` (0, split ring
+     0.25), `squeezeCA/CB` 0.75; a bad `dsWidth` is removed (loaders use 10).
+   - A sound pattern is not changed at all.
+- **Message:** `loadWarnDamagedElements` ("{n} damaged element(s) were left
+  out.", en/es/hu) — red toast instead of "Load completed" on file open; on
+  Resume and paste through `reportDamagedElements` (tattingindex.tsx), which
+  reads `t` through `tLiveRef`. **Why a ref:** `pasteFromClipboard` is
+  created once (`[]` deps), so `p.t` inside it is the FIRST render's `t` —
+  raw keys / wrong language (seen in the test). Passed to useEditorActions
+  as `onDamagedElements`.
+- **Rule:** a new number field that feeds geometry goes into
+  `sanitizeProjectNumbers`; a new place that writes numbers into markup text
+  uses `.toFixed` or `markupNum`.
+- Tested: fuzz — markup text in every field of every element kind, 906
+  bakes: old code 18 through, each layer alone 0, both 0 (and no NaN, no
+  throw); old vs new bake byte-identical on 600 generated patterns and the 4
+  shipped samples, which the check leaves untouched; browser (Playwright,
+  Vite dev server): crafted pattern via Resume, sample (= file open) and
+  paste (mocked Tauri clipboard) → realistic view: old code draws the link,
+  new code doesn't, the other elements are there, the toast shows.
+
+### SVG export: rounds as layers (session 63, user request)
+
+When the pattern's elements sit in **two or more rounds**, the exported SVG
+(schematic and realistic) gets one Inkscape **sub-layer per round** inside
+Design, Notation and Order Numbers:
+```
+Joins            (one <g id="joins"> holding every join)
+Design         ▸ Round 1 · Round 2 · …
+Notation       ▸ Round 1 · Round 2 · …
+Order Numbers  ▸ Round 1 · Round 2 · …
+Group Markers
+```
+- Sub-layers are named like the round (`rounds[i].name`, else "Round n"),
+  ids `layer-design-round-1` etc., in round order (first round at the
+  bottom); a round with nothing in a layer gets no sub-layer there.
+- **User's decisions:** both views; an element in no round goes with the
+  FIRST round; Notation and Order Numbers are split too; all joins sit in
+  one group inside the Joins layer (in every export, rounds or not).
+- **One round or none → the file is laid out exactly as before** (checked:
+  same shapes in the same order, 0 differing pixels), apart from the joins
+  group.
+- **How a node's round is known** (`render/svgExport.ts`,
+  `roundIndexOfNode`): the canvas tags each element's group with
+  `data-round` = its round id (`''` for none) — both schematic element
+  groups, the realistic bead overlay (`realistic-be-…`) and a fold (by the
+  element its first picot is on); the baked realistic view wraps each
+  element's pieces in `<g data-el="i">` (i = its place in `elements`; a
+  number, so nothing from the file enters the markup). Notation / order
+  nodes read the tag of the element group they sit in (`closest`) BEFORE
+  they are moved. The tags are removed from the exported file.
+- Design: tagged groups move into their round's sub-layer in their old
+  order; the sub-layers take the place of the first tagged group, so what
+  was drawn under the elements stays under. Paint order therefore changes
+  only where elements of different rounds overlap (later round on top).
+  Empty groups (hidden labels, elements with no beads) are dropped when
+  splitting.
+- **Rule:** anything new drawn per element on the canvas that should export
+  with its round needs `data-round` on its group (or to sit inside one).
+- Tested (Playwright, exports captured through a mocked Tauri save): six
+  patterns × two views, old vs new — same set of shapes every time, no tag
+  left in the file; patterns with rounds: each layer's sub-layers hold the
+  right counts, order badges land in their round both when drawn on the
+  canvas (Tatting Order mode) and when added by the export. **Not opened in
+  Inkscape here** — user to check.
+
+### Browser shortcuts blocked in the desktop app (session 60)
+
+WebView2 (Tauri on Windows) keeps some browser shortcuts on. A capture-phase
+`keydown` listener in tattingindex.tsx (only when `__TAURI_INTERNALS__` is
+present) calls `preventDefault` for: Ctrl+F, F3, Ctrl+G (Find / find next),
+Ctrl+R, Ctrl+Shift+R, F5 (reload — would lose undo history and anything not
+autosaved), Ctrl+P (print), Ctrl + `+` / `=` / `-` / `0` and the numpad
++ / − / 0 (interface zoom). Also while typing in a box. No
+`stopPropagation`, so the app's own shortcuts still run (Ctrl+G is still
+Group). In a normal browser nothing is blocked. Ctrl+wheel zoom was already
+blocked by the `preventBrowserZoom` effect next to it. Cmd counts as Ctrl
+(macOS).
+
+### Sample patterns (session 60)
+
+- **Files:** `public/Patterns/` — the pattern .json files, their thumbnails,
+  and `samples.json`: `{ "samples": [ { file, thumb?, title, description? } ] }`
+  (also accepted: a bare array). `title` / `description` are plain text or
+  `{ "en": …, "es": …, "hu": … }` — `pickText` uses the current language,
+  else English, else the first. Shown in list order. Folder name is
+  case-sensitive on Android/Linux: `Patterns`.
+- **Loading the list:** `loadSampleList()` once at start (useEffect in
+  tattingindex.tsx, `samples` state). Missing / broken list → `[]` → every
+  entry point is hidden.
+- **Entry points:** splash (full-width "Sample Patterns" under the 2×2
+  grid), File → Sample patterns… (after Browse), Help → Sample patterns…
+  (after UI Reference Guide), and the empty-pattern hint
+  (`GettingStartedHint` `onSamples` → a second sentence `hintSamples` with a
+  `{samples}` button).
+- **Opening (`openSample` in tattingindex.tsx):** asks first only when there
+  are unsaved changes (same confirm as Open). Fetches the file and calls
+  `applyProjectData(data, null, { name })` — **filePath null = untitled
+  copy**: no `currentFilePath` (Save asks where, the shipped file can't be
+  overwritten), not added to Recent, no thumbnail written, project name =
+  the sample title. Opened untouched → not "unsaved" (rev 0 = lastSavedRev
+  0), so no close warning until it's edited. Everything else (validation,
+  migration, duplicate check, schematic mode, the file's own background) is
+  the normal open path.
+- **Errors:** missing file / not JSON → plain `samplesLoadError` with the
+  sample's title; details to the console (a web server may answer a missing
+  file with its index page, which made the raw error unreadable).
+- **Gallery:** Modal z 10010/10011 (same as Recent Projects); Escape closes
+  it (closer list). Thumbnails shown 3:2 with `object-contain` (the app's
+  own thumbnails are 300×200).
+
+### Ring kinds: floating / mock ring (session 61)
+
+The ring Shape group is one row of five, one lit at a time:
+**Teardrop · Circle · FR · MR · JK** (ShapeAndSqueezeControls.tsx; icons
+`IconShapeFloatingRing` / `IconShapeMockRing` in icons.tsx — the user's own
+drawings, coordinates kept as drawn under a `translate`).
+- `fr:` floating ring, `mr:` mock ring: **plain rings everywhere** — the
+  parser maps both to `r` (`NOTATION_TYPES` = `r|c|sc|sr|jk|fr|mr`,
+  parser.ts); Picot Tools' `PREFIX_RE` knows both. Always teardrop-shaped
+  (user: an FR / MR can't be a circle).
+- One action, `setRingKind(kind)` in tattingindex.tsx (replaced
+  `toggleShape`; passed SingleSelectPropertyBar → GeneralElementPropertyBar
+  → ShapeAndSqueezeControls): Teardrop / Circle → `r:` + that shape; FR →
+  `fr:` + teardrop; MR → `mr:` + teardrop. Rewrites only the prefix; rebuilds
+  the path only if the shape changes (length via `elementPathLength`, so a
+  circle loses its end allowance). Ghost mothers regenerate. Undo through
+  the auto-history. From JK the stitches stay (`jk: 16ss` → `fr: 16ss`).
+- Lit button = prefix first (`jk` / `fr` / `mr`), else shapeStyle.
+- Pattern text (patternOutput.ts): `NOTATION_PREFIX_RE` (all prefixes incl.
+  jk/fr/mr) strips the prefix for hints and stitch counts — **fixed on the
+  way:** jk: was never stripped, so a JK's first stitches were not counted;
+  `ringTypeLabel` → FR / MR / SR / R in the unnumbered list.
+
+### Tablet property bar — Row 2 break below 1440 px (session 61)
+
+GeneralElementPropertyBar's forced Row-2 break (`<div className="w-full
+prop-row-break" />`) is `display: none` below 1440 px (`.top-row-properties
+.prop-row-break`, CSS in tattingindex.tsx). Why: at those widths Row 1
+wraps; its last controls (Reset + the tension stepper) then sat alone on a
+middle line (Samsung tablet 1280 px / Large → 3 lines). Without the break
+the controls flow on. Measured with a ring selected, 390–1600 px, Normal +
+Large: never more lines, 1280 L 3→2, 1024–1100 N 3→2, phone 5→4; ≥ 1440
+unchanged.
+
+### Rotation handles on R, Shift = 45° move lock (session 61)
+
+Shift used to do both (handles + X/Y lock), so grabbing near a corner while
+Shift was down rotated instead of moving.
+- **Hold R** (`isRotateKeyHeld`, useCanvasInteraction.ts) shows the rotation
+  handles. Plain R only (Shift+R = add ring, Ctrl+R blocked), not while
+  typing (`isTypingTarget`), not in Tatting Order mode (R = repeat there).
+  Toolbar button unchanged (touch). Reset on blur.
+- **Move lock** (useInputHandlers.ts, drag branch): Shift held → 45° steps;
+  Ortho button alone → X / Y; Shift wins while held. Computed from the
+  WHOLE drag: snapped angle of (pointer − `dragOriginRef`), projection onto
+  it, delta = target − `dragOffsetRef.dx/dy` already applied — so changing
+  direction mid-drag follows cleanly (the old per-step zeroing kept the
+  movement along the first axis). cos/sin rounded to 1e-9 (exact 0 / ±1).
+- `dragOffsetRef.current.lockAngle` → a faint orange dashed guide line
+  through the grab point while locked (tattingindex.tsx, before the ruler
+  overlay).
+- Shift must be pressed AFTER the drag starts (Shift+click = add to
+  selection, unchanged). Snap on release can still nudge off the line
+  (unchanged).
+- Texts: `toolOrthoLock`, `toolRotationHandlesShow/Hide` (en/es/hu); help +
+  UI guide pages updated (R (hold); Shift = 45° steps).
+
+### Polar-grid list: visible grids only, multi-select too (session 61 fix)
+
+The rotation-centre list in MultiSelectSummaryBar listed hidden grids (the
+single-element bar already filtered). Now `polarGrids =
+allPolarGrids.filter(g => g.visible)` there as well.
+
+### Join lines: solid, always drawn, own SVG layer (session 61)
+
+- Schematic join lines are solid (was `5,5` dashes), same colour
+  (`theme.connectionLine`), width 3, opacity 0.7, flat ends (round ends
+  overlapped at the centre → a brighter dot). Joined beads sit on them.
+- **Always drawn** — they were inside `showEditingArtifacts && …`
+  (View → Hide Editing Artifacts); the user: a join is pattern, not a
+  helper. The switch still hides Join-mode markers, snap guides and a
+  fold's thin dashed anchor guide.
+- Each join's `<g>` (schematic and realistic, NOT folds) has
+  `data-layer="joins"` → **Joins** layer in the SVG export, under Design.
+  Folds stay in Design (user: a fold is a picot).
+
+### Save errors are shown (session 61)
+
+`performSave` / `saveProject` (useProjectFile.ts) used to only
+`console.error` a failed write — a refused folder (deny list), full disk or
+read-only stick looked saved. Now `reportSaveError` → red message
+`saveErrFailed`. The pattern stays unsaved (`setLastSavedRev` runs only
+after success).
+
+### Autosave on leaving + Resume back to its file (session 61)
+
+- Autosave ran only every 3 min; on Android the app is usually ended by
+  swiping it away → short sessions left none ("no autosave" on the splash).
+  Now also on `visibilitychange` → hidden and `pagehide` (same effect,
+  tattingindex.tsx).
+- The payload adds `_resumeFilePath` (currentFilePathRef) and
+  `_resumeUnsaved` (hasUnsavedChangesRef). `loadFromAutosave` reconnects:
+  `setCurrentFilePath(path)`; `setLastSavedRev(path && !unsaved ? 0 : -1)`.
+  So Save after Resume writes to that file; a moved / deleted file gives
+  the save-error message → Save As.
+- Splash label: the FILE's name when there is one (`fileDisplayName`) — the
+  project-name field often still says "Untitled Pattern" after a save, which
+  looked like a lost file.
+- Test gotcha: reloading a page fires `pagehide` → the autosave is
+  rewritten from the app's state (hand-edited localStorage is overwritten).
+
+### Android files: kept access, Recent that survives a restart (session 61)
+
+Tauri's dialog plugin opens with `ACTION_GET_CONTENT` (temporary grant, a
+TODO in its source) and never persists Save's `CREATE_DOCUMENT` grant →
+after a restart every Recent entry was unreadable.
+- **tauri-plugin-android-fs 30.2.0** (crate `=30.2.0`, `.plugin(
+  tauri_plugin_android_fs::init())` in lib.rs; npm
+  `tauri-plugin-android-fs-api` 30.2.0 exact — must match). Compiles on
+  desktop as a no-op. Permissions: `capabilities/android-files.json`,
+  `platforms: ["android"]`, 7 entries (open/save picker, persist / list /
+  release persisted, read-text, write-text).
+- tauri/file.ts, Android only (UA check), module loaded by dynamic import:
+  `showOpenDialog` → `showOpenFilePicker({ needWritePermission: true })`,
+  `showSaveDialog` → `showSaveFilePicker(name, 'application/octet-stream')`;
+  both → `keepAccess` (`persistPickerUriPermission`). Reads / writes of
+  content:// → android-fs (`readTextAnywhere` / `writeTextAnywhere`; falls
+  back to plugin-fs); its write truncates first (a shorter save can't leave
+  old bytes).
+- `syncKeptAccess` (after addToRecents and on getRecents): hands back kept
+  access for addresses no longer in Recent (Android caps the number);
+  `keptThisRun` protects ones kept in this run.
+- `checkFileExists` on content:// = try to read (the fs `exists` doesn't
+  understand content://; it said "File missing" for every Android entry).
+- **Thumbnails on Android** = a PNG data URL stored in the Recent entry
+  (`thumbPath`), not a file (a sibling `_thumb.png` can't be created at a
+  content:// address). `thumbSrcFor` passes data URLs through; on a full
+  localStorage the list drops thumbnails, keeps entries. **Guard (all
+  platforms):** never write a thumbnail whose path equals the pattern's
+  (a path without .tatcad / .json used to give that).
+- **Names:** `fileBaseName` / `fileDisplayName` decode content:// (`raw%3A…
+  %2FSnow.tatcad` → "Snow.tatcad"); an address with no name (`msf%3A1234`)
+  → the pattern's own name. Used by Recent, saveToPath, applyProjectData,
+  the window title.
+- Files handed over by other apps (Open with / Share) keep a temporary
+  grant only — opened as an untitled copy, not in Recent (unchanged).
+- Tested with a simulated Android shell in the browser (Save → restart →
+  Recent → Load; old access handed back). First real test: the user's phone.
+
+### Security: deny list — folders the app may never touch (session 61)
+
+Third wall, behind safeColor and the CSP. `default.json` still allows `"**"`;
+`capabilities/deny-sensitive.json` adds a **global `fs:scope` deny list**
+(53 paths), and `tauri.conf.json` → `assetProtocol.scope` is now
+`{ allow: ["**"], deny: [same list] }` (thumbnail loader). Deny always wins.
+- Covers: `.ssh`, `.gnupg`; Windows dirs, Program Files, both Startup
+  folders, Credentials / Protect, PowerShell profiles, browser profiles,
+  `EBWebView`; macOS LaunchAgents, Keychains, Cookies, WebKit, Safari,
+  browsers, `/System` `/Library` `/Applications` `/private/etc`; Linux shell
+  rc files, autostart, systemd user units, `.local/share/applications`,
+  browsers, `/etc` `/usr` `/bin` `/sbin` `/lib` `/boot`; Android
+  `$APPDATA/app_webview|shared_prefs|databases|no_backup|code_cache`,
+  `/system`, `/vendor`.
+- Facts checked in Tauri's source (crates/tauri/src/scope/fs.rs,
+  plugins-workspace fs commands.rs):
+  - a path variable a system doesn't have is **skipped** — one list is
+    safe on every OS;
+  - each pattern is stored as written AND canonical (`\\?\C:\…`);
+  - matching is case-sensitive, but plugin-fs **≥ 2.7.0** resolves the real
+    path of the nearest existing parent first (`resolve_real_path`) — so
+    `c:\users\…\startup\x` can't dodge a deny entry. Keep plugin-fs ≥ 2.7.0;
+  - on macOS / Linux `require_literal_leading_dot` is on → `"**"` already
+    skips hidden folders (`.ssh`, `.config`); on Windows it doesn't;
+  - Android: `$APPDATA` = `$DATA` = `$LOCALDATA` = `$CONFIG` = the app's
+    private folder `/data/user/0/com.savarosa.tattingcad`; the web view's
+    data is in `app_webview` there.
+- The app never reads its install folder (no resource reads via fs), so
+  Program Files / `/usr` / `/Applications` can be denied.
+- Tested by the user (Windows): Save As into `%APPDATA%\…\Startup` → refused
+  (no file). Program Files is refused by Windows itself first ("You don't
+  have permission…").
+- **Rule:** adding a folder → add it to BOTH lists. A narrower *allow* list
+  was rejected (see the CSP section).
+
+### Help pages: no Print in the Android app (session 61)
+
+Android's web view ignores `window.print()`. Both help pages' script has a
+block "ANDROID APP: NO PRINT" that hides the 🖨 button when the UA is
+Android AND `__TAURI_INTERNALS__` exists (own window or parent) — a phone
+browser keeps it. Not part of fix-help-pages.mjs: copy the block into new
+translated help pages by hand. (Help still says patterns save as `.json` —
+user to update the line.)
+
+### Code review and fix tracker (session 62)
+
+Two review docs (claude.ai Docs) hold the findings, each with a fix tracker:
+- **tattingCAD — Code Review (session 62)**
+  (https://claude.ai/artifact/PEAEpoCRQ7MUWDshtzcRBD) — the whole app, #1–#23.
+  **#1 fixed in session 63** (see "Security: numbers from pattern files");
+  the rest open — suggested order #4 and #2, then #3. Its line numbers are
+  from before the session-62 fixes.
+- **tattingCAD — tattingindex.tsx deep dive**
+  (https://claude.ai/artifact/JMQPNq4SboQzGePJH15L3v) — H1–H7, M1–M6,
+  L1–L6. All fixed except L4 (parked with ghost arrays). Each item has a
+  "Fixed (session 62)" note with what changed and how it was tested.
+
+Way of working (user's rule): findings first; each fix agreed one by one;
+discuss first for geometry and tatting semantics. Each fix was tested before
+delivery — functions extracted from the source and run with `npx tsx`
+(old vs new where possible), Playwright on the Vite dev server with an
+injected `tatting-designer-autosave` + Resume (and a mocked
+`__TAURI_INTERNALS__` for file hand-over), and the same browser test run
+once on the old code to prove it catches the bug. The test scripts lived in
+the session's scratch folder, not the repo.
+
+Still to test on a device: M1 (touch cancelled mid-drag, phone) and M5
+(remove the open file from Recent, then Save — Android).
+
+### Flip keeps joins; a split-ring flip swaps its sides (session 62, H1 + H4)
+
+- `flipElements` works out `updated` from `elementsRef.current` outside any
+  updater, commits once (one undo step) and fixes the connections in the
+  same pass.
+- A flip reverses the loop, so new picot *i* = old picot *n−1−i* for every
+  shape. `carryPicotIdentity(oldPicots, newPicots)` copies `id` and
+  `isJoint` across when the counts match and each pair's `picotKind`
+  matches — joins survive a flip (they used to be cut). A chain's
+  `__start__` / `__end__` joins swap ends. A connection whose picot is gone
+  is removed and its far side demoted (`applyJointFlags`).
+- **Split ring (user's decision, after testing):** a flip swaps sides A ↔ B
+  and does NOT reverse either notation ("reversing notation is a bug").
+  `notation` ← `sr: <old B>`, `notationB` ← old A; picots rebuilt from both
+  sides, identity carried as above.
+
+### Split-ring side A: counted from the shared start (session 62, H5 + H6)
+
+Reminder: picots are stored as `[...side A reversed, ...side B]`, and side
+A's notation reads from the END of `paths[0]` — the shared start point (the
+direction arrow's tail).
+- **One rule** (`domain/parser.ts`): `splitRingSideAPosition(p, countA) =
+  countA − stitchesBefore − (isSlotBead(p) ? 1 : 0)`. Slot beads (`bc`,
+  `bcp`, `be`) take one stitch; the formula is its own inverse. Used by the
+  notation edit (`computeElementAfterNotationEdit`), the flip and Picot Tools
+  (`splitRingSides`). Side-A slot beads used to land one stitch off.
+- **Old files:** `repairSplitRingSideABeads(el)` fixes side-A slot beads
+  stored the old way (matched by order against side A's notation; returns
+  the same object when nothing changed, so it's a no-op on new files). Run
+  on file open (`applyProjectData`), Resume (`loadFromAutosave`) and
+  system-clipboard paste.
+- **Drawing:** a slot bead's side is judged by its centre (`sb + 0.5`) in
+  `renderPicots` and `getSplitRingSide`.
+- **Labels:** both split-ring label branches lay side A's stretches out from
+  the shared start (`count − midpoint`), with or without picots.
+- **Realistic:** `calculateSplitRingStitches` steps like
+  `calculatePathStitches` (0.5 steps when there are half keys, rds 1.5 wide,
+  `rds-cont` skipped, array sub-stitches split); side A's
+  `dsPosition = count − s − width`.
+- `splitRingSides` counts side A's picots by **parsed** picots — a bead
+  sequence (`bc:YZ`, `bc:2Y`) is one token but one picot per bead.
+- **Not changed:** a gradient thread colour on side A still runs from the
+  far end, like its picot colours (session 52) — review #23, user's decision.
+
+### Notation edit: picot ids by position AND order (session 62, H2)
+
+`mergePicotsPreservingJoins`, when the picot count changes: old picots are
+kept in a list per `stitchesBefore` and handed out in two passes — the same
+`picotKind` first, then whatever is left at that spot. Two picots at one
+spot keep their own ids and joins (they used to get the same id); a picot
+removed from a spot it shares with a bead doesn't hand its join to the bead;
+`p-p → p-lp` still keeps both joins. Note: `p-p`, or a picot next to a bead,
+is flagged as invalid notation (red) but still applied. Open: a joined picot
+replaced by a core bead at a lone spot passes its join to the bead (review
+#22, user's decision).
+
+### Picot Tools — every stitch type (session 62, H7)
+
+- A run keeps its stitches in order: a `WizardSegment` run has
+  `stitches: WizardStitch[]` (`{ type, n }`), `count` (stitches) and `ds`
+  (LENGTH, by `STITCH_WIDTH_DS`: ds 1, ss/lss/rss 0.5, rds/bds 1.5). Every
+  action writes the stitches back with their own types; same-type
+  neighbours are joined (2ds + 3ds → 5ds). It used to keep one ds total per
+  run and write `Nds`.
+- **User's decisions:** Add, Fill and Scale count **stitches**, not length;
+  a cut falls only between stitches (`4rds` → `2rds-p-2rds`). Scale keeps
+  each run's types (`2rds-p-6ds` ×2 → `4rds-p-12ds`, ÷2 → `1rds-p-3ds`); a
+  run of several types gives each its share by cumulative rounding
+  (`2ds-2rds` ÷2 → `1ds-1rds`).
+- **ds-only notation gives exactly the old result** (4,000 generated
+  notations, 139,779 checks across every action, the protected zones and
+  the presets).
+- Fixed on the way: half stitches became ds (`r: 2ss-3ds-p-3ds` → Clear →
+  `r: 7ds`); an odd count gave a fraction the parser rejects (`9.5ds`), so
+  Apply did nothing; Scale's "→ N ds" showed the target, not the result
+  (`ScaleResult.actualTotalDs` is now the real length); a split ring with
+  picots on both sides never got an exact preset; multi-select Scale
+  skipped rds / half-stitch rings.
+- **API:** `totalRunStitches(segments)` — the multi-select Scale presets use
+  it (MultiSelectSummaryBar prop, replaces `totalRunDs` there).
+  `suggestScalePresets(sides: { type, segments }[])` — one entry per side
+  (a split ring scales each side on its own, as Apply does); "exact" also
+  needs every stitch token to scale to a whole number; `resultingTotalDs` is
+  the length Apply gives. `ScaleResult` adds `originalStitches` /
+  `actualStitches`; `RunScaleDetail`'s `*Ds` fields are stitch counts.
+- The old `jk` `runToken` special case is gone (the runs' own `ss` type does
+  it). A gap the nudge rule fills gets ds — ss on a Josephine knot.
+- Still refused: bead sequences (`picotMismatch`) and unknown tokens.
+- Open: Scale adds a stitch after a picot at the very end, or between two
+  picots side by side (review #21).
+
+### Opening a file while last session's work is unsaved (session 62, H3)
+
+- When a file is handed over (double-click / Open with / Share) and the last
+  run's autosave holds unsaved work nobody has resumed, `openSystemFile`
+  asks first: **Open file anyway** (red) or **Resume last session**.
+  Closing the box does neither, and it asks again next time.
+- `unresumedWorkRef` (lazy, from the autosave: elements > 0 and
+  `_resumeUnsaved !== false`; older autosaves without the flag count as
+  unsaved) is cleared once this run writes its own autosave, and on Resume.
+- Confirm dialog (`useUIState.ts`): title / message / labels may be
+  functions of `t` (`ConfirmText`, resolved by `confirmText()` at draw time)
+  — a dialog opened before the translations load (a start-up file) would
+  otherwise show raw keys. Optional `cancelLabel` / `onCancel`.
+- Keys `resumeBeforeOpenTitle/Body/Open/Resume` (en/es/hu).
+
+### Touch cancel (session 62, M1)
+
+The canvas has `onTouchCancel` (the system takes the touch away: back-swipe,
+notification shade, a call, palm rejection): it ends everything as if every
+finger had lifted — the drag commits as one undo step, `touchState` is reset
+(a cancelled pinch used to leave `dist` set, so one-finger moves did
+nothing). The document safety net listens for `pointercancel` as well as
+`pointerup`.
+
+### Escape order (session 62, M2)
+
+The closer list is ordered top layer first: the setup screen (no-op),
+Confirm, Alert, the tatting-order conflict box (= Cancel), the convert
+confirm, Array Manager, the Recent-load and remove-image confirms, the
+update popup (= its close button), splash, sample gallery, Recent Projects,
+theme editor, colour picker, materials, About, Help, UI guide, bead
+library, polar-grid panel, thread properties, the three array dialogs,
+Picot Tools, multi-select Scale, the File / View / Arrange / Options / Help
+menus, the phone menu, **realistic view**, then the editing modes.
+- Esc on a Confirm box closes it without choosing either button (the same
+  as clicking outside it).
+- Realistic view sits above the modes on purpose: a mode stays on under
+  realistic view, and Esc should leave the view you can see, not end a mode
+  you can't.
+- **Rule:** a new dialog, popover or menu goes into this list at its layer.
+
+### Shortcuts and a focused dropdown (session 62, M3)
+
+`isDropdownKey(e)` (next to `isTypingTarget`): while a `<select>` has focus,
+plain printable keys, Space, Backspace and Delete stay with the dropdown
+(jump to an option / open it). The main handler and the R / Space / Z
+handler skip them. Ctrl / Cmd / Alt shortcuts still work; clicking the
+canvas moves focus to the page, so every shortcut works again. Sliders are
+left alone on purpose (see the `TEXT_INPUT_TYPES` comment); Tab still
+switches tools.
+
+### Main shortcut handler: registered once (session 62, M4)
+
+The main keydown listener is attached once (capture phase) and calls
+`mainShortcutRef.current`, which an effect with **no dependency list**
+points at a fresh handler after every render — the `escapeActionRef`
+pattern, same timing as before. It used to have deps `[saveProject]`, which
+looked like "rebind only on save changes" but rebound every render (drag
+frames included) only because `saveProject` is a new function each render
+(`cleanupDuplicates` in useEditorActions isn't memoised) — memoising it
+would have frozen every value the handler reads. That's safe now.
+**Rule:** don't give a big handler effect a dependency list as a substitute
+for freshness; call through a ref.
+
+### Recent Projects list read once; the open file keeps its access (session 62, M5)
+
+- The dialog reads `getRecents()` once when it opens (state `recentList`,
+  set in the existence-check effect) — it used to run inside the render,
+  rewriting `tcad_recent_projects` and (Android) going through the kept
+  file access on every redraw. ✕ calls `removeFromRecents(id)` (writes the
+  list, runs `syncKeptAccess`, returns the list). "Clear unavailable" still
+  closes and reopens the dialog, which reads the list again.
+- `protectFileAccess(path)` (an effect on `currentFilePath`) adds the open
+  file to `keptThisRun`, so `syncKeptAccess` never hands back its Android
+  access — ✕ on the open file's entry used to make the next Save fail.
+
+### Reference image size cap (session 62, M6)
+
+`utils/refImage.ts` `shrinkReferenceImage(src)`: at most 2048 px on the
+longest side (`REF_IMAGE_MAX_SIDE`) and `REF_IMAGE_BUDGET` = 1.5 M data-URL
+characters (~1.1 MB). Opaque → JPEG 0.85 (then 0.75, then 1600 / 1280 /
+1024 px until it fits); any transparency → PNG. An image that already fits
+is left exactly as it was.
+- **Upload:** reduced, toast `refImageReduced` ("… reduced to W × H px so it
+  fits in the autosave"). The 10 MB upload limit is unchanged.
+- **Open / Resume** of an older, larger image: reduced quietly (a
+  functional update that only applies if the image is still the same one);
+  not marked unsaved — the file gets the small image at the next Save.
+- The image is drawn into the fixed 1000 × 1000 box, so its position and
+  size never change. A failed autosave is still silent (review #8).
+
+### History pushes: push what you commit, or let the automatic push do it (session 62, L1 + L2)
+
+- `setSingleRotationAbsolute` (rotation field, ±90°, held ±1°): works out
+  `next` from `elementsRef.current`, commits it, and when it pushes sets
+  `skipAutoHistoryRef` and pushes exactly `next`. On release with no further
+  change it pushes the state as it stands, so a held nudge is ONE step.
+- Convert to JK: no hand-made push. Everything (ghost regeneration, the id
+  remap, re-applied inherited joins) happens in the one confirm handler, so
+  the automatic push records the finished state (elements, connections,
+  ghost arrays) as ONE step. The hand push recorded the connections from
+  before the regeneration, and one Undo landed on a mixed state.
+- **Rule:** never push `elementsRef.current` right after a
+  `setElements(prev => …)` — that's the OLD state.
+
+### One zoom range (session 62, L3)
+
+`MIN_ZOOM` 0.1, `MAX_ZOOM` 3 and `clampZoom()` at the top of
+tattingindex.tsx (next to the zoom step constants), used by Shift+wheel, the
+zoom keys and buttons, zoom-to-box, Show all and pinch. Show all and pinch
+used to stop at 30 %, so Show all couldn't fit a large pattern.
+
+### Small clean-ups (session 62, L5 + L6)
+
+Removed the Tatting Order Delete / Backspace branch that could never run
+(Delete there is handled at the top of the shortcut chain) and an empty
+`else {}` in the pending-notation effect; fixed stale comments (autosave
+timing, join-line style).
+
+### Thread presets: needle vs shuttle technique (session 59)
+
+A thread preset now has an optional `technique` (`'needle'` default when
+absent, or `'shuttle'`) and, for shuttle, `ds20Ring` (mm of shuttle thread
+for a 20 DS ring). Existing presets are needle — unchanged behaviour.
+
+- **Needle** (original model): every element = working thread
+  (`ds20Working`) + core (`ds20Core`) per stitch.
+- **Shuttle:** rings (closed elements, incl. split-ring sides) use only the
+  shuttle thread (`ds20Ring` per 20 DS, picots too); chains and lines use
+  ball thread for the stitches (`ds20Working`, picots too) over shuttle
+  thread as core (`ds20Core`). The estimate (domain/patternOutput.ts) then
+  prints **Shuttle thread ~ m (rings + chain cores)** and **Ball thread ~ m
+  (chain stitches)**, plus a per-colour list when there are several
+  materials. Joined-picot allowance goes to the element's side (ring →
+  shuttle, chain → ball). `ds20Core` still sets the real-world scale
+  (ruler, polar-grid mm) for both techniques.
+- **Thread Properties:** Needle / Shuttle switch above Measurements; shuttle
+  shows "20 DS ring (shuttle thread)", "20 DS chain – ball thread", "20 DS
+  chain – shuttle thread", a hint line, and a matching per-stitch summary.
+  First switch to shuttle pre-fills `ds20Ring` = working + core.
+- **Built-in "Size 20, Shuttle Tat (Tim)"** (`TIMS_TAT_PRESET`, id
+  `tims-tat`, hooks/useBeadState.ts): size 20 thread, shuttle, ring 203,
+  chain ball 236.5, chain shuttle 36.5 (Tim's measurements of a 20 DS ring
+  and chain); picots 8 / 5 are the default's until Tim measures them. The
+  first build named it "Tim's tat"; the loader renames copies still carrying
+  exactly that name (a user-chosen name is kept). Fresh installs get it
+  in memory (nothing written — `tcad_thread_presets` is an "existing user"
+  signal for getInitialToolbarMode); existing installs get it once
+  (`tcad_builtin_presets_added` remembers, so deleting it sticks). Add
+  future built-ins to `BUILT_IN_EXTRA_PRESETS`.
+- Checked: 1 ring + 1 chain (6ds-p-6ds each) with Tim's tat → shuttle
+  0.15 m, ball 0.15 m (hand-computed 151.7 / 149.9 mm); default needle
+  output unchanged.
 
 ### Simple / Full toolbar and the getting-started hint (session 58)
 
@@ -2160,7 +3478,8 @@ Both are always rendered; only CSS chooses.
 - `lastSavedRev` (useProjectState.ts): set on save to the rev of the entry
   being written — captured BEFORE saveToPath's awaits, so an edit made while
   the file/thumbnail are written stays unsaved. Open file → 0. New Project →
-  0. Resume autosave → -1 (not in any file yet).
+  0. Resume autosave → 0 if it belongs to a file and had no unsaved changes,
+  else -1 (session 61 — see "Autosave on leaving + Resume back to its file").
 - **Why not indices** (the old lastSavedHistoryIndex): opening a file reset
   historyIndex to 0 but not the saved index; once the 50-entry cap is
   reached every new edit lands on index 49, so after a save at 49 later
@@ -2193,7 +3512,8 @@ onTouchStart (2 fingers) stores the world point under the fingers' midpoint
 (`touchState.worldX/worldY`). onTouchMove puts that point under the CURRENT
 midpoint at the new zoom: `camera = midpoint − world × newZoom`. Still
 fingers = the old pinch exactly; moving fingers pan; both at once do both.
-Zoom limits unchanged (0.3–3). Verified with emulated touch (pan, pinch incl.
+Zoom limits unchanged (0.3–3) at the time — session 62 made one range for
+every way of zooming, 0.1–3 (see "One zoom range (session 62)"). Verified with emulated touch (pan, pinch incl.
 the 300% cap, combined — all within 0.1 px). The user decided this after
 first rejecting it; two fingers no longer "only zoom".
 
@@ -2227,14 +3547,76 @@ new version asked immediately. Dismissing still stores `tcad_update_seen`.
 Keep the key name `tcad_install_date`: getInitialToolbarMode uses its
 presence to recognise an existing user.
 
-### Release checklist — version number (user's notes, session 57)
+### Release checklist — version number + security check (user's notes, session 57 / 60)
 
-A release changes the version in ALL of these, to the same value:
+A release changes the version in ALL of these, to the same value. 1–4 in one go:
+`node scripts/set-version.mjs 1.4.0` (session 60 — only the version text is
+replaced, layout and line endings kept; nothing is written unless all four
+are found). 5 is by hand. (Session 62 review: `scripts/` — set-version.mjs,
+fix-help-pages.mjs — is not in the GitHub repo at 7f2b998. Commit it, or
+note where it lives.)
 1. `src/tattingindex.tsx`: `const APP_VERSION = '…'` (shown in the About
    panel and the splash update messages)
 2. `src-tauri/tauri.conf.json`
 3. `src-tauri/Cargo.toml`
 4. `package.json`
+5. `public/app-icon_sm.png` — the small logo at the top of the left
+   toolbar has the version number **baked into the picture** (user's note,
+   session 60). Not text — the image itself has to be redrawn / re-exported
+   with the new number. (It must be in `public/`, not the project root:
+   only `public/` is packed into the app.)
+
+**Tauri versions (session 60, 1.4):** build with Tauri at least
+`@tauri-apps/cli` 2.12.4 · `tauri` 2.12.5 · `tauri-build` 2.7.4 (and the
+plugins `npx tauri info` shows as current with them). Older versions reject
+`androidIntentActionFilters` in `tauri.android.conf.json` ("Additional
+properties are not allowed") and may not write the Android file-type
+entries at all. Update: `npm install -D @tauri-apps/cli@latest` + the
+`@tauri-apps/…` packages, then `cargo update` inside `src-tauri`; check with
+`npx tauri info`; commit `package-lock.json` and `Cargo.lock` so GitHub
+builds the same. (`tauri-cli 🦀` in `tauri info` is a separate Cargo-installed
+copy — not used by `npm run tauri`.)
+
+**Security check — EVERY release, before building (session 60, after the
+1.4.0 report).** Pattern files are shared, so treat everything in them as
+untrusted. Tick all of these, or ask Claude to "run the release security
+check" with the current src:
+1. **Markup built as text.** Search `src` for `dangerouslySetInnerHTML`,
+   `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `eval(`, `new Function`.
+   Any new or changed one: every value from a file (colours, names, notes,
+   notation, material/bead names) must go through `safeColor` or an escape.
+   Known and checked: the realistic view (realisticRenderer.ts → safeColor);
+   the two calculators' `new Function` (digits and `+-*/().` only).
+2. **New fields in the pattern file.** Anything added to the save format
+   that ends up in the drawing or the page: add it to
+   `sanitizeProjectColors` (utils/safeColor.ts) if it is a colour, or check
+   it is only shown through React (which escapes it).
+3. **The crafted-file test.** Open a pattern whose colours / names / notes
+   hold `"><image href=x onerror=alert(1)>`, in schematic AND realistic
+   view, and paste it too. Nothing must pop up.
+   **Number fields too (session 63):** the same with the text
+   `0"/><a href="https://example.com"><text fill="red" font-size="40">X</text></a><path d="`
+   in place of a number — a circle ring's `center.x`, a path point, a
+   `stitchCount`, a `rotation`. Expected: the red toast "… damaged
+   element(s) were left out", the rest of the pattern opens, and no link or
+   stray text appears in realistic view.
+4. **Dependencies.** `npm audit` in the project and `cargo audit` in
+   `src-tauri` (install once: `cargo install cargo-audit`); look at
+   GitHub → Security → Dependabot alerts. Fix or knowingly accept
+   anything high/critical.
+5. **Permissions didn't grow.** Compare `src-tauri/capabilities/*.json` and
+   `tauri.conf.json` (`csp`, `withGlobalTauri`, fs / asset `scope`) with
+   the last release; any new permission must be needed and scoped. The
+   `csp` must still contain `script-src 'self'` with no `'unsafe-eval'` /
+   `'unsafe-inline'` for scripts, and `withGlobalTauri` must be `false`.
+   Session 61: `capabilities/deny-sensitive.json` (fs deny list) and
+   `assetProtocol.scope.deny` in tauri.conf.json must both still be there
+   and match each other; `tauri-plugin-fs` ≥ 2.7.0 in Cargo.lock;
+   `capabilities/android-files.json` still Android-only with its 7
+   permissions; `tauri-plugin-android-fs` (Cargo) and
+   `tauri-plugin-android-fs-api` (npm) on the SAME exact version (30.2.0).
+6. **Reports.** Check GitHub → Security → private vulnerability reports
+   and the issues for anything security-related not yet fixed.
 
 (There is no root `tauri.conf.json` — the only Tauri config is
 `src-tauri/tauri.conf.json`. Confirmed by the user, session 57.)
@@ -2536,7 +3918,8 @@ other mutation path does. `repairElements` is the ring-geometry-corruption
 repair path, so this would throw if that path is ever exercised. Not
 touched this session — flagging for whenever ghost-array-adjacent geometry
 work happens next, since that's the likeliest place `repairElements`
-actually gets called from.
+actually gets called from. **Session 62 review: gone** — `repairElements`
+no longer calls `pushHistory()`.
 
 **Verification methodology upgrade (session 52):** the "loose tsconfig, no
 @types/react" sandbox check used above is noisy enough to hide real errors
@@ -2606,9 +3989,9 @@ exact trap once this session before catching it).
 | ~~Duplicated rotation-expression evaluators (`MultiSelectSummaryBar.tsx`)~~ | DONE (session 56) — uses `parseRotationExpr(s, 0)`. |
 | ~~Free multi-select notation scaling vs `updateNotationForMultiple`~~ | DONE (session 56) — turned out to be a buggy separate copy, not duplication (orphaned joins, wrong split-ring stitchCount/splitPosition, chains not re-bent). Replaced by `applyNotationToMultiple`; see Rules. |
 | ~~Quadratic line control-point freezes on start/end drag~~ | CLOSED (session 56) — not applicable: new lines/chains are always cubic; quadratic paths only exist in very old saves (and as circle internals, which aren't draggable). The data-corruption half was already fixed; nothing further needed. |
-| ~~`nudgeActiveRef` — same stuck-flag shape as `isInteractingRef`~~ | DONE (session 56) — flushed on window blur and by the pointerup safety net; see Rules "Losing window focus mid-gesture". Remaining: NumberStepper.tsx may keep auto-repeating after focus loss (history is safe). |
+| ~~`nudgeActiveRef` — same stuck-flag shape as `isInteractingRef`~~ | DONE (session 56) — flushed on window blur and by the pointerup safety net; see Rules "Losing window focus mid-gesture". NumberStepper's own blur stop is done too (see the row below). |
 | ~~`isInteractingRef` — remaining gap after Addendum 4's fix~~ | DONE (session 56) — window-blur flush; see Rules. |
-| `NumberStepper.tsx` auto-repeat after focus loss | OPEN, needs the file (never obtained). History is already safe; only the repeat itself may continue. |
+| ~~`NumberStepper.tsx` auto-repeat after focus loss~~ | DONE — the file is in the repo and ends a hold on window blur (`blurListenerRef`); confirmed in the session-62 review. |
 | Clean Up Duplicates — duplicate ghost arrays | PARKED with ghost arrays. |
-| Rail JSX vs phone-bar descriptors | OPEN (session 58). The same tools are defined twice: the rail's inline ToolbarButtons and the `phoneTools` descriptors. Rebuild the rail on the descriptors. |
-| Layout polish list | OPEN (session 58) — in `plan-ui-layout-session58.md`: bigger logo, first tool level with the canvas top, no width jump Simple ↔ Full, phone property-bar overflow (second settings row needs scrolling), "Picot J…" truncation at 360 px. |
+| Rail JSX vs phone-bar descriptors | DONE (session 59). Rail built from `phoneTools` via `railSimple` / `railFull` / `railRealistic` + `renderRailEntry`. |
+| Layout polish list | DONE (session 59) — bigger logo, logo area = header height, one rail width, phone property bar overlays the canvas, "Join" short label. |

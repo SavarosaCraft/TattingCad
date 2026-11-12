@@ -29,7 +29,13 @@ export function useUIState() {
   const [showJoinTip, setShowJoinTip] = useState(
     () => localStorage.getItem('tcad_seen_join_tip') !== '1'
   );
-  const [confirmDialog, setConfirmDialog] = useState<{ title?: string; message: string; confirmLabel?: string; onConfirm: () => void } | null>(null);
+  // cancelLabel / onCancel (session 62): optional — the second button can do
+  // something too (e.g. "Resume last session"); without them it just closes.
+  // A text may also be a function of `t`, worked out each time the dialog
+  // draws — for a dialog opened before the translations have loaded (a file
+  // handed over at start-up), which would otherwise show raw keys.
+  type ConfirmText = string | ((t: (key: string) => string) => string);
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: ConfirmText; message: ConfirmText; confirmLabel?: ConfirmText; onConfirm: () => void; cancelLabel?: ConfirmText; onCancel?: () => void } | null>(null);
   const [alertDialog, setAlertDialog] = useState<{ message: string; sub?: string } | null>(null);
 
   // ── Array dialogs ──────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ import enStrings from './i18n/translations_en.json';
 import esStrings from './i18n/translations_es.json';
 import { readUserLanguages, openUserLanguagesFolder, isDesktopApp } from './tauri/userLanguages';
 import { sanitizeProjectColors } from './utils/safeColor';
+import { sanitizeProjectNumbers } from './utils/safeNumber';
 import { evalArithmetic } from './utils/calcExpr';
 import huStrings from './i18n/translations_hu.json';
 import { generatePatternText } from './domain/patternOutput';
@@ -116,6 +117,7 @@ import { ColorPickerPickerTab } from './components/ColorPickerPickerTab';
 import { ColorPickerSwatchesTab } from './components/ColorPickerSwatchesTab';
 import { ColorPickerGradientsTab } from './components/ColorPickerGradientsTab';
 import { COLORS, BG_COLORS } from './utils/color';
+import { shrinkReferenceImage } from './utils/refImage';
 // Setup screen background swatches: the default (useViewState) + the
 // Options → Background Color cycle (BG_COLORS).
 const SETUP_BG_CHOICES = ['#1F2937', ...BG_COLORS.filter(c => c.toUpperCase() !== '#1F2937')];
@@ -220,6 +222,14 @@ const ZOOM_STEP_KEYBOARD = 0.2;      // +/- keys
 const ZOOM_STEP_BUTTON_IN = 0.2;     // toolbar Zoom In button (both modes)
 const ZOOM_STEP_BUTTON_OUT = 0.4;    // toolbar Zoom Out button (both modes)
 const ZOOM_STEP_WHEEL = 0.16;        // Shift+wheel, per wheel event
+
+// Session 62 (review L3): ONE zoom range for every way of zooming. Shift+
+// wheel, the zoom keys/buttons and zoom-to-box went down to 10 %, but Show
+// all (fit) and pinch stopped at 30 % — so Show all couldn't fit a large
+// pattern, and a pinch couldn't zoom out as far as the buttons.
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 3;
+const clampZoom = (z: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
 
 // ============================================================================
 // COLOR CATEGORIZATION - Pure function for performance
@@ -806,6 +816,16 @@ const APP_VERSION = '1.4.1';
   // at draw time so a dialog opened before the translations load still ends
   // up in the right language.
   const confirmText = (v: any): string => (typeof v === 'function' ? v(t) : v);
+  // Session 63 (review #1): "n damaged elements were left out" — shown when
+  // the number check (utils/safeNumber.ts) leaves elements out on Resume or
+  // paste. Stable, and reads t through a ref: pasteFromClipboard
+  // (useEditorActions) is created once, so a t handed to it directly would
+  // stay the first render's (raw keys / the wrong language).
+  const tLiveRef = useRef(t);
+  tLiveRef.current = t;
+  const reportDamagedElements = useCallback((n: number) => {
+    showLoadMsg('error', tLiveRef.current('loadWarnDamagedElements').replace('{n}', String(n)));
+  }, [showLoadMsg]);
 
 
   // Hardcoded realistic rendering parameters:
@@ -949,7 +969,6 @@ const APP_VERSION = '1.4.1';
     if (parsed && parsed.stitchCount > 0) {
       setDraftNotation(null);
      updateNotation(normalizeNotationInput(pending.notation), pending.notationB ?? null, pending.elementId);
-    } else {
     }
   }, [selectedIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1003,7 +1022,9 @@ const APP_VERSION = '1.4.1';
   // that is open (✕ on its Recent entry used to make the next Save fail).
   useEffect(() => { protectFileAccess(currentFilePath); }, [currentFilePath]);
 
-  // Auto-save to localStorage every 30 seconds
+  // Auto-save to localStorage: on start, every 3 minutes, and when the app
+  // goes to the background or closes (session 61). (Comment fixed in
+  // session 62 — review L6; it said every 30 seconds.)
   // PERFORMANCE: Use refs to avoid recreating interval on every state change
   // Note: elementsRef and selectedIdsRef already declared above
   const cameraRef = useRef(camera);
@@ -1113,7 +1134,10 @@ const APP_VERSION = '1.4.1';
       if (!saved) return;
       const projectData = JSON.parse(saved);
       sanitizeProjectColors(projectData); // security (session 60) — utils/safeColor.ts
-      if (!projectData.elements || projectData.elements.length === 0) return;
+      // Security (session 63, review #1): same number check as file open.
+      const numberCheck = sanitizeProjectNumbers(projectData);
+      if (numberCheck.dropped > 0) reportDamagedElements(numberCheck.dropped);
+      if (!Array.isArray(projectData.elements) || projectData.elements.length === 0) return;
       // Same as confirmNewCanvas: history is reset directly below
       // (setHistory) while elements/connections/polarGrids also change in
       // this batch, which would re-trigger the auto-push effect with stale
@@ -1144,6 +1168,15 @@ const APP_VERSION = '1.4.1';
       setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
       setCustomColors(projectData.customColors || []);
       setReferenceImage(projectData.referenceImage || null);
+      // Session 62 (review M6): an image stored before the size cap is
+      // reduced now, quietly (it looks the same) — unless another project
+      // was opened meanwhile.
+      if (projectData.referenceImage) {
+        const original = projectData.referenceImage;
+        void shrinkReferenceImage(original).then(r => {
+          if (r.changed) setReferenceImage(cur => (cur === original ? r.src : cur));
+        });
+      }
       setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
       setProjectName(projectData.name || t('projectUntitled'));
       // Always load into schematic, regardless of what renderMode was
@@ -1274,7 +1307,7 @@ const APP_VERSION = '1.4.1';
         const currentZoom = zoomRef.current;
         const currentCamera = cameraRef.current;
         const delta = e.deltaY > 0 ? -ZOOM_STEP_WHEEL : ZOOM_STEP_WHEEL;
-        const newZoom = Math.max(0.1, Math.min(3, currentZoom + delta));
+        const newZoom = clampZoom(currentZoom + delta);
         if (!canvasRef.current) { zoomRef.current = newZoom; setZoom(newZoom); return; }
         const rect = canvasRef.current.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
@@ -1859,7 +1892,7 @@ const APP_VERSION = '1.4.1';
     setClipboard, setGhostArrays, setHistoryIndex,
     setGroupRotationInput, setPolarGrids,
     setConfirmDialog,
-    t,
+    t, onDamagedElements: reportDamagedElements,
     pushHistoryState,
   });
 
@@ -3375,7 +3408,7 @@ const APP_VERSION = '1.4.1';
     let newZoom = Math.min(zoomX, zoomY);
     
     // Don't zoom in too much or too little
-    newZoom = Math.max(0.3, Math.min(3, newZoom));
+    newZoom = clampZoom(newZoom);
     
     
     // Camera is a translate offset, not a center point!
@@ -3402,7 +3435,7 @@ const APP_VERSION = '1.4.1';
     const padding = 20;
     const zoomX = (rect.width  - padding * 2) / rw;
     const zoomY = (rect.height - padding * 2) / rh;
-    const newZoom = Math.max(0.1, Math.min(3, Math.min(zoomX, zoomY)));
+    const newZoom = clampZoom(Math.min(zoomX, zoomY));
     const worldCX = (worldMinX + worldMaxX) / 2;
     const worldCY = (worldMinY + worldMaxY) / 2;
     setZoom(newZoom);
@@ -3411,12 +3444,13 @@ const APP_VERSION = '1.4.1';
   };
 
   // Zoom toward the center of the screen by a delta amount.
-  // Reads from refs so it stays correct even when called from stale closures
-  // (e.g. the keydown useEffect which only re-registers on clipboard change).
+  // Reads from refs so it stays correct even when called from an older
+  // closure. (Session 62: the main keydown handler now calls through a ref
+  // refreshed every render, but reading refs here stays the safe choice.)
   const zoomToCenter = (delta) => {
     const currentZoom = zoomRef.current;
     const currentCamera = cameraRef.current;
-    const newZoom = Math.max(0.1, Math.min(3, currentZoom + delta));
+    const newZoom = clampZoom(currentZoom + delta);
     if (!canvasRef.current) { setZoom(newZoom); return; }
     const rect = canvasRef.current.getBoundingClientRect();
     const canvasX = rect.width / 2;
@@ -4271,9 +4305,10 @@ const APP_VERSION = '1.4.1';
   // follows the same rule).
   //
   // Own listener, calling through refs reassigned every render (the
-  // handleMouseUpRef pattern), so it always sees current state — the main
-  // keydown handler below is only rebound when saveProject changes, and
-  // there is no ghostArrays ref mirror elsewhere. Skipped while typing or
+  // handleMouseUpRef pattern), so it always sees current state — kept
+  // separate from the main keydown handler below (session 62: that one now
+  // calls through mainShortcutRef too), and there is no ghostArrays ref
+  // mirror elsewhere. Skipped while typing or
   // when focus is on any form control (a focused slider uses arrows itself),
   // in realistic view, in picot-join / beading / tatting-order modes, and
   // during a mouse drag.
@@ -4351,10 +4386,23 @@ const APP_VERSION = '1.4.1';
     };
   }, []);
 
+  // Main keyboard shortcuts. Session 62 (review M4): registered ONCE and
+  // called through mainShortcutRef, which an effect with no dependency list
+  // points at a fresh handler after every render — the escapeActionRef
+  // pattern. The handler reads plenty of plain state from its closure
+  // (renderMode, currentTool, undo, the Tatting Order functions …). It used
+  // to be re-registered with deps [saveProject], which looked like "rebind
+  // only on save changes" but in fact rebound every render, only because
+  // saveProject is a new function each render (cleanupDuplicates in
+  // useEditorActions isn't memoised). Memoising that — an obvious tidy-up —
+  // would have frozen every value the handler reads. Same timing as before
+  // (refreshed after each commit), without removing and re-adding a window
+  // listener on every render, drag frames included.
+  const mainShortcutRef = useRef<(e: any) => void>(() => {}); // e untyped, as the handler always was
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    mainShortcutRef.current = (e) => {
       if (isTypingTarget(e.target) || isDropdownKey(e)) return;
-      
+
       // Undo: Ctrl+Z (not Shift)
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -4640,12 +4688,10 @@ const APP_VERSION = '1.4.1';
             }
           }
           // Already ungrouped — PgDn is a no-op (nothing lower to go to)
-        } else if (e.key === 'Delete' || e.key === 'Backspace') {
-          if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-            e.preventDefault();
-            clearOrderAssignment(selId);
-          }
         }
+        // (Session 62, review L5: a Delete/Backspace branch here could never
+        // run — Delete in Tatting Order is handled at the top of this chain,
+        // which clears the order assignment. Removed.)
 
       // ── Add-element & mode shortcuts (Shift + key, no Ctrl/Cmd) ────────────
       } else if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
@@ -4696,9 +4742,12 @@ const APP_VERSION = '1.4.1';
         }
       }
     };
+  });
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => mainShortcutRef.current(e);
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [saveProject]);
+  }, []);
 
   // Options shared by updateNotation and updateNotationForMultiple.
   // preservesExistingPicots and picotMatchMode are both optional here even
@@ -5358,7 +5407,13 @@ const APP_VERSION = '1.4.1';
           setElements(finalElements);
         }
 
-        pushHistoryState(finalElements, newConns, roundsRef.current);
+        // Session 62 (review L1): no hand-made history entry here. It pushed
+        // the connections from BEFORE a ghost mother's regeneration (which
+        // remaps ghost ids and replays inherited joins) and didn't set
+        // skipAutoHistoryRef, so the automatic push added a second entry —
+        // one Undo landed on a mixed state. Everything above happens in this
+        // one handler, so the automatic push after the render records the
+        // finished state (elements, connections, ghost arrays) as ONE step.
       },
     });
   };
@@ -5387,8 +5442,15 @@ const APP_VERSION = '1.4.1';
     }
     
     const reader = new FileReader();
-    reader.onload = (event) => {
-      setReferenceImage(event.target.result as string);
+    reader.onload = async (event) => {
+      // Session 62 (review M6): stored reduced (2048 px on the longest side,
+      // ~1 MB at most) so the autosave keeps working — it's drawn in the
+      // same 1000 × 1000 box on the canvas either way. Said once, in a toast.
+      const shrunk = await shrinkReferenceImage(event.target.result as string);
+      setReferenceImage(shrunk.src);
+      if (shrunk.changed) {
+        showLoadMsg('success', t('refImageReduced').replace('{w}', String(shrunk.width)).replace('{h}', String(shrunk.height)));
+      }
       // Position image at current viewport center in world coordinates
       if (canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
@@ -7071,12 +7133,23 @@ const APP_VERSION = '1.4.1';
   // (not from a closure) avoids the same class of staleness risk during a
   // rapid hold-to-repeat sequence that applySingleRotationDelta's own
   // functional-updater pattern already avoids.
+  // Session 62 (review L2): the new elements are worked out FIRST, committed,
+  // and that exact array is what gets pushed (skipAutoHistoryRef stops the
+  // automatic push from adding it a second time). It used to push
+  // elementsRef.current right after a setElements(prev => …) — the state
+  // BEFORE this change — and leave the real one to the automatic push: after
+  // a held nudge that was two undo steps (the last tick but one, then the
+  // final value). Nothing changed → nothing committed; on release the state
+  // as it stands is pushed, which records a held nudge as ONE step.
   const setSingleRotationAbsolute = (elId: string, newRotationNormalized: number, pushHistory: boolean) => {
-    setElements(prev => prev.map(el => {
+    const prev = elementsRef.current;
+    let changed = false;
+    const next = prev.map(el => {
       if (el.id !== elId) return el;
       const currentNormalized = ((el.rotation || 0) % 360 + 360) % 360;
       const delta = newRotationNormalized - currentNormalized;
       if (Math.abs(delta) < 0.0001) return el;
+      changed = true;
       const polarPivot = getPolarPivot([el.id]);
       const pivot = polarPivot || getElementPivot(el);
       const newPaths = rotatePaths(el.paths, pivot.x, pivot.y, delta);
@@ -7087,8 +7160,12 @@ const APP_VERSION = '1.4.1';
             y: pivot.y + (el.center.x - pivot.x) * sin + (el.center.y - pivot.y) * cos }
         : getElementPivot({ ...el, paths: newPaths });
       return { ...el, paths: newPaths, rotation: newRotationNormalized, center: { x: newPivot.x, y: newPivot.y } };
-    }));
-    if (pushHistory) pushHistoryState(elementsRef.current, picotConnectionsRef.current, roundsRef.current);
+    });
+    if (changed) setElements(next);
+    if (pushHistory) {
+      if (changed) skipAutoHistoryRef.current = true;
+      pushHistoryState(changed ? next : prev, picotConnectionsRef.current, roundsRef.current);
+    }
   };
 
   // Display name for a thread preset: the built-in default shows in the
@@ -8766,8 +8843,8 @@ const APP_VERSION = '1.4.1';
               const scale = dist / touchState.dist;
               const newZoom = touchState.zoom * scale;
               
-              // Clamp zoom between 0.3x and 3x (reasonable limits to prevent losing work)
-              const clampedZoom = Math.max(0.3, Math.min(3, newZoom));
+              // Same range as every other zoom (MIN_ZOOM–MAX_ZOOM, session 62 L3)
+              const clampedZoom = clampZoom(newZoom);
               
               // Current midpoint of the two fingers
               const centerX = (touches[0].clientX + touches[1].clientX) / 2;
@@ -8980,6 +9057,12 @@ const APP_VERSION = '1.4.1';
                   carries data-layer="joins" → its own "Joins" layer in the
                   SVG export (render/svgExport.ts), with its beads / centre
                   dot. Folds stay untagged → Design layer (a fold is a picot). */}
+              {/* Session 63 — rounds as SVG layers: every element's group (here,
+                  the bead overlay in realistic view, and a fold — by the element
+                  its first picot is on) carries data-round = its round id.
+                  render/svgExport.ts uses it to sort Design / Notation / Order
+                  Numbers into one sub-layer per round. The baked realistic
+                  pieces carry data-el instead (realisticRenderer.ts). */}
               {picotConnections.map(conn => {
                 if (conn.picots.length < 2) return null;
                 
@@ -9004,7 +9087,8 @@ const APP_VERSION = '1.4.1';
                 // schematic and realistic mode — the "line tool" look (solid
                 // material-colored stroke with a black outline) applies
                 // regardless of mode, unlike regular join lines which differ
-                // between dashed-schematic and solid-realistic. Checked
+                // between schematic (thin yellow line — solid since session
+                // 61, it used to be dashed) and realistic. Checked
                 // before the renderMode split for that reason. Origin is
                 // always conn.picots[0] — which physical picot that is
                 // doesn't matter for pattern output (both ends read
@@ -9083,7 +9167,7 @@ const APP_VERSION = '1.4.1';
                       stroke={theme.markerOutline} strokeWidth={1.5} strokeLinejoin="round" paintOrder="stroke" />
                   );
                   return (
-                    <g key={conn.id}>
+                    <g key={conn.id} data-round={getRoundId(originEl) || ''}>
                       {/* Thin connector to the anchor picot — schematic-only;
                           in realistic mode the arcs themselves already show
                           where the fold reaches, an extra dashed guide line
@@ -9356,7 +9440,7 @@ const APP_VERSION = '1.4.1';
 
                   // Original schematic rendering for circles
                   return (
-                    <g key={el.id} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
+                    <g key={el.id} data-round={getRoundId(el) || ''} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
                       <circle
                         cx={el.center.x}
                         cy={el.center.y}
@@ -9414,7 +9498,7 @@ const APP_VERSION = '1.4.1';
                 
                 // Render everything else (teardrops, chains, and lines) using paths
                 return (
-                  <g key={el.id} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
+                  <g key={el.id} data-round={getRoundId(el) || ''} filter={elementFilter} transform={dragTransform} style={{ pointerEvents: ghostPointerEvents }}>
                     {/* Line rendering - simple bezier with black outline */}
                     {el.type === 'line' ? (
                       <>
@@ -9895,7 +9979,7 @@ const APP_VERSION = '1.4.1';
                 if (el.type === 'ghost' && !el.isBoundary) return null;
                 const dragTransform = (selectedIdSet.has(el.id) && dragOffsetRef.current.active)
                   ? `translate(${dragOffsetRef.current.dx}, ${dragOffsetRef.current.dy})` : undefined;
-                return <g key={`realistic-be-${el.id}`} transform={dragTransform}>{renderPicots(el, true)}</g>;
+                return <g key={`realistic-be-${el.id}`} data-round={getRoundId(el) || ''} transform={dragTransform}>{renderPicots(el, true)}</g>;
               })}
               {/* NEW: Path edit handles - show when in path mode with a chain selected */}
               {(currentTool === 'path' || currentTool === 'line') && selectedIds.length === 1 && (() => {

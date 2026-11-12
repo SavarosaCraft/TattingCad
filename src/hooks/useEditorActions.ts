@@ -30,6 +30,7 @@ import { writeText as tauriWrite, readText as tauriRead } from '@tauri-apps/plug
 import { ORDER_GROUP_COLORS } from '../render/svgExport';
 import { repairSplitRingSideABeads } from '../domain/parser';
 import { sanitizeProjectColors } from '../utils/safeColor';
+import { sanitizeProjectNumbers } from '../utils/safeNumber';
 
 // Use Tauri native clipboard when available (avoids browser permission prompts).
 // Falls back to navigator.clipboard when running in browser dev server.
@@ -78,6 +79,10 @@ export interface UseEditorActionsParams {
   setGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setConfirmDialog: (dialog: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void } | null) => void;
   t: (key: string) => string;
+  // Session 63: tells the user that n damaged elements were left out of a
+  // paste. Must be stable and read its text live (pasteFromClipboard is
+  // created once) — see reportDamagedElements in tattingindex.tsx.
+  onDamagedElements?: (n: number) => void;
   setClipboard: (items: any[]) => void;
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setHistoryIndex: (fn: ((prev: number) => number) | number) => void;
@@ -799,6 +804,10 @@ export function useEditorActions(p: UseEditorActionsParams) {
         // Security (session 60): the clipboard can hold anything — check
         // its colours like an opened file's (utils/safeColor.ts).
         sanitizeProjectColors(parsed);
+        // Session 63 (review #1): …and its numbers — an element whose
+        // geometry isn't real numbers is left out (utils/safeNumber.ts).
+        const numberCheck = sanitizeProjectNumbers(parsed);
+        if (numberCheck.dropped > 0) p.onDamagedElements?.(numberCheck.dropped);
         const { elements: sysEls, connections: sysConns } = parsed;
         if (Array.isArray(sysEls) && sysEls.length > 0) {
           // Session 62 (H5): a pattern copied from an older version may hold
