@@ -51,9 +51,24 @@ const ELEMENT_DEFAULTS: Record<string, (el: any) => number> = {
   squeezeCB: () => 0.75,
 };
 
-/** Why an element can't be used, or null when its geometry is sound. */
-const elementDamage = (el: any): string | null => {
+// Element kinds the app draws (same list as applyProjectData's VALID_TYPES).
+const VALID_ELEMENT_TYPES = new Set(['ring', 'chain', 'line', 'ghost']);
+
+/** Why an element can't be used, or null when it is sound. requireStructure
+ *  (session 63, review #6): also an id, a known type and a paths list —
+ *  for paste and Resume; file open refuses such a FILE instead (its own
+ *  check in applyProjectData, unchanged). */
+const elementDamage = (el: any, requireStructure = false): string | null => {
   if (!el || typeof el !== 'object' || Array.isArray(el)) return 'not an object';
+  if (requireStructure) {
+    if (typeof el.id !== 'string' || !el.id) return 'id';
+    if (!VALID_ELEMENT_TYPES.has(el.type)) return 'type';
+    if (!Array.isArray(el.paths)) return 'paths';
+  }
+  // Session 63 (review #6): notation is read as text everywhere (trim,
+  // split…) — a number there crashed the app to a blank window on open.
+  if (present(el.notation) && typeof el.notation !== 'string') return 'notation';
+  if (present(el.notationB) && typeof el.notationB !== 'string') return 'notationB';
   if (!el.center || typeof el.center !== 'object'
     || !isRealNumber(el.center.x) || !isRealNumber(el.center.y)) return 'center';
   if (present(el.paths)) {
@@ -91,7 +106,7 @@ const elementDamage = (el: any): string | null => {
  * Returns how many elements were left out and how many values were reset.
  * Sound patterns are not changed at all.
  */
-export const sanitizeProjectNumbers = (data: any): { dropped: number; reset: number } => {
+export const sanitizeProjectNumbers = (data: any, opts?: { requireStructure?: boolean }): { dropped: number; reset: number } => {
   const result = { dropped: 0, reset: 0 };
   if (!data || typeof data !== 'object') return result;
 
@@ -105,7 +120,7 @@ export const sanitizeProjectNumbers = (data: any): { dropped: number; reset: num
   const droppedIds = new Set<unknown>();
   const kept: any[] = [];
   for (const el of data.elements) {
-    const damage = elementDamage(el);
+    const damage = elementDamage(el, !!opts?.requireStructure);
     if (damage) {
       result.dropped++;
       if (el && typeof el === 'object' && present(el.id)) droppedIds.add(el.id);

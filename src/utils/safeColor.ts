@@ -53,6 +53,7 @@ export const sanitizeProjectColors = (data: any): number => {
   });
   each(data.beadLibrary, b => fix(b, 'color', '#888888'));
   each(data.polarGrids, g => fix(g, 'color', '#4B9FE1'));
+  each(data.spatialGroups, g => fix(g, 'color', '#888888')); // session 63 (review #3)
   if (Array.isArray(data.customColors)) {
     const before = data.customColors.length;
     data.customColors = data.customColors.filter((c: any) => isSafeColor(c) || (c && typeof c === 'object' && isSafeColor(c.color)));

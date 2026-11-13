@@ -179,7 +179,7 @@ export const expandTokens = (pat: string): string[] => {
 export const isZeroWidth = (token: string): boolean => {
   const t = token.toLowerCase().trim();
   if (t === 'be') return true;
-  if (t.startsWith('bc:') || t.startsWith('bp:') || t.startsWith('bcp:') || t.startsWith('sb:') || t.startsWith('bjp:')) return true;
+  if (t.startsWith('bc:') || t.startsWith('bp:') || t.startsWith('bcp:') || t.startsWith('bcjp:') || t.startsWith('sb:') || t.startsWith('bjp:')) return true;
   return /^(\d+)?(p|sp|cp|lp|jp|jpg|bjp|cj|cjp|gp)$/i.test(t);
 };
 
@@ -294,6 +294,23 @@ export const parseNotation = (
           isJoint: false, isGuide: false, isGuidePoint: false, beadType: 'sb',
           beadSeq: suspendedBeadMatch[1].toUpperCase() });
         return pos;
+      }
+
+      // bcjp (session 63): core bead + JOINING picot — like bcp, but its
+      // picot is joined to another element (beads on it are strung on the
+      // join line, getConnectionBeads). bcjp:Y = plain joining picot,
+      // bcjp:Y:ZZ = with beads. Takes one stitch slot, like bcp. Drawing,
+      // stitch counts, pattern text and Join mode already knew it; only this
+      // branch was missing, so the notation was refused as "unknown".
+      // isJoint: true on parse, like bjp (loading clears it when no join
+      // exists — see "Beads on joins" in architecture.md).
+      const bcjpMatch = token.match(/^bcjp:([YZVyzv])(?::([YZVyzv0-9]+))?$/i);
+      if (bcjpMatch) {
+        picots.push({ id: generateId(), stitchesBefore: pos, length: 'medium',
+          isJoint: true, isGuide: false, isGuidePoint: false, beadType: 'bcjp',
+          coreSize: bcjpMatch[1].toUpperCase(),
+          beadSeq: bcjpMatch[2] ? bcjpMatch[2].toUpperCase() : undefined });
+        return pos + 1;
       }
 
       const bcpPlainMatch = token.match(/^bcp:([YZVyzv])$/i);
@@ -537,7 +554,7 @@ export const countActualStitches = (notation: string): number => {
       }
       if (PICOT_TOKEN_RE.test(token)) return;
       if (token.match(/^bp:/i) || token.match(/^bjp:/i) || token.match(/^sb:/i)) return;
-      if (token.match(/^bc:/i) || token.match(/^bcp:/i)) return;
+      if (token.match(/^bc:/i) || token.match(/^bcp:/i) || token.match(/^bcjp:/i)) return;
       const match = token.match(STITCH_TOKEN_RE);
       if (match) count += parseInt(match[1]) || 1;
     };
@@ -637,10 +654,10 @@ let pat = normalizePattern(notation.slice(prefix.length));
 };
 
 // ── Split-ring side A positions (session 62, review H5) ─────────────────────
-// A bead that takes a stitch-wide slot: core bead (bc / bcp) or bead element
+// A bead that takes a stitch-wide slot: core bead (bc / bcp / bcjp) or bead element
 // (be). Every other picot-like token is zero-width.
 export const isSlotBead = (p: any): boolean =>
-  p?.beadType === 'bc' || p?.beadType === 'bcp' || p?.beadType === 'be';
+  p?.beadType === 'bc' || p?.beadType === 'bcp' || p?.beadType === 'bcjp' || p?.beadType === 'be';
 
 // Side A of a split ring is stored counted BACKWARDS: its notation reads from
 // the shared start point, which is the END of el.paths[0], while stored

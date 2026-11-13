@@ -458,8 +458,22 @@
 
   <div class="card card-blue" style="margin-top:1rem;">
     <h4 class="blue">Auto-Save</h4>
-    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to the app's local storage (only when the canvas isn't empty). Use <span class="blue">File → Save Project</span> to keep a permanent <code class="code-inline">.tatcad</code> copy.</p>
+    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">Your work auto-saves every 3 minutes to the app's local storage (only when the canvas isn't empty), and again when you close TattingCAD. Use <span class="blue">File → Save Project</span> to keep a permanent <code class="code-inline">.tatcad</code> copy.</p>
+    <p class="light" style="margin-top:0.4rem; font-size:0.875rem;"><strong>Resume</strong> on the start screen brings back your last session, reconnected to its file — Save writes to that file again. If the file was changed elsewhere in the meantime (on another computer, say), Save asks first: <span class="blue">Overwrite</span> or <span class="blue">Save As…</span>.</p>
+    <p class="light" style="margin-top:0.4rem; font-size:0.875rem;">If storage is nearly full, the autosave is kept without the reference image (you'll see a warning once); Resume then takes the image back from the pattern's file. If even that doesn't fit, you'll see <em>"Autosave failed"</em> — save your work right away.</p>
   </div>
+  
+    <div class="card" style="margin-top:1rem;">
+    <h4 class="blue">If something goes wrong</h4>
+    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">If TattingCAD runs into a problem while drawing, it shows a <em>"TattingCAD ran into a problem"</em> screen instead of going blank. Your work up to just before the problem is safe:</p>
+    <p class="light" style="margin-top:0.3rem; font-size:0.875rem;">
+      • <strong>Save a copy…</strong> — saves it as a new file (named "… (recovered)"), so your original file isn't touched<br>
+      • <strong>Restart</strong> — reopens TattingCAD; choose <span class="blue">Resume</span> on the start screen to carry on<br>
+      • <strong>Close</strong> — closes TattingCAD without saving (to keep your latest work, use Save a copy or Restart first)
+    </p>
+    <p style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">When opening, pasting or resuming a pattern with a damaged element (for example a file edited by hand), that element is left out and a message tells you how many.</p>
+  </div>
+  
 </section>
 
 <!-- ══════════════════════════════ SHORTCUTS ══════════════════════════════ -->
@@ -820,7 +834,7 @@
 
   <div class="feature">
     <div class="feature-name">Groups</div>
-    <div class="feature-body">Select multiple elements and press Ctrl+G to group them. Grouped elements move, rotate, and flip together. Use Shift+G to ungroup.</div>
+    <div class="feature-body">Select multiple elements and press Ctrl+G to group them. Grouped elements move, rotate, and flip together. Use Shift+G to ungroup. A group's name and colour are saved with the project.</div>
   </div>
 
   <div class="feature">
@@ -830,7 +844,7 @@
 
   <div class="feature">
     <div class="feature-name">Export &amp; Save</div>
-    <div class="feature-body">Export as SVG (vector, scales to any size). Projects auto-save every 3 minutes to browser storage. Use File menu to manually save/load.</div>
+    <div class="feature-body">Export as SVG (vector, scales to any size). In the SVG, the Design, Notation and Order Numbers layers each have a sub-layer per round (named after the round, or Round 1, Round 2…; a pattern with fewer than two rounds isn't split), and all joins sit together in one group on the Joins layer — so you can show, hide or recolour them in Inkscape or Illustrator. Projects auto-save every 3 minutes to the app's storage. Use File menu to manually save/load.</div>
   </div>
 
   <div class="feature">
@@ -841,14 +855,15 @@
   <div class="feature">
     <div class="feature-name">Picot Tools</div>
     <div class="feature-body">
-      Click the <strong>magic-wand</strong> button next to the notation box (single ring or chain). Each action rewrites the notation for you:<br>
+      Click the <strong>magic-wand</strong> button next to the notation box (ring, chain or split ring — on a split ring choose Side A, Side B or Both). Each action rewrites the notation for you, and every stitch type is kept as it is (<code class="code-inline">2rds-p-6ds</code> ×2 → <code class="code-inline">4rds-p-12ds</code>):<br>
       • <strong>Reverse notation</strong><br>
       • <strong>Clear unjoined picots</strong><br>
       • <strong>Add picots</strong> — Symmetric or Asymmetric, added to every run<br>
       • <strong>Fill density</strong> — slider from Dense to Sparse, with a preview of how many picots will be added<br>
       • <strong>Compact repeats</strong> — groups repeated picots, e.g. <code class="code-inline">4*(2ds-p)</code><br>
-      • <strong>Scale</strong> — presets (amber ones are rounded, marked ~) or a % of the original length<br>
-      If an element's notation can't be handled, the panel says so.
+      • <strong>Scale</strong> — presets (amber ones are rounded, marked ~) or a % of the original length. A picot at the very start or end stays there: <code class="code-inline">c: 6ds-p</code> ×2 → <code class="code-inline">c: 12ds-p</code><br>
+      To scale several rings and chains at once, select them and use the magic-wand in the selection bar.<br>
+      Joined picots keep their joins, and beads are never added or removed. Picot Tools only work on valid notation — if the element has a red glow, fix the notation first. If an element's notation can't be handled, the panel says so.
     </div>
   </div>
 
@@ -1013,6 +1028,20 @@
       r: 4ds-<span class="hl">bcp:Z:YZY</span>-4ds  <span class="dim">← Z core, YZY branch</span>
     </div>
   </div>
+
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <span class="bead-tag">bcjp:Y:ZZ</span>
+      <strong class="white">Core Bead + Joining Picot</strong>
+    </div>
+    <p style="font-size:0.875rem;">Like <code class="code-inline">bcp</code>, but the picot coming out of the core bead <em>joins</em> to another ring or chain. First part is the core size; the optional second part is the beads on the joining picot — they are drawn on the join line. Uses one ds-position.</p>
+    <div class="codeblock">
+      r: 6ds-<span class="hl">bcjp:Y</span>-6ds  <span class="dim">← Y core, plain joining picot</span><br>
+      r: 4ds-<span class="hl">bcjp:Y:ZZ</span>-4ds  <span class="dim">← Y core, ZZ beads on the join</span>
+    </div>
+    <p style="font-size:0.78rem; color:#6b7280;">Join it in Join mode like any picot. Changing a joined picot to <code class="code-inline">bcjp</code> or <code class="code-inline">bjp</code> keeps its join; changing it to a bead that doesn't join (<code class="code-inline">bc</code>, <code class="code-inline">bcp</code>, <code class="code-inline">bp</code>, <code class="code-inline">sb</code>) removes the join.</p>
+  </div>
+
 
   <!-- bp -->
   <div class="card">

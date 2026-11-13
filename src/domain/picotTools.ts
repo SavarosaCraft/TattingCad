@@ -7,7 +7,7 @@
 //
 // SCOPE: every stitch type (ds, ss, lss, rss, rds, bds) and plain picot
 // tokens; split rings one side at a time (session 60). Bead tokens (be, bc:,
-// bp:, bjp:, sb:, bcp:) are fixed "barriers" — never added, removed or moved
+// bp:, bjp:, sb:, bcp:, bcjp:) are fixed "barriers" — never added, removed or moved
 // past. A bead sequence (bc:YZ — one token, one picot per bead) is refused
 // ("picotMismatch") rather than guessed at.
 //
@@ -21,7 +21,7 @@
 // stitch count and a length are the same number, so the output there is
 // exactly what it was.
 
-import { expandTokens, isZeroWidth, splitRingSideAPosition, parseNotation, STITCH_WIDTH_DS } from './parser';
+import { expandTokens, isZeroWidth, isNotationValid, splitRingSideAPosition, parseNotation, STITCH_WIDTH_DS } from './parser';
 
 // Editable picot tokens — the ones this tool is allowed to add or remove.
 // (jp/jpg/cj/cjp are included because a token typed as one of these is
@@ -108,7 +108,7 @@ const runsEqual = (a: WizardSegment, b: WizardSegment): boolean =>
 
 export interface WizardAnalysis {
   supported: boolean;
-  reason?: 'unparsable' | 'splitRing' | 'unsupportedToken' | 'picotMismatch';
+  reason?: 'unparsable' | 'splitRing' | 'unsupportedToken' | 'picotMismatch' | 'invalid';
   segments: WizardSegment[];
   type: string; // e.g. "r", "c" — original captured case
 }
@@ -126,6 +126,11 @@ function splitPrefix(notation: string): { type: string; pattern: string } | null
 export function analyzeNotation(notation: string, picots: any[] | undefined): WizardAnalysis {
   const split = splitPrefix(notation || '');
   if (!split) return { supported: false, reason: 'unparsable', segments: [], type: '' };
+  // Review #21 (session 63): notation the editor marks invalid (red glow —
+  // e.g. two picots side by side) is refused, not guessed at: the tools
+  // would otherwise "fix" it in ways nobody asked for (Scale put a stitch
+  // between the two picots). The panel says to fix the notation first.
+  if (!isNotationValid(notation)) return { supported: false, reason: 'invalid', segments: [], type: split.type };
   // Session 60: split rings ARE supported now — the Picot Tools panel hands
   // each side over separately as "sr: <side>" with that side's picots (see
   // GeneralElementPropertyBar.tsx), so one side is just a plain run of ds +
@@ -718,15 +723,25 @@ function scaleSegments(type: string, segments: WizardSegment[], scaleFactor: num
       : 0
   );
 
+  // Review #21 (session 63): a picot (or bead) at the very end stays at the
+  // very end — "c: 6ds-p" ×2 → "c: 12ds-p", not "11ds-p-1ds". (One at the
+  // very start already stays there: 0 scales to 0.) Valid notation has no
+  // other zero gaps (two picots side by side are refused above).
+  const endPinned = zwEntries.length > 0 && originalTotal > 0
+    && zwEntries[zwEntries.length - 1].originalSb === originalTotal;
+  if (endPinned) newSbList[newSbList.length - 1] = newTotal;
+  const trailingGap = endPinned ? 0 : 1;
+
   // Nudge: ensure strictly increasing positions with minimum 1-stitch gap.
   // Work forward — each position must be > the previous one.
   for (let i = 1; i < newSbList.length; i++) {
     if (newSbList[i] <= newSbList[i - 1]) newSbList[i] = newSbList[i - 1] + 1;
   }
-  // Also ensure the last picot leaves at least 1 stitch before the end.
+  // Also ensure the last picot leaves at least 1 stitch before the end
+  // (none if it was AT the end — review #21).
   // (Work backward if the nudges pushed too far.)
   for (let i = newSbList.length - 1; i >= 0; i--) {
-    const maxSb = newTotal - (newSbList.length - i); // at least 1 stitch for each remaining gap
+    const maxSb = newTotal - trailingGap - (newSbList.length - 1 - i); // 1 stitch for each remaining inner gap
     if (newSbList[i] > maxSb) newSbList[i] = Math.max(i > 0 ? newSbList[i - 1] + 1 : 0, maxSb);
   }
 
@@ -812,7 +827,9 @@ function isExactSide(segments: WizardSegment[], factor: number): boolean {
   const newTotal = total * factor;
   if (!Number.isInteger(newTotal)) return false;
   if (newTotal < 1) return false;
-  let pos = 0, prevSb = 0;
+  // Review #21 (session 63): a gap that was 0 to begin with (a picot at the
+  // very start or very end) stays 0 — that's exact, not a squeezed gap.
+  let pos = 0, prevSb = 0, prevPos = 0;
   for (const seg of segments) {
     if (seg.kind === 'run') {
       if ((seg.stitches || []).some(s => !Number.isInteger(s.n * factor))) return false;
@@ -821,11 +838,11 @@ function isExactSide(segments: WizardSegment[], factor: number): boolean {
     }
     const newSb = pos * factor;
     if (!Number.isInteger(newSb)) return false;
-    if (newSb - prevSb < 1) return false;
-    prevSb = newSb;
+    if (pos - prevPos > 0 && newSb - prevSb < 1) return false;
+    prevSb = newSb; prevPos = pos;
   }
   // trailing run
-  if (newTotal - prevSb < 1) return false;
+  if (total - prevPos > 0 && newTotal - prevSb < 1) return false;
   return true;
 }
 

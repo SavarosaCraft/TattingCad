@@ -749,7 +749,7 @@ export const MultiSelectSummaryBar: React.FC<MultiSelectSummaryBarProps> = ({
                     {skippedCount > 0 ? ` (${t('multiScaleSkipped').replace('{n}', String(skippedCount))})` : ''}
                   </div>
                   {supported.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
+                    <p className="text-xs text-gray-400 italic">{t(analyzed.length > 0 && analyzed.every(a => a.analysis.reason === 'invalid') ? 'picotWizardInvalid' : 'picotWizardUnsupported')}</p>
                   ) : (
                     <div className={WIZARD_CARD_CLASS}>
                     <ScaleControls

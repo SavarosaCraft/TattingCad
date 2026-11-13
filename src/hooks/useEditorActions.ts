@@ -32,6 +32,8 @@ import { repairSplitRingSideABeads } from '../domain/parser';
 import { sanitizeProjectColors } from '../utils/safeColor';
 import { sanitizeProjectNumbers } from '../utils/safeNumber';
 
+type ConfirmText = string | ((t: (key: string) => string) => string);
+
 // Use Tauri native clipboard when available (avoids browser permission prompts).
 // Falls back to navigator.clipboard when running in browser dev server.
 const isTauri = () => typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
@@ -74,10 +76,16 @@ export interface UseEditorActionsParams {
   // Setters
   setElements: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setSelectedIds: (ids: string[]) => void;
+  // Review #20 (session 63): after Undo / Redo, drop selected elements,
+  // picots and beads that aren't in the restored pattern.
+  pruneSelection?: (elements: any[]) => void;
   setPicotConnections: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setRounds: (fn: ((prev: any[]) => any[]) | any[]) => void;
   setGroups: (fn: ((prev: any[]) => any[]) | any[]) => void;
-  setConfirmDialog: (dialog: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void } | null) => void;
+  // A text may also be a function of t, worked out when the dialog draws
+  // (useUIState's ConfirmText) — for callbacks created once, whose own p.t
+  // is the first render's (raw keys before the language files load).
+  setConfirmDialog: (dialog: { title?: ConfirmText; message: ConfirmText; confirmLabel?: ConfirmText; onConfirm: () => void } | null) => void;
   t: (key: string) => string;
   // Session 63: tells the user that n damaged elements were left out of a
   // paste. Must be stable and read its text live (pasteFromClipboard is
@@ -696,6 +704,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const state = history[newIdx];
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
+      p.pruneSelection?.(state.elements); // #20
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
       p.setPicotConnections(restoredConns);
       if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
@@ -716,6 +725,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const state = history[newIdx];
       p.setHistoryIndex(newIdx);
       p.setElements(JSON.parse(JSON.stringify(state.elements)));
+      p.pruneSelection?.(state.elements); // #20
       const restoredConns = JSON.parse(JSON.stringify(state.connections));
       p.setPicotConnections(restoredConns);
       if (state.rounds) p.setRounds(JSON.parse(JSON.stringify(state.rounds)));
@@ -806,7 +816,9 @@ export function useEditorActions(p: UseEditorActionsParams) {
         sanitizeProjectColors(parsed);
         // Session 63 (review #1): …and its numbers — an element whose
         // geometry isn't real numbers is left out (utils/safeNumber.ts).
-        const numberCheck = sanitizeProjectNumbers(parsed);
+        // Review #6 (session 63): and the same structure check as a file
+        // (id, known type, paths) — paste checked only colours before.
+        const numberCheck = sanitizeProjectNumbers(parsed, { requireStructure: true });
         if (numberCheck.dropped > 0) p.onDamagedElements?.(numberCheck.dropped);
         const { elements: sysEls, connections: sysConns } = parsed;
         if (Array.isArray(sysEls) && sysEls.length > 0) {
@@ -1000,10 +1012,14 @@ export function useEditorActions(p: UseEditorActionsParams) {
       // Discussion #3, agreed direction). Same generic message regardless
       // of whether this merges one existing group or several (agreed: no
       // distinct multi-group wording).
+      // Session 63: texts as functions of t. groupSelected is created once
+      // ([] deps), so p.t here is the FIRST render's t — before the
+      // language files load it returns the key itself, and the dialog
+      // showed "groupMergeTitle" / "groupMergeBody" / "groupMergeConfirm".
       p.setConfirmDialog({
-        title: p.t('groupMergeTitle'),
-        message: p.t('groupMergeBody'),
-        confirmLabel: p.t('groupMergeConfirm'),
+        title: tt => tt('groupMergeTitle'),
+        message: tt => tt('groupMergeBody'),
+        confirmLabel: tt => tt('groupMergeConfirm'),
         onConfirm: commit,
       });
     } else {

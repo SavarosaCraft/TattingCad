@@ -3,7 +3,13 @@
 Last updated: **session 63** (code review #1 fixed: numbers from pattern
 files are checked — see "Security: numbers from pattern files (session 63)"
 under Rules, `utils/safeNumber.ts`; SVG export: one sub-layer per round and
-all joins in one group — see "SVG export: rounds as layers (session 63)"). Before that: **session 62** (code review + fixes: flip keeps joins and a
+all joins in one group — see "SVG export: rounds as layers (session 63)";
+review #4: "Resume can't write older work over a newer file (session 63)";
+#2 / #3 / #5 / #22 / #23 — see "(session 63)" notes under Unsaved changes,
+Group names and colours in the file, New Project, Notation edit, and
+Split-ring side A; the Medium and Low items too — the whole review is fixed,
+see "(session 63, review #…)" sections, e.g. "Resume goes through file open
+(session 63, review #15)"). Before that: **session 62** (code review + fixes: flip keeps joins and a
 split-ring flip swaps its sides, split-ring side A counted from the shared
 start, Picot Tools keeps every stitch type (rds, bds, half stitches),
 "resume before open" question, Escape order, dropdown keys, touch cancel,
@@ -93,6 +99,14 @@ src/
                           (≤ 2048 px, ≤ ~1.1 MB). See "Reference image size cap
                           (session 62)" under Rules.
 
+    fileFingerprint.ts    Session 63 (review #4). fingerprintText(text) —
+                          length + cyrb53 of a pattern file's text; tells
+                          whether the file changed before the first Save
+                          after Resume. See "Resume can't write older work
+                          over a newer file (session 63)".
+    emergencySave.ts      Session 63 (review #6). registerEmergencyHooks /
+                          getEmergencyHooks — the crash screen's way to the
+                          last good state (snapshot, autosave).
     safeNumber.ts         Session 63 (review #1). isRealNumber, safeNum,
                           markupNum (for coordinates written into markup
                           text), sanitizeProjectNumbers(data) — the number
@@ -256,6 +270,9 @@ src/
                           "Split-ring side A: counted from the shared start".
 
   components/
+    AppErrorBoundary.tsx  Session 63 (review #6). Crash screen around the whole
+                          app (main.tsx): Save a copy… / Restart / Close; X
+                          works again. Built-in en/es/hu texts.
     ScaleControls.tsx     Shared presentational Scale UI — two rows of preset buttons
                           (exact/rounded), percentage input, preview line, clamped
                           warning, and Apply button. Used by both the single-element
@@ -1439,9 +1456,11 @@ rebuild from the pristine original upload and reapply all fixes in one traceable
 then diff against the original to confirm zero unexpected changes. Session 38 had a
 silent key-loss bug caught this way.
 
-Translation files are currently at **793 keys** in en, **791** in hu/es
-(session 63 added `loadWarnDamagedElements` — es/hu by Claude, user to
-check; before that counted in session 62: 792 / 790; hu/es lack only the two `_comment_folded_picots` /
+Translation files are currently at **799 keys** in en, **797** in hu/es
+(session 63 added `loadWarnDamagedElements`, `fileChangedTitle / Body /
+Overwrite`, `autosaveNoImage`, `autosaveFailed`, `resumeImageMissing`,
+`fileTypePattern / Svg / Theme`, `picotWizardInvalid`, and removed 4 unused
+`picotWizard…` keys — es/hu by Claude, user to check; before that counted in session 62: 792 / 790; hu/es lack only the two `_comment_folded_picots` /
 `_comment_cleanup_duplicates` notes; the `src/i18n` and `public/` copies are
 identical). Session 62 added `resumeBeforeOpenTitle/Body/Open/Resume` and
 `refImageReduced`, and reworded `picotWizardUnsupported` (es/hu by Claude —
@@ -1815,6 +1834,12 @@ helper in useJoinActions.ts; exported that helper and reused it at both
 sites. A third, structurally similar site (ghost-array-regeneration's
 connection remap) was flagged but not fixed — see pending-refactor table.
 
+**Session 63 (review #5):** New Project also clears the notes, the reference
+image (+ its settings, back to the app-start default), the group registry
+and the ghost-array registry — they used to carry over into the new file.
+Background, thread size / preset, grid and bead library stay (the user's
+working setup).
+
 **Bug: New Project not resetting materials.** `confirmNewCanvas` reset ~13
 pieces of project state but never called `setMaterials(...)` — a project
 loaded before "New" would leave its materials/gradients carried over into the
@@ -2011,6 +2036,13 @@ User-tested: drag + Alt+Tab, ±1° hold + Alt+Tab, squeeze slider + Alt+Tab
 — each leaves exactly one correct undo step. Not covered:
 **NumberStepper.tsx** — session 62 review: the file is in the repo and
 already ends a hold on window blur (`blurListenerRef`); nothing left to do.
+**Session 63 (review #10):** the hold-to-repeat buttons use POINTER events
+(`onPointerDown` primary button only / `onPointerUp` / `onPointerLeave` /
+`onPointerCancel`). They listened to touch AND mouse events, and a tap on a
+touch screen fires both (touchstart + the browser's follow-up mousedown):
+one tap stepped twice and left two undo steps. A press already running is
+never restarted. Tested with touch emulation (tap 10 → 11, one undo step;
+1 s finger hold repeats, one undo step) and a mouse (click, hold).
 
 ### Ghost arrays — benched (session 56)
 
@@ -2745,6 +2777,33 @@ several elements. Anything that identifies a picot must use **element id +
 picot id** (selection, connections, highlights). Session 60 fixed renderBE's
 selected-diamond test, which used the picot id alone (all copies lit up).
 
+### `bcjp:` — core bead + joining picot, finished (session 63)
+
+`bcjp` was half-built ("legacy"): drawing (renderOnePicot's bcjp branch),
+beads on its join (`getConnectionBeads`), Join-mode selection, stitch
+counting (`dsPosition += 1`) and pattern text (patternOutput.ts) all knew
+it, but **parseNotation had no branch**, so `bcjp:` was refused as an
+unknown element. Now (user's decision, session 63):
+- `bcjp:Y` = core bead (Y/Z/V) whose picot joins; `bcjp:Y:ZZ` = with beads
+  on that picot (drawn on the join line). Same shape as `bcp:Y` /
+  `bcp:Y:ZZ`; lowercase accepted.
+- Parsed like bcp (one stitch slot, `coreSize`, `beadSeq`), but
+  `beadType: 'bcjp'` and `isJoint: true` on parse (like `bjp`).
+- Added to `isZeroWidth`, `countActualStitches`' skip, `isSlotBead` (so
+  split-ring side A positions and the half-stitch bead centring in
+  getPicotPosition / renderPicots — now via isSlotBead — include it) and
+  Picot Tools' barrier list (comment; it goes through isZeroWidth).
+- `canHoldJoin` (review #22) already listed it.
+- Tested: parse vs bcp on 5 notations (same stitch count, positions and
+  stitch types; only beadType / isJoint differ), invalid forms refused,
+  split-ring side A; in the browser, `3ds-p-3ds → 3ds-bcjp:y-3ds` and
+  `→ 3ds-bcjp:Y:ZZ-3ds` keep the join with no warning, not shown as
+  invalid, schematic and realistic draw it (core bead on the ring, ZZ on
+  the join line).
+- **Help page:** a card for it is in `docs/help-bcjp-card.html` (to paste
+  after the bcp card in public/tatting-help.html — not edited here, the
+  GitHub copy may be older than the user's).
+
 ### Beads on joins (session 60 fix)
 
 - `getConnectionBeads(conn)` (tattingindex.tsx; replaced getConnectionBeadSeq)
@@ -3093,6 +3152,215 @@ after success).
 - Test gotcha: reloading a page fires `pagehide` → the autosave is
   rewritten from the app's state (hand-edited localStorage is overwritten).
 
+### Group names and colours in the file (session 63, review #3)
+
+The group registry (`groups` state, tattingindex.tsx: `{id, name, color}[]`,
+in Undo as `spatialGroups`) was never saved, so every group came back as
+"Group" with the fallback colour. Now:
+- `serializeProject` writes `spatialGroups` (**file version 92**; older
+  files have none → `[]`, older app versions ignore the field).
+- `normalizeSpatialGroups` (domain/patternOutput.ts) on open
+  (`applyProjectData`) and Resume: keeps entries with a string id (no
+  duplicates), a text name (≤ 200 characters) and a real colour (else
+  `#888888`); `sanitizeProjectColors` also covers `spatialGroups[].color`.
+- The first Undo entry after open / Resume / New carries `spatialGroups`
+  (the history entry type gained the field).
+- Tested: save → the registry is in the file (a bad colour replaced, a
+  malformed entry dropped); Resume keeps it; New → Save has none.
+
+### Resume can't write older work over a newer file (session 63, review #4)
+
+The bug: autosave (timer / background) → more edits → Save → crash or
+close → next start "Resume: X" opened the OLDER autosave, reconnected to X,
+and Save wrote it over the newer file without asking (reproduced in a
+browser test). User's decision: parts 1 + 2 + 3 below.
+1. **Autosave right after every successful save** — `saveToPath`
+   (useProjectFile) calls `p.onSaved({ filePath, name, stillUnsaved })` →
+   `autoSaveNowRef.current(...)`. The overrides are needed: right after a
+   save `currentFilePathRef` / `projectNameRef` / `hasUnsavedChangesRef`
+   still hold the old values (they follow state on the next render);
+   `stillUnsaved` = an edit made while the file was being written.
+2. **Autosave before the window closes** — the `close-requested` handler
+   calls `autoSaveBeforeClose()` before every `destroy()` (clean close and
+   "close anyway"; the latter keeps the unsaved work for Resume). Whether
+   `pagehide` still runs after `destroy()` isn't guaranteed.
+3. **Fingerprint check** (`utils/fileFingerprint.ts`, `fingerprintText` =
+   length + cyrb53 of the file's text; not security). `fileFingerprintRef`
+   (tattingindex) = the current file's text as this app last opened it
+   (`readAndApplyProjectFile` reads the raw text, `applyProjectData(…,
+   { fingerprint })` stores it with the path) or saved it
+   (`writeProjectFile` now returns the text). Null with no file (New,
+   samples, handed-over Android copies). The autosave keeps it as
+   `_resumeFileHash`. Resume sets it back and sets
+   `verifyFileBeforeSaveRef = true` when it reconnects to a file.
+   `saveProject` (Save / Ctrl+S, not Save As) then reads the file first:
+   same fingerprint → save; file not found → save (nothing to lose);
+   changed, unreadable, or no fingerprint (an autosave from before session
+   63) → **"The file has changed"** dialog: **Overwrite** (red, confirm) /
+   **Save As…** (blue — `cancelPrimary`, new optional field of the confirm
+   dialog) / ✕ or Esc = nothing saved. Any successful save or a new open
+   clears the check; it runs only for the first Save after a Resume.
+- New texts: `fileChangedTitle`, `fileChangedBody` ({name}),
+  `fileChangedOverwrite`; the Save As button reuses `fileSaveAs`.
+- Tested (Playwright, Vite dev server, mocked Tauri with an in-memory file
+  system; each "run" a fresh browser context = the app dying): the bug
+  scenario (autosave now matches the file, Resume opens the newest work,
+  Save writes without asking); file changed elsewhere → dialog → Save As /
+  Overwrite / Esc each do the right thing, and the next Save doesn't ask
+  again; old autosave without fingerprint → asks; file deleted → saves;
+  resumed unsaved work with the file unchanged → saves; close with and
+  without unsaved changes → autosave written before `destroy`. **The real
+  desktop close is for the user to test.**
+
+### Crash screen (session 63, review #6)
+
+`components/AppErrorBoundary.tsx` wraps the whole app (main.tsx). Before,
+an error while drawing unmounted everything: a blank window, and X did
+nothing (lib.rs blocks the close and asks the page, whose listener had gone
+with the app). Now a screen: **Save a copy…** (blue) / **Restart** /
+**Close** (desktop only), a hint that Restart keeps the work via "Resume",
+and a "Details" fold with the error message.
+- The screen can't read app state, so tattingindex registers two functions
+  in `utils/emergencySave.ts` from the autosave effect — `snapshot()` (the
+  autosave payload, `buildAutosavePayload`) and `autosave()` — and
+  deliberately never unregisters them. They read refs, which hold the last
+  state that was drawn successfully (a render that throws isn't committed).
+- Save a copy → `showSaveDialog("<name> (recovered)")` + `writeProjectFile`
+  of the snapshot without the `_resume…` / `autoSaved` fields. Restart →
+  `autosave()` then `location.reload()`. Close → `destroy()`.
+- On a crash it listens to `close-requested` itself, so X closes again.
+- Texts are built into the component (en / es / hu, picked from
+  `tcad_language`) — the app's translations may be what broke.
+- Also: `sanitizeProjectNumbers` treats a `notation` / `notationB` that
+  isn't text as damage (a number there crashed the app on open — the
+  reproduction); with `{ requireStructure: true }` (paste and Resume) also
+  a missing id, an unknown type or no paths list. File open keeps its own
+  whole-file refusal for those (unchanged).
+- Error boundaries catch errors while drawing and in effects, not in click
+  handlers; the realistic bake catches its own per-element errors.
+- Tested: an error injected into circle-ring picot drawing (test-only
+  module rewrite) → screen shown; Save a copy writes the last good state;
+  Restart → start screen with Resume holding it; Close and X close. Old
+  code: blank window, no close listener left. A file with a number as
+  notation opens with "1 damaged element(s) were left out."
+
+### Autosave when storage is full (session 63, review #8)
+
+The autosave failed silently when browser storage was full (shared with
+the Recent thumbnails on Android; the reference image, up to ~1.1 MB, is
+the biggest part). Now: write → if it throws, write again **without the
+reference image** and with `_refImageOmitted: true`, warn once
+(`autosaveNoImage`); if that fails too, warn once (`autosaveFailed`) — the
+last autosave that fitted stays. `autosaveWarnedRef` resets after an
+autosave that works. **Resume** of an autosave with `_refImageOmitted`:
+reads the pattern's file (`readProjectFileText`) and takes its
+`referenceImage` (as of its last save) + `markSettingsBaseline()`; no file
+or no image in it → `resumeImageMissing`. Texts: `autosaveNoImage`,
+`autosaveFailed`, `resumeImageMissing`. Tested by filling localStorage
+(old code: no autosave, no message).
+
+### Raw keys in the group-merge dialog (session 63, user report)
+
+The "Merge groups?" confirm (Group on a selection that already holds
+groups) showed `groupMergeTitle` / `groupMergeBody` / `groupMergeConfirm`
+in every language. **Why:** `groupSelected` (useEditorActions) is a
+`useCallback(…, [])`, created on the first render; its `p.t` is that
+render's `t`, and before the language files load `t` returns the key
+itself (the built-in TRANSLATIONS object is empty). **Fix:** the texts are
+functions of `t` (`tt => tt('groupMergeTitle')`), worked out when the
+dialog draws — the confirm dialog's ConfirmText (session 62, H3). The hook
+param type now allows ConfirmText.
+- **Rule:** code created once (`useCallback` / `useMemo` / `useEffect` with
+  deps that don't include `t`, listeners registered once) must not call `t`
+  directly: give the dialog text functions, or read `t` through a ref
+  (`tLiveRef`, `closeTRef`). A scan of all `t(` calls inside memoised code
+  found no other case (session 63).
+- Tested: before → raw keys in en and hu; after → "Merge groups?" /
+  "Csoportok egyesítése?" with translated body and button.
+
+### Toast: one timer (session 63, review #13)
+
+`showLoadMsg` keeps its timer in `loadMsgTimerRef` and clears it before a
+new message; the notation-copy messages (they set the toast and a timer
+themselves) now go through `showLoadMsg` too. Before, every message started
+its own timer and an older one hid a newer message early — the "damaged
+elements" warning showed for 1.1 s instead of 4 s (measured with and
+without the change). Rule: never `setLoadMsg` + `setTimeout` directly.
+
+### Start screen reads the autosave once (session 63, review #9)
+
+`splashAutosave` is a `useState` initializer (was an IIFE re-run on every
+render — megabytes per frame during a drag). The start screen only shows at
+launch, so the value from start is the right one.
+
+### Repeat "R" in its round's colour (session 63, user request)
+
+In Tatting Order (and with unnumbered shown) a repeat element's "R" used the
+theme's repeat colours (`orderRepeatText` / `orderRepeatOutline`, grey) even
+inside a round. `getRepeatBadgeColor(el)` (tattingindex.tsx, next to
+`getRoundBadgeColor`): in a round → that round's badge colours, the same as
+its numbers; in no round → the theme's repeat colours as before (so it
+stays apart from the gold "unassigned" numbers). Used by all three R
+badges (circle rings, lines, other paths). Checked on DAL_Snowflake_2026:
+24 R badges match their round's numbers, one moved out of its round stays
+grey.
+
+### Resume goes through file open (session 63, review #15)
+
+`loadFromAutosave` (tattingindex.tsx) used to be its own copy of file
+open, and had drifted: the first Undo entry held the elements before repair,
+and it skipped the stale-join clean-up, the old-field migration, the
+duplicate check and the camera / zoom checks. Now it checks the autosave
+(colours; numbers + structure with `requireStructure`, damaged elements →
+toast) and calls `useProjectFile.applyProjectData(data, resumePath,
+{ fromAutosave: true, fingerprint: _resumeFileHash })`. `fromAutosave`
+skips `onFileApplied` (re-centring — Resume keeps the saved view), the
+"Load completed" toast and the Recent entry / thumbnail. Then, in the same
+synchronous run (so they win over what `applyProjectData` set): the
+saved / unsaved state from `_resumeUnsaved`, `verifyFileBeforeSaveRef`
+(review #4), the thread preset into the preset list (Resume always did
+this; file open doesn't), and the `_refImageOmitted` image restore
+(review #8).
+
+### Small Low fixes (session 63, review #12, #14, #16–#20)
+
+- **#12** `exportSVG` (useProjectFile): a write error goes through
+  `reportSaveError` → `saveErrFailed` toast. It was only logged.
+- **#14** `useInputHandlers`: Shift locks a drag to one axis; letting go of
+  Shift mid-drag used the locked offset from then on, so the element sat off
+  the pointer. The unlocked branch now recomputes the delta from the drag
+  origin (`world − origin − dragOffset`).
+- **#16** `safeFileName(name, fallback = 'Pattern')` (tauri/file.ts):
+  only characters a file name can't hold (`\ / : * ? " < > |`, control
+  characters) become `_`; spaces and accents stay; trailing dots / spaces
+  are dropped (Windows). It used to turn spaces into `_` too.
+- **#17** the dialog helpers take `DialogTexts = { title?, typeName? }`;
+  every caller passes translated texts (`fileSave`, `fileLoad`,
+  `fileExportSvg`, `themeSaveFile`, `fileTypePattern / Svg / Theme`). The
+  Recent list's nameless entry shows `projectUntitled`. Left as is: the
+  order bar's `title="Delete"` names the Delete key (like `title="R"`).
+- **#18** removed the unused keys `picotWizardCompactApply`,
+  `picotWizardFillPreview`, `picotWizardScaleCustomLabel`,
+  `picotWizardScalePreview` (all six files) and the thumbnail /
+  `openExternal` debug logs.
+- **#19** file.ts's header describes today's asset scope (allow `**` +
+  the 68-entry deny list, same as `deny-sensitive.json`). Help-page text is
+  the user's to paste (user's rule: Claude doesn't edit the help) — the
+  snippets are in `docs/help-snippets-session63.html`.
+- **#20** `useEditorActions` takes `pruneSelection(elements)` and calls it
+  after Undo and Redo: `selectedIds`, `selectedPicots` and the bead-element
+  selection keep only what still exists (chain ends `__start__` / `__end__`
+  kept). Undo of a new ring used to leave "1 object selected" with 0
+  elements.
+
+### Android writes: no second try (session 63, review #7)
+
+`writeTextAnywhere` (tauri/file.ts): a content:// write that fails in
+android-fs is now an error (Save shows "couldn't save", the file stays as
+it was). It used to retry with plugin-fs, which may open the file without
+truncating it — a shorter save could leave old bytes at the end. Reads keep
+their fallback. Not testable here — user test on the phone.
+
 ### Android files: kept access, Recent that survives a restart (session 61)
 
 Tauri's dialog plugin opens with `ACTION_GET_CONTENT` (temporary grant, a
@@ -3135,7 +3403,7 @@ after a restart every Recent entry was unreadable.
 
 Third wall, behind safeColor and the CSP. `default.json` still allows `"**"`;
 `capabilities/deny-sensitive.json` adds a **global `fs:scope` deny list**
-(53 paths), and `tauri.conf.json` → `assetProtocol.scope` is now
+(53 paths; **68 since session 63**, see below), and `tauri.conf.json` → `assetProtocol.scope` is now
 `{ allow: ["**"], deny: [same list] }` (thumbnail loader). Deny always wins.
 - Covers: `.ssh`, `.gnupg`; Windows dirs, Program Files, both Startup
   folders, Credentials / Protect, PowerShell profiles, browser profiles,
@@ -3145,6 +3413,15 @@ Third wall, behind safeColor and the CSP. `default.json` still allows `"**"`;
   browsers, `/etc` `/usr` `/bin` `/sbin` `/lib` `/boot`; Android
   `$APPDATA/app_webview|shared_prefs|databases|no_backup|code_cache`,
   `/system`, `/vendor`.
+- **Session 63 (review #11):** + credential dot-folders and files, added
+  right after `.gnupg` in BOTH lists (68 entries each, checked equal):
+  `.aws/**`, `.azure/**`, `.config/gcloud/**`, `.config/gh/**`,
+  `.docker/**`, `.kube/**`, `.git-credentials`, `.gitconfig`,
+  `.config/git/**`, `.netrc`, `_netrc`, `.npmrc`, `.pypirc`,
+  `.cargo/credentials`, `.cargo/credentials.toml` (all under `$HOME`).
+  **Why only Windows needed it:** Tauri's scope glob requires a literal
+  leading dot on macOS / Linux, so `"**"` never matched dot-names there; on
+  Windows it does. The user's deny-sensitive.json uses CRLF (kept).
 - Facts checked in Tauri's source (crates/tauri/src/scope/fs.rs,
   plugins-workspace fs commands.rs):
   - a path variable a system doesn't have is **skipped** — one list is
@@ -3180,8 +3457,9 @@ user to update the line.)
 Two review docs (claude.ai Docs) hold the findings, each with a fix tracker:
 - **tattingCAD — Code Review (session 62)**
   (https://claude.ai/artifact/PEAEpoCRQ7MUWDshtzcRBD) — the whole app, #1–#23.
-  **#1 fixed in session 63** (see "Security: numbers from pattern files");
-  the rest open — suggested order #4 and #2, then #3. Its line numbers are
+  **Fixed in session 63: all of it, #1–#23** (see the "(session 63)"
+  sections). Tested by the user: #1, #2, #3,
+  #22 (bjp), #23 — the rest wait for user tests (handoff-session63.md). Its line numbers are
   from before the session-62 fixes.
 - **tattingCAD — tattingindex.tsx deep dive**
   (https://claude.ai/artifact/JMQPNq4SboQzGePJH15L3v) — H1–H7, M1–M6,
@@ -3241,8 +3519,13 @@ direction arrow's tail).
   `dsPosition = count − s − width`.
 - `splitRingSides` counts side A's picots by **parsed** picots — a bead
   sequence (`bc:YZ`, `bc:2Y`) is one token but one picot per bead.
-- **Not changed:** a gradient thread colour on side A still runs from the
-  far end, like its picot colours (session 52) — review #23, user's decision.
+- **Gradient (session 63, review #23 — user's decision):** side A's
+  gradient thread colour now runs from the shared start too, like
+  everything else on side A: realistic stitches use the notation start
+  (`notationStart / count`), split-ring picots and `getPicotPositionFraction`
+  (join-line colours) use `splitRingSideAPosition`. It used to run from the
+  far end (session 52). Side B unchanged. Schematic gradients are drawn
+  across the shape's box (`url(#gradient-…)`), so they don't depend on it.
 
 ### Notation edit: picot ids by position AND order (session 62, H2)
 
@@ -3252,9 +3535,17 @@ kept in a list per `stitchesBefore` and handed out in two passes — the same
 spot keep their own ids and joins (they used to get the same id); a picot
 removed from a spot it shares with a bead doesn't hand its join to the bead;
 `p-p → p-lp` still keeps both joins. Note: `p-p`, or a picot next to a bead,
-is flagged as invalid notation (red) but still applied. Open: a joined picot
-replaced by a core bead at a lone spot passes its join to the bead (review
-#22, user's decision).
+is flagged as invalid notation (red) but still applied.
+**Session 63 (review #22, user's decision):** a joined picot keeps its join
+across a change of KIND at its spot only if the new kind can be joined —
+`canHoldJoin`: no `beadType` (p, lp, cj, …), `bjp:`, `bcjp:` (parseable
+since session 63 — see "`bcjp:` — core bead + joining picot"), or a `be` with
+`beIsJoint` (the same rule as Join-mode selection, useInputHandlers.ts).
+`3ds-p-3ds → 3ds-bc:Y-3ds` now drops the join (the usual "this edit removes
+a join" warning, then the far side is demoted); `→ 3ds-bjp:Y-3ds` or
+`→ 3ds-lp-3ds` keeps it. An unchanged kind always keeps its join (an old
+file's joined `bp` stays). Applies in both the order and the position
+branch (`joinCarries`). Tested through the property bar's notation field.
 
 ### Picot Tools — every stitch type (session 62, H7)
 
@@ -3287,9 +3578,23 @@ replaced by a core bead at a lone spot passes its join to the bead (review
   `actualStitches`; `RunScaleDetail`'s `*Ds` fields are stitch counts.
 - The old `jk` `runToken` special case is gone (the runs' own `ss` type does
   it). A gap the nudge rule fills gets ds — ss on a Josephine knot.
-- Still refused: bead sequences (`picotMismatch`) and unknown tokens.
-- Open: Scale adds a stitch after a picot at the very end, or between two
-  picots side by side (review #21).
+- Still refused: bead sequences (`picotMismatch`) and unknown tokens — and,
+  since session 63, invalid notation (`reason: 'invalid'`, see below).
+- **Session 63 (review #21, user: "two picots sitting next to each other
+  isn't a valid notation"):** `analyzeNotation` first runs the parser's
+  `isNotationValid` — notation with a red glow is refused (`'invalid'`) and
+  the panel says `picotWizardInvalid` ("Fix the notation first …"); the
+  multi-select Scale counts such elements as skipped and shows the same text
+  when every one is invalid. So the only zero gaps Scale meets are a picot
+  (or bead) at the very start — 0 scales to 0, it always stayed — or at the
+  very end: `scaleSegments` now pins that one to the new end (`endPinned`;
+  trailing gap 0, the backward nudge pass counts only inner gaps):
+  `c: 6ds-p` ×2 → `c: 12ds-p` (was `11ds-p-1ds`), `r: 3ds-p-3ds-p` ×2 →
+  `6ds-p-6ds-p`. `isExactSide` accepts a gap that was 0 to begin with, so
+  `c: 6ds-p` gets ÷2 / ÷3 as exact presets. Checked old vs new on 6,000
+  random valid notations × 9 factors: every result without an end picot
+  identical (40,257), every one with an end picot keeps it (13,743), every
+  result valid, presets unchanged unless there's a start / end picot.
 
 ### Opening a file while last session's work is unsaved (session 62, H3)
 
@@ -3469,8 +3774,29 @@ for a 20 DS ring). Existing presets are needle — unchanged behaviour.
 "load anyway?" / New Project prompts:
 
     currentHistoryRev = history[historyIndex]?.rev ?? 0
-    hasUnsavedChanges = currentHistoryRev !== lastSavedRev
+    hasUnsavedChanges = (currentHistoryRev !== lastSavedRev || settingsChanged)
                         && (elements.length > 0 || currentFilePath !== null)
+
+**Session 63 (review #2): `settingsChanged`.** Settings saved in the file but
+outside Undo — notes, materials, the reference image and its settings,
+background colour, thread size (`dsWidth`) and active thread preset, bead
+library — were missed, so closing lost them without a warning.
+`settingsKey` (useMemo, tattingindex.tsx) = `projectSettingsKey(…)`
+(domain/patternOutput.ts) of those values (the reference image by its
+fingerprint, `referenceImageFingerprint`, memoised separately);
+`settingsChanged = savedSettingsKey !== null && settingsKey !==
+savedSettingsKey`. `savedSettingsKey` is set:
+- after a save — from the data WRITTEN (`onSaved({ settingsKey })`);
+- after open, Resume and New — `markSettingsBaseline()` bumps
+  `settingsBaselineGen` as the load's LAST state update; an effect on it
+  copies the key of that render (React 18 batches the load's updates, so
+  it sees all of them). `applyProjectData` calls it via
+  `p.onSettingsBaseline`. Also after a reference image is shrunk on open
+  (M6 — the same picture, not an edit) and once at app start.
+- View settings (camera, zoom, grid, render mode, custom palette) are left
+  out on purpose. Group names / colours and rounds go through Undo.
+- Tested: opening each shipped sample + a test file, and Resume of each →
+  no star; a notes edit → star and the close question; Save → clean.
 
 - Every entry pushed by pushHistoryState gets a new, ever-increasing `rev`
   (module counter in useHistoryActions.ts). Entries created directly with

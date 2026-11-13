@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "deny-sensitive",
-  "description": "Session 61 security: folders TattingCAD may never read or write, on every system, even though default.json allows \"**\". Deny always wins over allow. A folder name a system doesn't have is skipped. Keep in step with assetProtocol.scope.deny in tauri.conf.json.",
+  "description": "Session 61 security: folders TattingCAD may never read or write, on every system, even though default.json allows \"**\". Deny always wins over allow. A folder name a system doesn't have is skipped. Session 63 (review #11): credential dot-folders and files too — on Windows the \"**\" allow also matches names starting with a dot (macOS / Linux skip them). Keep in step with assetProtocol.scope.deny in tauri.conf.json.",
   "windows": [
     "main"
   ],
@@ -14,6 +14,51 @@
         },
         {
           "path": "$HOME/.gnupg/**"
+        },
+        {
+          "path": "$HOME/.aws/**"
+        },
+        {
+          "path": "$HOME/.azure/**"
+        },
+        {
+          "path": "$HOME/.config/gcloud/**"
+        },
+        {
+          "path": "$HOME/.config/gh/**"
+        },
+        {
+          "path": "$HOME/.docker/**"
+        },
+        {
+          "path": "$HOME/.kube/**"
+        },
+        {
+          "path": "$HOME/.git-credentials"
+        },
+        {
+          "path": "$HOME/.gitconfig"
+        },
+        {
+          "path": "$HOME/.config/git/**"
+        },
+        {
+          "path": "$HOME/.netrc"
+        },
+        {
+          "path": "$HOME/_netrc"
+        },
+        {
+          "path": "$HOME/.npmrc"
+        },
+        {
+          "path": "$HOME/.pypirc"
+        },
+        {
+          "path": "$HOME/.cargo/credentials"
+        },
+        {
+          "path": "$HOME/.cargo/credentials.toml"
         },
         {
           "path": "C:/Windows/**"

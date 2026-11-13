@@ -16,6 +16,7 @@ keystore.properties
 
 # ETC folder
 ETC/
+handoff*.md
 
 # Editor folders
 .vscode/

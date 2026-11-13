@@ -17,6 +17,7 @@ import {
   fileDisplayName,
   showSaveThemeDialog,
   writeTextToFile,
+  readProjectFileText,
 } from './tauri/file';
 import { generateId } from './utils/id';
 import {
@@ -35,9 +36,10 @@ import esStrings from './i18n/translations_es.json';
 import { readUserLanguages, openUserLanguagesFolder, isDesktopApp } from './tauri/userLanguages';
 import { sanitizeProjectColors } from './utils/safeColor';
 import { sanitizeProjectNumbers } from './utils/safeNumber';
+import { registerEmergencyHooks } from './utils/emergencySave';
 import { evalArithmetic } from './utils/calcExpr';
 import huStrings from './i18n/translations_hu.json';
-import { generatePatternText } from './domain/patternOutput';
+import { generatePatternText, projectSettingsKey, referenceImageFingerprint, normalizeSpatialGroups } from './domain/patternOutput';
 import { ORDER_GROUP_COLORS } from './render/svgExport';
 import { RoundColorsContext, parseRoundColors } from './utils/roundColors';
 import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, endAllowanceFactor, elementTension, withChordCenter } from './geometry/stitchGeometry';
@@ -336,13 +338,10 @@ const DEFAULT_THREAD_PRESET = {
 
 // Open an external URL in the system browser.
 const openExternal = (url: string) => {
-  console.log('[openExternal] called with:', url);
-  console.log('[openExternal] __TAURI_INTERNALS__ present:', !!(window as any).__TAURI_INTERNALS__);
+  // Review #18 (session 63): debug logging removed; a failure still logs.
   invoke('plugin:opener|open_url', { url })
-    .then(() => console.log('[openExternal] invoke succeeded'))
     .catch((err) => {
-      console.error('[openExternal] invoke failed:', err);
-      console.log('[openExternal] falling back to window.open');
+      console.error('[openExternal] invoke failed, falling back to window.open:', err);
       window.open(url, '_blank', 'noopener,noreferrer');
     });
 };
@@ -565,9 +564,18 @@ const TattingDesigner = () => {
   const [groups, setGroups] = useState<{id: string; name: string; color: string}[]>([]);
 
   // Toast helper — sets the load/save message and auto-dismisses it.
+  // Session 63 (review #13): one timer at a time. Each message used to start
+  // its own timer and none was ever cleared, so an older message's timer
+  // hid a newer message early (e.g. the "damaged elements" warning vanished
+  // after about a second). Now a new message replaces the old timer.
+  const loadMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showLoadMsg = useCallback((type: 'success' | 'error', text: string) => {
+    if (loadMsgTimerRef.current) clearTimeout(loadMsgTimerRef.current);
     setLoadMsg({ type, text });
-    setTimeout(() => setLoadMsg(null), type === 'success' ? 3000 : 4000);
+    loadMsgTimerRef.current = setTimeout(() => {
+      loadMsgTimerRef.current = null;
+      setLoadMsg(null);
+    }, type === 'success' ? 3000 : 4000);
   }, []);
 
   // ── Canvas interaction state ─────────────────────────────────────────────
@@ -748,8 +756,13 @@ const APP_VERSION = '1.4.1';
 
   // Splash screen — shown on every launch
 
-  // Autosave metadata — parsed once for the splash button label
-  const splashAutosave = (() => {
+  // Autosave metadata — parsed once for the splash button label.
+  // Session 63 (review #9): really once now — useState's initializer. It
+  // was a plain IIFE that re-read and re-parsed the whole autosave (with
+  // its reference image, up to ~1 MB) on EVERY render, every frame of a
+  // drag included. The label is about the LAST run's autosave, so reading
+  // it at start is exactly right.
+  const [splashAutosave] = useState(() => {
     try {
       const saved = localStorage.getItem('tatting-designer-autosave');
       if (!saved) return null;
@@ -764,7 +777,7 @@ const APP_VERSION = '1.4.1';
         ? fileDisplayName(d._resumeFilePath, '') : '';
       return { name: fileName || d.name || '', date: d.autoSaved ? new Date(d.autoSaved).toLocaleString() : '' };
     } catch { return null; }
-  })();
+  });
 
   // Session 62 (review H3): true while the autosave left by the LAST run
   // holds unsaved work that hasn't been resumed or written over yet. A file
@@ -837,7 +850,7 @@ const APP_VERSION = '1.4.1';
   const isUndoRedoRef = useRef(false);  // Flag to prevent adding history during undo/redo
   const notationEscapeRef = useRef(false); // Flag: ESC was pressed on notation input — suppress blur commit
   const pendingNotationRef = useRef(null); // { elementId, notation, notationB? } — survives re-renders/unmount
-  const historyRef = useRef<{ elements: any[]; connections: any[]; polarGrids?: any[] }[]>([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
+  const historyRef = useRef<{ elements: any[]; connections: any[]; polarGrids?: any[]; spatialGroups?: any[] }[]>([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
   const historyIndexRef = useRef(0);  // Ref to current index
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
@@ -890,10 +903,48 @@ const APP_VERSION = '1.4.1';
   // opened. Undo back to the saved state → clean again. A brand-new, still
   // empty, never-saved pattern doesn't count as unsaved.
   const currentHistoryRev = (history[historyIndex] as any)?.rev ?? 0;
-  const hasUnsavedChanges = currentHistoryRev !== lastSavedRev
+  // Review #2 (session 63): settings saved in the file but outside Undo —
+  // notes, materials, reference image + its settings, background, thread
+  // size / preset, bead library — count too. Their key
+  // (domain/patternOutput.ts projectSettingsKey) is compared with the key
+  // of what was last opened / saved: savedSettingsKey, set after a save
+  // (from the data written) and, through markSettingsBaseline, after
+  // opening, Resume and New (from the state they produced).
+  const refImageFp = useMemo(() => referenceImageFingerprint(referenceImage), [referenceImage]);
+  const activeThreadPresetForKey = useMemo(
+    () => threadPresets.find((pt: any) => pt.id === activePresetId) ?? threadPresets[0] ?? null,
+    [threadPresets, activePresetId]);
+  const settingsKey = useMemo(() => projectSettingsKey({
+    patternNotes, materials, refImageProps, bgColor, beadLibrary, dsWidth,
+    activeThreadPreset: activeThreadPresetForKey,
+  }, refImageFp), [patternNotes, materials, refImageFp, refImageProps, bgColor, beadLibrary, dsWidth, activeThreadPresetForKey]);
+  const settingsKeyRef = useRef(settingsKey);
+  settingsKeyRef.current = settingsKey;
+  const [savedSettingsKey, setSavedSettingsKey] = useState<string | null>(null);
+  // A bump = "take the settings as they are after this render as saved".
+  // Bumped as the LAST state update of a load, so the effect below sees the
+  // render with everything the load set (React 18 batches them). Also runs
+  // once at start (the empty new pattern).
+  const [settingsBaselineGen, setSettingsBaselineGen] = useState(0);
+  const markSettingsBaseline = useCallback(() => setSettingsBaselineGen(g => g + 1), []);
+  useEffect(() => { setSavedSettingsKey(settingsKeyRef.current); }, [settingsBaselineGen]);
+  const settingsChanged = savedSettingsKey !== null && settingsKey !== savedSettingsKey;
+  const hasUnsavedChanges = (currentHistoryRev !== lastSavedRev || settingsChanged)
     && (elements.length > 0 || currentFilePath !== null);
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   hasUnsavedChangesRef.current = hasUnsavedChanges;
+  // Review #4 (session 63) — Resume could write older work over a newer
+  // saved file. The fingerprint of the current file's text as this app last
+  // opened / saved it (utils/fileFingerprint.ts), kept in the autosave; and,
+  // after Resume, "check the file before the next Save"
+  // (useProjectFile.saveProject). autoSaveNowRef = the autosave below, run
+  // at once after every Save and before the window closes.
+  const fileFingerprintRef = useRef<string | null>(null);
+  const verifyFileBeforeSaveRef = useRef(false);
+  type AutoSaveOverrides = { filePath?: string | null; name?: string; unsaved?: boolean };
+  // Review #8: each autosave warning once until an autosave works again.
+  const autosaveWarnedRef = useRef({ noImage: false, failed: false });
+  const autoSaveNowRef = useRef<(o?: AutoSaveOverrides) => void>(() => {});
   // For the autosave (session 61): which file the pattern belongs to.
   const currentFilePathRef = useRef(currentFilePath);
   currentFilePathRef.current = currentFilePath;
@@ -1083,46 +1134,91 @@ const APP_VERSION = '1.4.1';
   }, [polarGrids]);
   
   useEffect(() => {
-    const autoSave = () => {
-      if (elementsRef.current.length === 0) return; // Don't save empty projects
-      try {
+    // o (review #4, session 63): right after a Save the refs below haven't
+    // caught up yet (they follow state on the next render) — the save passes
+    // the file, name and unsaved state it just produced.
+    // The autosave payload (also the crash screen's "Save a copy" data —
+    // review #6, utils/emergencySave.ts).
+    const buildAutosavePayload = (o?: AutoSaveOverrides) => {
         // buildProjectDataRef always points to the latest closure — no stale state.
         // Pass isAutoSave=true so serializeProject writes the 'autoSaved' timestamp key.
-        const data = buildProjectDataRef.current(projectNameRef.current);
+        const data = buildProjectDataRef.current(o?.name ?? projectNameRef.current);
         // Session 61: also remember the pattern's file and whether it had
         // unsaved changes, so Resume reconnects to that file (Save writes
-        // there instead of asking) — see loadFromAutosave.
+        // there instead of asking) — see loadFromAutosave. Session 63: and
+        // the file's fingerprint, so the first Save after Resume can tell
+        // whether the file changed since (review #4).
+        const filePath = o?.filePath !== undefined ? o.filePath : (currentFilePathRef.current || null);
         const payload = {
           ...data, autoSaved: new Date().toISOString(),
-          _resumeFilePath: currentFilePathRef.current || null,
-          _resumeUnsaved: hasUnsavedChangesRef.current,
+          _resumeFilePath: filePath,
+          _resumeUnsaved: o?.unsaved ?? hasUnsavedChangesRef.current,
+          _resumeFileHash: filePath ? fileFingerprintRef.current : null,
         };
         delete (payload as any).created;
-        localStorage.setItem('tatting-designer-autosave', JSON.stringify(payload));
+        return payload;
+    };
+    const autoSave = (o?: AutoSaveOverrides) => {
+      if (elementsRef.current.length === 0) return; // Don't save empty projects
+      try {
+        const payload = buildAutosavePayload(o);
+        // Review #8 (session 63): storage full (browser storage is shared
+        // with the Recent thumbnails on Android) → try again WITHOUT the
+        // reference image, the biggest part, and say so once. Resume takes
+        // the image back from the pattern's file (loadFromAutosave). If even
+        // that fails: a warning (once per run) — the last autosave that
+        // fitted stays; the first Save after a Resume checks the file
+        // (review #4), so it can't write older work over newer.
+        try {
+          localStorage.setItem('tatting-designer-autosave', JSON.stringify(payload));
+          autosaveWarnedRef.current.noImage = false;
+          autosaveWarnedRef.current.failed = false;
+        } catch (fullError) {
+          if (!payload.referenceImage) throw fullError;
+          localStorage.setItem('tatting-designer-autosave',
+            JSON.stringify({ ...payload, referenceImage: null, _refImageOmitted: true }));
+          autosaveWarnedRef.current.failed = false;
+          if (!autosaveWarnedRef.current.noImage) {
+            autosaveWarnedRef.current.noImage = true;
+            showLoadMsg('error', tLiveRef.current('autosaveNoImage'));
+          }
+        }
         unresumedWorkRef.current = false; // last run's autosave is gone now (H3)
       } catch (error) {
         console.error('Auto-save failed:', error);
+        if (!autosaveWarnedRef.current.failed) {
+          autosaveWarnedRef.current.failed = true;
+          showLoadMsg('error', tLiveRef.current('autosaveFailed'));
+        }
       }
     };
     
+    autoSaveNowRef.current = autoSave;
+    // Review #6 (session 63): for the crash screen. Deliberately NOT
+    // unregistered on unmount — a crash unmounts the app, and that is
+    // exactly when the screen needs these. The refs they read keep the
+    // last state that was drawn successfully.
+    registerEmergencyHooks({ snapshot: () => buildAutosavePayload(), autosave: () => autoSave() });
+
     // Save immediately on mount if there are elements
     autoSave();
     
     // Then save every 3 minutes — interval only created ONCE
-    const interval = setInterval(autoSave, 180000);
+    const interval = setInterval(() => autoSave(), 180000);
 
     // Session 61: also save when the app goes to the background or the page
     // is closing. On Android, leaving / swiping the app away usually ends it
     // with no warning — a session shorter than 3 minutes left NO autosave,
     // so the splash said there was none. Desktop: minimising / closing too.
     const onHidden = () => { if (document.visibilityState === 'hidden') autoSave(); };
+    const onPageHide = () => autoSave(); // not autoSave itself: it would get the event as `o`
     document.addEventListener('visibilitychange', onHidden);
-    window.addEventListener('pagehide', autoSave);
+    window.addEventListener('pagehide', onPageHide);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onHidden);
-      window.removeEventListener('pagehide', autoSave);
+      window.removeEventListener('pagehide', onPageHide);
     };
   }, []); // Empty deps - only runs once on mount!
 
@@ -1134,83 +1230,63 @@ const APP_VERSION = '1.4.1';
       if (!saved) return;
       const projectData = JSON.parse(saved);
       sanitizeProjectColors(projectData); // security (session 60) — utils/safeColor.ts
-      // Security (session 63, review #1): same number check as file open.
-      const numberCheck = sanitizeProjectNumbers(projectData);
+      // Security (session 63, review #1): same number check as file open;
+      // review #6: plus id / type / paths, which file open checks separately
+      // (it refuses such a FILE — the autosave leaves the element out).
+      const numberCheck = sanitizeProjectNumbers(projectData, { requireStructure: true });
       if (numberCheck.dropped > 0) reportDamagedElements(numberCheck.dropped);
       if (!Array.isArray(projectData.elements) || projectData.elements.length === 0) return;
-      // Same as confirmNewCanvas: history is reset directly below
-      // (setHistory) while elements/connections/polarGrids also change in
-      // this batch, which would re-trigger the auto-push effect with stale
-      // rounds/groups refs and push a spurious second entry — leaving Undo
-      // enabled right after resuming. Skip that one auto-push.
-      skipAutoHistoryRef.current = true;
-      // Migrate legacy labelsInside → labelOffset; put stale chain/line
-      // centers back on the chord midpoint (session 58, same as file open);
-      // move old split-ring side-A beads to their slot (session 62, H5).
-      setElements((projectData.elements || []).map(el => withChordCenter(repairSplitRingSideABeads(
-        'labelsInside' in el && !('labelOffset' in el)
-          ? (({ labelsInside, ...rest }) => ({ ...rest, labelOffset: 8 }))(el)
-          : el
-      ))));
-      setPicotConnections(projectData.picotConnections || []);
-      setCamera(projectData.camera || canvasCenterCamera());
-      setZoom(projectData.zoom || 1);
-      setDsWidth(projectData.dsWidth || 10);
-      if (projectData.beadLibrary) setBeadLibrary(projectData.beadLibrary);
-      if (Array.isArray(projectData.polarGrids)) {
-        setPolarGrids(prev => {
-          const existing = new Set(prev.map(g => g.id));
-          return [...prev, ...projectData.polarGrids.filter(g => !existing.has(g.id))];
-        });
-      }
-      if (projectData.selectedPolarGridId) setSelectedPolarGridId(projectData.selectedPolarGridId);
-      setBgColor(projectData.bgColor || '#1F2937');
-      setGridEnabled(projectData.gridEnabled !== undefined ? projectData.gridEnabled : true);
-      setCustomColors(projectData.customColors || []);
-      setReferenceImage(projectData.referenceImage || null);
-      // Session 62 (review M6): an image stored before the size cap is
-      // reduced now, quietly (it looks the same) — unless another project
-      // was opened meanwhile.
-      if (projectData.referenceImage) {
-        const original = projectData.referenceImage;
-        void shrinkReferenceImage(original).then(r => {
-          if (r.changed) setReferenceImage(cur => (cur === original ? r.src : cur));
-        });
-      }
-      setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
-      setProjectName(projectData.name || t('projectUntitled'));
-      // Always load into schematic, regardless of what renderMode was
-      // saved — bakedRealisticSVG isn't part of the autosave payload either,
-      // same reasoning as the fix in useProjectFile.ts's file-open path
-      // (session 52 bug fix — this is a second, separate load path that
-      // needed the same fix, easy to miss since it doesn't go through
-      // useProjectFile.ts at all).
-      setRenderMode('schematic');
-      setPatternNotes(projectData.patternNotes || '');
-      if (projectData.materials) setMaterials(projectData.materials);
-      setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
+      // Session 61: reconnect to the pattern's file, if it had one — Save
+      // writes there (if the file was moved / deleted meanwhile, Save shows
+      // the "couldn't save" message and Save As is the way).
+      const resumePath = typeof projectData._resumeFilePath === 'string' && projectData._resumeFilePath
+        ? projectData._resumeFilePath : null;
+      // Review #15 (session 63): Resume goes through file open
+      // (useProjectFile.applyProjectData) — it had its own copy, which had
+      // drifted: the first Undo step held the un-repaired elements, and it
+      // skipped the stale-join cleanup, the old-field migration, the
+      // duplicate check and the camera / zoom checks. fromAutosave keeps the
+      // saved view, shows no "Load completed" and doesn't add to Recent.
+      // It runs synchronously, so the Resume-only settings below land in
+      // the same update and win.
+      void applyProjectData(projectData, resumePath, {
+        fromAutosave: true,
+        fingerprint: resumePath && typeof projectData._resumeFileHash === 'string'
+          ? projectData._resumeFileHash : null,
+      });
+      // Clean if it was saved when autosaved, otherwise unsaved (title star,
+      // close warning). No file (never saved / a sample copy) → unsaved.
+      setLastSavedRev(resumePath && projectData._resumeUnsaved === false ? 0 : -1);
+      // Review #4 (session 63): the file may have changed after this was
+      // autosaved — the next Save to it checks first (useProjectFile). An
+      // autosave from before session 63 has no fingerprint → it asks.
+      verifyFileBeforeSaveRef.current = !!resumePath;
+      // Resume also keeps the pattern's thread preset in the preset list
+      // (as it always did; file open doesn't).
       if (projectData.activeThreadPreset) {
         const preset = projectData.activeThreadPreset;
         setThreadPresets(prev => {
           const exists = prev.find(p => p.id === preset.id);
           const updated = exists ? prev.map(p => p.id === preset.id ? preset : p) : [...prev, preset];
-          localStorage.setItem('tcad_thread_presets', JSON.stringify(updated));
+          try { localStorage.setItem('tcad_thread_presets', JSON.stringify(updated)); } catch { /* storage full */ }
           return updated;
         });
-        setActivePresetId(preset.id);
-        localStorage.setItem('tcad_active_preset_id', preset.id);
       }
-      setHistory([{ elements: projectData.elements || [], connections: projectData.picotConnections || [], polarGrids: projectData.polarGrids || [] }]);
-      setHistoryIndex(0);
-      // Session 61: reconnect to the pattern's file, if it had one — Save
-      // writes there (if the file was moved / deleted meanwhile, Save shows
-      // the "couldn't save" message and Save As is the way). Clean if it was
-      // saved when autosaved, otherwise unsaved (title star, close warning).
-      // No file (never saved / a sample copy) → unsaved, Save asks where.
-      const resumePath = typeof projectData._resumeFilePath === 'string' && projectData._resumeFilePath
-        ? projectData._resumeFilePath : null;
-      setCurrentFilePath(resumePath);
-      setLastSavedRev(resumePath && projectData._resumeUnsaved === false ? 0 : -1);
+      // Review #8 (session 63): the autosave had to leave the reference
+      // image out (storage full) — take it back from the pattern's file
+      // (as of its last save). No file, or none in it → say so.
+      if (projectData._refImageOmitted) {
+        const imageMissing = () => showLoadMsg('error', t('resumeImageMissing'));
+        if (!resumePath) imageMissing();
+        else {
+          readProjectFileText(resumePath).then(text => {
+            const img = JSON.parse(text)?.referenceImage;
+            if (typeof img !== 'string' || !/^data:image\//i.test(img)) { imageMissing(); return; }
+            setReferenceImage(cur => cur ?? img);
+            markSettingsBaseline(); // the image as saved — not an edit (review #2)
+          }).catch(imageMissing);
+        }
+      }
     } catch (error) {
       console.error('Error loading auto-save:', error);
     }
@@ -1241,6 +1317,14 @@ const APP_VERSION = '1.4.1';
     let unlisten: (() => void) | null = null;
     let disposed = false;
     let asking = false;
+    // Review #4 (session 63): destroy() ends the page at once — whether
+    // 'pagehide' still runs then isn't guaranteed — so the autosave is
+    // written here first. On "close anyway" it keeps the unsaved work
+    // (Resume can bring it back; the first Save after Resume checks the
+    // file before writing over it).
+    const autoSaveBeforeClose = () => {
+      try { autoSaveNowRef.current(); } catch (err) { console.error('Auto-save before close failed:', err); }
+    };
     listen('close-requested', async () => {
       if (asking) return;
       // Same check as the title star (session 58; was an index comparison
@@ -1253,11 +1337,12 @@ const APP_VERSION = '1.4.1';
             title: tt('exitConfirmTitle'),
             kind: 'warning',
           });
-          if (confirmed) getCurrentWindow().destroy();
+          if (confirmed) { autoSaveBeforeClose(); getCurrentWindow().destroy(); }
         } finally {
           asking = false;
         }
       } else {
+        autoSaveBeforeClose();
         getCurrentWindow().destroy();
       }
     }).then(fn => {
@@ -1893,6 +1978,20 @@ const APP_VERSION = '1.4.1';
     setGroupRotationInput, setPolarGrids,
     setConfirmDialog,
     t, onDamagedElements: reportDamagedElements,
+    // Review #20 (session 63): Undo / Redo left the selection on elements
+    // that were gone ("1 object selected" for nothing). Keep only what the
+    // restored pattern still has — elements, and picots / beads by element
+    // id + picot id.
+    pruneSelection: (restored: any[]) => {
+      const ids = new Set(restored.map((el: any) => el.id));
+      const picotKeys = new Set(restored.flatMap((el: any) =>
+        (el.picots || []).map((pc: any) => `${el.id}::${pc.id}`)));
+      const keep = (sp: any) => sp && (picotKeys.has(`${sp.elementId}::${sp.picotId}`)
+        || (ids.has(sp.elementId) && (sp.picotId === '__start__' || sp.picotId === '__end__'))); // chain ends
+      setSelectedIds(prev => { const next = prev.filter(id => ids.has(id)); return next.length === prev.length ? prev : next; });
+      setSelectedPicots(prev => { const next = prev.filter(keep); return next.length === prev.length ? prev : next; });
+      setSelectedBEs(prev => { const next = prev.filter(keep); return next.length === prev.length ? prev : next; });
+    },
     pushHistoryState,
   });
 
@@ -2545,6 +2644,11 @@ const APP_VERSION = '1.4.1';
     return roundColors[idx >= 0 ? (idx + 1) % roundColors.length : 1];
   };
 
+  // A repeat's "R" takes its round's colour, like the numbers do; a repeat
+  // in no round keeps the theme's repeat colours (grey by default).
+  const getRepeatBadgeColor = (el): [string, string] =>
+    getRoundId(el) ? getRoundBadgeColor(el) : [theme.orderRepeatText, theme.orderRepeatOutline];
+
   // Predicate: does element e belong to the currently active round scope?
   // Unassigned scope (activeRoundId === null) → elements with no round.
   // Round scope → elements whose round matches the active round id.
@@ -2744,12 +2848,14 @@ const APP_VERSION = '1.4.1';
     // new project was off screen (session 57).
     setCamera(canvasCenterCamera());
     setZoom(1);
-    setHistory([{ elements: [], connections: [], polarGrids: [] }]);
+    setHistory([{ elements: [], connections: [], polarGrids: [], spatialGroups: [] }]);
     setHistoryIndex(0);
     setLastSavedRev(0); // fresh and empty = nothing unsaved
     // Hide (don't delete) all polar grids — user can re-enable in the Polar Grid panel
     setPolarGrids(prev => prev.map(g => ({ ...g, visible: false })));
     setCurrentFilePath(null);
+    fileFingerprintRef.current = null; // review #4 — no file any more
+    verifyFileBeforeSaveRef.current = false;
     setRounds([]);
     setActiveRoundId(null);
     // Was missing entirely — every other piece of project state above got
@@ -2757,6 +2863,17 @@ const APP_VERSION = '1.4.1';
     // materials/gradients the previous project had defined instead of
     // starting from the single default white thread (bug fix, session 52).
     setMaterials(DEFAULT_MATERIALS);
+    // Review #5 (session 63): the rest of the old pattern goes too — its
+    // notes, reference image (+ settings), groups and ghost arrays used to
+    // carry over and be saved into the new file. Background, thread size
+    // and preset, grid and bead library stay: they are the user's working
+    // setup more than part of one pattern.
+    setPatternNotes('');
+    setReferenceImage(null);
+    setRefImageProps({ opacity: 0.5, rotation: 0, scale: 1, visible: true, x: 0, y: 0 }); // as at app start (useViewState)
+    setGroups([]);
+    setGhostArrays([]);
+    markSettingsBaseline(); // review #2: this empty pattern is "as saved"
   };
 
   // ── Recent Projects helpers ───────────────────────────────────────────────
@@ -2794,8 +2911,8 @@ const APP_VERSION = '1.4.1';
     const notesBlock = patternNotes?.trim() ? `\n\n--- ${t('patternOutNotes')} ---\n` + patternNotes.trim() : '';
     const text = result === null ? t('patternEmpty') + notesBlock : result.text;
     navigator.clipboard.writeText(text).then(
-      () => { setLoadMsg({ type: 'success', text: t('notationCopied') }); setTimeout(() => setLoadMsg(null), 3000); },
-      () => { setLoadMsg({ type: 'error', text: t('notationCopyFailed') }); setTimeout(() => setLoadMsg(null), 4000); }
+      () => showLoadMsg('success', t('notationCopied')),   // review #13: through the one timer
+      () => showLoadMsg('error', t('notationCopyFailed'))
     );
   }, [elements, picotConnections, rounds, materials, beadLibrary,
       threadPresets, activePresetId, dsWidth, patternNotes, projectName, currentFilePath, t]);
@@ -3528,7 +3645,7 @@ const APP_VERSION = '1.4.1';
     if (element.isClosed && element.shapeStyle === 'circle') {
       const targetCircumference = element.stitchCount * dsWidth;
       const radius = targetCircumference / (2 * Math.PI);
-      const _sb1 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
+      const _sb1 = isSlotBead(picot) ? picot.stitchesBefore + 0.5 : picot.stitchesBefore; // bc / bcp / bcjp / be (session 63: bcjp added)
       const angle = getCircleStitchAngle(element, _sb1);
       
       // In picotJoin mode all picots are dots on the path — return BASE for consistent hit-testing
@@ -3563,7 +3680,7 @@ const APP_VERSION = '1.4.1';
       totalLength += length;
     }
     
-    const _sb2 = (picot.beadType === 'bc' || picot.beadType === 'bcp' || picot.beadType === 'be') ? picot.stitchesBefore + 0.5 : picot.stitchesBefore;
+    const _sb2 = isSlotBead(picot) ? picot.stitchesBefore + 0.5 : picot.stitchesBefore; // bc / bcp / bcjp / be (session 63: bcjp added)
     // Shared stitch → path mapping (geometry/stitchGeometry.ts). Split rings
     // go through it too: their two paths are concatenated here, side A then B.
     const targetDist = elementStitchFraction(element, _sb2) * totalLength;
@@ -3816,6 +3933,22 @@ const APP_VERSION = '1.4.1';
     setSelectedIds, setSelectedPicots,
     setHistory, setHistoryIndex, setCurrentFilePath, setLastSavedRev,
     getCurrentHistoryRev: () => (historyRef.current[historyIndexRef.current] as any)?.rev ?? 0,
+    // Review #4 (session 63)
+    fileFingerprintRef, verifyFileBeforeSaveRef,
+    onSaved: ({ filePath, name, stillUnsaved, settingsKey: writtenKey }) => {
+      setSavedSettingsKey(writtenKey); // review #2: settings as written
+      autoSaveNowRef.current({ filePath, name, unsaved: stillUnsaved || settingsKeyRef.current !== writtenKey });
+    },
+    groups, setGroups, onSettingsBaseline: markSettingsBaseline, // review #3 / #2
+    askFileChanged: (fileName, actions) => setConfirmDialog({
+      title: tt => tt('fileChangedTitle'),
+      message: tt => tt('fileChangedBody').replace('{name}', fileName),
+      confirmLabel: tt => tt('fileChangedOverwrite'),
+      onConfirm: actions.overwrite,
+      cancelLabel: tt => tt('fileSaveAs'),
+      onCancel: actions.saveAs,
+      cancelPrimary: true,
+    }),
     getPicotPosition, showLoadMsg, t,
     cleanupDuplicates,
     skipAutoHistoryRef,
@@ -4773,6 +4906,20 @@ const APP_VERSION = '1.4.1';
     p.coreSize ?? null, p.beStructure ?? null,
   ]);
 
+  // Review #22 (session 63, user's decision): a picot that turns into a
+  // DIFFERENT kind at the same spot keeps its join only if the new kind can
+  // be joined. Plain picots (p, lp, cj, …) can; a bead token only when its
+  // notation says it joins — bjp: / bcjp: — or a bead element marked as a
+  // joint (beIsJoint). Same rule as Join mode's selection
+  // (useInputHandlers.ts). So 3ds-p-3ds → 3ds-bc:Y-3ds drops the join (the
+  // usual "this edit removes a join" warning), 3ds-bjp:Y-3ds keeps it. An
+  // unchanged kind keeps its join as before (an old file's joined bp stays).
+  const canHoldJoin = (p: any): boolean =>
+    !p.beadType || p.beadType === 'bjp' || p.beadType === 'bcjp'
+    || (p.beadType === 'be' && !!p.beIsJoint);
+  const joinCarries = (old: any, p: any): boolean =>
+    picotKind(old) === picotKind(p) || canHoldJoin(p);
+
   // Single source of truth for merging old picots (ids + join state) onto
   // a freshly-parsed picot list, used by both notation-edit branches below
   // (previously each had its own inline stitchesBefore-only version).
@@ -4800,6 +4947,8 @@ const APP_VERSION = '1.4.1';
       merged = newPicots.map((p, idx) => {
         const old = oldPicots[idx];
         if (!old) return p;
+        // #22: a joined picot never hands its id + join to a kind that can't be joined
+        if (old.isJoint && !joinCarries(old, p)) return p;
         const isStillJoint = old.isJoint && survivingConnKeys.has(`${elementId}::${old.id}`);
         return { ...p, id: old.id, isJoint: isStillJoint };
       });
@@ -4827,7 +4976,11 @@ const APP_VERSION = '1.4.1';
         return at >= 0 ? list!.splice(at, 1)[0] : null;
       });
       newPicots.forEach((p, i) => {
-        if (!pick[i]) pick[i] = oldBySb.get(p.stitchesBefore)?.shift() ?? null;
+        if (pick[i]) return;
+        // #22: a joined picot isn't handed to a kind that can't be joined.
+        const list = oldBySb.get(p.stitchesBefore);
+        const at = list ? list.findIndex(o => !o.isJoint || joinCarries(o, p)) : -1;
+        pick[i] = at >= 0 ? list!.splice(at, 1)[0] : null;
       });
       merged = newPicots.map((p, i) => {
         const old = pick[i];
@@ -6251,7 +6404,7 @@ const APP_VERSION = '1.4.1';
     if (!element.picots || element.picots.length === 0) return null;
     const sideMultiplier = element.picotSideMultiplier || 1;
     // Bead-type picots are offset by 0.5 DS so they sit between stitches
-    const beadSb = (p) => (p.beadType === 'bc' || p.beadType === 'bcp' || p.beadType === 'be')
+    const beadSb = (p) => isSlotBead(p) // bc / bcp / bcjp / be (session 63: bcjp added)
       ? p.stitchesBefore + 0.5 : p.stitchesBefore;
 
     // Special handling for circles (rendered as SVG circle, not paths)
@@ -7018,7 +7171,10 @@ const APP_VERSION = '1.4.1';
       const splitPos = element.splitPosition || Math.floor(element.stitchCount / 2);
       const inA = getSplitRingSide(element, picot) !== 'B';
       localCount = inA ? splitPos : element.stitchCount - splitPos;
-      localSb = inA ? picot.stitchesBefore : picot.stitchesBefore - splitPos;
+      // Review #23 (session 63): side A in notation order, from the shared
+      // start (stored stitchesBefore runs from the far end) — so a gradient
+      // runs the same way as side A's labels and stitch types.
+      localSb = inA ? splitRingSideAPosition(picot, splitPos) : picot.stitchesBefore - splitPos;
     }
     return localCount > 0 ? localSb / localCount : 0;
   };
@@ -9489,9 +9645,10 @@ const APP_VERSION = '1.4.1';
                           </text>
                         );
                       })()}
-                      {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (
-                        <text data-layer="order" x={el.center.x} y={el.center.y} fill={theme.orderRepeatText} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={theme.orderRepeatOutline} strokeWidth="3" paintOrder="stroke">R</text>
-                      )}
+                      {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && (() => {
+                        const [_rf, _rs] = getRepeatBadgeColor(el);
+                        return <text data-layer="order" x={el.center.x} y={el.center.y} fill={_rf} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_rs} strokeWidth="3" paintOrder="stroke">R</text>;
+                      })()}
                     </g>
                   );
                 }
@@ -9595,7 +9752,8 @@ const APP_VERSION = '1.4.1';
                         })()}
                         {(showUnnumbered || activeMode === 'tattingOrder') && el.isRepeat && el.paths?.length > 0 && (() => {
                           const { x: ox, y: oy } = orderLabelPosOnPath(el, 20);
-                          return <text data-layer="order" x={ox} y={oy} fill={theme.orderRepeatText} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={theme.orderRepeatOutline} strokeWidth="3" paintOrder="stroke">R</text>;
+                          const [_rf, _rs] = getRepeatBadgeColor(el);
+                          return <text data-layer="order" x={ox} y={oy} fill={_rf} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_rs} strokeWidth="3" paintOrder="stroke">R</text>;
                         })()}
                       </>
                     ) : (
@@ -9806,7 +9964,8 @@ const APP_VERSION = '1.4.1';
                             const [_f5, _s5] = getRoundBadgeColor(el);
                             return <text data-layer="order" x={ox} y={oy} fill={_f5} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_s5} strokeWidth="3" paintOrder="stroke">{el.orderNumber}</text>;
                           }
-                          return <text data-layer="order" x={ox} y={oy} fill={theme.orderRepeatText} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={theme.orderRepeatOutline} strokeWidth="3" paintOrder="stroke">R</text>;
+                          const [_rf, _rs] = getRepeatBadgeColor(el);
+                          return <text data-layer="order" x={ox} y={oy} fill={_rf} fontSize={Math.round(notationFS * 1.57)} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" stroke={_rs} strokeWidth="3" paintOrder="stroke">R</text>;
                         })()}
                         {/* Per-element "G" badge removed — superseded by the
                             dashed-box group overlay + corner badge. */}
@@ -10760,7 +10919,7 @@ const APP_VERSION = '1.4.1';
                             {entry.thumbPath
                               ? <img
                                   src={thumbSrcFor(entry.thumbPath)}
-                                  alt={entry.name}
+                                  alt={entry.name || t('projectUntitled')}
                                   className="w-full h-full object-contain"
                                   draggable={false}
                                   onError={(e) => {
@@ -10777,14 +10936,14 @@ const APP_VERSION = '1.4.1';
                               className="absolute inset-0 flex-col items-center justify-center text-center px-2 gap-1"
                               style={{ display: entry.thumbPath ? 'none' : 'flex' }}
                             >
-                              <div className="text-gray-500 text-xs">{entry.name}</div>
+                              <div className="text-gray-500 text-xs">{entry.name || t('projectUntitled')}</div>
                               <div className="text-gray-600 text-xs">{t('recentProjectsNoPreview')}</div>
                             </div>
                           </div>
 
                           {/* Info + actions */}
                           <div className="px-3 py-2">
-                            <div className="text-white text-sm font-medium truncate" title={entry.name}>{entry.name}</div>
+                            <div className="text-white text-sm font-medium truncate" title={entry.name || t('projectUntitled')}>{entry.name || t('projectUntitled')}</div>
                             <div className="text-gray-400 text-xs mt-0.5">{t('recentProjectsSaved').replace('{date}', new Date(entry.savedAt).toLocaleDateString())}</div>
                             {pathMissing && (
                               <div className="text-yellow-600 text-xs mt-1">⚠ {t('recentProjectsPathMissingLabel')}</div>
@@ -11964,7 +12123,7 @@ const APP_VERSION = '1.4.1';
         // Session 59: Custom → a tatting-theme.json wherever the user picks.
         const text = JSON.stringify({ _comment: 'TattingCAD colour theme — load it with Options → Load Theme…, or place it next to the app.', ...theme }, null, 2);
         try {
-          const path = await showSaveThemeDialog();
+          const path = await showSaveThemeDialog({ title: t('themeSaveFile').replace(/…$/, ''), typeName: t('fileTypeTheme') }); // #17
           if (!path) return;
           await writeTextToFile(path, text);
           showLoadMsg('success', t('themeSavedFile'));
@@ -13207,7 +13366,9 @@ const APP_VERSION = '1.4.1';
           >{confirmText(confirmDialog.confirmLabel) || t('confirmDelete')}</button>
           <button
             onClick={() => { const onCancel = confirmDialog.onCancel; setConfirmDialog(null); onCancel?.(); }}
-            className="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm"
+            className={confirmDialog.cancelPrimary
+              ? 'flex-1 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold'
+              : 'flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white text-sm'}
           >{confirmText(confirmDialog.cancelLabel) || t('confirmCancel')}</button>
         </div>
       </Modal>

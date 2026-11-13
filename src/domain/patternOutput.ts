@@ -7,6 +7,8 @@
 // use sites. Consolidate both into useBeadState.ts when that hook is extended.
 
 import { DEFAULT_END_ALLOWANCE } from '../geometry/stitchGeometry';
+import { fingerprintText } from '../utils/fileFingerprint';
+import { isSafeColor } from '../utils/safeColor';
 
 // Session 61: every notation prefix (incl. jk:, fr: floating ring, mr: mock
 // ring) — stripped for the short notation hints and the stitch counts.
@@ -658,9 +660,13 @@ export function serializeProject(data: {
   refImageProps: any; renderMode: string; patternNotes: string; materials: any[];
   orderGroups: any[]; beadLibrary: any[]; polarGrids: any[]; selectedPolarGridId: string | null;
   threadPresets: any[]; activePresetId: string;
+  spatialGroups?: any[];
 }, isAutoSave = false) {
   return {
-    version: 91, // 91 (session 57): elements may carry endAllowance (ds); absent = 0
+    // 92 (session 63, review #3): spatialGroups — the group names and
+    // colours; absent in older files (groups then fall back to "Group").
+    // 91 (session 57): elements may carry endAllowance (ds); absent = 0
+    version: 92,
     name: data.name,
     ...(isAutoSave
       ? { autoSaved: new Date().toISOString() }
@@ -686,6 +692,54 @@ export function serializeProject(data: {
       data.threadPresets.find(p => p.id === data.activePresetId)
       ?? data.threadPresets[0]
       ?? null,
+    spatialGroups:       data.spatialGroups ?? [],
   };
 }
+
+// ── Group registry from a file (session 63, review #3) ──────────────────────
+// Only well-formed entries are kept: a string id, a name (text, at most 200
+// characters; empty → "Group" is shown) and a real colour (utils/safeColor).
+// Anything else in a file is dropped. Older files have none → [].
+export const normalizeSpatialGroups = (list: unknown): { id: string; name: string; color: string }[] => {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: { id: string; name: string; color: string }[] = [];
+  for (const g of list) {
+    if (!g || typeof g !== 'object') continue;
+    const id = (g as any).id;
+    if (typeof id !== 'string' || !id || seen.has(id)) continue;
+    const name = typeof (g as any).name === 'string' ? (g as any).name.slice(0, 200) : '';
+    const color = isSafeColor((g as any).color) ? String((g as any).color).trim() : '#888888';
+    seen.add(id);
+    out.push({ id, name, color });
+  }
+  return out;
+};
+
+// ── Unsaved check for settings outside Undo (session 63, review #2) ─────────
+// Notes, materials, the reference image and its settings, background,
+// thread size and preset, bead library: saved in the file, but changing
+// them doesn't make an undo step, so the history-based check (rev) missed
+// them — closing lost them without a warning. This key stands for all of
+// them; the pattern is unsaved when it differs from the key of what was
+// last opened / saved. `data` has the field names of serializeProject's
+// output. refImageFp: the reference image's fingerprint when the caller
+// already has it (a large data URL — hashed once per change, not per key).
+// View settings (camera, zoom, grid, render mode) are left out on purpose.
+export const projectSettingsKey = (data: {
+  patternNotes?: any; materials?: any; referenceImage?: any; refImageProps?: any;
+  bgColor?: any; beadLibrary?: any; dsWidth?: any; activeThreadPreset?: any;
+}, refImageFp?: string): string => JSON.stringify([
+  data.patternNotes ?? '',
+  data.materials ?? null,
+  refImageFp ?? referenceImageFingerprint(data.referenceImage),
+  data.refImageProps ?? null,
+  data.bgColor ?? null,
+  data.beadLibrary ?? null,
+  data.dsWidth ?? null,
+  data.activeThreadPreset ?? null,
+]);
+
+export const referenceImageFingerprint = (img: any): string =>
+  img ? fingerprintText(typeof img === 'string' ? img : JSON.stringify(img)) : '';
 

@@ -126,7 +126,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdTicksRef = useRef(0);
   // While a hold is running, a window blur (alt-tab, dialog stealing focus)
-  // means mouseup/touchend will never arrive here — without this the
+  // means pointerup will never arrive here — without this the
   // interval would keep ticking forever. Ending the hold on blur commits the
   // batched history entry as usual (pushHistoryState skips an identical
   // state, so tattingindex.tsx's own blur flush of nudgeActiveRef running
@@ -168,13 +168,20 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
     if (blurListenerRef.current) window.removeEventListener('blur', blurListenerRef.current);
   }, []);
 
+  // Session 63 (review #10): POINTER events — one stream for mouse, touch
+  // and pen. It listened to both touch and mouse events, and a tap on a
+  // touch screen fires both (touchstart, then the browser's follow-up
+  // mousedown), so one tap stepped twice (+1° → +2°) and left two undo
+  // steps. A press that's already running is never started again.
   const stepButtonHandlers = (delta: number) => holdToRepeat
     ? {
-        onMouseDown: () => startHold(delta),
-        onMouseUp: endHold,
-        onMouseLeave: endHold,
-        onTouchStart: () => startHold(delta),
-        onTouchEnd: endHold,
+        onPointerDown: (e: React.PointerEvent) => {
+          if (e.button !== 0 || holdIntervalRef.current) return; // primary button / finger only
+          startHold(delta);
+        },
+        onPointerUp: endHold,
+        onPointerLeave: endHold,
+        onPointerCancel: endHold, // the system took the touch (scroll, back gesture)
       }
     : { onClick: () => commitDiscrete(delta) };
 

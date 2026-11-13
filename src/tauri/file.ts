@@ -7,8 +7,11 @@
 //   MyPattern.tatcad (or old .json)  →  MyPattern_thumb.png
 // The recent entry stores thumbPath. The dialog uses convertFileSrc(thumbPath).
 // This avoids btoa issues, localStorage bloat, and lets file browsers show previews.
-// Config required in tauri.conf.json:
-//   "security": { "assetProtocol": { "enable": true, "scope": ["$DOCUMENT/**", "$HOME/**", ...] } }
+// Config required in tauri.conf.json (review #19, session 63 — this used to
+// show the old folder list):
+//   "security": { "assetProtocol": { "enable": true, "scope": { "allow": ["**"], "deny": [ ...68 sensitive paths ] } } }
+// The deny list there must stay identical to src-tauri/capabilities/deny-sensitive.json
+// (file read/write) — both hold the same 68 entries.
 // When ready to extract: everything from "── Thumbnail" onward is self-contained.
 
 import { save as tauriSave, open as tauriOpen } from '@tauri-apps/plugin-dialog';
@@ -122,14 +125,30 @@ export const fileBaseName = (path: string): string => {
 export const fileDisplayName = (path: string, fallback: string): string =>
   stripPatternExt(fileBaseName(path)) || fallback;
 
-export const showSaveDialog = async (defaultName: string): Promise<string | null> => {
+// ── File names and dialog texts (session 63, review #16 / #17) ───────────
+// A suggested file name keeps every letter (Hópehely, Мотив, 花) — only what
+// a file name can't hold is replaced: \ / : * ? " < > | and control
+// characters; trailing dots and spaces go (Windows drops them). It used to
+// replace everything outside a-z / 0-9 ("Hópehely" → "H_pehely").
+export const safeFileName = (name: string, fallback = 'Pattern'): string => {
+  const cleaned = String(name ?? '')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+    .trim()
+    .replace(/[. ]+$/, '');
+  return cleaned || fallback;
+};
+// Dialog title and file-type name, in the app's language — passed in by
+// the caller (this module has no translations). English when left out.
+export type DialogTexts = { title?: string; typeName?: string };
+
+export const showSaveDialog = async (defaultName: string, texts?: DialogTexts): Promise<string | null> => {
   // Android (session 61): the android-fs saver, and the access is kept so
   // Recent still opens it after a restart. "application/octet-stream" keeps
   // the name exactly as given (Android knows no type for .tatcad).
   if (isAndroid()) {
     const A = await afs();
     const picked = await A.showSaveFilePicker(
-      `${defaultName.replace(/[^a-z0-9]/gi, '_')}.${PATTERN_EXT}`, 'application/octet-stream');
+      `${safeFileName(defaultName)}.${PATTERN_EXT}`, 'application/octet-stream');
     if (!picked) return null;
     await keepAccess(picked);
     return picked.uri;
@@ -140,14 +159,14 @@ export const showSaveDialog = async (defaultName: string): Promise<string | null
   // or swapping an extension. (A filter value with "/" is passed to
   // Android as a MIME type by the dialog plugin.)
   const filePath = await tauriSave({
-    title: 'Save Project',
-    defaultPath: `${defaultName.replace(/[^a-z0-9]/gi, '_')}.${PATTERN_EXT}`,
-    filters: [{ name: 'TattingCAD Pattern', extensions: [isAndroid() ? 'application/octet-stream' : PATTERN_EXT] }],
+    title: texts?.title || 'Save Project',
+    defaultPath: `${safeFileName(defaultName)}.${PATTERN_EXT}`,
+    filters: [{ name: texts?.typeName || 'TattingCAD Pattern', extensions: [isAndroid() ? 'application/octet-stream' : PATTERN_EXT] }],
   });
   return filePath ?? null;
 };
 
-export const showOpenDialog = async (): Promise<string | null> => {
+export const showOpenDialog = async (texts?: DialogTexts): Promise<string | null> => {
   // Android (session 61): the android-fs picker (OPEN_DOCUMENT, with write
   // access so Save can overwrite it), access kept for Recent. Any file can
   // be picked — Android has no type for .tatcad.
@@ -163,28 +182,28 @@ export const showOpenDialog = async (): Promise<string | null> => {
   // (tested on a phone). Any file can be chosen; one that isn't a pattern
   // gets the normal "couldn't open" message.
   const filePath = await tauriOpen({
-    title: 'Open Project',
-    ...(isAndroid() ? {} : { filters: [{ name: 'TattingCAD Pattern', extensions: [PATTERN_EXT, 'json'] }] }),
+    title: texts?.title || 'Open Project',
+    ...(isAndroid() ? {} : { filters: [{ name: texts?.typeName || 'TattingCAD Pattern', extensions: [PATTERN_EXT, 'json'] }] }),
   });
   if (!filePath || typeof filePath !== 'string') return null;
   return filePath;
 };
 
-export const showSaveSvgDialog = async (defaultName: string): Promise<string | null> => {
+export const showSaveSvgDialog = async (defaultName: string, texts?: DialogTexts): Promise<string | null> => {
   const filePath = await tauriSave({
-    title: 'Export SVG',
-    defaultPath: `${defaultName}.svg`,
-    filters: [{ name: 'SVG Image', extensions: ['svg'] }],
+    title: texts?.title || 'Export SVG',
+    defaultPath: `${safeFileName(defaultName)}.svg`,
+    filters: [{ name: texts?.typeName || 'SVG Image', extensions: ['svg'] }],
   });
   return filePath ?? null;
 };
 
 // Session 59: Options → Indicator colours… → Save as file…
-export const showSaveThemeDialog = async (): Promise<string | null> => {
+export const showSaveThemeDialog = async (texts?: DialogTexts): Promise<string | null> => {
   const filePath = await tauriSave({
-    title: 'Save Theme',
+    title: texts?.title || 'Save Theme',
     defaultPath: 'tatting-theme.json',
-    filters: [{ name: 'TattingCAD Theme', extensions: ['json'] }],
+    filters: [{ name: texts?.typeName || 'TattingCAD Theme', extensions: ['json'] }],
   });
   return filePath ?? null;
 };
@@ -193,10 +212,16 @@ export const showSaveThemeDialog = async (): Promise<string | null> => {
 
 // content:// on Android → android-fs (falls back to plugin-fs if the address
 // isn't one android-fs accepts); everything else → plugin-fs as before.
+// Session 63 (review #7): a content:// WRITE has no second try any more.
+// It used to fall back to plugin-fs, which on Android may open the file
+// without emptying it first — a shorter save could then leave old bytes at
+// the end and break the file. Now a failed write is an error: Save shows
+// "couldn't save" (reportSaveError, useProjectFile.ts) and the file stays
+// as it was. Reads keep their fallback: a read can't damage anything.
 const writeTextAnywhere = async (filePath: string, text: string): Promise<void> => {
   if (useAndroidFs(filePath)) {
-    try { await (await afs()).writeTextFile(toAfsUri(filePath), text); return; }
-    catch (err) { console.warn('[android] android-fs write failed, trying plugin-fs', err); }
+    await (await afs()).writeTextFile(toAfsUri(filePath), text);
+    return;
   }
   await writeTextFile(filePath, text);
 };
@@ -208,8 +233,12 @@ const readTextAnywhere = async (filePath: string): Promise<string> => {
   return readTextFile(filePath);
 };
 
-export const writeProjectFile = async (filePath: string, data: object): Promise<void> => {
-  await writeTextAnywhere(filePath, JSON.stringify(data, null, 2));
+// Returns the text written — its fingerprint is kept (review #4, session 63:
+// utils/fileFingerprint.ts).
+export const writeProjectFile = async (filePath: string, data: object): Promise<string> => {
+  const text = JSON.stringify(data, null, 2);
+  await writeTextAnywhere(filePath, text);
+  return text;
 };
 
 export const writeTextToFile = async (filePath: string, text: string): Promise<void> => {
@@ -220,6 +249,11 @@ export const readProjectFile = async (filePath: string): Promise<any> => {
   const text = await readTextAnywhere(filePath);
   return JSON.parse(text);
 };
+
+// The file's raw text — for its fingerprint (review #4, session 63): what
+// was opened, and whether it changed before a Save after Resume.
+export const readProjectFileText = async (filePath: string): Promise<string> =>
+  readTextAnywhere(filePath);
 
 // Checks whether a file still exists on disk. Used by the Recent Projects
 // dialog to flag entries whose project file has been moved or deleted,
@@ -284,8 +318,8 @@ export const thumbSrcFor = (thumbPath: string): string => {
 const normaliseEntry = (e: any): RecentEntry => {
   const filename = normalizePath(e.filename ?? e.path ?? e.filePath ?? e.file ?? '');
   const name = filename
-    ? fileDisplayName(filename, e.name || 'Untitled')
-    : (e.name ?? 'Untitled');
+    ? fileDisplayName(filename, e.name || '')
+    : (e.name ?? ''); // '' → the Recent list shows "Untitled" in the app's language (review #17)
   return {
     id:        e.id        ?? Date.now().toString(),
     name,
@@ -376,7 +410,6 @@ export const generateThumbnailPng = async (
   dsWidth: number,
   projectPath: string
 ): Promise<string> => {
-  console.log('[thumbnail] called, els:', els?.length, 'path:', projectPath);
   if (!els?.length || !projectPath) {
     console.warn('[thumbnail] skipped — no elements or no path');
     return '';
@@ -420,7 +453,6 @@ export const generateThumbnailPng = async (
     console.warn('[thumbnail] canvas 2d context unavailable');
     return '';
   }
-  console.log('[thumbnail] rendering for:', projectPath);
   ctx.fillStyle = '#1f2937';
   ctx.fillRect(0, 0, THUMB_W, THUMB_H);
   ctx.lineWidth = 1.5;
@@ -472,11 +504,9 @@ export const generateThumbnailPng = async (
         console.warn('[thumbnail] canvas.toBlob returned null - canvas may be tainted or empty');
         resolve(''); return;
       }
-      console.log('[thumbnail] blob size:', blob.size, 'writing to:', thumbPathFor(projectPath));
       try {
         const thumbPath = thumbPathFor(projectPath);
         await writeFile(thumbPath, new Uint8Array(await blob.arrayBuffer()));
-        console.log('[thumbnail] written OK:', thumbPath);
         resolve(thumbPath);
       } catch (err) {
         console.warn('[thumbnail] failed to write:', err);

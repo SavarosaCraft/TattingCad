@@ -31,11 +31,13 @@ export function useUIState() {
   );
   // cancelLabel / onCancel (session 62): optional — the second button can do
   // something too (e.g. "Resume last session"); without them it just closes.
+  // cancelPrimary (session 63): the second button is the safe choice and is
+  // drawn highlighted (blue) — e.g. "Save As…" beside a red "Overwrite".
   // A text may also be a function of `t`, worked out each time the dialog
   // draws — for a dialog opened before the translations have loaded (a file
   // handed over at start-up), which would otherwise show raw keys.
   type ConfirmText = string | ((t: (key: string) => string) => string);
-  const [confirmDialog, setConfirmDialog] = useState<{ title?: ConfirmText; message: ConfirmText; confirmLabel?: ConfirmText; onConfirm: () => void; cancelLabel?: ConfirmText; onCancel?: () => void } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ title?: ConfirmText; message: ConfirmText; confirmLabel?: ConfirmText; onConfirm: () => void; cancelLabel?: ConfirmText; onCancel?: () => void; cancelPrimary?: boolean } | null>(null);
   const [alertDialog, setAlertDialog] = useState<{ message: string; sub?: string } | null>(null);
 
   // ── Array dialogs ──────────────────────────────────────────────────────

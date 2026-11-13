@@ -23,7 +23,7 @@ import {
   getCircleStitchAngle, effectiveElementType,
   getEndAllowance, elementStitchFraction, splitRingSideFraction,
 } from '../geometry/stitchGeometry';
-import { STITCH_WIDTH_DS } from '../domain/parser';
+import { STITCH_WIDTH_DS, splitRingSideAPosition } from '../domain/parser';
 
 // ============================================================================
 // WEDGE SHAPES - Bounding rectangles for each stitch type in normalized coords
@@ -271,9 +271,11 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
         const w = STITCH_WIDTH_DS[type] || 1;
         const localStart = mirrored ? count - notationStart - w : notationStart;
         const mid = at(localStart + w / 2), a = at(localStart), b = at(localStart + w);
-        // Gradient position along the path, as before (side A from the
-        // far end — see getPicotPositionFraction in tattingindex.tsx).
-        const color = ec.isGradient ? getGradientColorAtPosition(ec.id, Math.max(0, localStart) / count) : ec.color;
+        // Gradient position in NOTATION order — side A from the shared start,
+        // like its labels and stitch types (review #23, session 63; it used
+        // to run from the far end). Same rule in getPicotPositionFraction
+        // (tattingindex.tsx) and the split-ring picots below.
+        const color = ec.isGradient ? getGradientColorAtPosition(ec.id, Math.max(0, notationStart) / count) : ec.color;
         stitches.push({ x: mid.x, y: mid.y, angle: mid.angle, startAngle: a.angle, endAngle: b.angle,
           startX: a.x, startY: a.y, endX: b.x, endY: b.y, color, type, dsPosition: globalOffset + localStart });
       };
@@ -935,7 +937,9 @@ export function bakeRealisticView(params: BakeRealisticViewParams): string {
             const localSb = inA ? picot.stitchesBefore : picot.stitchesBefore - splitPos;
             const samples = inA ? samplesA : samplesB;
             const pathLen = inA ? lenA : lenB;
-            const tMid   = localSb / localCount; // stitch progress — gradient colour
+            // Gradient colour in notation order: side A from the shared start
+            // (review #23, session 63 — was localSb, i.e. from the far end).
+            const tMid   = (inA ? splitRingSideAPosition(picot, localCount) : localSb) / localCount;
             const tipH   = (PICOT_TIP_LENGTH_DS[picot.length] || PICOT_TIP_LENGTH_DEFAULT) * dsWidth;
             const sideFrac = (sLocal: number) => splitRingSideFraction(el, sLocal, localCount);
             const ptMid   = ptAtFrac(samples, pathLen, sideFrac(localSb));

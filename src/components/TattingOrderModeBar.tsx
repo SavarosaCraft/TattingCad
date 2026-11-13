@@ -435,7 +435,9 @@ export const TattingOrderModeBar: React.FC<TattingOrderModeBarProps> = ({
           </button>
           <button
             onClick={() => assignRepeat(selectedEl.id)}
-            disabled={selectedEl.isRepeat}
+            // A repeat in another round can be moved into the round chosen in
+            // the dropdown in one click (assignRepeat sets the active round).
+            disabled={selectedEl.isRepeat && (getRoundId(selectedEl) || null) === activeRoundId}
             className="px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 disabled:opacity-40 text-gray-300 text-sm border border-gray-500"
             title="R"
           >

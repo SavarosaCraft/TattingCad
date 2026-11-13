@@ -710,6 +710,15 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           const len = tx * c + ty * s;
           deltaX = len * c - p.dragOffsetRef.current.dx;
           deltaY = len * s - p.dragOffsetRef.current.dy;
+        } else if (origin) {
+          // Review #14 (session 63): unlocked, the element follows the
+          // pointer from the drag's START — what's applied so far is taken
+          // off. The per-step delta (pointer − last pointer) kept the offset
+          // a lock had left: release Shift mid-drag and the element stayed
+          // off the pointer until the drag ended. Without a lock the two are
+          // the same, so a plain drag is unchanged.
+          deltaX = (world.x - origin.x) - p.dragOffsetRef.current.dx;
+          deltaY = (world.y - origin.y) - p.dragOffsetRef.current.dy;
         }
         p.dragOffsetRef.current.lockAngle = lockAngle;
         p.dragOffsetRef.current.dx += deltaX;

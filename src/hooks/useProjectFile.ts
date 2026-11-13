@@ -6,12 +6,13 @@
 import { useCallback, useRef, useEffect } from 'react';
 import {
   showSaveDialog, showOpenDialog, showSaveSvgDialog,
-  writeProjectFile, writeTextToFile, readProjectFile,
+  writeProjectFile, writeTextToFile, readProjectFile, readProjectFileText,
   addToRecents, generateThumbnailPng, stripPatternExt, patternNameFromUri, fileDisplayName,
 } from '../tauri/file';
 import { sanitizeProjectColors } from '../utils/safeColor';
 import { sanitizeProjectNumbers } from '../utils/safeNumber';
-import { serializeProject } from '../domain/patternOutput';
+import { fingerprintText } from '../utils/fileFingerprint';
+import { serializeProject, normalizeSpatialGroups, projectSettingsKey } from '../domain/patternOutput';
 import { prepareSvgForExport } from '../render/svgExport';
 import { sampleBezierPath } from '../geometry/bezier';
 import { withChordCenter } from '../geometry/stitchGeometry';
@@ -110,6 +111,24 @@ export interface UseProjectFileParams {
   setLastSavedRev: (v: number) => void;
   /** rev of the current history entry (0 when it has none). */
   getCurrentHistoryRev: () => number;
+  // Review #4 (session 63) — see utils/fileFingerprint.ts.
+  /** Fingerprint of the current file's text as this app last opened or
+   *  saved it (null: no file, or not known). */
+  fileFingerprintRef: { current: string | null };
+  /** Set by Resume: the next Save to the current file checks it first. */
+  verifyFileBeforeSaveRef: { current: boolean };
+  /** After a successful save — tattingindex refreshes the autosave, so it
+   *  never holds older work than the file (review #4). */
+  onSaved?: (info: { filePath: string; name: string; stillUnsaved: boolean; settingsKey: string }) => void;
+  // Review #3 (session 63): the group registry is saved and opened too.
+  groups: any[];
+  setGroups: (v: any[]) => void;
+  /** Review #2 (session 63): what's on screen now is "as opened" — the
+   *  settings outside Undo are compared with this from here on. */
+  onSettingsBaseline?: () => void;
+  /** The file changed since the resumed work was autosaved: ask Save As /
+   *  Overwrite (closing the box saves nothing). */
+  askFileChanged?: (fileName: string, actions: { saveAs: () => void; overwrite: () => void }) => void;
   // Utilities
   getPicotPosition: (el: any, picot: any, baseOnly?: boolean) => any;
   showLoadMsg: (type: 'success' | 'error', text: string) => void;
@@ -150,11 +169,13 @@ export function useProjectFile(p: UseProjectFileParams) {
       selectedPolarGridId: p.selectedPolarGridId,
       threadPresets: p.threadPresets,
       activePresetId: p.activePresetId,
+      spatialGroups: p.groups, // review #3 (session 63)
     }),
     [p.elements, p.picotConnections, p.camera, p.zoom, p.dsWidth, p.bgColor,
      p.gridEnabled, p.customColors, p.referenceImage, p.refImageProps,
      p.renderMode, p.patternNotes, p.materials, p.rounds, p.beadLibrary,
-     p.polarGrids, p.selectedPolarGridId, p.threadPresets, p.activePresetId]
+     p.polarGrids, p.selectedPolarGridId, p.threadPresets, p.activePresetId,
+     p.groups]
   );
 
   // Ref updated every render so autosave always calls the latest closure
@@ -176,11 +197,21 @@ export function useProjectFile(p: UseProjectFileParams) {
     // an edit made while the file/thumbnail are being written isn't in the
     // file, so it must still count as unsaved (session 58).
     const savedRev = p.getCurrentHistoryRev();
-    await writeProjectFile(filePath, buildProjectData(finalName));
+    const savedData = buildProjectData(finalName);
+    const writtenText = await writeProjectFile(filePath, savedData);
+    // Review #4 (session 63): the file now holds exactly this text.
+    p.fileFingerprintRef.current = fingerprintText(writtenText);
+    p.verifyFileBeforeSaveRef.current = false;
     const displayName = fileDisplayName(filePath, finalName);
     const thumbPath = await generateThumbnailPng(p.elements, p.dsWidth, filePath);
     addToRecents(displayName, filePath, thumbPath);
     p.setLastSavedRev(savedRev);
+    // …and the autosave is brought up to date at once (review #4): an older
+    // autosave must never be able to come back over this file. An edit made
+    // while the file was being written still counts as unsaved.
+    // settingsKey (review #2): the settings outside Undo exactly as written.
+    p.onSaved?.({ filePath, name: finalName, stillUnsaved: p.getCurrentHistoryRev() !== savedRev,
+      settingsKey: projectSettingsKey(savedData) });
     // Silent — only the manual File-menu entry should interrupt the user;
     // a save happening to also be a good moment to check shouldn't itself
     // become an interruption. No elementsOverride needed here: unlike a
@@ -192,7 +223,7 @@ export function useProjectFile(p: UseProjectFileParams) {
   const performSave = useCallback(async (nameOverride?: string) => {
     const finalName = (nameOverride ?? p.projectName).trim() || p.t('projectUntitled');
     try {
-      const filePath = await showSaveDialog(finalName);
+      const filePath = await showSaveDialog(finalName, { title: p.t('fileSave'), typeName: p.t('fileTypePattern') }); // #17
       if (!filePath) return;
       p.setProjectName(finalName);
       await saveToPath(filePath, finalName);
@@ -202,12 +233,36 @@ export function useProjectFile(p: UseProjectFileParams) {
     }
   }, [p.projectName, saveToPath, p.t]);
 
+  // Review #4 (session 63): after Resume, the first Save to the file checks
+  // it first. Same text as when this work was autosaved → save. Changed
+  // (or not known — an autosave from before session 63, or the file can't
+  // be read) → ask: Save As… / Overwrite. File gone → nothing to lose: save.
+  const checkingFileRef = useRef(false);
   const saveProject = useCallback(() => {
-    if (p.currentFilePath) {
-      saveToPath(p.currentFilePath, p.projectName).catch(reportSaveError);
-    } else {
-      performSave();
-    }
+    const filePath = p.currentFilePath;
+    if (!filePath) { performSave(); return; }
+    const name = p.projectName;
+    const save = () => { saveToPath(filePath, name).catch(reportSaveError); };
+    if (!p.verifyFileBeforeSaveRef.current || !p.askFileChanged) { save(); return; }
+    if (checkingFileRef.current) return; // a second Ctrl+S while checking
+    checkingFileRef.current = true;
+    (async () => {
+      let unchanged = false;
+      try {
+        const text = await readProjectFileText(filePath);
+        unchanged = p.fileFingerprintRef.current !== null
+          && fingerprintText(text) === p.fileFingerprintRef.current;
+      } catch (err) {
+        if (isFileNotFoundError(err)) unchanged = true;
+      } finally {
+        checkingFileRef.current = false;
+      }
+      if (unchanged) { save(); return; }
+      p.askFileChanged!(fileDisplayName(filePath, name), {
+        saveAs: () => { performSave(); },
+        overwrite: save,
+      });
+    })();
   }, [p.currentFilePath, p.projectName, saveToPath, performSave]);
 
   const saveProjectAs = useCallback(() => {
@@ -217,7 +272,13 @@ export function useProjectFile(p: UseProjectFileParams) {
   // filePath null = a sample pattern (session 60): opened as an untitled
   // copy — no file path (so Save asks where), not added to Recent, named
   // `opts.name`.
-  const applyProjectData = useCallback(async (projectData: any, filePath: string | null, opts?: { name?: string }) => {
+  // opts.fromAutosave (session 63, review #15): Resume goes through here too,
+  // so it gets every check and repair a file gets. Then it keeps the saved
+  // view (no re-centring), shows no "Load completed" and isn't added to
+  // Recent; loadFromAutosave sets the Resume-only state afterwards. With it
+  // the whole function runs synchronously (the only await is after the
+  // early return), so those settings land in the same update.
+  const applyProjectData = useCallback(async (projectData: any, filePath: string | null, opts?: { name?: string; fingerprint?: string | null; fromAutosave?: boolean }) => {
     // Security (session 60): colours that aren't real colours are replaced
     // before anything uses them — patterns are shared (utils/safeColor.ts).
     sanitizeProjectColors(projectData);
@@ -311,7 +372,12 @@ export function useProjectFile(p: UseProjectFileParams) {
     if (projectData.referenceImage) {
       const original = projectData.referenceImage;
       void shrinkReferenceImage(original).then(r => {
-        if (r.changed) p.setReferenceImage(cur => (cur === original ? r.src : cur));
+        if (r.changed) {
+          p.setReferenceImage(cur => (cur === original ? r.src : cur));
+          // Smaller copy of the same picture — not a change by the user
+          // (review #2): the comparison starts again from here.
+          p.onSettingsBaseline?.();
+        }
       });
     }
     p.setRefImageProps(projectData.refImageProps || { opacity: 0.5, rotation: 0, scale: 1, visible: true });
@@ -321,11 +387,14 @@ export function useProjectFile(p: UseProjectFileParams) {
     // straight into 'realistic' leaves the canvas blank until the user
     // manually toggles modes. See handoff docs re: session 52 load bug.
     p.setRenderMode('schematic');
-    p.onFileApplied?.();
+    if (!opts?.fromAutosave) p.onFileApplied?.(); // re-centre on this screen — not on Resume
     p.setPatternNotes(projectData.patternNotes || '');
     p.setMaterials(projectData.materials || DEFAULT_MATERIALS);
     p.setRounds(Array.isArray(projectData.orderGroups) ? projectData.orderGroups : []);
     p.setActiveRoundId(null);
+    // Review #3 (session 63): group names and colours (none in older files).
+    const loadedGroups = normalizeSpatialGroups(projectData.spatialGroups);
+    p.setGroups(loadedGroups);
     if (Array.isArray(projectData.polarGrids)) {
       p.setPolarGrids(prev => {
         const existing = new Set(prev.map((g: any) => g.id));
@@ -350,11 +419,17 @@ export function useProjectFile(p: UseProjectFileParams) {
     // array still has pre-migration data (legacy orderGroup field, stale
     // isJoint flags), so undoing all the way back used to restore that
     // unmigrated version instead of the file as loaded.
-    p.setHistory([{ elements: migratedElements, connections: projectData.picotConnections || [] }]);
+    p.setHistory([{ elements: migratedElements, connections: projectData.picotConnections || [], spatialGroups: loadedGroups }]);
     p.setHistoryIndex(0);
     p.setCurrentFilePath(filePath);
+    // Review #4 (session 63): what this file held when it was opened.
+    p.fileFingerprintRef.current = filePath ? (opts?.fingerprint ?? null) : null;
+    p.verifyFileBeforeSaveRef.current = false;
     // Just opened = matches the file on disk (that entry has no rev → 0).
     p.setLastSavedRev(0);
+    // …and so do the settings outside Undo (review #2). Last state update of
+    // the load: it renders together with all of the above.
+    p.onSettingsBaseline?.();
 
     // Silent — a load happening to also be a good moment to check
     // shouldn't itself interrupt opening the file. elementsOverride is
@@ -363,6 +438,8 @@ export function useProjectFile(p: UseProjectFileParams) {
     // it, so checking without the override would silently check the wrong
     // (stale) elements.
     p.cleanupDuplicates({ silent: true, elementsOverride: migratedElements });
+
+    if (opts?.fromAutosave) return; // no toast, no Recent (review #15)
 
     const count = (projectData.elements || []).length;
     setTimeout(() => {
@@ -374,7 +451,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     }, 50);
     if (filePath === null) return; // sample: nothing on disk to list in Recent
 
-    const displayName = fileDisplayName(filePath, projectData.name || 'Project');
+    const displayName = fileDisplayName(filePath, projectData.name || p.t('projectUntitled')); // #17
     const thumbPath = await generateThumbnailPng(projectData.elements || [], projectData.dsWidth || 10, filePath);
     addToRecents(displayName, filePath, thumbPath);
   }, [p.t, p.cleanupDuplicates]);
@@ -384,8 +461,10 @@ export function useProjectFile(p: UseProjectFileParams) {
   // how filePath is obtained differs between the two callers.
   const readAndApplyProjectFile = useCallback(async (filePath: string) => {
     try {
-      const projectData = await readProjectFile(filePath);
-      applyProjectData(projectData, filePath);
+      const text = await readProjectFileText(filePath);
+      const projectData = JSON.parse(text);
+      // Review #4 (session 63): remember what the file held when opened.
+      applyProjectData(projectData, filePath, { fingerprint: fingerprintText(text) });
     } catch (error: any) {
       if (isFileNotFoundError(error)) {
         p.showLoadMsg('error', p.t('loadErrFileNotFound'));
@@ -421,7 +500,7 @@ export function useProjectFile(p: UseProjectFileParams) {
   }, [readAndApplyProjectFile, p.t]);
 
   const loadProject = useCallback(async () => {
-    const filePath = await showOpenDialog();
+    const filePath = await showOpenDialog({ title: p.t('fileLoad'), typeName: p.t('fileTypePattern') }); // #17
     if (!filePath) return;
     await readAndApplyProjectFile(filePath);
   }, [readAndApplyProjectFile]);
@@ -461,11 +540,14 @@ export function useProjectFile(p: UseProjectFileParams) {
     });
 
     try {
-      const filePath = await showSaveSvgDialog(p.projectName.replace(/[^a-z0-9]/gi, '_'));
+      // #16: the name keeps its letters (safeFileName in the dialog helper); #17: texts.
+      const filePath = await showSaveSvgDialog(p.projectName, { title: p.t('fileExportSvg'), typeName: p.t('fileTypeSvg') });
       if (!filePath) return;
       await writeTextToFile(filePath, svgString);
     } catch (err) {
-      console.error('SVG export failed:', err);
+      // Review #12 (session 63): a failed export was silent (console only),
+      // as saves were before session 61 — same red message as Save now.
+      reportSaveError(err);
     }
   }, [p.elements, p.projectName, p.patternNotes, p.rounds, p.dsWidth, p.roundColors]);
 

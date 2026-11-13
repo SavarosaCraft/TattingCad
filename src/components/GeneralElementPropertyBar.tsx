@@ -248,6 +248,8 @@ export function GeneralElementPropertyBar({
                       const { exact: exactPresets, rounded: roundedPresets } = suggestScalePresets(isSR ? [analysisA, analysisB] : [analysisA]);
 
                       const anySupported = activeSides.some(s => analysisFor(s).supported);
+                      // Review #21 (session 63): invalid notation gets its own message.
+                      const anyInvalid = activeSides.some(s => analysisFor(s).reason === 'invalid');
 
                       // Session 60 — results without committing (shared by Apply and
                       // the Result preview, so the preview is exactly what Apply does).
@@ -373,7 +375,7 @@ export function GeneralElementPropertyBar({
                             )}
 
                             {!anySupported ? (
-                              <p className="text-xs text-gray-400 italic">{t('picotWizardUnsupported')}</p>
+                              <p className="text-xs text-gray-400 italic">{t(anyInvalid ? 'picotWizardInvalid' : 'picotWizardUnsupported')}</p>
                             ) : (
                               <div className="flex flex-col gap-2">
                                 <div className="picot-wizard-grid grid gap-2">
