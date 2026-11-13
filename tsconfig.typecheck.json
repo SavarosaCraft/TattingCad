@@ -1,0 +1,8 @@
+{
+  // Used by "npm run typecheck" only. The target lives HERE, not in
+  // tsconfig.json: Vite reads tsconfig.json's "target" and passes it to its
+  // compiler, which changes the built app (checked in session 64).
+  // tsconfig.json is kept so the build is byte-for-byte what it was.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "target": "ES2020" }
+}

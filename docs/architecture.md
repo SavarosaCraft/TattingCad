@@ -3305,6 +3305,27 @@ badges (circle rings, lines, other paths). Checked on DAL_Snowflake_2026:
 24 R badges match their round's numbers, one moved out of its round stays
 grey.
 
+Assign Repeat (TattingOrderModeBar) was disabled for any element that was
+already a repeat, so moving a repeat to another round took two clicks
+(Assign to Group, then Assign Repeat). It is now disabled only when the
+repeat is already in the round chosen in the dropdown; `assignRepeat` sets
+`roundId: activeRoundId`, so one click moves it (the R key always did).
+Undo is off inside Tatting Order (as before); the step undoes after Exit Mode.
+
+### Callbacks made once: stale-value audit (session 63)
+
+A `useCallback(…, [])` keeps the first render's values. Audited all 39
+memoised callbacks and 20 run-once effects. Rules that hold now:
+- Inside a `[]` callback, read state through a ref (`…Ref.current`) and
+  texts through `tRef.current` (useEditorActions) or a ConfirmText function
+  `tt => tt('key')` (dialogs) — never `p.t` directly: before the language
+  files load the first `t` returns the key itself.
+- A callback with a deps list lists `p.t` when it shows text (useProjectFile
+  callbacks do; `exportSVG` was missing it).
+- Fixed with this: new groups were named "groupDefaultName N" (raw key);
+  `applyProjectData` renames such names to `t('groupDefaultName') N` on
+  open, so files saved with the bad name heal on their next save.
+
 ### Resume goes through file open (session 63, review #15)
 
 `loadFromAutosave` (tattingindex.tsx) used to be its own copy of file

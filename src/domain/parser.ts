@@ -176,6 +176,14 @@ export const expandTokens = (pat: string): string[] => {
   return result;
 };
 
+// Session 64 (pattern text): the top-level parts of a notation body, as
+// expandTokens sees them, each with its repeat group when it is one — so a
+// caller can keep a repeat as written or write it out. Same splitting and
+// tidying as expandTokens (no second copy of the rules).
+export interface NotationPart { text: string; repeat: { count: number; countStr: string; inner: string; prefixForm: boolean } | null; }
+export const splitNotationParts = (pat: string): NotationPart[] =>
+  splitTopLevelParts(normalizePattern(pat)).map(text => ({ text, repeat: matchRepeatGroup(text) }));
+
 export const isZeroWidth = (token: string): boolean => {
   const t = token.toLowerCase().trim();
   if (t === 'be') return true;

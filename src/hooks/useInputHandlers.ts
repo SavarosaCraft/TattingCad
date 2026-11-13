@@ -799,7 +799,10 @@ export function useInputHandlers(p: UseInputHandlersParams) {
           // Regular picots
           if (el.picots) {
             el.picots.forEach((picot: any) => {
-              if (picot.isGuidePoint) return;
+              // Session 64 (user report): a guide point (gp) is joinable, like
+              // a ring's guide point — its green join dot was drawn in this
+              // mode but skipped here, so clicking it did nothing. It stays
+              // "gp" in the notation (pattern text: gp//r2//).
               // Bead picots join only when they ARE joining picots: a BE marked
               // as one (beIsJoint), or a bjp/bcjp (always — session 60 fix:
               // loading a file clears isJoint on every unjoined picot, which
@@ -808,8 +811,16 @@ export function useInputHandlers(p: UseInputHandlersParams) {
               const joinableBead = picot.beadType === 'bjp' || picot.beadType === 'bcjp'
                 || (picot.beadType === 'be' && picot.beIsJoint);
               if (picot.beadType && !picot.isJoint && !joinableBead) return;
-              const pos = p.getPicotPosition(el, picot);
+              let pos = p.getPicotPosition(el, picot);
               if (!pos) return;
+              // A gp's dot is drawn 6 screen px off the line (so the line's
+              // stroke doesn't cover it — see the guide-point branch of the
+              // picot drawing in tattingindex.tsx); hit-test where it's drawn,
+              // or a click on the dot misses when zoomed out.
+              if (picot.isGuidePoint && typeof pos.angle === 'number') {
+                const off = 6 / p.zoom;
+                pos = { ...pos, x: pos.x + Math.cos(pos.angle) * off, y: pos.y + Math.sin(pos.angle) * off };
+              }
               if (pos.x >= minX-5 && pos.x <= maxX+5 && pos.y >= minY-5 && pos.y <= maxY+5) selPicots.push({ elementId: el.id, picotId: picot.id });
             });
           }

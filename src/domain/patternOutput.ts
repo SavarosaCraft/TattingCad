@@ -9,13 +9,23 @@
 import { DEFAULT_END_ALLOWANCE } from '../geometry/stitchGeometry';
 import { fingerprintText } from '../utils/fileFingerprint';
 import { isSafeColor } from '../utils/safeColor';
+import { parseNotation, expandTokens, splitNotationParts } from './parser';
+import { splitRingSides } from './picotTools';
 
 // Session 61: every notation prefix (incl. jk:, fr: floating ring, mr: mock
 // ring) — stripped for the short notation hints and the stitch counts.
 const NOTATION_PREFIX_RE = /^(r|c|sc|sr|ch|jk|fr|mr):\s*/i;
-// Short ring label in the unnumbered list: SR / FR / MR / R.
+// Short ring label in the unnumbered list: SR / FR / MR / JK / R.
 const ringTypeLabel = (el: any): string =>
-  el.isSplitRing ? 'SR' : /^fr:/i.test(el.notation || '') ? 'FR' : /^mr:/i.test(el.notation || '') ? 'MR' : 'R';
+  el.isSplitRing ? 'SR' : /^fr:/i.test(el.notation || '') ? 'FR' : /^mr:/i.test(el.notation || '') ? 'MR'
+    : /^jk:/i.test(el.notation || '') ? 'JK' : 'R';
+
+// Session 64 (pattern text) — token classes for the numbered lines.
+const STITCH_TOKEN_RE = /^(\d*)(ds|ss|lss|rss|rds|bds)$/i;
+const PLAIN_PICOT_TOKEN_RE = /^(p|sp|cp|lp)$/i;
+// Tokens that ARE joins: with nothing joined to them they're marked (?).
+const JOINING_TOKEN_RE = /^(jp|jpg|cj|cjp|bjp(:.*)?|bcjp:.*)$/i;
+const NOTATION_MISMATCH = Symbol('notation mismatch');
 
 const DEFAULT_THREAD_PRESET = {
   id: 'default',
@@ -138,7 +148,17 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
   //   regular large        → lp
   //   bead picot (non-jp)  → bp
   //   guide / guide-point  → skipped
-  const buildOutputNotation = (el: any, elementId: string): string => {
+  // "R#3" → "r3", "CH#12" → "ch12" — element refs inside the notation.
+  const refToLower = (ref: string) => {
+    const m = ref.match(/^([A-Za-z]+)#(.+)$/);
+    if (!m) return ref.toLowerCase();
+    return m[1].toLowerCase() + m[2];
+  };
+
+  // Legacy line builder (before session 64): rebuilds the line from picot
+  // positions, every stitch as ds. Only used now when an element's picots
+  // don't line up with its notation (see buildOutputNotation below).
+  const buildOutputNotationLegacy = (el: any, elementId: string): string => {
     const typePrefix = el.isSplitRing ? 'sr'
       : el.type === 'ring'  ? 'r'
       : el.type === 'chain' ? (el.isSplitChain ? 'sc' : 'c')
@@ -219,6 +239,127 @@ export function generatePatternText(params: GeneratePatternParams): GeneratePatt
     }
 
     return `${typePrefix}: ${parts.join('-')}`;
+  };
+
+  // ── Output notation (session 64) ───────────────────────────────────────
+  // Each numbered line is the element's OWN notation, as typed: its prefix
+  // (fr: mr: jk: sc: …), every stitch (ss, lss/rss, rds/bds) and every bead
+  // token are kept. The legacy builder above rebuilt the line from stitch
+  // counts and picot positions, which wrote every stitch as ds, every bead
+  // as bp, every ring as r: (user report: a floating ring came out "r:").
+  // User decisions (session 64):
+  //  - a joined picot gets the usual //ref// mark; a joined plain picot is
+  //    written jp, a fold fp (as before); a joining picot (jp, jpg, cj, cjp,
+  //    bjp, bcjp) with nothing joined to it is marked (?);
+  //  - gp and jpg stay as written (they are not the same: a jpg's guide
+  //    point is offset); an unjoined gp is a drawing aid and is left out —
+  //    the runs on either side of it become one;
+  //  - a repeat n*(…) stays short unless a picot inside it is joined;
+  //  - a split ring is written "sr: side A / side B".
+  // Picots are matched to the notation's tokens in order (a bead sequence
+  // like bc:YZ is one token with one picot per bead). If the element's
+  // picots don't line up with its notation, the legacy builder is used.
+  const tokenPicotCount = new Map<string, number>();
+  const picotsInToken = (token: string): number => {
+    if (STITCH_TOKEN_RE.test(token)) return 0;
+    let n = tokenPicotCount.get(token);
+    if (n === undefined) {
+      n = parseNotation(`r: ${token}`, true)?.picots.length ?? 0;
+      tokenPicotCount.set(token, n);
+    }
+    return n;
+  };
+  const byPosition = (list: any[]) =>
+    list.map((p, i) => ({ p, i }))
+      .sort((a, b) => (a.p.stitchesBefore - b.p.stitchesBefore) || (a.i - b.i))
+      .map(x => x.p);
+
+  // body = notation without its prefix; picots in notation order.
+  const annotateBody = (elementId: string, body: string, picots: any[]): string | null => {
+    let next = 0;
+    const refsOf = (list: any[]) =>
+      [...new Set(list.flatMap(p => picotConnectionMap[`${elementId}:${p.id}`] || []))];
+    const isJoinedOrConnected = (list: any[]) => list.some(p => p.isJoint) || refsOf(list).length > 0;
+
+    let mergeWithPrevious = false;   // after a left-out gp: the next run joins the one before
+    const renderTokens = (tokens: string[], out: string[]) => {
+      for (const token of tokens) {
+        const count = picotsInToken(token);
+        const own = picots.slice(next, next + count);
+        if (own.length < count) throw NOTATION_MISMATCH;
+        next += count;
+        if (count === 0) {
+          const m = token.match(STITCH_TOKEN_RE);
+          const prev = out.length > 0 ? out[out.length - 1].match(STITCH_TOKEN_RE) : null;
+          if (mergeWithPrevious && m && prev && prev[2].toLowerCase() === m[2].toLowerCase()) {
+            out[out.length - 1] = `${parseInt(prev[1] || '1', 10) + parseInt(m[1] || '1', 10)}${m[2]}`;
+          } else out.push(token);
+          mergeWithPrevious = false;
+          continue;
+        }
+        const refs = refsOf(own);
+        const joined = own.some(p => p.isJoint);
+        if (token.toLowerCase() === 'gp' && refs.length === 0 && !joined) { mergeWithPrevious = true; continue; }
+        let word = token;
+        if (PLAIN_PICOT_TOKEN_RE.test(token)) {
+          if (own.some(p => foldedPicotKeys.has(`${elementId}:${p.id}`))) word = 'fp';
+          else if (joined) word = 'jp';
+        }
+        if (refs.length > 0) out.push(word + [...refs].sort().map(r => `//${refToLower(r)}`).join('') + '//');
+        else if (joined || JOINING_TOKEN_RE.test(token)) out.push(`${word}(?)`);
+        else out.push(word);
+        mergeWithPrevious = false;
+      }
+    };
+
+    try {
+      const out: string[] = [];
+      for (const part of splitNotationParts(body)) {
+        const rep = part.repeat;
+        if (!rep) { renderTokens(expandTokens(part.text), out); continue; }
+        const innerTokens = expandTokens(rep.inner);
+        const perRound = innerTokens.reduce((sum, tk) => sum + picotsInToken(tk), 0);
+        const inGroup = picots.slice(next, next + perRound * rep.count);
+        if (inGroup.length < perRound * rep.count) throw NOTATION_MISMATCH;
+        if (isJoinedOrConnected(inGroup)) {
+          // a join inside: written out in full, each picot with its own refs
+          for (let k = 0; k < rep.count; k++) renderTokens(innerTokens, out);
+        } else {
+          // kept short, in the form it was typed: 3*(…), 3x(…), (…)x3, (…)*3
+          const inner: string[] = [];
+          const start = next;
+          mergeWithPrevious = false;
+          renderTokens(innerTokens, inner);
+          mergeWithPrevious = false;
+          next = start + perRound * rep.count;
+          const sep = rep.prefixForm
+            ? part.text[rep.countStr.length]
+            : part.text[part.text.length - rep.countStr.length - 1];
+          out.push(rep.prefixForm ? `${rep.countStr}${sep}(${inner.join('-')})` : `(${inner.join('-')})${sep}${rep.countStr}`);
+        }
+      }
+      if (next !== picots.length) return null;
+      return out.join('-');
+    } catch (err) {
+      if (err === NOTATION_MISMATCH) return null;
+      throw err;
+    }
+  };
+
+  const buildOutputNotation = (el: any, elementId: string): string => {
+    if (el.isSplitRing) {
+      const sides = splitRingSides(el);
+      const a = annotateBody(elementId, sides.notationA.replace(NOTATION_PREFIX_RE, ''), byPosition(sides.picotsA));
+      const b = annotateBody(elementId, sides.notationB.replace(NOTATION_PREFIX_RE, ''), byPosition(sides.picotsB));
+      if (a !== null && b !== null) return `sr: ${a} / ${b}`;
+    } else if (el.type === 'ring' || el.type === 'chain') {
+      const m = (el.notation || '').match(NOTATION_PREFIX_RE);
+      if (m) {
+        const body = annotateBody(elementId, el.notation.slice(m[0].length), byPosition(el.picots || []));
+        if (body !== null) return `${m[1].toLowerCase()}: ${body}`;
+      }
+    }
+    return buildOutputNotationLegacy(el, elementId);
   };
 
   // ── Ordered elements ───────────────────────────────────────────────────

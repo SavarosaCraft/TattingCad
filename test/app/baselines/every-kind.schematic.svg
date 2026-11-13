@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="597" height="376" style="background-color: white;" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="33.15704971551895 40.3 596.842950284481 376.2781234158203">
+<defs>
+<pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+<path d="M 25 0 L 0 0 0 25" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+</pattern>
+<filter id="pink-glow" x="-40%" y="-40%" width="180%" height="180%">
+<feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#FF1493" flood-opacity="1"/>
+</filter>
+<filter id="red-glow" x="-40%" y="-40%" width="180%" height="180%">
+<feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#ef4444" flood-opacity="1"/>
+</filter>
+<filter id="amber-glow" x="-40%" y="-40%" width="180%" height="180%">
+<feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#f59e0b" flood-opacity="1"/>
+</filter>
+<g id="ds-stitch">
+<path d="M -0.211,0.05 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.0504 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.2103 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.0504 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m -0.0016,0.1628 c -0.0276,0 -0.0496,0.0223 -0.0496,0.0499 v 0.2103 c 0,0.0276 0.022,0.0499 0.0496,0.0499 h 0.0504 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.2103 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m 0.163,0 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.2103 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.0504 c 0.0276,0 0.0496,-0.0223 0.0496,-0.0499 v -0.2103 c 0,-0.0276 -0.022,-0.0499 -0.0496,-0.0499 z" fill="currentColor" stroke="black" stroke-width="0.05" stroke-linecap="square" stroke-miterlimit="4.7"/>
+</g>
+<g id="ss-stitch">
+<path d="M -0.0524,0.05 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.0504 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.0488 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.0504 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m -0.0016,0.1628 c -0.0276,0 -0.0496,0.0223 -0.0496,0.0499 v 0.2103 c 0,0.0276 0.022,0.0499 0.0496,0.0499 h 0.0504 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.2103 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z" fill="currentColor" stroke="black" stroke-width="0.05" stroke-linecap="square" stroke-miterlimit="4.7"/>
+</g>
+<g id="rds-stitch">
+<path d="M -0.5434,0.05 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.0504 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.5733 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.0504 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m -0.0016,0.1628 c -0.0276,0 -0.0496,0.0223 -0.0496,0.0499 v 0.2103 c 0,0.0276 0.022,0.0499 0.0496,0.0499 h 0.0504 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.2103 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m 0.1748,0 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.2103 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.0504 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.2103 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m 0.1748,0 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.2103 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.0504 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.2103 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z m 0.1748,0 c -0.0276,0 -0.0499,0.0223 -0.0499,0.0499 v 0.2103 c 0,0.0276 0.0223,0.0499 0.0499,0.0499 h 0.0504 c 0.0276,0 0.0499,-0.0223 0.0499,-0.0499 v -0.2103 c 0,-0.0276 -0.0223,-0.0499 -0.0499,-0.0499 z" fill="currentColor" stroke="black" stroke-width="0.05" stroke-linecap="square" stroke-miterlimit="4.7"/>
+</g>
+<g id="picot-p">
+<path d="m -0.13569,-0.003 c -0.13569,-0.0033 -0.248864,0.07618 -0.314453,0.171875 -0.06639,0.09687 -0.101883,0.211718 -0.126954,0.322266 -0.05014,0.221095 -0.05078,0.435547 -0.05078,0.435547 v 0.125 l 0.25,0.002 v -0.125 c 0,0 0.0027,-0.196536 0.04492,-0.382813 0.02112,-0.09314 0.05339,-0.181178 0.08984,-0.234375 0.03646,-0.0532 0.0576,-0.06815 0.101562,-0.06641 h 0.0059 0.0039 c 0.04396,-0.0017 0.06706,0.01321 0.103516,0.06641 0.03646,0.0532 0.06872,0.141237 0.08984,0.234375 0.04224,0.186277 0.04492,0.382813 0.04492,0.382813 v 0.125 l 0.25,-0.002 v -0.125 c 0,0 -6.4e-4,-0.214453 -0.05078,-0.435547 -0.02507,-0.110547 -0.06056,-0.225401 -0.126953,-0.322266 -0.06528,-0.09525 -0.179621,-0.174369 -0.314453,-0.171875 z" fill="white" fill-opacity="1" stroke="black" stroke-width="0.05"/>
+</g>
+<g id="picot-sp">
+<path d="m -0.13573,0 c -0.13573,0 -0.248864,0.07618 -0.314453,0.171875 -0.06639,0.09687 -0.101883,0.211718 -0.126954,0.322266 -0.04775,0.151308 -0.04251,0.271159 -0.04251,0.271159 l 0.25,0.002 c 0,0 0.0121,-0.08271 0.03665,-0.218425 0.02112,-0.09314 0.05339,-0.181178 0.08984,-0.234375 0.03646,-0.0532 0.0576,-0.06815 0.106461,-0.06813 0.04886,2e-5 0.07196,0.01493 0.108417,0.06813 0.03646,0.0532 0.0713,0.14069 0.08984,0.234375 0.02083,0.105233 0.05319,0.218425 0.05319,0.218425 l 0.25,-0.002 c 0,0 -0.03078,-0.118243 -0.05905,-0.271159 -0.02507,-0.110547 -0.06056,-0.225401 -0.126953,-0.322266 -0.06528,-0.09525 -0.179598,-0.171875 -0.314453,-0.171875 z" fill="white" fill-opacity="1" stroke="black" stroke-width="0.05"/>
+</g>
+<g id="picot-lp">
+<path d="m -0.13573,0 c -0.13573,0 -0.248864,0.07618 -0.314453,0.171875 -0.06639,0.09687 -0.101883,0.211718 -0.126954,0.322266 -0.05014,0.221095 -0.06247,1.105031 -0.06247,1.105031 v 0.125 l 0.25,0.002 v -0.125 c 0,0 0.01439,-0.86602 0.05661,-1.052297 0.02112,-0.09314 0.05339,-0.181178 0.08984,-0.234375 0.03646,-0.0532 0.0576,-0.06815 0.101562,-0.06641 h 0.0059 0.0039 c 0.04396,-0.0017 0.06706,0.01321 0.103516,0.06641 0.03646,0.0532 0.06872,0.141237 0.08984,0.234375 0.04224,0.186277 0.03323,1.052297 0.03323,1.052297 v 0.125 l 0.25,-0.002 v -0.125 c 0,0 0.01105,-0.883937 -0.03909,-1.105031 -0.02507,-0.110547 -0.06056,-0.225401 -0.126953,-0.322266 -0.06528,-0.09525 -0.179598,-0.171875 -0.314453,-0.171875 z" fill="white" fill-opacity="1" stroke="black" stroke-width="0.05"/>
+</g>
+<linearGradient id="gradient-4010" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+<stop offset="0%" stop-color="#c4e9f3"/>
+<stop offset="55%" stop-color="#d2d2ca"/>
+<stop offset="100%" stop-color="#bab3db"/>
+</linearGradient>
+<linearGradient id="gradient-4070" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+<stop offset="0%" stop-color="#ffd89f"/>
+<stop offset="67%" stop-color="#fbb098"/>
+<stop offset="77%" stop-color="#fea270"/>
+<stop offset="96%" stop-color="#fdd269"/>
+</linearGradient>
+<linearGradient id="gradient-4200" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+<stop offset="0%" stop-color="#BE0F36"/>
+<stop offset="33%" stop-color="#CF1B34"/>
+<stop offset="65%" stop-color="#ED3245"/>
+<stop offset="72%" stop-color="#F12D3B"/>
+<stop offset="82%" stop-color="#F12228"/>
+<stop offset="93%" stop-color="#F41913"/>
+<stop offset="100%" stop-color="#F61408"/>
+</linearGradient>
+<linearGradient id="gradient-93" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+<stop offset="0%" stop-color="#B2C2E6"/>
+<stop offset="10%" stop-color="#9BACD8"/>
+<stop offset="22%" stop-color="#8190C7"/>
+<stop offset="29%" stop-color="#717FBC"/>
+<stop offset="41%" stop-color="#5866AD"/>
+<stop offset="99%" stop-color="#393280"/>
+</linearGradient>
+<linearGradient id="gradient-106" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+<stop offset="0%" stop-color="#F50F02"/>
+<stop offset="8%" stop-color="#FB2D20"/>
+<stop offset="28%" stop-color="#FC7766"/>
+<stop offset="35%" stop-color="#FE9381"/>
+<stop offset="98%" stop-color="#FA9579"/>
+</linearGradient>
+<linearGradient id="gradient-125" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+<stop offset="0%" stop-color="#106C43"/>
+<stop offset="13%" stop-color="#1F8A56"/>
+<stop offset="80%" stop-color="#76D790"/>
+<stop offset="99%" stop-color="#A5E6AE"/>
+</linearGradient>
+</defs>
+<g>
+<g id="layer-joins" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:groupmode="layer" inkscape:label="Joins">
+<g id="joins">
+<g>
+<line x1="100" y1="129.7" x2="200" y2="124.39929658551372" stroke="#FFE600" stroke-width="3" opacity="0.7"/>
+<line x1="300" y1="119.09859317102745" x2="200" y2="124.39929658551372" stroke="#FFE600" stroke-width="3" opacity="0.7"/>
+</g>
+</g>
+</g>
+<g id="layer-design" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:groupmode="layer" inkscape:label="Design">
+<g opacity="1">
+<g>
+<g>
+<path d="M 400,300 C 466,300 534,300 600,300" fill="none" stroke="#000000" stroke-width="4" opacity="1"/>
+<path d="M 400,300 C 466,300 534,300 600,300" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="1"/>
+</g>
+</g>
+<g>
+<g>
+<line x1="300" y1="272.25" x2="300" y2="252.25" stroke="#FFFFFF" stroke-width="2"/>
+</g>
+<path d="M 245,300 C 282,263 318,263 355,300" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+</g>
+<g>
+<g>
+<line x1="119.64763166216588" y1="109.9360890780137" x2="139.38369542626947" y2="113.17457438741945" stroke="#FFFFFF" stroke-width="2"/>
+</g>
+<path d="M 100,70.3 C 111.88,79.21 119.8,102.97 119.8,108.91" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+<path d="M 119.8,108.91 C 117.82,123.75999999999999 107.92,126.72999999999999 100,129.7" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+<path d="M 100,129.7 C 92.08,126.72999999999999 82.18,123.75999999999999 80.2,108.91" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+<path d="M 80.2,108.91 C 80.2,102.97 88.12,79.21 100,70.3" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+</g>
+<g>
+<circle cx="300" cy="100" r="19.098593171027442" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+</g>
+<g>
+<circle cx="500" cy="100" r="19.098593171027442" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+</g>
+<g>
+<g>
+<line x1="83.15704971551895" y1="300" x2="63.15704971551895" y2="300" stroke="#FFFFFF" stroke-width="2"/>
+</g>
+<g>
+<line x1="116.84295028448105" y1="300.00000000000006" x2="136.84295028448105" y2="300.00000000000006" stroke="#FFFFFF" stroke-width="2"/>
+</g>
+<path d="M 100,326.5781234158203 C 77.54273295402527,319.9335925618652 77.54273295402527,280.0664074381348 100,273.4218765841797" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+<path d="M 100,273.4218765841797 C 122.45726704597473,280.0664074381348 122.45726704597473,319.9335925618652 100,326.5781234158203" fill="none" stroke="#FFFFFF" stroke-width="3.75" opacity="1"/>
+<line x1="100" y1="273.4218765841797" x2="100" y2="326.5781234158203" stroke="#000000" stroke-width="4" stroke-dasharray="5,5" opacity="1"/>
+<line x1="100" y1="273.4218765841797" x2="100" y2="326.5781234158203" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="5,5" opacity="1"/>
+<polyline points="97.66348994614809,321.051757451803 100,326.5781234158203 102.33651005385191,321.051757451803" fill="none" stroke="#000000" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+<polyline points="97.66348994614809,321.051757451803 100,326.5781234158203 102.33651005385191,321.051757451803" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+</g>
+</g>
+</g>
+<g id="layer-notation" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:groupmode="layer" inkscape:label="Notation">
+<g>
+<text x="266.01029344614443" y="273.69241816620644" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">6</text>
+<text x="333.9897065538555" y="273.69241816620644" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">6</text>
+</g>
+<g>
+<text x="127.57399303328765" y="110.93109234728652" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">6</text>
+<text x="81.57179010520532" y="128.89346790573094" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">9</text>
+</g>
+<g>
+<text x="327.09859317102746" y="100" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">6</text>
+<text x="272.90140682897254" y="100" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">6</text>
+</g>
+<g>
+<text x="527.0985931710275" y="100" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">12ss</text>
+</g>
+<g>
+<text x="79.26949205139428" y="281.87286773486375" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">3</text>
+<text x="79.26949205139425" y="318.1271322651361" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">3</text>
+<text x="120.73050794860573" y="281.8728677348638" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">3</text>
+<text x="120.73050794860575" y="318.12713226513614" fill="#FFFFFF" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" stroke="#000000" stroke-width="4" stroke-linejoin="round" paint-order="stroke">3</text>
+</g>
+</g>
+<g id="layer-order" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:groupmode="layer" inkscape:label="Order Numbers">
+<text x="100" y="100" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="10" font-weight="bold" stroke="#000000" stroke-width="3" paint-order="stroke" fill="#FFD700">1</text>
+<text x="300" y="100" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="10" font-weight="bold" stroke="#000000" stroke-width="3" paint-order="stroke" fill="#FFD700">2</text>
+<text x="300" y="300" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="10" font-weight="bold" stroke="#000000" stroke-width="3" paint-order="stroke" fill="#FFD700">3</text>
+</g>
+<g id="layer-groups" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:groupmode="layer" inkscape:label="Group Markers"/>
+</g>
+<g>
+<text x="63.15704971551895" y="386.5781234158203" font-family="sans-serif" font-size="14" font-weight="bold" fill="#333">Notes:</text>
+<text x="63.15704971551895" y="410.5781234158203" font-family="sans-serif" font-size="13" fill="#333">One element of every kind.</text>
+</g>
+</svg>

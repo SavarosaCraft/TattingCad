@@ -18,7 +18,7 @@
 // applyGroupRotation) are still in tattingindex — they share more context with
 // the input handlers and will move in a later pass.
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { generateId } from '../utils/id';
 import { sampleBezierPath } from '../geometry/bezier';
 import { SPLIT_RING_END_ALLOWANCE_FACTOR, CHAIN_END_ALLOWANCE_FACTOR } from '../geometry/stitchGeometry';
@@ -101,6 +101,12 @@ export interface UseEditorActionsParams {
 }
 
 export function useEditorActions(p: UseEditorActionsParams) {
+
+  // Session 63: callbacks made once ([] deps) must not call p.t directly —
+  // that is the first render's t, which returns the key itself before the
+  // language files load (a new group was named "groupDefaultName 1").
+  const tRef = useRef(p.t);
+  tRef.current = p.t;
 
   // ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -992,7 +998,7 @@ export function useEditorActions(p: UseEditorActionsParams) {
       const existing = p.groupsRef.current || [];
       const kept = existing.filter(g => !touchedGroupIds.has(g.id));
       const [color] = ORDER_GROUP_COLORS[(kept.length + 1) % ORDER_GROUP_COLORS.length];
-      const nextGroups = [...kept, { id: groupId, name: `${p.t('groupDefaultName')} ${kept.length + 1}`, color }];
+      const nextGroups = [...kept, { id: groupId, name: `${tRef.current('groupDefaultName')} ${kept.length + 1}`, color }];
 
       // Explicit history push with the fresh elements+groups (mirrors the
       // addRing/addChain pattern) rather than relying on the auto-history

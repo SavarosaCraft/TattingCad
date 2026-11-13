@@ -394,6 +394,12 @@ export function useProjectFile(p: UseProjectFileParams) {
     p.setActiveRoundId(null);
     // Review #3 (session 63): group names and colours (none in older files).
     const loadedGroups = normalizeSpatialGroups(projectData.spatialGroups);
+    // Session 63: groups made before the fix were named with the raw key
+    // ("groupDefaultName 1") — give them the real name in the current language.
+    for (const g of loadedGroups) {
+      const m = /^groupDefaultName(\s+\d+)?$/.exec(g.name ?? '');
+      if (m) g.name = `${p.t('groupDefaultName')}${m[1] ?? ''}`;
+    }
     p.setGroups(loadedGroups);
     if (Array.isArray(projectData.polarGrids)) {
       p.setPolarGrids(prev => {
@@ -549,7 +555,7 @@ export function useProjectFile(p: UseProjectFileParams) {
       // as saves were before session 61 — same red message as Save now.
       reportSaveError(err);
     }
-  }, [p.elements, p.projectName, p.patternNotes, p.rounds, p.dsWidth, p.roundColors]);
+  }, [p.elements, p.projectName, p.patternNotes, p.rounds, p.dsWidth, p.roundColors, p.t]); // t: dialog texts follow a language switch
 
   return {
     buildProjectData,
