@@ -1,0 +1,202 @@
+{
+ "version": 92,
+ "name": "Ghost source",
+ "elements": [
+  {
+   "id": "mother-ring",
+   "type": "ring",
+   "endAllowance": 1,
+   "materialId": "default",
+   "center": {
+    "x": 0,
+    "y": -90
+   },
+   "rotation": 0,
+   "stitchCount": 12,
+   "color": "#FFFFFF",
+   "picots": [
+    {
+     "id": "rp0",
+     "stitchesBefore": 3,
+     "length": "medium",
+     "isJoint": false,
+     "isGuide": false,
+     "isGuidePoint": false,
+     "beadType": null
+    },
+    {
+     "id": "rp1",
+     "stitchesBefore": 6,
+     "length": "medium",
+     "isJoint": false,
+     "isGuide": false,
+     "isGuidePoint": false,
+     "beadType": null
+    },
+    {
+     "id": "rp2",
+     "stitchesBefore": 9,
+     "length": "medium",
+     "isJoint": false,
+     "isGuide": false,
+     "isGuidePoint": false,
+     "beadType": null
+    }
+   ],
+   "notation": "r: 3ds-p-3ds-p-3ds-p-3ds",
+   "labelOffset": 8,
+   "squeeze": 0,
+   "picotSideMultiplier": 1,
+   "isClosed": true,
+   "shapeStyle": "teardrop",
+   "lineWidth": 2,
+   "paths": [
+    {
+     "type": "cubic",
+     "x": 0,
+     "y": -115.74,
+     "control1X": 10.296,
+     "control1Y": -108.018,
+     "control2X": 17.16,
+     "control2Y": -87.426,
+     "endX": 17.16,
+     "endY": -82.278
+    },
+    {
+     "type": "cubic",
+     "x": 17.16,
+     "y": -82.278,
+     "control1X": 15.444,
+     "control1Y": -69.408,
+     "control2X": 6.864000000000001,
+     "control2Y": -66.834,
+     "endX": 0,
+     "endY": -64.26
+    },
+    {
+     "type": "cubic",
+     "x": 0,
+     "y": -64.26,
+     "control1X": -6.864000000000001,
+     "control1Y": -66.834,
+     "control2X": -15.444,
+     "control2Y": -69.408,
+     "endX": -17.16,
+     "endY": -82.278
+    },
+    {
+     "type": "cubic",
+     "x": -17.16,
+     "y": -82.278,
+     "control1X": -17.16,
+     "control1Y": -87.426,
+     "control2X": -10.296,
+     "control2Y": -108.018,
+     "endX": 0,
+     "endY": -115.74
+    }
+   ]
+  },
+  {
+   "id": "mother-chain",
+   "type": "chain",
+   "endAllowance": 0,
+   "materialId": "default",
+   "center": {
+    "x": 220,
+    "y": 160
+   },
+   "isClosed": false,
+   "shapeStyle": "chain",
+   "rotation": 0,
+   "paths": [
+    {
+     "type": "cubic",
+     "x": 180,
+     "y": 160,
+     "control1X": 193,
+     "control1Y": 140,
+     "control2X": 207,
+     "control2Y": 140,
+     "endX": 260,
+     "endY": 160
+    }
+   ],
+   "stitchCount": 8,
+   "color": "#FFFFFF",
+   "picots": [
+    {
+     "id": "cp0",
+     "stitchesBefore": 4,
+     "length": "medium",
+     "isJoint": false,
+     "isGuide": false,
+     "isGuidePoint": false,
+     "beadType": null
+    }
+   ],
+   "notation": "c: 4ds-p-4ds",
+   "labelOffset": 8,
+   "picotSideMultiplier": 1,
+   "isSplitChain": false,
+   "lineWidth": 2
+  }
+ ],
+ "picotConnections": [],
+ "camera": {
+  "x": 640,
+  "y": 420
+ },
+ "zoom": 1.2,
+ "dsWidth": 10,
+ "bgColor": "#1F2937",
+ "gridEnabled": true,
+ "customColors": [],
+ "referenceImage": null,
+ "refImageProps": {
+  "opacity": 0.5,
+  "rotation": 0,
+  "scale": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0
+ },
+ "renderMode": "schematic",
+ "patternNotes": "",
+ "materials": [
+  {
+   "id": "default",
+   "name": "Default",
+   "color": "#FFFFFF",
+   "isGradient": false
+  }
+ ],
+ "orderGroups": [],
+ "beadLibrary": [],
+ "polarGrids": [
+  {
+   "id": "grid-1",
+   "name": "Grid 1",
+   "center": {
+    "x": 0,
+    "y": 0
+   },
+   "angularOffset": 0,
+   "visible": true,
+   "color": "#4B9FE1",
+   "opacity": 0.6,
+   "rings": [
+    {
+     "id": "gr-1",
+     "radius": 90,
+     "divisions": 6,
+     "visible": true,
+     "snap": true,
+     "angularOffset": 0
+    }
+   ]
+  }
+ ],
+ "selectedPolarGridId": null,
+ "spatialGroups": []
+}

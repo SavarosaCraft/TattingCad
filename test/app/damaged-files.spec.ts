@@ -102,13 +102,23 @@ test.describe('a pattern whose notation is a number (#6)', () => {
     await a.set({ openPath: N });
     await a.menu('menuFile', 'fileLoad');
     await a.page.getByText('Browse for file', { exact: false }).first().click();
-    let shown = 0;
-    for (let i = 0; i < 60; i++) {
+    // Measured in real time (first seen → last seen), not by counting checks:
+    // on a slower computer each check takes longer than 0.1 s, and counting
+    // made the message look shorter than it was. The bug (#13) hid it after
+    // about 2 s (the older message's 3 s timer, started 0.9 s earlier).
+    let first = 0, last = 0;
+    const start = Date.now();
+    while (Date.now() - start < 8000) {
+      const seen = ((await a.toast()) || '').includes('damaged');
+      const now = Date.now();
+      if (seen) { if (!first) first = now; last = now; }
+      else if (first) break;                          // it has gone
       await a.page.waitForTimeout(100);
-      if (((await a.toast()) || '').includes('damaged')) shown++;
     }
-    expect(shown / 10, 'seconds the message was visible').toBeGreaterThan(3);
-    expect(shown / 10).toBeLessThan(5.5);
+    expect(first, 'the "damaged" message appeared').toBeGreaterThan(0);
+    const seconds = (last - first) / 1000;
+    expect(seconds, 'seconds the message was visible').toBeGreaterThan(3);
+    expect(seconds).toBeLessThan(5.5);
   });
 });
 

@@ -345,7 +345,7 @@ export interface UseJoinActionsParams {
   setSelectedPicots: (picots: any[]) => void;
   setGhostArrays: (fn: ((prev: any[]) => any[]) | any[]) => void;
   // Utilities
-  pushHistoryState: (els: any[], conns: any[], groups?: any[]) => void;
+  pushHistoryState: (els: any[], conns: any[], groups?: any[], polarGrids?: any[], spatialGroups?: any[], ghostArrays?: any[]) => void;
   skipAutoHistoryRef: React.MutableRefObject<boolean>;
 }
 
@@ -353,7 +353,9 @@ export function useJoinActions(p: UseJoinActionsParams) {
 
   // ── Inherited join helpers ────────────────────────────────────────────────
 
-  const checkAndStoreInheritedJoin = (selPicots: any[], currentElements: any[], connExtra?: Record<string, any>) => {
+  // Returns the ghost-array list with the new rule when one was recorded
+  // (undefined otherwise) — performJoin puts that list into its Undo step.
+  const checkAndStoreInheritedJoin = (selPicots: any[], currentElements: any[], connExtra?: Record<string, any>): any[] | undefined => {
     if (selPicots.length < 2) return;
 
     const el1 = currentElements.find(e => e.id === selPicots[0].elementId);
@@ -411,11 +413,16 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // while an array only has its minimum 1 ghost (the "copies" floor is 2,
     // i.e. 1 source + 1 ghost) would never be recorded, and a later regeneration
     // that grows the array wouldn't have anything to replay onto the new ghosts.
-    p.setGhostArrays(prev => prev.map(a =>
+    // Session 64 (decision 17): the new list is computed here, not in a
+    // setGhostArrays(prev => …) updater, so performJoin can put the SAME list
+    // into its Undo step. Before, that step kept the old list (no rule):
+    // Undo back to it forgot the rule and the array stopped repeating the join.
+    const nextGhostArrays = p.ghostArrays.map(a =>
       a.id === matchingArray.id
         ? { ...a, inheritedJoins: [...(a.inheritedJoins || []), { sourcePicotIndex, targetPicotIndex, isSourceElement, anchorEnd, connExtra }] }
         : a
-    ));
+    );
+    p.setGhostArrays(nextGhostArrays);
 
     const newInheritedConns = buildConnectionsForInheritedJoin(
       matchingArray, currentElements, isSourceElement, sourcePicotIndex, targetPicotIndex,
@@ -424,7 +431,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
       // connections should live-track color too, not freeze it.
       p.picotConnectionsRef.current, undefined, anchorEnd, connExtra
     );
-    if (newInheritedConns.length === 0) return;
+    if (newInheritedConns.length === 0) return nextGhostArrays;
 
     const allNewConns = [...p.picotConnectionsRef.current, ...newInheritedConns];
     p.setPicotConnections(allNewConns);
@@ -438,6 +445,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
     const updatedEls = applyJointFlags(currentElements, inheritedKeys);
     p.setElements(updatedEls);
     p.elementsRef.current = updatedEls;
+    return nextGhostArrays;
   };
 
   // Replays every recorded inherited-join pattern across ALL ghost arrays
@@ -621,7 +629,7 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // inside checkAndStoreInheritedJoin handle both; the function's own internal
     // guards (isBoundary, matchingArray, isSourceElement/isOtherBoundary) already
     // no-op correctly for any non-applicable selection, so no guard is needed here.
-    checkAndStoreInheritedJoin(sel, newEls, connExtra);
+    const ghostArraysWithRule = checkAndStoreInheritedJoin(sel, newEls, connExtra);
 
     // Regular join: clear selection so the user can start a fresh pick,
     // same as always. Fold: deliberately KEEP the selection — design intent
@@ -639,7 +647,9 @@ export function useJoinActions(p: UseJoinActionsParams) {
     // locals were captured. Pushing the locals here would record a snapshot
     // that's missing the propagated joins, silently out of sync with what's
     // actually on screen.
-    p.pushHistoryState(p.elementsRef.current, p.picotConnectionsRef.current, p.roundsRef.current);
+    // ghostArraysWithRule: the list with the join rule just recorded (else
+    // undefined → the previous step's list is carried forward, as before).
+    p.pushHistoryState(p.elementsRef.current, p.picotConnectionsRef.current, p.roundsRef.current, undefined, undefined, ghostArraysWithRule);
   };
 
   const joinSelectedPicots = useCallback(() => {

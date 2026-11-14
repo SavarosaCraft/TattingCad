@@ -1,5 +1,5 @@
 {
- "version": 92,
+ "version": 93,
  "name": "Groups test",
  "elements": [
   {
@@ -219,5 +219,6 @@
    "name": "Leaves",
    "color": "#888888"
   }
- ]
+ ],
+ "ghostArrays": []
 }

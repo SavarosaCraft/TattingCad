@@ -13,6 +13,7 @@ import { sanitizeProjectColors } from '../utils/safeColor';
 import { sanitizeProjectNumbers } from '../utils/safeNumber';
 import { fingerprintText } from '../utils/fileFingerprint';
 import { serializeProject, normalizeSpatialGroups, projectSettingsKey } from '../domain/patternOutput';
+import { normalizeGhostArrays } from '../domain/ghostArrays';
 import { prepareSvgForExport } from '../render/svgExport';
 import { sampleBezierPath } from '../geometry/bezier';
 import { withChordCenter } from '../geometry/stitchGeometry';
@@ -123,6 +124,9 @@ export interface UseProjectFileParams {
   // Review #3 (session 63): the group registry is saved and opened too.
   groups: any[];
   setGroups: (v: any[]) => void;
+  // Fix 14 (session 64): the ghost-array list is saved and opened too.
+  ghostArrays: any[];
+  setGhostArrays: (v: any[]) => void;
   /** Review #2 (session 63): what's on screen now is "as opened" — the
    *  settings outside Undo are compared with this from here on. */
   onSettingsBaseline?: () => void;
@@ -170,12 +174,13 @@ export function useProjectFile(p: UseProjectFileParams) {
       threadPresets: p.threadPresets,
       activePresetId: p.activePresetId,
       spatialGroups: p.groups, // review #3 (session 63)
+      ghostArrays: p.ghostArrays, // fix 14 (session 64)
     }),
     [p.elements, p.picotConnections, p.camera, p.zoom, p.dsWidth, p.bgColor,
      p.gridEnabled, p.customColors, p.referenceImage, p.refImageProps,
      p.renderMode, p.patternNotes, p.materials, p.rounds, p.beadLibrary,
      p.polarGrids, p.selectedPolarGridId, p.threadPresets, p.activePresetId,
-     p.groups]
+     p.groups, p.ghostArrays]
   );
 
   // Ref updated every render so autosave always calls the latest closure
@@ -401,6 +406,12 @@ export function useProjectFile(p: UseProjectFileParams) {
       if (m) g.name = `${p.t('groupDefaultName')}${m[1] ?? ''}`;
     }
     p.setGroups(loadedGroups);
+    // Fix 14 / 15 (session 64): the ghost-array list comes from the file —
+    // checked (domain/ghostArrays.ts) against the elements actually loaded;
+    // a file without one (older than version 93) gives [] — so the previous
+    // pattern's arrays are never left behind.
+    const loadedGhostArrays = normalizeGhostArrays(projectData.ghostArrays, migratedElements);
+    p.setGhostArrays(loadedGhostArrays);
     if (Array.isArray(projectData.polarGrids)) {
       p.setPolarGrids(prev => {
         const existing = new Set(prev.map((g: any) => g.id));
@@ -425,7 +436,7 @@ export function useProjectFile(p: UseProjectFileParams) {
     // array still has pre-migration data (legacy orderGroup field, stale
     // isJoint flags), so undoing all the way back used to restore that
     // unmigrated version instead of the file as loaded.
-    p.setHistory([{ elements: migratedElements, connections: projectData.picotConnections || [], spatialGroups: loadedGroups }]);
+    p.setHistory([{ elements: migratedElements, connections: projectData.picotConnections || [], spatialGroups: loadedGroups, ghostArrays: loadedGhostArrays }]);
     p.setHistoryIndex(0);
     p.setCurrentFilePath(filePath);
     // Review #4 (session 63): what this file held when it was opened.

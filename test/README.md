@@ -48,6 +48,9 @@ test/
     small-fixes           #8 storage full, #10 touch ±1°, #12, #14, #16, #17, #20
     language              group-merge dialog, group names, Export SVG after a language switch
     tatting-order         repeat R colours, Assign Repeat, SVG round layers
+    guide-point-join      a lone gp can be joined (zoom in / out, after reopening)
+    ghost-arrays          ghost arrays step by step → baselines/ghost-arrays.scenario.txt
+                          (Task 2 safety net; pattern coords → screen via getScreenCTM)
     baselines             every pattern in fixtures/patterns: saved file + SVG, both views
     baselines/            the frozen results
   fixtures/             pattern files the tests open
@@ -104,3 +107,17 @@ decided and fixed, its test is rewritten to the agreed behaviour.
   thing to happen (`waitForFunction`, `waitToast`) rather than a long sleep.
 - After writing it, break the code on purpose and see the test fail. A test
   that can't fail proves nothing.
+
+**Windows: start the tests from `C:\…`, not `c:\…`.** If the terminal's path
+has a lowercase drive letter (the VS Code terminal often does), Vitest loads
+itself twice and every unit test file fails at its first `describe` with
+"Cannot read properties of undefined (reading 'config')" or "Vitest failed to
+find the runner". Fix: `cd C:\TattingCad` (capital C), then run again.
+
+**The pattern baselines (`test/app/baselines/<pattern>.*`) belong to your
+computer.** The SVG export carries colour data from the project's `public/`
+folder, so they can only be made where the real `public/` is. Make them with
+`npm run test:update` on your machine and commit them; Claude's zips don't
+contain them (session 64: a zip carried baselines made with a stand-in
+`public/` and overwrote yours — 4 SVG tests failed). The ghost reference
+(`ghost-arrays.scenario.txt`, saved-file text only) is the same everywhere.

@@ -1,5 +1,5 @@
 {
- "version": 92,
+ "version": 93,
  "name": "Every kind",
  "elements": [
   {
@@ -428,5 +428,6 @@
   "sample20DS10Regular": null,
   "sample20DS10Short": null
  },
- "spatialGroups": []
+ "spatialGroups": [],
+ "ghostArrays": []
 }

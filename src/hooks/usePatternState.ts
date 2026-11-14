@@ -41,7 +41,7 @@ export function usePatternState() {
   const [availableLanguages, setAvailableLanguages] = useState<Record<string, string>>(LANGUAGES_FALLBACK);
 
   // ── History ────────────────────────────────────────────────────────────
-  const [history, setHistory] = useState<{ elements: any[]; connections: any[]; polarGrids?: any[]; spatialGroups?: any[] }[]>([{ elements: [], connections: [] }]);
+  const [history, setHistory] = useState<{ elements: any[]; connections: any[]; polarGrids?: any[]; spatialGroups?: any[]; ghostArrays?: any[] }[]>([{ elements: [], connections: [] }]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
   return {

@@ -802,12 +802,16 @@ export function serializeProject(data: {
   orderGroups: any[]; beadLibrary: any[]; polarGrids: any[]; selectedPolarGridId: string | null;
   threadPresets: any[]; activePresetId: string;
   spatialGroups?: any[];
+  ghostArrays?: any[];
 }, isAutoSave = false) {
   return {
+    // 93 (session 64, fix 14): ghostArrays — the ghost-array list (each
+    // array's mother, count, angle…, its copies and inherited joins); absent
+    // in older files (their copies then stay put — domain/ghostArrays.ts).
     // 92 (session 63, review #3): spatialGroups — the group names and
     // colours; absent in older files (groups then fall back to "Group").
     // 91 (session 57): elements may carry endAllowance (ds); absent = 0
-    version: 92,
+    version: 93,
     name: data.name,
     ...(isAutoSave
       ? { autoSaved: new Date().toISOString() }
@@ -834,6 +838,7 @@ export function serializeProject(data: {
       ?? data.threadPresets[0]
       ?? null,
     spatialGroups:       data.spatialGroups ?? [],
+    ghostArrays:         data.ghostArrays ?? [],
   };
 }
 

@@ -69,11 +69,11 @@ test.describe('unsaved star for settings outside Undo (#2)', () => {
 });
 
 test.describe('group names and colours in the file (#3)', () => {
-  test('Save writes the registry (file version 92): bad colour replaced, malformed entry dropped', async ({ launch }) => {
+  test('Save writes the registry (file version 93 since session 64; the registry came in 92): bad colour replaced, malformed entry dropped', async ({ launch }) => {
     const a = await opened(launch);
     await a.save();
     const file = await a.saved(F);
-    expect(file.version).toBe(92);
+    expect(file.version).toBe(93);
     expect(file.spatialGroups).toEqual([{ id: 'g1', name: 'Petals', color: '#ff00aa' }, { id: 'g2', name: 'Leaves', color: '#888888' }]);
   });
 

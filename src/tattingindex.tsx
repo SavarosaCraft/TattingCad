@@ -44,6 +44,9 @@ import { ORDER_GROUP_COLORS } from './render/svgExport';
 import { RoundColorsContext, parseRoundColors } from './utils/roundColors';
 import { getCircleStitchAngle, effectiveElementType, elementStitchFraction, splitRingSideFraction, presetEndAllowance, presetTension, tensionToAllowance, DEFAULT_END_ALLOWANCE, elementPathLength, allowsEndAllowance, endAllowanceFactor, elementTension, withChordCenter } from './geometry/stitchGeometry';
 import { bakeRealisticView } from './render/realisticRenderer';
+import { createPolarInstance, createLinearInstance } from './geometry/arrays';
+import { useGhostArrays } from './hooks/useGhostArrays';
+import { GhostArrayManager, ConvertGhostConfirm } from './components/GhostArrayManager';
 import {
   createCirclePath, createTeardropPath, createSplitRingPath, createSplitRingPathFromEl,
   scalePathsAboutPoint, rebendChainPathToLength, resizeElementForAllowance, rebuildSplitRingInPlace,
@@ -850,7 +853,7 @@ const APP_VERSION = '1.4.1';
   const isUndoRedoRef = useRef(false);  // Flag to prevent adding history during undo/redo
   const notationEscapeRef = useRef(false); // Flag: ESC was pressed on notation input — suppress blur commit
   const pendingNotationRef = useRef(null); // { elementId, notation, notationB? } — survives re-renders/unmount
-  const historyRef = useRef<{ elements: any[]; connections: any[]; polarGrids?: any[]; spatialGroups?: any[] }[]>([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
+  const historyRef = useRef<{ elements: any[]; connections: any[]; polarGrids?: any[]; spatialGroups?: any[]; ghostArrays?: any[] }[]>([{ elements: [], connections: [], polarGrids: [] }]);  // Ref to current history
   const historyIndexRef = useRef(0);  // Ref to current index
   const isInteractingRef = useRef(false);  // Flag to prevent history during drag/rotate operations
   const rafIdRef = useRef(null);  // RAF ID for batching mouse moves
@@ -1999,176 +2002,6 @@ const APP_VERSION = '1.4.1';
   // element every render. This map makes it O(1).
   const materialsById = useMemo(() => new Map(materials.map(m => [m.id, m])), [materials]);
 
-  // Convert a ghost array to real elements (called after confirmation)
-  // Shared core: converts a set of ghost elements into real elements and
-  // rewires any picotConnections pointing at their old ghost IDs.
-  // Used by both "Convert this array" and "Convert all arrays".
-  const convertGhostsToReal = (ghostsToConvert: any[]): string[] => {
-    const newIds: string[] = [];
-    const oldToNewId = new Map<string, string>();
-    const ghostIdSet = new Set(ghostsToConvert.map(g => g.id));
-
-    setElements(prev => {
-      const withoutGhosts = prev.filter(el => !ghostIdSet.has(el.id));
-      const realElements = ghostsToConvert.map(ghost => {
-        const newEl = JSON.parse(JSON.stringify(ghost));
-        oldToNewId.set(ghost.id, newEl.id);
-        const source = elementById.get(ghost.sourceId);
-        newEl.type = source?.type || newEl.type;
-        delete newEl.sourceId;
-        delete newEl.isBoundary;
-        delete newEl.isGhostMother;
-        newIds.push(newEl.id);
-        return newEl;
-      });
-      return [...withoutGhosts, ...realElements];
-    });
-
-    setPicotConnections(prev => prev.map(conn => ({
-      ...conn,
-      picots: conn.picots.map(p => ({
-        ...p,
-        elementId: oldToNewId.get(p.elementId) || p.elementId,
-      })),
-    })));
-
-    return newIds;
-  };
-
-  const convertGhostArray = (array: any) => {
-    // Find ghosts by sourceId (ghostIds may be stale after undo)
-    const currentGhosts = elements.filter(e => e.type === 'ghost' && e.sourceId === array.sourceId);
-    const sourceEl = elementById.get(array.sourceId);
-    const newIds = convertGhostsToReal(currentGhosts);
-    setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-    setSelectedIds(sourceEl ? [sourceEl.id, ...newIds] : [...newIds]);
-    setConvertConfirm(null);
-  };
-
-  const convertAllGhostArrays = () => {
-    // Find all ghosts by sourceId (ghostIds may be stale after undo), deduplicated
-    // in case multiple arrays share the same ghost.
-    const allGhostsToConvert = ghostArrays.flatMap(a =>
-      elements.filter(e => e.type === 'ghost' && e.sourceId === a.sourceId)
-    );
-    const seen = new Set<string>();
-    const uniqueGhosts = allGhostsToConvert.filter(e => {
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
-      return true;
-    });
-    const newIds = convertGhostsToReal(uniqueGhosts);
-    const sourceIds = ghostArrays.map(a => a.sourceId).filter(Boolean);
-    setSelectedIds([...sourceIds, ...newIds]);
-    setGhostArrays([]);
-    setConvertConfirm(null);
-  };
-
-  // ── Pure helper: create one polar array instance ──
-  // Designed to be extracted to src/geometry/ later.
-  // Returns a new element (ghost or real) placed at position i in the array.
-  const createPolarInstance = (
-    sourceEl: any,
-    index: number,
-    pivotX: number,
-    pivotY: number,
-    count: number,
-    fillAngle: number,
-    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string>; polarGridId?: string }
-  ) => {
-    const stepDeg = fillAngle / count;
-    const angleDeg = stepDeg * index;
-    const rad = angleDeg * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const asGhost = options?.asGhost ?? false;
-
-    // Rotate center around pivot
-    const newCx = pivotX + (sourceEl.center.x - pivotX) * cos - (sourceEl.center.y - pivotY) * sin;
-    const newCy = pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos;
-
-    if (asGhost) {
-      // Build ghost element with transformed paths and copied picots
-      return {
-        id: generateId(),
-        type: 'ghost' as const,
-        // Preserves what kind of element (chain/ring/line) this ghost is a
-        // copy of. el.type itself must stay 'ghost' — join logic throughout
-        // useJoinActions.ts keys off it to identify ghost elements — but
-        // realistic-mode rendering needs to know the underlying shape to
-        // pick the right draw path. Without this, any ghost that wasn't a
-        // closed circle rendered nothing in realistic view: the render
-        // branches check el.type === 'chain' | 'ring' | 'line', which a
-        // ghost's el.type ('ghost') never matches.
-        sourceType: sourceEl.type,
-        sourceId: options?.sourceId || sourceEl.id,
-        isBoundary: options?.isBoundary ?? false,
-        center: { x: newCx, y: newCy },
-        paths: sourceEl.paths ? sourceEl.paths.map((p: any) => {
-          const rotPt = (px: number, py: number) => {
-            const rx = px - pivotX, ry = py - pivotY;
-            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-          };
-          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-          if (p.type === 'cubic') {
-            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const c = rotPt(p.controlX, p.controlY);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-          }
-        }) : [],
-        picots: sourceEl.picots ? JSON.parse(JSON.stringify(sourceEl.picots)) : [],
-        rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
-        // Properties needed for rendering and picot position calculation
-        isClosed: sourceEl.isClosed,
-        shapeStyle: sourceEl.shapeStyle,
-        stitchCount: sourceEl.stitchCount,
-        picotSideMultiplier: sourceEl.picotSideMultiplier,
-        color: sourceEl.color,
-        materialId: sourceEl.materialId,
-        materialIdB: sourceEl.materialIdB,
-        isSplitRing: sourceEl.isSplitRing,
-        splitPosition: sourceEl.splitPosition,
-        lineWidth: sourceEl.lineWidth,
-        // Field list is explicit here, so anything that changes path length
-        // must be copied or the ghost draws at the wrong length.
-        endAllowance: sourceEl.endAllowance,
-      };
-    } else {
-      // Build real copy element
-      const newEl = JSON.parse(JSON.stringify(sourceEl));
-      newEl.id = generateId();
-      delete newEl.orderNumber;
-      if (sourceEl.groupId && options?.groupIdMap) {
-        newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
-      }
-      if (options?.polarGridId) newEl.polarRotationGridId = options.polarGridId;
-
-      newEl.center = { x: newCx, y: newCy };
-      newEl.rotation = ((sourceEl.rotation || 0) + angleDeg) % 360;
-
-      if (newEl.paths) {
-        newEl.paths = newEl.paths.map((p: any) => {
-          const rotPt = (px: number, py: number) => {
-            const rx = px - pivotX, ry = py - pivotY;
-            return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-          };
-          const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-          if (p.type === 'cubic') {
-            const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-          } else {
-            const c = rotPt(p.controlX, p.controlY);
-            return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-          }
-        });
-      }
-
-      return newEl;
-    }
-  };
-
   // Polar Array — duplicate selected elements N times evenly around a pivot point.
   // count = total copies INCLUDING the original. fillAngle = arc to fill (360 = full circle).
   const executePolarArray = (count: number, fillAngle: number, pivotId: string | 'selection' | null, createGhosts: boolean = false, sourceIds?: string[]) => {
@@ -2349,63 +2182,6 @@ const APP_VERSION = '1.4.1';
   };
 
 
-  // ── Pure helper: create one linear array instance ──
-  // Designed to be extracted to src/geometry/ later.
-  // Returns a new element (ghost or real) placed at position i in the array.
-  const createLinearInstance = (
-    sourceEl: any,
-    index: number,
-    dx: number,
-    dy: number,
-    rotStep: number,
-    options?: { asGhost?: boolean; sourceId?: string; isBoundary?: boolean; groupIdMap?: Map<string, string> }
-  ) => {
-    const offsetX = dx * index;
-    const offsetY = dy * index;
-    const extraRot = rotStep * index;
-    const asGhost = options?.asGhost ?? false;
-
-    const newEl = JSON.parse(JSON.stringify(sourceEl));
-    newEl.id = generateId();
-    delete newEl.orderNumber;
-    if (sourceEl.groupId && options?.groupIdMap) {
-      newEl.groupId = options.groupIdMap.get(sourceEl.groupId);
-    }
-
-    const newCx = sourceEl.center.x + offsetX;
-    const newCy = sourceEl.center.y + offsetY;
-    newEl.center = { x: newCx, y: newCy };
-
-    // Translate paths to new position
-    if (newEl.paths) {
-      newEl.paths = newEl.paths.map((p: any) => {
-        if (p.type === 'cubic') {
-          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, control1X: p.control1X + offsetX, control1Y: p.control1Y + offsetY, control2X: p.control2X + offsetX, control2Y: p.control2Y + offsetY };
-        } else {
-          return { ...p, x: p.x + offsetX, y: p.y + offsetY, endX: p.endX + offsetX, endY: p.endY + offsetY, controlX: p.controlX + offsetX, controlY: p.controlY + offsetY };
-        }
-      });
-    }
-
-    // Rotate paths around the new center
-    if (extraRot !== 0) {
-      const newAbsRot = ((sourceEl.rotation || 0) + extraRot + 360) % 360;
-      newEl.paths = rotatePathsAroundCenter(newEl.paths, newCx, newCy, extraRot, dsWidth, sourceEl, newAbsRot);
-      newEl.rotation = newAbsRot;
-    }
-
-    // Convert to ghost if requested
-    if (asGhost) {
-      newEl.sourceType = newEl.type;
-      newEl.type = 'ghost';
-      newEl.sourceId = options?.sourceId || sourceEl.id;
-      newEl.isBoundary = options?.isBoundary ?? false;
-      delete newEl.isGhostMother;
-    }
-
-    return newEl;
-  };
-
   const executeLinearArray = (count: number, angleDeg: number, spacingPercent: number, rotStep: number, createGhosts: boolean = false, sourceIds?: string[]) => {
     const currentSelectedIds = sourceIds && sourceIds.length > 0 ? sourceIds : selectedIdsRef.current;
     const currentElements = elementsRef.current;
@@ -2444,7 +2220,7 @@ const APP_VERSION = '1.4.1';
       perInstanceIdMap.set(i, idMap);
 
       selectedEls.forEach(el => {
-        const newEl = createLinearInstance(el, i, dx, dy, rotStep, {
+        const newEl = createLinearInstance(el, i, dx, dy, rotStep, dsWidth, {
           asGhost: createGhosts,
           sourceId: createGhosts ? el.id : undefined,
           isBoundary: createGhosts ? isBoundary : undefined,
@@ -3940,6 +3716,7 @@ const APP_VERSION = '1.4.1';
       autoSaveNowRef.current({ filePath, name, unsaved: stillUnsaved || settingsKeyRef.current !== writtenKey });
     },
     groups, setGroups, onSettingsBaseline: markSettingsBaseline, // review #3 / #2
+    ghostArrays, setGhostArrays, // fix 14 (session 64)
     askFileChanged: (fileName, actions) => setConfirmDialog({
       title: tt => tt('fileChangedTitle'),
       message: tt => tt('fileChangedBody').replace('{name}', fileName),
@@ -4206,139 +3983,16 @@ const APP_VERSION = '1.4.1';
   };
 
 
-  // Pure: regenerates ghost-array copies for one or more mothers, given a
-  // snapshot of elements + ghostArrays — NOT React state directly. This lets
-  // callers (move, rotate, notation edit) compose ghost regeneration into
-  // their OWN setElements call, so the whole thing commits as a single
-  // render/history step instead of two separate ones.
-  const regenerateGhostArrays = (
-    elementsSnapshot: any[],
-    ghostArraysSnapshot: any[],
-    motherIds: string[]
-  ): { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> } => {
-    let workingElements = elementsSnapshot;
-    let workingGhostArrays = ghostArraysSnapshot;
-    const connectionIdMap = new Map<string, string>();
-
-    motherIds.forEach(motherId => {
-      const motherEl = workingElements.find(e => e.id === motherId);
-      if (!motherEl || !motherEl.isGhostMother) return;
-
-      const relevantArrays = workingGhostArrays.filter(array => array.sourceId === motherId);
-
-      relevantArrays.forEach(array => {
-        const withoutGhosts = workingElements.filter(el => !(el.type === 'ghost' && el.sourceId === motherId));
-        const sourceEl = withoutGhosts.find(e => e.id === motherId);
-        if (!sourceEl) return;
-
-        const newGhosts: any[] = [];
-        const newGhostIds: string[] = [];
-        const boundaryGhostIds: string[] = [];
-
-        if (array.type === 'polar') {
-          const count = array.instanceCount;
-          const fillAngle = array.angle;
-          const pivotId = array.pivotId || 'selection';
-
-          let pivotX: number, pivotY: number;
-          if (pivotId && pivotId !== 'selection') {
-            const grid = polarGrids.find(g => g.id === pivotId);
-            pivotX = grid ? grid.center.x : sourceEl.center.x;
-            pivotY = grid ? grid.center.y : sourceEl.center.y;
-          } else {
-            pivotX = sourceEl.center.x;
-            pivotY = sourceEl.center.y;
-          }
-
-          for (let i = 1; i < count; i++) {
-            const isBoundary = (i === 1 || i === count - 1);
-            const ghostEl = createPolarInstance(sourceEl, i, pivotX, pivotY, count, fillAngle, {
-              asGhost: true, sourceId: motherId, isBoundary,
-            });
-            newGhosts.push(ghostEl);
-            newGhostIds.push(ghostEl.id);
-            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
-          }
-        } else if (array.type === 'linear') {
-          const count = array.instanceCount;
-          const angleDeg = array.angle;
-          const spacingPercent = array.spacing;
-          const rotStep = array.rotStep;
-          const storedElementSize = array.elementSize;
-
-          const rad = angleDeg * Math.PI / 180;
-          // Center-to-center: 100% = just touching, 200% = 1 element gap
-          const spacing = storedElementSize ? storedElementSize * spacingPercent / 100 : storedElementSize;
-          const dx = Math.cos(rad) * spacing;
-          const dy = Math.sin(rad) * spacing;
-
-          for (let i = 1; i < count; i++) {
-            const isBoundary = (i === 1); // Ghost closest to the mother is the boundary for linear
-            const ghostEl = createLinearInstance(sourceEl, i, dx, dy, rotStep, {
-              asGhost: true, sourceId: motherId, isBoundary,
-            });
-            newGhosts.push(ghostEl);
-            newGhostIds.push(ghostEl.id);
-            if (isBoundary) boundaryGhostIds.push(ghostEl.id);
-          }
-        }
-
-        // Map old ghost IDs to new ones by position — both lists are built by
-        // the same `for (i = 1; i < count; i++)` order, so index k always
-        // refers to the same array slot before and after regeneration.
-        const oldGhostIds = array.ghostIds || [];
-        for (let k = 0; k < Math.min(oldGhostIds.length, newGhostIds.length); k++) {
-          connectionIdMap.set(oldGhostIds[k], newGhostIds[k]);
-        }
-
-        workingGhostArrays = workingGhostArrays.map(a =>
-          a.id === array.id
-            ? { ...a, ghostIds: newGhostIds, boundaryIds: boundaryGhostIds, inheritedJoins: a.inheritedJoins || [] }
-            : a
-        );
-        workingElements = [...withoutGhosts, ...newGhosts];
-      });
-    });
-
-    return { elements: workingElements, ghostArrays: workingGhostArrays, connectionIdMap };
-  };
-
-  // Applies a regenerateGhostArrays() result via setElements/setGhostArrays/
-  // setPicotConnections — all three calls happen synchronously in the same
-  // tick, so React batches them into one commit (one history entry), instead
-  // of the old setTimeout/effect-deferred approach which caused two.
-  const applyGhostRegenResult = (result: { elements: any[]; ghostArrays: any[]; connectionIdMap: Map<string, string> }) => {
-    setElements(result.elements);
-    setGhostArrays(result.ghostArrays);
-
-    let remappedConns = picotConnectionsRef.current;
-    if (result.connectionIdMap.size > 0) {
-      remappedConns = picotConnectionsRef.current.map(conn => ({
-        ...conn,
-        picots: conn.picots.map(cp => ({
-          ...cp,
-          elementId: result.connectionIdMap.get(cp.elementId) || cp.elementId,
-        })),
-      }));
-      setPicotConnections(remappedConns);
-      picotConnectionsRef.current = remappedConns;
-    }
-
-    // Replays any recorded inherited joins onto the freshly-regenerated ghosts.
-    // Covers both slots that already existed (their joins were already carried
-    // forward by the ID remap above, so this is a no-op for them via the
-    // dedupe check inside buildConnectionsForInheritedJoin) and slots that are
-    // entirely new because the array just grew, which the remap above can't
-    // reach since there's no old ghost at that position to map from.
-    reapplyInheritedJoins(result.elements, result.ghostArrays);
-  };
-
-  // Thin wrapper for standalone use (e.g. the "Update Array" button in the
-  // Array Manager dialog, which already runs synchronously from an onClick).
-  const updateGhostArraysForMother = (motherId: string) => {
-    const result = regenerateGhostArrays(elementsRef.current, ghostArrays, [motherId]);
-    applyGhostRegenResult(result);
-  };
+  // Ghost arrays: rebuild + convert (hooks/useGhostArrays.ts, Task 2 step 3).
+  // Here on purpose: after useJoinActions, before useInputHandlers.
+  const {
+    regenerateGhostArrays, applyGhostRegenResult, updateGhostArraysForMother,
+    convertGhostArray, convertAllGhostArrays, applyArrayChange,
+  } = useGhostArrays({
+    elements, setElements, elementsRef, elementById,
+    ghostArrays, setGhostArrays, setPicotConnections, picotConnectionsRef,
+    setSelectedIds, setConvertConfirm, polarGrids, dsWidth, reapplyInheritedJoins,
+  });
 
   // Commits a single replaced path segment onto one element (single-path
   // chains/lines only). Used by path/line preset angle application, both
@@ -10052,7 +9706,7 @@ const APP_VERSION = '1.4.1';
                 const ghosts = [];
                 for (let i = 1; i < linearArrayCount; i++) {
                   selEls.forEach(el => {
-                    const previewEl = createLinearInstance(el, i, dx, dy, linearArrayRotStep, {});
+                    const previewEl = createLinearInstance(el, i, dx, dy, linearArrayRotStep, dsWidth, {});
                     const d = previewEl.paths?.map((p: any) => {
                       if (p.type === 'cubic') return `M${p.x},${p.y} C${p.control1X},${p.control1Y} ${p.control2X},${p.control2Y} ${p.endX},${p.endY}`;
                       return `M${p.x},${p.y} Q${p.controlX},${p.controlY} ${p.endX},${p.endY}`;
@@ -11528,283 +11182,22 @@ const APP_VERSION = '1.4.1';
       </DropdownMenu>
     )}
 
-    {/* Ghost Array Manager Modal */}
+    {/* Ghost Array Manager Modal — components/GhostArrayManager.tsx */}
     {showArrayManager && (
-      <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
-        <div className="tcad-dialog bg-gray-800 rounded-xl shadow-2xl border border-gray-600 flex flex-col"
-          style={{ width: 'min(560px, 95vw)', maxHeight: '85dvh' }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-600 flex-shrink-0">
-            <h2 className="text-gray-100 font-bold text-lg">{t('ghostArrayManagerTitle')}</h2>
-            <button onClick={() => setShowArrayManager(false)} className="text-gray-400 hover:text-white text-xl font-bold">✕</button>
-          </div>
-          <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1" style={{minHeight:0}}>
-            {ghostArrays.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">{t('ghostArrayManagerEmpty')}</p>
-            ) : (
-              ghostArrays.map((array) => {
-                const sourceEl = elementById.get(array.sourceId);
-                const existingGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === array.sourceId);
-                return (
-                  <div key={array.id} className="flex flex-col gap-2 bg-gray-700 rounded-lg px-3 py-3">
-                    {/* Header row: type + source status + action buttons */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl flex-shrink-0">👻</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-sm font-medium ">{array.type === 'polar' ? t('ghostArrayTypePolar') : t('ghostArrayTypeLinear')}</div>
-                        <div className="text-gray-400 text-xs">{t('ghostArraySource')}: {sourceEl ? '✓' : t('ghostArraySourceDeleted')}</div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (sourceEl) {
-                            setSelectedIds([sourceEl.id]);
-                          } else {
-                            const firstGhost = existingGhosts[0];
-                            if (firstGhost) setSelectedIds([firstGhost.id]);
-                          }
-                          setShowArrayManager(false);
-                        }}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded"
-                        title={sourceEl ? t('ghostArraySelectTitle') : t('ghostArraySelectGhostTitle')}
-                      >{t('ghostArraySelect')}</button>
-                      <button
-                        onClick={() => {
-                          // Delete ghosts by sourceId (ghostIds may be stale after undo)
-                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === array.sourceId)));
-                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-                        }}
-                        className="text-xs px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded"
-                      >✕</button>
-                    </div>
-
-                    {/* Editable fields row */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">{t('ghostArrayCount')}:</label>
-                        <input
-                          type="number"
-                          min={2}
-                          max={100}
-                          defaultValue={array.instanceCount}
-                          id={`ghost-count-${array.id}`}
-                          className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
-                        />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <label className="text-xs text-gray-400">{array.type === 'polar' ? t('ghostArrayAngle') : t('linearArrayDirection')}:</label>
-                        <input
-                          type="number"
-                          step={0.5}
-                          defaultValue={array.angle}
-                          id={`ghost-angle-${array.id}`}
-                          className="w-16 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
-                        />
-                        <span className="text-xs text-gray-500">°</span>
-                      </div>
-                      {array.type === 'polar' && (
-                        <div className="flex items-center gap-1">
-                          <label className="text-xs text-gray-400">{t('ghostArrayGrid')}:</label>
-                          <select
-                            defaultValue={array.pivotId || 'selection'}
-                            id={`ghost-grid-${array.id}`}
-                            className="px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white"
-                          >
-                            <option value="selection">{t('ghostArraySelectionCenter')}</option>
-                            {polarGrids.map(g => (
-                              <option key={g.id} value={g.id}>{g.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                      {array.type === 'linear' && (
-                        <div className="flex items-center gap-1">
-                          <label className="text-xs text-gray-400">{t('ghostArraySpacePct')}:</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={500}
-                            step={0.5}
-                            defaultValue={array.spacing}
-                            id={`ghost-spacing-${array.id}`}
-                            onBlur={e => {
-                              const val = parseFloat(e.target.value);
-                              if (isNaN(val) || val < 0) e.target.value = '0';
-                              else if (val > 500) e.target.value = '500';
-                            }}
-                            className="w-14 px-1 py-0.5 bg-gray-600 rounded border border-gray-500 text-xs text-white text-center"
-                          />
-                        </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          if (!sourceEl) return;
-                          const countInput = document.getElementById(`ghost-count-${array.id}`) as HTMLInputElement;
-                          const angleInput = document.getElementById(`ghost-angle-${array.id}`) as HTMLInputElement;
-                          const gridSelect = document.getElementById(`ghost-grid-${array.id}`) as HTMLSelectElement;
-                          const spacingInput = document.getElementById(`ghost-spacing-${array.id}`) as HTMLInputElement | null;
-                          const count = parseInt(countInput?.value || '2', 10);
-                          const angle = parseFloat(angleInput?.value || '0');
-                          const pivot = gridSelect?.value || array.pivotId || 'selection';
-                          const spacing = spacingInput ? parseFloat(spacingInput.value || '0') : 0;
-                          if (count < 2) return;
-
-                          // Save state BEFORE deletion
-                          const oldGhosts = elements.filter(el => el.type === 'ghost' && el.sourceId === sourceEl.id);
-                          const oldGhostById = new Map(oldGhosts.map(g => [g.id, g]));
-                          // Use array.ghostIds' existing creation order directly, not a
-                          // rotation-based re-sort — rotation can wrap inconsistently when
-                          // sourceEl has nonzero rotation (see the note in architecture.md,
-                          // and the same fix in useJoinActions.ts's buildConnectionsForInheritedJoin).
-                          const oldGhostIdsSorted = (array.ghostIds || []).filter((id: string) => oldGhostById.has(id));
-
-                          // Save picotConnections involving these ghosts
-                          const savedConnections = picotConnectionsRef.current.filter(conn =>
-                            conn.picots.some(p => oldGhostById.has(p.elementId))
-                          );
-
-                          // Delete old ghosts
-                          setElements(prev => prev.filter(el => !(el.type === 'ghost' && el.sourceId === sourceEl.id)));
-                          setGhostArrays(prev => prev.filter(a => a.id !== array.id));
-                          setSelectedIds([sourceEl.id]);
-
-                          // Recreate with new parameters
-                          setTimeout(() => {
-                            if (array.type === 'polar') {
-                              executePolarArray(count, angle, pivot, true, [sourceEl.id]);
-                            } else if (array.type === 'linear') {
-                              executeLinearArray(count, angle, spacing, array.rotStep, true, [sourceEl.id]);
-                            }
-                            // After recreation, remap connections: old ghost[i] → new ghost[i] by sorted order
-                            setTimeout(() => {
-                              const newGhosts = elementsRef.current.filter(e => e.type === 'ghost' && e.sourceId === sourceEl.id);
-                              // Sort by rotation RELATIVE to sourceEl's own rotation, not raw
-                              // rotation % 360 — raw rotation can wrap inconsistently across
-                              // ghosts when sourceEl has nonzero rotation (createPolarInstance
-                              // computes ghost.rotation = (sourceEl.rotation + angleDeg) % 360),
-                              // silently scrambling creation order. Subtracting sourceEl's own
-                              // rotation before the modulo recovers the original, always-monotonic
-                              // angleDeg ordering regardless of sourceEl's rotation. Same root
-                              // cause as the fix in useJoinActions.ts's
-                              // buildConnectionsForInheritedJoin — see architecture.md.
-                              const sourceRotation = sourceEl.rotation || 0;
-                              const relativeAngle = (el: any) => (((el.rotation || 0) - sourceRotation) % 360 + 360) % 360;
-                              const newGhostIdsSorted = [...newGhosts].sort((a, b) => relativeAngle(a) - relativeAngle(b)).map(g => g.id);
-
-                              if (savedConnections.length > 0 && newGhostIdsSorted.length > 0) {
-                                const oldToNew = new Map<string, string>();
-                                for (let i = 0; i < Math.min(oldGhostIdsSorted.length, newGhostIdsSorted.length); i++) {
-                                  oldToNew.set(oldGhostIdsSorted[i], newGhostIdsSorted[i]);
-                                }
-                                // Remove old connections and add remapped ones
-                                const currentConns = picotConnectionsRef.current.filter(conn =>
-                                  !conn.picots.some(p => oldGhostById.has(p.elementId))
-                                );
-                                const remappedConns = savedConnections.map(conn => ({
-                                  ...conn,
-                                  id: generateId(),
-                                  picots: conn.picots.map(p => ({
-                                    ...p,
-                                    elementId: oldToNew.get(p.elementId) || p.elementId,
-                                  })),
-                                }));
-                                const merged = [...currentConns, ...remappedConns];
-                                setPicotConnections(merged);
-                                picotConnectionsRef.current = merged;
-                              }
-                            }, 60);
-                          }, 50);
-                        }}
-                        disabled={!sourceEl}
-                        className="text-xs px-2 py-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                        title={sourceEl ? t('ghostArrayApplyTitle') : t('ghostArraySourceDeleted')}
-                      >
-                        {t('ghostArrayApply')}
-                      </button>
-                      <button
-                        onClick={() => setConvertConfirm(array)}
-                        disabled={existingGhosts.length === 0}
-                        className="text-xs px-2 py-1 bg-amber-700 hover:bg-amber-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded"
-                        title={t('ghostArrayConvertTitle')}
-                      >
-                        {t('ghostArrayConvert')}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <div className="px-5 pb-2 flex-shrink-0">
-            <button
-              onClick={() => setConvertConfirm('all')}
-              className="w-full px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm font-medium"
-            >
-              {t('ghostArrayConvertAllTitle')}
-            </button>
-          </div>
-          <div className="px-5 pb-4 flex-shrink-0">
-            <p className="text-xs text-gray-500">{t('ghostArrayApplyTitle')}</p>
-          </div>
-        </div>
-      </div>
+      <GhostArrayManager
+        t={t} ghostArrays={ghostArrays} setGhostArrays={setGhostArrays}
+        elements={elements} setElements={setElements} elementById={elementById} polarGrids={polarGrids}
+        setSelectedIds={setSelectedIds} setShowArrayManager={setShowArrayManager} setConvertConfirm={setConvertConfirm}
+        applyArrayChange={applyArrayChange}
+      />
     )}
 
-    {/* Convert Ghost Array confirmation modal */}
+    {/* Convert Ghost Array confirmation modal — components/GhostArrayManager.tsx */}
     {convertConfirm && (
-      <>
-        <div className="fixed inset-0 bg-black/50" style={{zIndex: 2147483646}} onClick={() => setConvertConfirm(null)}></div>
-        <div
-          className="tcad-dialog fixed bg-gray-700 rounded-lg shadow-xl border border-gray-600 p-5 w-80"
-          style={{zIndex: 2147483647, top: '50%', left: '50%', transform: 'translate(-50%, -50%)'}}
-        >
-          {convertConfirm === 'all' ? (
-            <>
-              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertAllTitle')}</h3>
-              <p className="text-gray-300 text-sm mb-4">
-                {t('ghostArrayConvertAllConfirm')
-                  .replace('{total}', String(ghostArrays.reduce((sum, a) => sum + a.ghostIds.length, 0)))
-                  .replace('{arrays}', String(ghostArrays.length))}
-              </p>
-              <div className="flex gap-2 justify-end flex-wrap">
-                <button
-                  onClick={() => setConvertConfirm(null)}
-                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
-                >
-                  {t('confirmCancel')}
-                </button>
-                <button
-                  onClick={convertAllGhostArrays}
-                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
-                >
-                  {t('ghostArrayConvertAllBtn')}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h3 className="text-gray-100 font-bold mb-3">{t('ghostArrayConvertTitle')}</h3>
-              <p className="text-gray-300 text-sm mb-4">
-                {t('ghostArrayConvertConfirm')
-                  .replace('{count}', String(convertConfirm.instanceCount - 1))
-                  .replace('{name}', convertConfirm.name)}
-              </p>
-              <div className="flex gap-2 justify-end flex-wrap">
-                <button
-                  onClick={() => setConvertConfirm(null)}
-                  className="px-4 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
-                >
-                  {t('confirmCancel')}
-                </button>
-                <button
-                  onClick={() => convertGhostArray(convertConfirm)}
-                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-sm"
-                >
-                  {t('ghostArrayConvert')}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </>
+      <ConvertGhostConfirm
+        t={t} convertConfirm={convertConfirm} setConvertConfirm={setConvertConfirm} ghostArrays={ghostArrays}
+        convertGhostArray={convertGhostArray} convertAllGhostArrays={convertAllGhostArrays}
+      />
     )}
 
 

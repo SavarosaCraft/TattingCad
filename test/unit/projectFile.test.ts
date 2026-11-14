@@ -14,12 +14,12 @@ const project = (over: any = {}) => ({
 });
 
 describe('serializeProject', () => {
-  it('writes file version 92 with every field, in a fixed order', () => {
+  it('writes file version 93 with every field, in a fixed order', () => {
     const out: any = serializeProject(project({ spatialGroups: [{ id: 'g1', name: 'Petals', color: '#ff0000' }] }));
-    expect(out.version).toBe(92);
+    expect(out.version).toBe(93);
     expect(Object.keys(out)).toEqual(['version', 'name', 'created', 'elements', 'picotConnections', 'camera', 'zoom', 'dsWidth',
       'bgColor', 'gridEnabled', 'customColors', 'referenceImage', 'refImageProps', 'renderMode', 'patternNotes', 'materials',
-      'orderGroups', 'beadLibrary', 'polarGrids', 'selectedPolarGridId', 'activeThreadPreset', 'spatialGroups']);
+      'orderGroups', 'beadLibrary', 'polarGrids', 'selectedPolarGridId', 'activeThreadPreset', 'spatialGroups', 'ghostArrays']);
     expect(out.spatialGroups).toEqual([{ id: 'g1', name: 'Petals', color: '#ff0000' }]);
     expect(out.activeThreadPreset).toEqual({ id: 'p2', name: 'Two' });
     expect(Number.isNaN(Date.parse(out.created))).toBe(false);
@@ -31,6 +31,7 @@ describe('serializeProject', () => {
   });
   it('no groups → an empty list; unknown preset → the first; no presets → null', () => {
     expect((serializeProject(project()) as any).spatialGroups).toEqual([]);
+    expect((serializeProject(project()) as any).ghostArrays).toEqual([]);   // version 93 (fix 14)
     expect((serializeProject(project({ activePresetId: 'gone' })) as any).activeThreadPreset).toEqual({ id: 'p1', name: 'One' });
     expect((serializeProject(project({ threadPresets: [] })) as any).activeThreadPreset).toBeNull();
   });

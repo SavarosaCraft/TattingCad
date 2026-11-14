@@ -1,0 +1,251 @@
+{
+ "version": 92,
+ "name": "FloatingRing test",
+ "created": "2026-11-13T20:12:45.061Z",
+ "elements": [
+  {
+   "id": "a218d4dd-2b3d-4c10-81e2-c5c788098ae2",
+   "type": "ring",
+   "endAllowance": 0.75,
+   "materialId": "default",
+   "center": {
+    "x": -145.55555555555557,
+    "y": -17.996670057508666
+   },
+   "rotation": 180,
+   "stitchCount": 12,
+   "color": "#FFFFFF",
+   "picots": [
+    {
+     "id": "5940423d-87b7-44a3-b35f-b4d91a7cdcf2",
+     "stitchesBefore": 6,
+     "length": "medium",
+     "isJoint": false,
+     "isGuide": false,
+     "isGuidePoint": false,
+     "beadType": null
+    }
+   ],
+   "orderNumber": 2,
+   "notation": "fr: 6ds-p-6ds",
+   "labelOffset": 8,
+   "squeeze": 0,
+   "picotSideMultiplier": 1,
+   "isGhost": false,
+   "ghostSourceId": null,
+   "isClosed": true,
+   "shapeStyle": "teardrop",
+   "paths": [
+    {
+     "type": "cubic",
+     "x": -145.55555555555557,
+     "y": 8.73332994249133,
+     "control1X": -156.24755555555558,
+     "control1Y": 0.7143299424913323,
+     "control2X": -163.37555555555556,
+     "control2Y": -20.66967005750866,
+     "endX": -163.37555555555556,
+     "endY": -26.015670057508665
+    },
+    {
+     "type": "cubic",
+     "x": -163.37555555555556,
+     "y": -26.015670057508665,
+     "control1X": -161.59355555555558,
+     "control1Y": -39.38067005750867,
+     "control2X": -152.68355555555559,
+     "control2Y": -42.05367005750867,
+     "endX": -145.55555555555557,
+     "endY": -44.726670057508656
+    },
+    {
+     "type": "cubic",
+     "x": -145.55555555555557,
+     "y": -44.726670057508656,
+     "control1X": -138.42755555555559,
+     "control1Y": -42.05367005750867,
+     "control2X": -129.51755555555556,
+     "control2Y": -39.38067005750867,
+     "endX": -127.73555555555558,
+     "endY": -26.015670057508665
+    },
+    {
+     "type": "cubic",
+     "x": -127.73555555555558,
+     "y": -26.015670057508665,
+     "control1X": -127.73555555555558,
+     "control1Y": -20.669670057508668,
+     "control2X": -134.86355555555556,
+     "control2Y": 0.7143299424913323,
+     "endX": -145.55555555555557,
+     "endY": 8.73332994249133
+    }
+   ],
+   "isRepeat": false
+  },
+  {
+   "id": "3e068117-493a-479d-a498-4031968a7ced",
+   "type": "chain",
+   "endAllowance": 0,
+   "materialId": "default",
+   "center": {
+    "x": -143.88888888888889,
+    "y": 58.555552164713546
+   },
+   "isClosed": false,
+   "shapeStyle": "chain",
+   "paths": [
+    {
+     "type": "cubic",
+     "x": -199.0888888888889,
+     "y": 58.555552164713546,
+     "control1X": -162.2888888888889,
+     "control1Y": 21.75555216471355,
+     "control2X": -125.48888888888888,
+     "control2Y": 21.75555216471355,
+     "endX": -88.68888888888888,
+     "endY": 58.555552164713546
+    }
+   ],
+   "stitchCount": 12,
+   "color": "#FFFFFF",
+   "picots": [
+    {
+     "id": "743ba9d4-47e2-4e52-990b-2c0756192bd0",
+     "stitchesBefore": 6,
+     "length": "medium",
+     "isJoint": false,
+     "isGuide": true,
+     "isGuidePoint": true,
+     "beadType": null
+    }
+   ],
+   "notation": "c: 6ds-gp-6ds",
+   "labelOffset": 8,
+   "picotSideMultiplier": 1,
+   "isGhost": false,
+   "ghostSourceId": null,
+   "isSplitChain": false,
+   "orderNumber": 1,
+   "isRepeat": false
+  }
+ ],
+ "picotConnections": [],
+ "camera": {
+  "x": 706,
+  "y": 362
+ },
+ "zoom": 1.8,
+ "dsWidth": 10,
+ "bgColor": "#1F2937",
+ "gridEnabled": true,
+ "customColors": [],
+ "referenceImage": null,
+ "refImageProps": {
+  "opacity": 0.5,
+  "rotation": 0,
+  "scale": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0
+ },
+ "renderMode": "schematic",
+ "patternNotes": "",
+ "materials": [
+  {
+   "id": "default",
+   "name": "Default",
+   "color": "#FFFFFF",
+   "isGradient": false
+  }
+ ],
+ "orderGroups": [],
+ "beadLibrary": [
+  {
+   "id": "bead1",
+   "name": "Small seed",
+   "size": "Y",
+   "color": "#ef4444",
+   "shape": "circle"
+  },
+  {
+   "id": "bead2",
+   "name": "Medium seed",
+   "size": "Z",
+   "color": "#22c55e",
+   "shape": "circle"
+  },
+  {
+   "id": "bead3",
+   "name": "Large seed",
+   "size": "V",
+   "color": "#a855f7",
+   "shape": "circle"
+  },
+  {
+   "id": "bead4",
+   "name": "Square medium",
+   "size": "Z",
+   "color": "#228B22",
+   "shape": "square"
+  },
+  {
+   "id": "bead5",
+   "name": "Rectangular large",
+   "size": "V",
+   "color": "#FFD700",
+   "shape": "rectangle"
+  },
+  {
+   "id": "bead6",
+   "name": "Teardrop large tip-out",
+   "size": "V",
+   "color": "#0F52BA",
+   "shape": "teardrop-up"
+  },
+  {
+   "id": "bead7",
+   "name": "Teardrop large tip-in",
+   "size": "V",
+   "color": "#ADD8E6",
+   "shape": "teardrop-down"
+  }
+ ],
+ "polarGrids": [
+  {
+   "id": "fe343234-c5b2-46e8-93d1-56e29ed6bc9b",
+   "name": "Grid 1",
+   "center": {
+    "x": 0,
+    "y": 0
+   },
+   "angularOffset": 0,
+   "visible": false,
+   "color": "#ADD8E6",
+   "rings": [
+    {
+     "id": "77dc5511-3066-4267-9ccd-46cc25f75af9",
+     "radius": 240,
+     "divisions": 4,
+     "visible": true,
+     "snap": true,
+     "angularOffset": 0
+    }
+   ],
+   "opacity": 0.75
+  }
+ ],
+ "selectedPolarGridId": null,
+ "activeThreadPreset": {
+  "id": "default",
+  "name": "Pearl Cotton Size 10, Needle Tat",
+  "ds20Working": 285,
+  "ds20Core": 45,
+  "picotRegular": 7,
+  "picotJoined": 5,
+  "sample20DS10Regular": null,
+  "sample20DS10Short": null,
+  "endAllowance": 0.75
+ },
+ "spatialGroups": []
+}
