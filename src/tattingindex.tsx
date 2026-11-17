@@ -731,7 +731,7 @@ const TattingDesigner = () => {
   // Linear array state
 
   // Spiral array state
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 
 
   // Update reminder: only after 90 days with THIS version — evaluated once
