@@ -2,7 +2,7 @@
 // moved out of tattingindex.tsx unchanged) and checking the array list read
 // from a file (fix 14, session 64).
 import { describe, it, expect } from 'vitest';
-import { regenerateGhostArrays, normalizeGhostArrays, rewireJoinsForArrayChange, syncJointFlags } from '../../src/domain/ghostArrays';
+import { regenerateGhostArrays, normalizeGhostArrays, rewireJoinsForArrayChange, syncJointFlags, foldFamily } from '../../src/domain/ghostArrays';
 
 const mother = (x = 0, y = -90) => ({
   id: 'm', type: 'ring', isGhostMother: true, center: { x, y }, rotation: 0, isClosed: true, stitchCount: 12,
@@ -194,5 +194,32 @@ describe('syncJointFlags', () => {
     expect(out[2]).toBe(els[2]);                                     // not listed: left alone
     const same = syncJointFlags(out, conns, new Set(['a', 'b']));
     expect(same[0]).toBe(out[0]);
+  });
+});
+
+// ── A fold and its copies (session 64) ──────────────────────────────────────
+describe('foldFamily', () => {
+  const fold = { connectionType: 'fold', outerLength: 130 };
+  const c = (id: string, a: string, b: string, extra: any = {}) => ({ id, picots: [{ elementId: a, picotId: 'p0' }, { elementId: b, picotId: 'p2' }], ...extra });
+  const arr = (rules: any[]) => ({ id: 'A', sourceId: 'm', ghostIds: ['g1', 'g2', 'g3'], inheritedJoins: rules });
+  const FOLD_RULE = { isSourceElement: true, anchorEnd: 'start', sourcePicotIndex: 0, targetPicotIndex: 2, connExtra: { ...fold } };
+  const conns = [
+    c('anchor', 'm', 'g1', fold), c('c1', 'g1', 'g2', { ...fold, isInheritedJoin: 'A' }), c('c2', 'g2', 'g3', { ...fold, isInheritedJoin: 'A' }),
+    c('plain', 'g3', 'm', { isInheritedJoin: 'A' }),                // copied, but not a fold
+    c('other', 'm', 'x', fold),                                     // the mother's fold to something else
+    c('B1', 'q1', 'q2', { ...fold, isInheritedJoin: 'B' }),         // another array's copy
+  ];
+  it('the anchor fold and every copied fold of that array — from either one', () => {
+    for (const id of ['anchor', 'c1', 'c2']) expect(foldFamily(id, conns, [arr([FOLD_RULE])])).toEqual({ arrayId: 'A', connIds: ['anchor', 'c1', 'c2'] });
+  });
+  it('not a family: a fold of no array, a plain join, or an array whose rule is not a fold', () => {
+    expect(foldFamily('other', conns, [arr([FOLD_RULE])])).toBeNull();
+    expect(foldFamily('plain', conns, [arr([FOLD_RULE])])).toBeNull();
+    expect(foldFamily('anchor', conns, [arr([{ ...FOLD_RULE, connExtra: undefined }])])).toBeNull();
+    expect(foldFamily('nope', conns, [arr([FOLD_RULE])])).toBeNull();
+  });
+  it('an anchor on the last copy (anchorEnd end)', () => {
+    const cs = [c('anchor', 'g3', 'm', fold), c('c1', 'g3', 'g2', { ...fold, isInheritedJoin: 'A' })];
+    expect(foldFamily('c1', cs, [arr([{ ...FOLD_RULE, anchorEnd: 'end' }])])?.connIds).toEqual(['anchor', 'c1']);
   });
 });

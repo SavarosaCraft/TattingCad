@@ -19,6 +19,7 @@
 import React, { useState } from 'react';
 import { IconJoinPicots, IconLink, IconUnlink } from './icons';
 import { NumberStepper } from './NumberStepper';
+import { PICOT_KIND_TOKENS, type PicotKindToken, type PicotKindSelection } from '../domain/picotKind';
 
 // A fold connection's editable properties, as stored on the picotConnections
 // entry (connectionType: 'fold'). Mirrors DEFAULT_FOLD_PROPS in
@@ -101,8 +102,30 @@ interface PicotJoinModeBarProps {
   // as quiet grey text at the right of row 2. Omitted → not shown.
   mmPerUnit?: number;
   presetName?: string;
+  // Picot kind buttons (p · lp · sp · gp · jpg · cj · cjp) in row 2 while
+  // picots are selected and no fold is active. null = nothing selected.
+  // `active` lights the button when every selected picot has that kind.
+  picotKindSelection: PicotKindSelection | null;
+  onSetPicotKind: (kind: PicotKindToken) => void;
   t: (key: string) => string;
 }
+
+// Translation key for each button's tooltip. The button text itself is the
+// notation token (no icons — the text says what it is).
+const PICOT_KIND_TITLE_KEY: Record<PicotKindToken, string> = {
+  p: 'picotKindP', lp: 'picotKindLp', sp: 'picotKindSp', gp: 'picotKindGp',
+  jpg: 'picotKindJpg', cj: 'picotKindCj', cjp: 'picotKindCjp',
+};
+// Long label for wide screens: "P - Regular picot" (token + translated name).
+const PICOT_KIND_NAME_KEY: Record<PicotKindToken, string> = {
+  p: 'picotKindNameP', lp: 'picotKindNameLp', sp: 'picotKindNameSp', gp: 'picotKindNameGp',
+  jpg: 'picotKindNameJpg', cj: 'picotKindNameCj', cjp: 'picotKindNameCjp',
+};
+// A gap between the plain picots and the join / core kinds.
+const PICOT_KIND_GROUPS: PicotKindToken[][] = [
+  PICOT_KIND_TOKENS.slice(0, 4) as PicotKindToken[],
+  PICOT_KIND_TOKENS.slice(4) as PicotKindToken[],
+];
 
 
 export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
@@ -120,6 +143,8 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
   onConnectionColorChange,
   mmPerUnit,
   presetName,
+  picotKindSelection,
+  onSetPicotKind,
   t,
 }) => {
   const [copiedFoldProps, setCopiedFoldProps] = useState<FoldProps | null>(() => lastCopiedFoldProps);
@@ -218,6 +243,42 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
         the bar's total height never changes between "no fold selected" and
         "editing a fold." Empty but present when activeFold is null. */}
     <div className="flex items-center gap-3 flex-wrap min-h-[26px]">
+      {/* Picot kind buttons — same idea as the ring Shape buttons: the lit
+          one is the kind every selected picot has; click to change the
+          selected picots (joins stay). Hidden while a fold's sliders use
+          this row. Disabled when the selection holds a bead picot. */}
+      {!activeFold && picotKindSelection && (
+        <>
+          <span className="text-xs font-bold text-blue-300 uppercase tracking-wide shrink-0">
+            {t('picotKindLabel')}
+          </span>
+          {PICOT_KIND_GROUPS.map((group, gi) => (
+            <div key={gi} className="flex rounded overflow-hidden border border-gray-600">
+              {group.map((kind, i) => {
+                const on = picotKindSelection.active === kind;
+                return (
+                  <button
+                    key={kind}
+                    onClick={() => onSetPicotKind(kind)}
+                    disabled={!picotKindSelection.canChange}
+                    className={`px-2.5 py-0.5 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed${i > 0 ? ' border-l border-gray-600' : ''} ${
+                      on ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                    title={t(PICOT_KIND_TITLE_KEY[kind])}
+                    aria-pressed={on}
+                  >
+                    {/* Short token (phone / tablet) or "P - Regular picot"
+                        (wide screens) — switched by CSS (.picot-kind-short /
+                        .picot-kind-long in the style block, tattingindex.tsx). */}
+                    <span className="picot-kind-short">{kind}</span>
+                    <span className="picot-kind-long">{kind.toUpperCase()} - {t(PICOT_KIND_NAME_KEY[kind])}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </>
+      )}
       {activeFold && (
         <>
           <span className="text-xs font-bold text-purple-300 uppercase tracking-wide shrink-0">

@@ -3,8 +3,9 @@
 // Picot join and break actions, including ghost array inherited join propagation.
 // Extracted from tattingindex.tsx.
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { generateId } from '../utils/id';
+import { foldFamily, FOLD_SHAPE_KEYS } from '../domain/ghostArrays';
 
 const isEndpointPicotId = (id: string) =>
   id === '__start__' || id === '__end__' || id === '__anchor__';
@@ -350,6 +351,10 @@ export interface UseJoinActionsParams {
 }
 
 export function useJoinActions(p: UseJoinActionsParams) {
+  // The ghost-array list as of this render — updateFoldConnection is made
+  // once (useCallback []), so it reads the list through this ref.
+  const ghostArraysRef = useRef(p.ghostArrays);
+  ghostArraysRef.current = p.ghostArrays;
 
   // ── Inherited join helpers ────────────────────────────────────────────────
 
@@ -688,13 +693,37 @@ export function useJoinActions(p: UseJoinActionsParams) {
   // pushHistory param in useEditorActions.ts, same reasoning: a hold that
   // fires many rapid updates should collapse into ONE undo entry on
   // release, not one per tick.
+  //
+  // Session 64 (user decision): a fold of a ghost array — the fold the user
+  // made between the mother and a boundary copy, or one of the folds copied
+  // from it — changes as a family: the shape settings (FOLD_SHAPE_KEYS) go to
+  // every fold of that family AND to the array's rule, so rebuilds keep them.
+  // Anything else in `patch` (e.g. the colour, materialId) stays on the one
+  // fold the user is looking at, as before.
   const updateFoldConnection = useCallback((connectionId: string, patch: Record<string, any>, pushHistory: boolean = true) => {
-    const newConns = p.picotConnectionsRef.current.map(conn =>
-      conn.id === connectionId ? { ...conn, ...patch } : conn
+    const conns = p.picotConnectionsRef.current;
+    const shape: Record<string, any> = {};
+    for (const k of FOLD_SHAPE_KEYS) if (k in patch) shape[k] = patch[k];
+    const family = Object.keys(shape).length > 0 ? foldFamily(connectionId, conns, ghostArraysRef.current) : null;
+    const others = new Set(family ? family.connIds : []);
+    const newConns = conns.map(conn =>
+      conn.id === connectionId ? { ...conn, ...patch }
+        : others.has(conn.id) ? { ...conn, ...shape }
+        : conn
     );
     p.setPicotConnections(newConns);
     p.picotConnectionsRef.current = newConns;
-    if (pushHistory) p.pushHistoryState(p.elementsRef.current, newConns, p.roundsRef.current);
+    let newArrays: any[] | undefined;
+    if (family) {
+      newArrays = ghostArraysRef.current.map(a => a.id !== family.arrayId ? a : {
+        ...a,
+        inheritedJoins: (a.inheritedJoins || []).map((r: any) =>
+          r.connExtra?.connectionType === 'fold' ? { ...r, connExtra: { ...r.connExtra, ...shape } } : r),
+      });
+      p.setGhostArrays(newArrays);
+      ghostArraysRef.current = newArrays;
+    }
+    if (pushHistory) p.pushHistoryState(p.elementsRef.current, newConns, p.roundsRef.current, undefined, undefined, newArrays);
   }, []);
 
   const breakSelectedPicots = useCallback(() => {

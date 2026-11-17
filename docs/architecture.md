@@ -1,6 +1,22 @@
 # TattingCAD — Architecture
 
-Last updated: **session 63** (code review #1 fixed: numbers from pattern
+Last updated: **session 65** (Picot Edit mode got picot kind buttons —
+p · lp · sp · gp · jpg · cj · cjp, long labels on wide screens — see
+"Picot kind buttons (session 65)" under Rules, `domain/picotKind.ts`; two
+drawing fixes found with it: a `cj` lost its select dot in Picot Edit mode,
+and a `cjp` in realistic view got a schematic arm on top of the baked one).
+Before that: **session 64** (two user-reported fixes after the test
+suite — "Pattern text: each line as typed (session 64)" and "Guide point
+(gp) joinable (session 64)" under Rules; and a test suite in the repo: `npm test` =
+type check + unit tests (Vitest) + app tests (Playwright, the real app with
+a fake Tauri layer) + frozen baselines for refactors — see "## Tests
+(session 64)" near the end; `tsconfig.json` + `tsconfig.typecheck.json`
+added; the release checklist now starts with `npm test`; Task 2 step 0:
+ghost-array safety-net tests + three ghost findings, see "Ghost arrays —
+benched" and "## Tests"; Task 2 steps 1–4 moved ghost arrays out of
+tattingindex.tsx; fixes 14 + 15: "Ghost-array list in the file", file
+version 93). Before that:
+**session 63** (code review #1 fixed: numbers from pattern
 files are checked — see "Security: numbers from pattern files (session 63)"
 under Rules, `utils/safeNumber.ts`; SVG export: one sub-layer per round and
 all joins in one group — see "SVG export: rounds as layers (session 63)";
@@ -114,6 +130,12 @@ src/
                           pattern files (session 63)" under Rules.
 
   geometry/
+    arrays.ts             createPolarInstance, createLinearInstance(…, dsWidth, …) — one
+                          copy (real or ghost) at slot i of a polar / linear array; used by
+                          Arrange → arrays, ghost-array rebuilds and the dialog previews.
+                          Moved unchanged from tattingindex.tsx (session 64, Task 2 step 1).
+                          Calls generateId(): never inside a setElements(fn) updater.
+                          Tests: test/unit/arrays.test.ts.
     bezier.ts             sampleBezierPath, calculatePathLength,
                           getPointAndAngleAtDistanceFast, getPointAndAngleAtDistance,
                           interpolateColor
@@ -177,6 +199,14 @@ src/
                           "Chain centre = chord midpoint" under Rules.
 
   domain/
+    ghostArrays.ts        regenerateGhostArrays(elements, ghostArrays, motherIds,
+                          { polarGrids, dsWidth }) → { elements, ghostArrays,
+                          connectionIdMap } — rebuilds a mother's ghost copies.
+                          Moved unchanged from tattingindex.tsx (session 64, Task 2
+                          step 2); a 3-argument wrapper of the same name stays in
+                          tattingindex.tsx, so callers (incl. useInputHandlers) are
+                          unchanged. Calls generateId(): never inside a
+                          setElements(fn) updater. CRLF. Tests: test/unit/ghostArrays.test.ts.
     parser.ts             parseNotation, reverseNotation, buildSegmentLabel,
                           getSegmentRuns, countActualStitches, countStitchesInRange,
                           getStitchTypes, expandTokens, isZeroWidth, isNotationValid,
@@ -185,8 +215,15 @@ src/
                           repairSplitRingSideABeads — see "Split-ring side A:
                           counted from the shared start (session 62)" under Rules.
     patternOutput.ts      generatePatternText() — pure pattern text builder
+    picotKind.ts          Session 65. Picot kind buttons, pure (no React): picotKindToken
+                          (parsed picot → p / lp / sp / gp / jpg / cj / cjp, null for bead
+                          picots; jp counts as p, cp as sp), picotKindSelectionInfo (lit
+                          button + canChange for the bar), replacePicotKinds (rewrites
+                          chosen picots in a notation body), planPicotKindChange (one
+                          element → new notation / notationB, or null). Tests:
+                          test/unit/picotKind.test.ts. See "Picot kind buttons (session 65)".
     picotTools.ts         Picot Wizard pure transforms — all notation-text operations.
-                          No React dependencies. 93 unit tests in test_picotTools.js.
+                          No React dependencies. Tests: test/unit/picotTools.test.ts (session 64).
                           Exports (grouped by feature):
                           — Analysis: analyzeNotation, totalRunDs (LENGTH in ds),
                             totalRunStitches (session 62 — what Scale works in),
@@ -325,6 +362,9 @@ src/
                           exact match, because only fold picots auto-select
                           their partner; a regular join only ever has one picot
                           selected unless the user manually multi-selects both.
+                          — Session 65: picot kind buttons in row 2 (shown while picots
+                          are selected and no fold is active; props picotKindSelection +
+                          onSetPicotKind). See "Picot kind buttons (session 65)".
                           Getting this subset-vs-exact distinction wrong was
                           the initial bug: the dropdown never appeared for
                           regular joins until the match was relaxed.
@@ -689,6 +729,11 @@ src/
                           Session 58: optional `label` prop — renders icon +
                           text as a full-width row (`tb-labelled`/`tb-label`
                           classes) for the Simple toolbar. File is CRLF.
+    GhostArrayManager.tsx GhostArrayManager (Arrange → Ghost Array Manager) +
+                          ConvertGhostConfirm ("Convert …?" box). Moved unchanged from
+                          tattingindex.tsx (session 64, Task 2 step 4); props have the names
+                          the markup used. tattingindex.tsx keeps the {show && …} checks.
+                          Apply calls useGhostArrays.applyArrayChange (fix 13, session 64).
     GettingStartedHint.tsx  Session 58. The "what next" hint in the empty
                           property bar (nothing selected, no mode): empty
                           pattern → add Ring/Split ring/Chain or a reference
@@ -1262,6 +1307,15 @@ src/
                             quadratic line's control point now simply stays put when its
                             endpoint moves, which is safe but may look visually
                             unbalanced; see the matching Pending refactor work row.
+    useGhostArrays.ts     regenerateGhostArrays (3-arg wrapper of domain/ghostArrays.ts),
+                          applyGhostRegenResult, updateGhostArraysForMother, convertGhostArray,
+                          convertAllGhostArrays (+ convertGhostsToReal inside),
+                          applyArrayChange (Manager → Apply, fix 13). Moved unchanged
+                          from tattingindex.tsx (session 64, Task 2 step 3). Called on every
+                          render like useJoinActions; MUST sit after useJoinActions (needs
+                          reapplyInheritedJoins) and before useInputHandlers (gets
+                          regenerateGhostArrays). Making arrays (executePolar/LinearArray)
+                          stays in tattingindex.tsx.
     useJoinActions.ts     joinSelectedPicots, breakSelectedPicots, reapplyInheritedJoins,
                           checkAndStoreInheritedJoin, removeInheritedJoins (reviewed directly,
                           later session — see "Endpoint joints across ghost arrays — implemented"
@@ -1905,7 +1959,9 @@ flag against this pattern before assuming a `keydown`/`keyup` (or
 - Baked SVG (`bakeRealisticView`, render/realisticRenderer.ts): stitches,
   picots, cjp arms, line elements.
 - Live JSX in tattingindex.tsx, on top: picot join lines, fold arcs,
-  bead/BE picots (their own "realistic overlay" pass).
+  bead/BE picots (their own "realistic overlay" pass). Session 65: the
+  overlay pass draws NO arm for a `cjp` any more — the baked SVG already
+  draws it, and the extra straight line sat on top of the realistic picot.
 - Hidden in realistic view (`renderMode !== 'realistic'` guards): square
   grid, polar grid guides (since session 57), reference image, snap
   indicators, group boxes.
@@ -2052,6 +2108,12 @@ connections when an array shrinks (pending-work table) and duplicate-array
 detection in Clean Up Duplicates. Code that already handles ghosts/mothers
 (regeneration, deleteSelected's cascade, applyNotationToMultiple's
 mother regen) is left as-is.
+
+**Session 64 (Task 2 step 0) found three more, pinned as TO CONFIRM in
+`test/app/ghost-arrays.spec.ts`** — see "## Tests (session 64)": growing an
+array in the Manager doesn't rebuild the joins; the array list isn't saved in
+the file (or the autosave); opening a file doesn't clear the previous
+pattern's arrays.
 
 ### Version drift found in session 56 — check files, not docs
 
@@ -2800,7 +2862,7 @@ unknown element. Now (user's decision, session 63):
   `→ 3ds-bcjp:Y:ZZ-3ds` keep the join with no warning, not shown as
   invalid, schematic and realistic draw it (core bead on the ring, ZZ on
   the join line).
-- **Help page:** a card for it is in `docs/help-bcjp-card.html` (to paste
+- **Help page:** a card for it is block 6 of `docs/help-snippets-session63.html` (to paste
   after the bcp card in public/tatting-help.html — not edited here, the
   GitHub copy may be older than the user's).
 
@@ -3167,6 +3229,96 @@ in Undo as `spatialGroups`) was never saved, so every group came back as
   (the history entry type gained the field).
 - Tested: save → the registry is in the file (a bad colour replaced, a
   malformed entry dropped); Resume keeps it; New → Save has none.
+
+### Ghost-array list in the file (session 64, fixes 14 + 15)
+
+The ghost-array list (`ghostArrays` state, useUIState; in Undo as
+`ghostArrays`) was never saved: after reopening, the copies were still in
+the file but no longer followed the mother, and opening another file left
+the previous pattern's arrays in the Manager. Now:
+- `serializeProject` writes `ghostArrays` (**file version 93**); Save and
+  the autosave both go through it, so Resume keeps the list too.
+- `normalizeGhostArrays` (domain/ghostArrays.ts) on open / Resume / samples
+  (`applyProjectData`), checked against the elements actually loaded. An
+  entry is dropped as a whole when a required value is bad (never guessed):
+  the mother must be in the file, be a mother and not a copy;
+  `instanceCount` a whole number 2–100 (a huge count would hang the next
+  rebuild); `angle` / `rotStep` real numbers; linear `spacing` 0–500 and
+  `elementSize` > 0. `ghostIds` keep only this mother's copies in the file,
+  `boundaryIds` only ids from those; unknown fields aren't carried over; the
+  name is text ≤ 200. `inheritedJoins`: picot slots whole numbers 0–999 or
+  `__start__` / `__end__` / `__anchor__`, `isSourceElement` a boolean;
+  `connExtra` (copied onto every join made from the entry) only as a fold
+  with its four numbers.
+- A file without a list (older than 93) → `[]`; its copies stay where they
+  are and don't follow the mother (user decision, session 64: option a — no
+  guessing an array back from the copies).
+- The first Undo entry after open / Resume carries `ghostArrays` (the
+  history entry type gained the field) — Undo back to "as opened" brings the
+  list back (e.g. after Convert All).
+- New Project already cleared the list (it was only open that didn't).
+- Tests: test/unit/ghostArrays.test.ts (`normalizeGhostArrays`),
+  test/unit/projectFile.test.ts (version 93, key order), and
+  test/app/ghost-arrays.spec.ts "fix 14 / 15" (reopen → copies follow and
+  joins stay; Resume; Undo after Convert All; another file → empty; New →
+  empty; a version-92 file; a crafted list). Mutation check 4 / 4.
+
+### Array Manager → Apply keeps the array and its joins (session 64, fix 13)
+
+Apply (new count, angle, grid or spacing) used to delete the array and make
+a new one through `executePolarArray` / `executeLinearArray`, then re-map the
+saved joins after two timers (50 + 60 ms, deep dive **L4**). The new array had
+a new id and no join rules, so growing a joined ring left the old joins (the
+closing one across the pattern) and new copies marked "joined" with no join.
+Now `useGhostArrays.applyArrayChange` (one click → one Undo step; nothing
+changed → nothing happens; the L4 timers are gone):
+1. the SAME array gets the new settings; `regenerateGhostArrays` rebuilds;
+2. `rewireJoinsForArrayChange` (domain/ghostArrays.ts) — rules agreed with
+   the user: joins copied around the array (`isInheritedJoin === array.id`)
+   are dropped; the user's own join a rule came from (the anchor: mother ↔
+   first / last copy, or first ↔ last copy) moves to the new first / last
+   copy keeping its settings; **any other join to a copy is removed** (a
+   copy that is gone, or a join by hand from a copy to another element);
+   joins elsewhere untouched;
+3. `syncJointFlags` sets "joined" marks from the real joins on the mother,
+   old and new copies, and both ends of every removed join;
+4. `reapplyInheritedJoins` makes the copied joins again for the new copies.
+Other arrays of the same mother: their copies' joins follow slot by slot.
+Tests: test/unit/ghostArrays.test.ts (rewire + flags), app
+ghost-arrays.spec.ts "Apply …" (6 → 8 closed ring, 6 → 4, join to the last
+copy, a hand join removed, linear 4 → 6, one Undo step, nothing changed).
+Mutation check 7 / 7. Note: Join mode shows dots only on the mother and the
+boundary copies.
+Also fixed with it (decision 17): joining the mother to a boundary copy
+records the array's join rule in that join's Undo step
+(`checkAndStoreInheritedJoin` returns the new list → `performJoin` →
+`pushHistoryState`'s 6th argument). Before, Undo back to the join forgot the
+rule and the array stopped repeating the join.
+
+### Ghost copies are full copies; folds change as a family (session 64)
+
+Findings (session 64, user's note on folds / floating rings): polar ghosts
+were built from a short field list without the notation, so the realistic
+view drew jk, beads and mixed stitches as plain ds, and **Convert made real
+rings with no notation**. Linear ghosts were always full copies and were
+fine. User: the "lightweight ghost" idea no longer saves anything — use full
+copies. Now:
+- `createPolarInstance(…, { asGhost })` (geometry/arrays.ts) makes a full
+  copy (like linear) and removes what would make a copy a pattern member of
+  its own: `orderNumber`, `groupId`, `roundId`, `polarRotationGridId`,
+  `isGhostMother`. Test: arrays.test.ts "a ghost copy draws exactly like a
+  real copy, for every element kind" (r, teardrop, jk, sr, chain, line, fr,
+  mr, beads, mixed stitches — polar and linear); ghost-arrays.spec.ts
+  Convert → the rings have the mother's notation.
+- Folds: a fold made between the mother and a boundary copy (or first ↔
+  last copy) is repeated around the array. Changing its **shape** (outer /
+  inner length, angle A / B) on the user's fold or any copied one changes
+  all of them **and the array's rule** (`foldFamily`, domain/ghostArrays.ts;
+  `updateFoldConnection`, useJoinActions.ts — one Undo step, the list goes
+  into it), so a rebuild (Apply, moving the mother) keeps the new shape. A
+  colour change stays on the one fold. User decision, session 64.
+- Not changed (note): linear ghosts keep the mother's `groupId` / `roundId`
+  (they did before); polar ghosts don't carry them.
 
 ### Resume can't write older work over a newer file (session 63, review #4)
 
@@ -3896,6 +4048,10 @@ presence to recognise an existing user.
 
 ### Release checklist — version number + security check (user's notes, session 57 / 60)
 
+**0. Tests (session 64).** `npm test` must pass — type check, unit tests,
+app tests. A failing baseline means the build behaves differently from the
+last agreed state: find out why before releasing (see "## Tests").
+
 A release changes the version in ALL of these, to the same value. 1–4 in one go:
 `node scripts/set-version.mjs 1.4.0` (session 60 — only the version text is
 replaced, layout and line endings kept; nothing is written unless all four
@@ -3937,7 +4093,9 @@ check" with the current src:
 2. **New fields in the pattern file.** Anything added to the save format
    that ends up in the drawing or the page: add it to
    `sanitizeProjectColors` (utils/safeColor.ts) if it is a colour, or check
-   it is only shown through React (which escapes it).
+   it is only shown through React (which escapes it). A field that steers
+   work (a count, an id the code looks up) also needs bounds — see
+   `normalizeGhostArrays` (version 93: `ghostArrays`, checked session 64).
 3. **The crafted-file test.** Open a pattern whose colours / names / notes
    hold `"><image href=x onerror=alert(1)>`, in schematic AND realistic
    view, and paste it too. Nothing must pop up.
@@ -3972,6 +4130,342 @@ Not to be confused with `version` in `serializeProject`
 (domain/patternOutput.ts). That is the project FILE format version (91 as of
 session 57); change it only when the saved data changes.
 
+### Pattern text: each line as typed (session 64, user report)
+
+User report: a numbered floating ring came out as `r: 6ds-p-6ds` in the
+pattern text. The cause was wider: `buildOutputNotation`
+(domain/patternOutput.ts) rebuilt every numbered line from stitch counts
+and picot positions, so every stitch became ds (`jk: 12ss` → `r: 6ds`,
+`4ss` → `2ds`, `2rds` → `3ds`), every bead became `bp` (and the slot beads
+gained a stitch: `3ds-bc:Y-3ds` → `3ds-bp-4ds`), `cp` became `sp`, every
+ring prefix became `r:`, and a split ring's two sides ran together.
+
+Now each line is the element's OWN notation. User decisions:
+- the prefix (`fr: mr: jk: sc:` …), every stitch and every bead token stay
+  as typed;
+- a joined picot gets the usual `//ref//` mark; a joined plain picot is
+  written `jp`, a fold `fp` (as before); `jpg`, `gp`, `cj`, `cjp`,
+  `bjp:…`, `bcjp:…` stay as written with the mark. A joining picot with
+  nothing joined to it is marked `(?)` — also after file open, which
+  clears `isJoint` on unjoined picots (before, such a `jp` came out `p`);
+- **`gp` and `jpg` are different** (a jpg's guide point is offset) — both
+  are kept as typed. An unjoined `gp` is a drawing aid and is left out;
+  the runs on either side become one (`6ds-gp-6ds` → `12ds`);
+- a repeat `n*(…)` stays short unless a picot inside is joined — then
+  that repeat alone is written out, each picot with its own refs;
+- a split ring is written `sr: side A / side B`.
+
+How: `parser.splitNotationParts` (new export — the same splitting as
+`expandTokens`) gives the top-level parts; picots are matched to tokens in
+notation order (a bead sequence `bc:YZ` is one token, one picot per bead;
+split-ring sides through `picotTools.splitRingSides`). If an element's
+picots don't line up with its notation, the old builder
+(`buildOutputNotationLegacy`) is used, so a line is never lost. The
+unnumbered list now names a Josephine knot `JK`. Tests:
+`test/unit/patternText.test.ts`.
+
+### Guide point (gp) joinable (session 64, user report)
+
+In Picot Join mode a gp showed its green join dot, but clicking it did
+nothing: the selection code (useInputHandlers.ts, picotJoin branch of the
+mouse-up) skipped every `isGuidePoint`. User decision: a single gp is
+joinable, like a ring's guide point; the notation stays `gp`, the pattern
+text writes `gp//r2//`. Second catch, fixed with it: the gp dot is drawn
+6 screen px off the line (so the stroke doesn't cover it) while the hit
+test looked at the point on the line with a 5-world-unit margin — at zoom
+≤ 1.2 a click on the dot missed. The hit test now uses the drawn spot
+(`getPicotPosition`'s `angle` × 6/zoom). Tests:
+`test/app/guide-point-join.spec.ts` (zoom 1.8 and 0.6, and after reopen).
+
+### Picot kind buttons (session 65)
+
+Picot Edit mode (`activeMode === 'picotJoin'`) can change the **kind** of the
+selected picots, like the ring Shape buttons change a ring's prefix
+(`setRingKind`). User request: "buttons for all the different versions for
+picots".
+
+**The seven kinds** (`PICOT_KIND_TOKENS`, domain/picotKind.ts), in two groups
+with a gap between them:
+
+| Token | What | Parser flags |
+|---|---|---|
+| `p` | picot (medium) — a joined plain picot (`jp`) counts as `p` | `length: medium`, no bead |
+| `lp` | long picot | `length: large` |
+| `sp` | short picot (`cp` is the old alias) | `length: small` |
+| `gp` | guide point | `isGuidePoint` |
+| `jpg` | joined guide picot (tip is the snap point) | `isGuide`, not `isGuidePoint` |
+| `cj` | core join | `isCoreJoin` |
+| `cjp` | core join with picot arm | `isCoreJoin` + `hasPicotArm` |
+
+Not buttons (user agreed): `jp` is the joined *state* (Join / Cut handle it,
+pattern text writes `jp` itself); bead picots (`bp`, `bp1`–`bp5`, `bp:`,
+`bjp:`, `bcp:`, `bcjp:`, `bc:`, `sb:`, `be`) need a size or sequence and
+belong to Beading mode. A selection that holds a bead picot disables the
+buttons (`canChange: false`).
+
+**How it works.**
+- `setPicotKind(kind)` (tattingindex.tsx, next to `setRingKind`) groups the
+  selected picots per element, asks `planPicotKindChange` for the new notation
+  and runs it through `computeElementAfterNotationEdit` in **`'order'` mode** —
+  so picot ids, joins and isJoint carry over like any notation edit. All seven
+  kinds pass `canHoldJoin` (no `beadType`), so **no join is ever dropped**; if
+  one would be, the element is skipped. One commit = one Undo step (auto-history).
+  Ghost mothers regenerate (`regenerateGhostArrays`, as in `setRingKind`).
+- A selected **ghost copy** edits its **mother**: same index in the picots list.
+- `replacePicotKinds(body, Map<index, kind>)` rewrites only the chosen
+  tokens. Index = the order the parser creates picots, so a token that makes
+  several picots (`bc:YZ`, `3p`) is counted by parsing it alone (`r: <token>`).
+  **A repeat group that holds a changed picot is written out** (user decision:
+  "repeats needs to be expanded and written as such"): `3*(2ds-p)`, middle
+  picot → `lp` gives `2ds-p-2ds-lp-2ds-p`. Repeats without a changed picot stay
+  as typed. `3p` with one changed becomes `p-lp-p`. Separators come out as `-`
+  (the parser's `splitNotationParts` tidies the text) — only when a button is
+  actually used.
+- **Split rings:** both sides. The element stores side A **reversed**, then
+  side B (computeElementAfterNotationEdit), so stored index `i < nA` is side-A
+  parse index `nA-1-i`. Notation `sr: A` + `notationB`.
+- **Safety:** `planPicotKindChange` first checks that the element's picots
+  line up with its parsed notation (same count, same kind at every index). If
+  not, or a chosen picot is a bead picot, or nothing would change → `null`,
+  nothing happens.
+
+**UI** (PicotJoinModeBar.tsx). Row 2 — the row that already holds the fold
+sliders. The buttons show when picots are selected and **no fold is active**
+(sliders win); row 2 keeps its fixed height. Lit button = every selected
+picot has that kind (`active`); a mix lights none. No icons (user: "I like how
+the buttons say what it is"). Each button holds two spans:
+`.picot-kind-short` (`p`, `lp`, …) and `.picot-kind-long` (`P - Regular
+picot`, `LP - Long picot`, `SP - Short picot`, `GP - Guide point`,
+`JPG - Joined guide picot`, `CJ - Core join`, `CJP - Core join + arm`). CSS in
+the style block of tattingindex.tsx: long label from **1360 px** wide (and
+height > 500), with `.ui-large` only from **1600 px**; short token everywhere
+else (phone, tablet). The 1360 / 1600 limits are estimates from label widths —
+move them if the row wraps.
+
+**Translations** (en / es / hu, same keys): `picotKindLabel` (row label),
+`picotKindP|Lp|Sp|Gp|Jpg|Cj|Cjp` (tooltips, e.g. "Long picot (lp)"),
+`picotKindNameP|…|Cjp` (the long-label names). es / hu wording was written by
+Claude — **to be checked by the user**. The root `public/` copies need the
+same keys (the translations test compares them).
+
+**Two drawing fixes found while testing** (both `renderOnePicot`,
+tattingindex.tsx, the `cj / cjp / jp / jpg` branch):
+- `cj` (core join, no arm) returned `null` even in Picot Edit mode, so a
+  `cj` that was joined (isJoint true) had **no select / join dot**
+  (selection still worked). Now it draws the same dot as `cjp`, without the
+  arm, in `picotJoin` mode only; in normal schematic it still shows nothing.
+- `cjp` in realistic view drew a straight schematic arm (`armColor`) over the
+  baked realistic picot. The overlay arm is gone; the baked SVG
+  (`bakeRealisticView`) draws the arm. `realisticRenderer.ts` was **not**
+  read for this — the doc ("What draws what") and the user's picture agree.
+  Baselines were regenerated with `npm run test:update`, then the full
+  `npm test` passed (user, session 65). The user's very first `npm test` run
+  was before the `cj` dot / `cjp` arm changes.
+
+**Known / left alone.**
+- `jpg` / `cj` / `cjp` parse with `isJoint: true`, but the notation-edit merge
+  resets an unjoined picot to `isJoint: false` (`isStillJoint`). So switching
+  an unjoined picot to one of them behaves exactly like typing it into the
+  notation field — nothing special added.
+- After a ghost array regenerates, the ids of selected *ghost* picots may
+  change and drop out of the selection. Not checked by hand.
+- Tests: `test/unit/picotKind.test.ts` — 64 tests (all 42 kind → kind pairs,
+  prefixes `fr:` / `c:`, several picots at once, repeat written out / left
+  alone, `3p`, bead tokens before the target, bead picot refused, stale picot
+  list refused, split ring both sides, `picotKindSelectionInfo`).
+  Mutation-checked 6 / 6 (split-ring order, repeat expansion, picot counting,
+  `3p`, `jp` → `p`, `gp` vs `jpg`). Written and mutation-checked in a scratch
+  project with the real `parser.ts`, then part of the user's `npm test` (all
+  passed). The app-side `setPicotKind`, the buttons and both drawing fixes have
+  **no automated test** (checked by the user in the live dev server: render +
+  select dot fixed).
+- Playwright prints "Slow test file: test\app\ghost-arrays.spec.ts (6.7m)".
+  A hint, not a failure: the file is one long sequence (the 11-step scenario
+  plus its steps), so running its tests in parallel would not work as it is.
+  Splitting it into several files would let workers share the run; the hint
+  itself can be switched off with `reportSlowTests: null` in
+  `playwright.config.ts`. Left alone.
+- Not done: an app test (Playwright) for the buttons; long-label cut-offs on
+  a real tablet / Large UI.
+
+**User tests:** select a joined picot, p → lp — join stays; a picot inside a
+repeat; both sides of a split ring; a ghost copy; a mixed selection (no lit
+button); a bead picot selected (buttons disabled); wide vs. narrow window
+(long vs. short labels); a `cjp` in realistic view (one arm only).
+
+## Tests (session 64)
+
+`npm test` runs everything: type check → unit tests → app tests (~10 min).
+The app tests need the project's `public/` folder (they stop with a clear
+message without `public/languages.json`).
+Full guide: **`test/README.md`** (layout, how the app tests work, baselines,
+how to write a new test). First time on a computer: `npm install`, then
+`npx playwright install chromium`.
+
+| Command | What |
+|---|---|
+| `npm run typecheck` | `tsc -p tsconfig.typecheck.json` — `src/`, `test/` and the configs. Clean (0 errors) at session 64 |
+| `npm run test:unit` | Vitest: `test/unit/**/*.test.ts` — pure modules, no browser |
+| `npm run test:app` | Playwright: `test/app/**/*.spec.ts` — the app in Chromium |
+| `npm run test:update` | Rewrites the frozen baselines (only for a change that is meant) |
+
+**Windows: start the tests from `C:\…`, not `c:\…`.** If the terminal's path
+has a lowercase drive letter (the VS Code terminal often does), Vitest loads
+itself twice and every unit test file fails at its first `describe` with
+"Cannot read properties of undefined (reading 'config')" or "Vitest failed to
+find the runner". Fix: `cd C:\TattingCad` (capital C), then run again.
+
+**The pattern baselines (`test/app/baselines/<pattern>.*`) belong to your
+computer.** The SVG export carries colour data from the project's `public/`
+folder, so they can only be made where the real `public/` is. Make them with
+`npm run test:update` on your machine and commit them; Claude's zips don't
+contain them (session 64: a zip carried baselines made with a stand-in
+`public/` and overwrote yours — 4 SVG tests failed). The ghost reference
+(`ghost-arrays.scenario.txt`, saved-file text only) is the same everywhere.
+
+**Two tsconfig files — on purpose.** `tsconfig.json` has no `target`:
+Vite reads `target` from tsconfig.json and hands it to its compiler, which
+CHANGED the built app (found and checked in session 64: with the target the
+bundle differed; without it the build is byte-for-byte the same as with no
+tsconfig at all). `tsconfig.typecheck.json` extends it and adds
+`"target": "ES2020"` for `tsc` only. Don't move the target into
+tsconfig.json.
+
+**Unit tests** (`test/unit/`): the notation table (`parser.cases.ts`: every
+token and prefix → what the parser makes of it — the base for the written
+spec, handoff Task 5); Picot Tools (every action + rules checked over 6,000
+seeded random valid notations × 9 scale factors); `safeNumber` (review #1 /
+#6, incl. the fuzz: markup in every field of every element kind never
+reaches the realistic SVG); `safeColor`; `fileFingerprint`; `safeFileName`;
+the save format (`serializeProject`, `normalizeSpatialGroups`,
+`projectSettingsKey`); the realistic renderer (split-ring gradient, element
+groups); the translation files (en / es / hu same keys and placeholders;
+`public/` copies equal to `src/i18n`); picot kinds (`picotKind.test.ts`,
+session 65 — see "Picot kind buttons (session 65)").
+
+**App tests** (`test/app/`): `tauri-mock.ts` replaces
+`window.__TAURI_INTERNALS__` before the page loads — in-memory "disk",
+dialogs, the window's X, clipboard. `harness.ts` gives the words a test
+uses (`newProject`, `ring`, `save`, `openFile`, `resume`, `hide`,
+`requestClose`…). One `App` = one run of the program; the next run gets
+the files and autosave the last one left. Vite is started by
+`global-setup.ts` inside the test process on a free port. Any uncaught
+exception in the page fails the test. The crash screen is tested by
+rewriting one module on its way to the browser (`getCircleStitchAngle`
+throws on demand) — nothing in `src` is changed for tests.
+
+**Frozen baselines** — the proof for refactors. `test/unit/baselines/`:
+the realistic bake of one-of-each-kind (full text) and 300 seeded random
+patterns (fingerprints). `test/app/baselines/`: for each pattern in
+`test/fixtures/patterns/`, the saved file and the SVG export in schematic
+and realistic view. A refactor (Task 2 ghost arrays, Task 3 splitting
+`tattingindex.tsx`) must leave every baseline as it is. **Add real
+patterns** to `test/fixtures/patterns/` (samples, beads, split rings,
+ghost arrays) — each gets its baselines on the next run.
+
+**Mutation-checked (session 64):** each fix the suite covers was broken
+on purpose and the suite failed — 20 / 20 breaks in the unit tests,
+17 / 17 in the app tests (#1 / #6 input check, #2, #3, #4 ×3, #5, #10,
+#12, #13, #14, #16, #20, #21, #22, bcjp, repeat R colour, SVG round
+layers, side-A gradient #23, Scale rounding…). A test that can't fail proves nothing:
+do the same for new tests.
+
+**Ghost arrays — the safety net for Task 2 (session 64, step 0).**
+`test/app/ghost-arrays.spec.ts`, fixture `test/fixtures/ghost-source.tatcad`
+(a ring at (0, −90) on a polar grid centred on (0, 0), and a chain).
+Everything goes through the real dialogs and keys: polar ghost array (5
+copies, first and last are boundary copies), linear ghost array (3, first is
+boundary), moving the mother (copies follow; **each arrow press is its own
+Undo step**), editing the mother's notation, joining the mother to the first
+copy (repeated around: 6 joins), joins surviving a rebuild, Array Manager
+Apply 6 → 8, Convert, Convert All, deleting the mother (cascade + array
+gone), Undo / Redo of making the array. After each step the saved file goes
+into one reference, `test/app/baselines/ghost-arrays.scenario.txt`
+(generated ids → `#1`, `#2`… in order of appearance; numbers to 6 places; no
+date / camera). Pattern coordinates → screen through
+`g[data-round].getScreenCTM()`. Mutation-checked: 5 / 6 breaks caught. The
+6th — removing `reapplyInheritedJoins` after a rebuild — changes nothing in
+any path the tests (or I) could reach: joins survive a rebuild through the
+id remap alone, and the one case it is meant for (new slots when an array
+grows) doesn't work today (finding below).
+Pinned as **TO CONFIRM** in step 0: (1) Apply with a bigger count: the
+joins stay the old 6 (the closing join now runs across the pattern, new
+copies' picots say "joined" but are in no join) — **fixed in session 64
+(fix 13, "Array Manager → Apply keeps the array and its joins")**; (2) the array list not saved and (3) opening another file keeping the
+old arrays — **fixed in session 64 (fixes 14 + 15, "Ghost-array list in the
+file")**; their tests now expect the fix.
+
+**"TO CONFIRM" / "FINDING" tests** pin behaviour that looks like a slip,
+as it is today, so a change is noticed. They are questions for the user
+(listed in the session-64 handoff), not rules.
+
+## Task 3 — splitting tattingindex.tsx: the plan (agreed in a session-64 chat, written down session 65)
+
+**Status: not started** (no step done as of session 65). The plan was made
+in a session-64 conversation that was not documented at the time; it
+**replaces** the one-line Task 3 description in handoff 64 ("canvas drawing,
+keyboard handler, Tatting Order, dialogs"). When planned the file was
+**12,791 lines**: about 7,100 of logic and 3,500 of markup (menus, panels,
+dialogs). Session 65 added `setPicotKind`, the `picotKindSelection` memo, the
+picot-kind CSS and the `cj` dot / `cjp` arm change in `renderOnePicot`, so
+the line numbers below have moved a little — take the Step 0 snapshots
+**after** those changes.
+
+**Rules (same as Task 2):** one piece per step, moved word for word; the
+stored test results (baselines) stay unchanged; Claude runs the tests that
+touch each step, the user runs the full `npm test`; the docs are updated
+after every step.
+
+**Order — the user said it is fine** ("yes its fine"; the safest pieces
+first. Starting with the canvas drawing, Step 5, instead is possible; Step 0
+must come first either way):
+
+- **Step 0 — safety net first (no app changes).** Today's tests cover saving,
+  the SVG export and the ghost arrays, but not the canvas itself or the
+  panels. Add:
+  - *Canvas snapshots:* the canvas markup for each test pattern, in both
+    views and in Join mode.
+  - *Menus and panels:* open every menu (File, View, Arrange, Options, Help)
+    and every panel; record the buttons and fields each one shows, so a lost
+    button or a wrongly wired setting gets noticed.
+  These contain the user's colour data, so like the pattern baselines they
+  have to be created on the user's machine with `npm run test:update`.
+- **Step 1 — the side panels → `components/`** (lowest risk, ~1,000 lines):
+  Polar Grids (349 lines), Thread Properties (202), About (183), Bead Library
+  (166), Materials Manager (117). One or two per step.
+- **Step 2 — the top menus → `components/menus/`** (~650 lines): Arrange
+  (247), Options (234), View (95), Help (69), File.
+- **Step 3 — the array dialogs and the code that makes arrays** (~620 lines):
+  the Polar, Linear and Spiral dialogs, plus `executePolarArray`,
+  `executeLinearArray` and `executeSpiralArray`, go into a hook and dialog
+  components. This finishes what Task 2 left behind (see "What stays" below).
+- **Step 4 — notation editing → `hooks/useNotationEdit.ts`** (~430 lines):
+  `updateNotation`, `computeElementAfterNotationEdit`,
+  `applyNotationToMultiple` and the Josephine knot conversion. The notation
+  tests and the patternText tests already cover this well. (Session 65:
+  `setPicotKind` calls `computeElementAfterNotationEdit` too — keep it
+  working when that moves.)
+- **Step 5 — drawing on the canvas → its own module** (~900 lines; **the
+  riskiest step**): `renderStitchLabels`, `renderPicots`, `renderOnePicot`,
+  `renderBE`, `buildFoldLoopPair`. They use a lot of the component's current
+  state (zoom, theme, selection, picot positions), so **show the user the
+  list of what they need before moving them**. The Step 0 canvas snapshots
+  are what make this safe. Watch "Callbacks made once" (see the Task 3 note
+  in handoff 64).
+- **Step 6 — shape changes → `geometry/`:** `flipElements` and the smaller
+  helpers around it.
+
+Altogether roughly 3,500–4,000 lines out of the file.
+
+**Left alone for now:** the big run-on-every-change effect (~340 lines) and
+the remaining markup; to be revisited once the pieces above are out.
+
+**Questions:** the plan message asked two. (1) Is this order OK → yes.
+(2) Which order to start the work in → the user said it doesn't matter, and
+it was not acted on. Nothing is open.
+
+---
+
 ## What stays in tattingindex.tsx for now
 
 - `computeElementAfterNotationEdit` — extracted from `updateNotation` as a pure
@@ -3982,8 +4476,8 @@ session 57); change it only when the saved data changes.
   those dependencies are explicitly parameterised.
 - `getGradientColorAtPosition` — closes over `dmcColors` state, needs redesign before extracting
 - `getSnapPoints` — depends on `getPicotPosition` which is itself a large component function
-- `regenerateGhostArrays` / `updateGhostArraysForMother` — needs `createPolarInstance`, `createLinearInstance`, `polarGrids` in scope; candidate for extraction once a clean data interface is designed
-- `executePolarArray` / `executeLinearArray` / `executeSpiralArray` — array creation dialogs; closely coupled to dialog state
+- `regenerateGhostArrays` / `updateGhostArraysForMother` — Task 2 in progress: `createPolarInstance` / `createLinearInstance` are already in `geometry/arrays.ts` (step 1); `regenerateGhostArrays` is in `domain/ghostArrays.ts` (step 2); applying a rebuild + convert are in `hooks/useGhostArrays.ts` (step 3); the Array Manager + convert confirm are in `components/GhostArrayManager.tsx` (step 4). Still here: `executePolarArray` / `executeLinearArray` (dialog state)
+- `executePolarArray` / `executeLinearArray` / `executeSpiralArray` — array creation dialogs; closely coupled to dialog state (Task 3 Step 3 — see the plan above)
 - History undo/redo — the push mechanism itself lives across `useHistoryActions`,
   `useEditorActions`, `useJoinActions`, and `useInputHandlers` now (see the full writeup
   under `useHistoryActions.ts` in the module structure above — verified, not guessed at).

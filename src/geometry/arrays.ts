@@ -33,53 +33,39 @@ export const createPolarInstance = (
   const newCy = pivotY + (sourceEl.center.x - pivotX) * sin + (sourceEl.center.y - pivotY) * cos;
 
   if (asGhost) {
-    // Build ghost element with transformed paths and copied picots
-    return {
-      id: generateId(),
-      type: 'ghost' as const,
-      // Preserves what kind of element (chain/ring/line) this ghost is a
-      // copy of. el.type itself must stay 'ghost' — join logic throughout
-      // useJoinActions.ts keys off it to identify ghost elements — but
-      // realistic-mode rendering needs to know the underlying shape to
-      // pick the right draw path. Without this, any ghost that wasn't a
-      // closed circle rendered nothing in realistic view: the render
-      // branches check el.type === 'chain' | 'ring' | 'line', which a
-      // ghost's el.type ('ghost') never matches.
-      sourceType: sourceEl.type,
-      sourceId: options?.sourceId || sourceEl.id,
-      isBoundary: options?.isBoundary ?? false,
-      center: { x: newCx, y: newCy },
-      paths: sourceEl.paths ? sourceEl.paths.map((p: any) => {
-        const rotPt = (px: number, py: number) => {
-          const rx = px - pivotX, ry = py - pivotY;
-          return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
-        };
-        const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
-        if (p.type === 'cubic') {
-          const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
-          return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
-        } else {
-          const c = rotPt(p.controlX, p.controlY);
-          return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
-        }
-      }) : [],
-      picots: sourceEl.picots ? JSON.parse(JSON.stringify(sourceEl.picots)) : [],
-      rotation: ((sourceEl.rotation || 0) + angleDeg) % 360,
-      // Properties needed for rendering and picot position calculation
-      isClosed: sourceEl.isClosed,
-      shapeStyle: sourceEl.shapeStyle,
-      stitchCount: sourceEl.stitchCount,
-      picotSideMultiplier: sourceEl.picotSideMultiplier,
-      color: sourceEl.color,
-      materialId: sourceEl.materialId,
-      materialIdB: sourceEl.materialIdB,
-      isSplitRing: sourceEl.isSplitRing,
-      splitPosition: sourceEl.splitPosition,
-      lineWidth: sourceEl.lineWidth,
-      // Field list is explicit here, so anything that changes path length
-      // must be copied or the ghost draws at the wrong length.
-      endAllowance: sourceEl.endAllowance,
-    };
+    // Session 64 (user decision): a ghost is a FULL copy of its mother, like
+    // linear ghosts always were. The explicit field list it had before left
+    // out the notation (and squeeze, side-B colour…), so the realistic view
+    // drew jk / beads / mixed stitches as plain ds, and Convert made real
+    // rings without a notation. What a ghost must NOT carry — anything that
+    // would make it a pattern member of its own — is removed: its order
+    // number, group, round, polar grid and the mother mark.
+    const ghost = JSON.parse(JSON.stringify(sourceEl));
+    ghost.id = generateId();
+    // Kind of element this is a copy of (chain / ring / line). type must stay
+    // 'ghost' — join logic keys off it; drawing uses sourceType.
+    ghost.sourceType = sourceEl.type;
+    ghost.type = 'ghost';
+    ghost.sourceId = options?.sourceId || sourceEl.id;
+    ghost.isBoundary = options?.isBoundary ?? false;
+    for (const k of ['orderNumber', 'groupId', 'roundId', 'polarRotationGridId', 'isGhostMother']) delete ghost[k];
+    ghost.center = { x: newCx, y: newCy };
+    ghost.paths = (sourceEl.paths || []).map((p: any) => {
+      const rotPt = (px: number, py: number) => {
+        const rx = px - pivotX, ry = py - pivotY;
+        return { x: pivotX + rx * cos - ry * sin, y: pivotY + rx * sin + ry * cos };
+      };
+      const s = rotPt(p.x, p.y), e2 = rotPt(p.endX, p.endY);
+      if (p.type === 'cubic') {
+        const c1 = rotPt(p.control1X, p.control1Y), c2 = rotPt(p.control2X, p.control2Y);
+        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, control1X: c1.x, control1Y: c1.y, control2X: c2.x, control2Y: c2.y };
+      } else {
+        const c = rotPt(p.controlX, p.controlY);
+        return { ...p, x: s.x, y: s.y, endX: e2.x, endY: e2.y, controlX: c.x, controlY: c.y };
+      }
+    });
+    ghost.rotation = ((sourceEl.rotation || 0) + angleDeg) % 360;
+    return ghost;
   } else {
     // Build real copy element
     const newEl = JSON.parse(JSON.stringify(sourceEl));

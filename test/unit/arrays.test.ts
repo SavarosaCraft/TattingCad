@@ -2,6 +2,7 @@
 // linear array (Task 2 step 1: moved out of tattingindex.tsx unchanged).
 import { describe, it, expect } from 'vitest';
 import { createPolarInstance, createLinearInstance } from '../../src/geometry/arrays';
+import { baseElements, bake } from './helpers/patterns';
 
 const ring = () => ({
   id: 'r1', type: 'ring', center: { x: 0, y: -90 }, rotation: 0, orderNumber: 3, groupId: 'g1',
@@ -12,8 +13,13 @@ const ring = () => ({
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 9);
 
 describe('createPolarInstance', () => {
-  it('a ghost: turned about the pivot, an explicit field list, the source kept', () => {
-    const g: any = createPolarInstance(ring(), 1, 0, 0, 6, 360, { asGhost: true, sourceId: 'r1', isBoundary: true });
+  it('a ghost: turned about the pivot, a full copy (notation kept) without what makes a pattern member', () => {
+    const g: any = createPolarInstance({ ...ring(), notation: 'jk: 12ss', roundId: 'R1', squeeze: 0.3, polarRotationGridId: 'G' }, 1, 0, 0, 6, 360, { asGhost: true, sourceId: 'r1', isBoundary: true });
+    expect(g.notation).toBe('jk: 12ss');
+    expect(g.squeeze).toBe(0.3);
+    expect(g.isGhostMother).toBeUndefined();
+    expect(g.roundId).toBeUndefined();
+    expect(g.polarRotationGridId).toBeUndefined();
     expect(g.type).toBe('ghost');
     expect(g.sourceType).toBe('ring');
     expect(g.sourceId).toBe('r1');
@@ -57,3 +63,26 @@ describe('createLinearInstance', () => {
     expect(c.paths[0].x).not.toBe(60);
   });
 });
+
+// Session 64: polar ghosts were a short field list without the notation, so
+// the realistic view drew jk, beads and mixed stitches as plain ds.
+describe('a ghost copy draws exactly like a real copy, for every element kind', () => {
+  const base = baseElements().filter((e: any) => e.type !== 'ghost');
+  const circ = base.find((e: any) => e.id === 'circ');
+  const kinds = [...base,
+    { ...JSON.parse(JSON.stringify(circ)), id: 'fr', notation: 'fr: 6ds-p-6ds' },
+    { ...JSON.parse(JSON.stringify(circ)), id: 'mr', notation: 'mr: 6ds-p-6ds' },
+    { ...JSON.parse(JSON.stringify(circ)), id: 'beads', notation: 'r: 4ds-bc:Y-1ds-p-2rds-5ds' },
+    { ...JSON.parse(JSON.stringify(circ)), id: 'mixed', notation: 'r: 3rds-p-3lss-3ds-3ss' },
+  ];
+  const ids = (svg: string) => svg.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, 'ID').replace(/data-el="[^"]*"/g, '');
+  it.each(kinds.map((k: any) => [k.id, k]))('%s', (_id, el: any) => {
+    const real = createPolarInstance(el, 1, el.center.x, el.center.y + 50, 3, 360, {});
+    const ghost = createPolarInstance(el, 1, el.center.x, el.center.y + 50, 3, 360, { asGhost: true, sourceId: el.id });
+    expect(ids(bake([ghost]))).toBe(ids(bake([real])));
+    const linReal = createLinearInstance(el, 1, 70, 0, 15, 10, {});
+    const linGhost = createLinearInstance(el, 1, 70, 0, 15, 10, { asGhost: true, sourceId: el.id });
+    expect(ids(bake([linGhost]))).toBe(ids(bake([linReal])));
+  });
+});
+

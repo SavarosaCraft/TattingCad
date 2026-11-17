@@ -388,6 +388,56 @@ test('Apply with nothing changed changes nothing (a join by hand stays too)', as
   expect(stable(await saveFile(a))).toBe(stable(before));
 });
 
+// ── Folds in a ghost array (session 64, user decision) ─────────────────────
+test('a fold to the first copy is repeated around; changing its shape changes every copy and the rule', async ({ launch }) => {
+  const a = await openGhostSource(launch);
+  await polarGhosts(a);
+  // Join mode → Fold mode → mother's right picot + copy 1's left picot → J
+  await a.page.mouse.click(1250, 780);
+  await a.page.keyboard.press('Shift+J');
+  await a.page.waitForTimeout(300);
+  const tip = a.page.getByRole('button', { name: 'Got it', exact: true });
+  if (await tip.count()) { await tip.first().click(); await a.page.waitForTimeout(200); }
+  await a.page.getByTitle(a.t('toolFoldPicots'), { exact: true }).first().click();
+  await a.page.waitForTimeout(200);
+  const [x1, y1] = await toScreen(a, ...MOTHER_RIGHT), [x2, y2] = await toScreen(a, ...COPY1_LEFT);
+  await a.page.mouse.click(x1, y1);
+  await a.page.keyboard.down('Shift');
+  await a.page.mouse.click(x2, y2);
+  await a.page.keyboard.up('Shift');
+  await a.page.keyboard.press('j');
+  await a.page.waitForTimeout(500);
+  // The pair stays selected and the fold's steppers show (by design) — change
+  // the outer length right away (saving first would clear the selection:
+  // the File menu presses Escape). Shown ÷ 10: 20.0 = 200.
+  const outer = a.page.getByText(a.t('picotFoldOuterLength'), { exact: false }).first().locator('xpath=..').locator('input');
+  await expect(outer, 'the fold\'s steppers are showing').toHaveCount(1);
+  await outer.click();
+  await outer.fill('20');
+  await outer.press('Enter');
+  await a.page.waitForTimeout(400);
+  const folds = (f: any) => f.picotConnections.filter((c: any) => c.connectionType === 'fold');
+  const changed = await saveFile(a);
+  record('fold ring, outer length 13 → 20', changed);
+  expect(folds(changed)).toHaveLength(6);                          // the fold + its 5 copies, closed ring
+  expect(folds(changed).map((c: any) => c.outerLength)).toEqual(Array(6).fill(200));
+  expect(changed.ghostArrays[0].inheritedJoins[0].connExtra.outerLength).toBe(200);
+  // one Undo takes the change back on all of them, the rule included
+  await a.page.mouse.click(1250, 780);
+  await a.page.keyboard.press('Control+z');
+  await a.page.waitForTimeout(400);
+  const undone = await saveFile(a);
+  expect(folds(undone).map((c: any) => c.outerLength)).toEqual(Array(6).fill(130));
+  expect(undone.ghostArrays[0].inheritedJoins[0].connExtra.outerLength).toBe(130);
+  // Redo, then a rebuild (Apply 6 → 8) makes the new folds with the new shape
+  await a.page.keyboard.press('Control+Shift+z');
+  await a.page.waitForTimeout(400);
+  await managerApply(a, { count: '8' });
+  const rebuilt = await saveFile(a);
+  expect(folds(rebuilt)).toHaveLength(8);
+  expect(new Set(folds(rebuilt).map((c: any) => c.outerLength))).toEqual(new Set([200]));
+});
+
 test('Convert turns one array\'s copies into real rings; its joins stay', async ({ launch }) => {
   const a = await openGhostSource(launch);
   await polarGhosts(a);
@@ -405,6 +455,8 @@ test('Convert turns one array\'s copies into real rings; its joins stay', async 
   expect(ghosts(file, 'mother-chain')).toHaveLength(3);              // the other array is untouched
   const rings = file.elements.filter((e: any) => e.type === 'ring');
   expect(rings).toHaveLength(6);
+  // session 64: the converted rings are complete — notation included (they had none)
+  expect(rings.map((r: any) => r.notation)).toEqual(Array(6).fill('r: 3ds-p-3ds-p-3ds-p-3ds'));
   const ids = new Set(file.elements.map((e: any) => e.id));
   for (const c of file.picotConnections) for (const p of c.picots) expect(ids.has(p.elementId)).toBe(true);
   expect(file.picotConnections.length).toBeGreaterThanOrEqual(2);

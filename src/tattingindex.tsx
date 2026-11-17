@@ -105,6 +105,7 @@ import { Modal } from './components/Modal';
 import { AddPicotsSection } from './components/AddPicotsSection';
 import { RealisticModeBar } from './components/RealisticModeBar';
 import { PicotJoinModeBar } from './components/PicotJoinModeBar';
+import { picotKindSelectionInfo, planPicotKindChange, type PicotKindToken } from './domain/picotKind';
 import { OrderNumberInput } from './components/OrderNumberInput';
 import { RwToggleButton } from './components/RwToggleButton';
 import { NotationRotationControls } from './components/NotationRotationControls';
@@ -2817,6 +2818,13 @@ const APP_VERSION = '1.4.1';
     }) ?? null;
   }, [selectedPicots, picotConnections]);
 
+  // Picot Edit mode, row 2: which kind button is lit for the selection, and
+  // whether it can be changed at all (bead picots can't). domain/picotKind.ts.
+  const picotKindSelection = useMemo(
+    () => picotKindSelectionInfo(selectedPicots, elements),
+    [selectedPicots, elements]
+  );
+
   // Join button's effective action while in picotJoin mode: fold when Fold
   // Mode is armed, regular join otherwise. Also gates the button's disabled
   // state — canFoldSelection is stricter than "length >= 2" (exactly 2,
@@ -5118,6 +5126,61 @@ const APP_VERSION = '1.4.1';
     }
   };
 
+  // Picot Edit mode: set the kind (p / lp / sp / gp / jpg / cj / cjp) of every
+  // selected picot by rewriting just those tokens in the notation — the
+  // picot-level twin of setRingKind. A repeat group that holds a changed
+  // picot is written out (domain/picotKind.ts). Goes through
+  // computeElementAfterNotationEdit in 'order' mode, so picot ids and joins
+  // carry over like any notation edit (all seven kinds can hold a join, so
+  // none is dropped). A selected ghost copy edits its mother. One commit =
+  // one Undo step; ghost mothers regenerate. Bead picots are skipped.
+  const setPicotKind = (kind: PicotKindToken) => {
+    if (selectedPicots.length === 0) return;
+
+    // target element id -> picot ids on it
+    const byTarget = new Map<string, string[]>();
+    const add = (elId: string, picotId: string) => {
+      const list = byTarget.get(elId);
+      if (list) list.push(picotId); else byTarget.set(elId, [picotId]);
+    };
+    selectedPicots.forEach((sp: any) => {
+      const el = elementsRef.current.find((e: any) => e.id === sp.elementId);
+      if (!el) return;
+      if (el.type === 'ghost') {
+        // A ghost's picots are copies of its mother's, in the same order.
+        const mother = elementsRef.current.find((e: any) => e.id === el.sourceId);
+        const idx = (el.picots || []).findIndex((p: any) => p.id === sp.picotId);
+        const mp = mother?.picots?.[idx];
+        if (mother && mp) add(mother.id, mp.id);
+        return;
+      }
+      add(el.id, sp.picotId);
+    });
+
+    const survivingConnKeys = new Set(
+      picotConnectionsRef.current.flatMap((conn: any) => conn.picots.map((cp: any) => `${cp.elementId}::${cp.picotId}`))
+    );
+    const results = new Map<string, any>();
+    byTarget.forEach((picotIds, elId) => {
+      const el = elementsRef.current.find((e: any) => e.id === elId);
+      if (!el) return;
+      const plan = planPicotKindChange(el, picotIds, kind);
+      if (!plan) return;
+      const computed = computeElementAfterNotationEdit(el, plan.notation, plan.notationB, 'order', survivingConnKeys);
+      if (!computed || computed.droppedJoinIds.length > 0) return;
+      results.set(elId, computed.element);
+    });
+    if (results.size === 0) return;
+
+    const updated = elementsRef.current.map((el: any) => results.get(el.id) ?? el);
+    const motherIds = [...results.values()].filter(el => el.isGhostMother).map(el => el.id);
+    if (motherIds.length > 0) {
+      applyGhostRegenResult(regenerateGhostArrays(updated, ghostArrays, motherIds));
+    } else {
+      setElements(updated);
+    }
+  };
+
   // Converts the selected ring to a Josephine Knot:
   //   1. Strips all picots and their connections
   //   2. Rewrites notation from "r: Nds..." to "jk: Nss" (same stitch count,
@@ -5943,14 +6006,24 @@ const APP_VERSION = '1.4.1';
 
     // ── cj / cjp / jp / jpg ──
     if (p.isJoint) {
-      // cjp realistic: arm in thread colour — baked SVG handles rest
-      if (renderMode === 'realistic' && p.isCoreJoin && p.hasPicotArm) {
-        return <g key={key}><line x1={x} y1={y} x2={endX} y2={endY} stroke={armColor} strokeWidth={sw} /></g>;
-      }
+      // Realistic: the baked SVG (bakeRealisticView) draws the cjp arm and
+      // the picot itself; drawing another straight arm here put a schematic
+      // line on top of the realistic picot.
       if (renderMode === 'realistic') return null;
       if (!showEditingArtifacts) return null;
-      // cj: core join without arm — nothing visible in schematic
-      if (p.isCoreJoin && !p.hasPicotArm) return null;
+      // cj: core join without arm — nothing visible in schematic, except in
+      // Picot Edit mode, where it needs its select / join dot like every
+      // other joinable picot (cjp below has the same dot plus its arm).
+      if (p.isCoreJoin && !p.hasPicotArm) {
+        if (activeMode === 'picotJoin') {
+          return (
+            <g key={key} data-ui="1">
+              <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
+            </g>
+          );
+        }
+        return null;
+      }
       // cjp: arm (+ dot in picotJoin mode)
       if (p.isCoreJoin && p.hasPicotArm) {
         if (activeMode === 'picotJoin') {
@@ -7779,6 +7852,18 @@ const APP_VERSION = '1.4.1';
           .app-root .prop-bar-slot { height: 4.5rem; }
           .app-root .prop-bar { min-height: 4.5rem !important; padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
         }
+        /* Picot Edit mode, picot kind buttons (PicotJoinModeBar.tsx): the short
+           token everywhere; the long "P - Regular picot" label only on wide
+           screens (Large UI needs more room, so from 1600 px). */
+        .picot-kind-long { display: none; }
+        @media (min-width: 1360px) and (min-height: 501px) {
+          .picot-kind-long { display: inline; }
+          .picot-kind-short { display: none; }
+        }
+        @media (min-width: 1360px) and (max-width: 1599px) {
+          .ui-large .picot-kind-long { display: none; }
+          .ui-large .picot-kind-short { display: inline; }
+        }
         /* Session 61: the single-select property bar's forced "Row 2" break
            (GeneralElementPropertyBar.tsx) is hidden below 1440 px. At these
            widths Row 1 often wraps — a tablet at 1280 px / Large put
@@ -7879,6 +7964,8 @@ const APP_VERSION = '1.4.1';
               onConnectionColorChange={onConnectionColorChange}
               mmPerUnit={(() => { const pr = threadPresets.find(x => x.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET; return (pr.ds20Core / 20) / dsWidth; })()}
               presetName={presetDisplayName(threadPresets.find(x => x.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET)}
+              picotKindSelection={picotKindSelection}
+              onSetPicotKind={setPicotKind}
               t={t}
             />
           ) : activeMode === 'beading' ? (

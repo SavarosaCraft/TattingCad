@@ -275,3 +275,35 @@ export const syncJointFlags = (elements: any[], conns: any[], ids: Set<string>):
     return changed ? { ...el, picots } : el;
   });
 };
+
+// ── A fold and its copies (session 64, user decision) ───────────────────────
+// A fold made between a mother and a boundary copy (or first ↔ last copy) is
+// repeated around the array. Changing the fold's shape — either the fold the
+// user made or one of its copies — changes all of them, and the array's rule,
+// so a later rebuild (Apply, moving the mother) makes them the same way.
+// This finds that family: the array, and the ids of the user's fold (the
+// anchor) plus the folds copied from it. null = a fold of no array.
+export const FOLD_SHAPE_KEYS = ['outerLength', 'innerLength', 'angleA', 'angleB'] as const;
+
+export const foldFamily = (connId: string, conns: any[], arrays: any[]): { arrayId: string; connIds: string[] } | null => {
+  const conn = conns.find(c => c.id === connId);
+  if (!conn || conn.connectionType !== 'fold') return null;
+  const isPair = (c: any, a: string, b: string) => {
+    const e = (c.picots || []).map((cp: any) => cp.elementId);
+    return e.length === 2 && ((e[0] === a && e[1] === b) || (e[0] === b && e[1] === a));
+  };
+  for (const arr of arrays) {
+    const rules = (arr.inheritedJoins || []).filter((r: any) => r.connExtra?.connectionType === 'fold');
+    if (rules.length === 0) continue;
+    const ids: string[] = arr.ghostIds || [];
+    const first = ids[0], last = ids[ids.length - 1];
+    const isAnchor = (c: any) => rules.some((r: any) => r.isSourceElement
+      ? isPair(c, arr.sourceId, r.anchorEnd === 'end' ? last : first)
+      : first !== last && isPair(c, first, last));
+    const member = (c: any) => c.connectionType === 'fold' &&
+      (c.isInheritedJoin === arr.id || (!c.isInheritedJoin && isAnchor(c)));
+    if (!member(conn)) continue;
+    return { arrayId: arr.id, connIds: conns.filter(member).map(c => c.id) };
+  }
+  return null;
+};
