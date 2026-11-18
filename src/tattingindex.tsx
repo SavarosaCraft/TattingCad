@@ -105,7 +105,8 @@ import { Modal } from './components/Modal';
 import { AddPicotsSection } from './components/AddPicotsSection';
 import { RealisticModeBar } from './components/RealisticModeBar';
 import { PicotJoinModeBar } from './components/PicotJoinModeBar';
-import { picotKindSelectionInfo, planPicotKindChange, type PicotKindToken } from './domain/picotKind';
+import { picotKindSelectionInfo, planPicotKindChange, picotKindToken, picotMarkerRadius, type PicotKindToken } from './domain/picotKind';
+import { PicotMarker } from './components/PicotMarker';
 import { OrderNumberInput } from './components/OrderNumberInput';
 import { RwToggleButton } from './components/RwToggleButton';
 import { NotationRotationControls } from './components/NotationRotationControls';
@@ -731,7 +732,7 @@ const TattingDesigner = () => {
   // Linear array state
 
   // Spiral array state
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.4.1';
 
 
   // Update reminder: only after 90 days with THIS version — evaluated once
@@ -5938,12 +5939,21 @@ const APP_VERSION = '1.4.2';
     const getIsConnected = () => picotConnections.some(conn =>
       conn.picots.some(cp => cp.elementId === element.id && cp.picotId === p.id)
     );
+    // Guide point (gp): while unconnected + unselected it takes the same
+    // orange as the GP snap indicator (theme.snapInner); selected / connected
+    // keep the usual state colours.
     const dotColor = p.isCoreJoin
       ? (isSelected ? theme.cjSelected : getIsConnected() ? theme.cjConnected : theme.cjUnconnected)
+      : (p.isGuidePoint && !isSelected && !getIsConnected()) ? theme.snapInner
       : (isSelected ? theme.jpSelected : getIsConnected() ? theme.jpConnected : theme.jpUnconnected);
     const armColor = p.isGuidePoint ? theme.gpDiamond : getSolidColor(element, p);
     const sw = isSelected ? '4' : '2';
     const dotR = isSelected ? 6 / zoom : 4.5 / zoom;
+    // Picot Edit mode marker for the joinable kinds: shape = kind, colour =
+    // state (PicotMarker.tsx, picotMarkerRadius in domain/picotKind.ts). The
+    // bead / BE dots above and below keep the plain dotR circle.
+    const kind = picotKindToken(p);
+    const markerR = picotMarkerRadius(kind, isSelected, zoom);
     const len = PICOT_SIZE[p.length] || 20;
 
     // ── BE ──
@@ -6018,7 +6028,7 @@ const APP_VERSION = '1.4.2';
         if (activeMode === 'picotJoin') {
           return (
             <g key={key} data-ui="1">
-              <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
+              <PicotMarker kind={kind} cx={x} cy={y} r={markerR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
             </g>
           );
         }
@@ -6030,7 +6040,7 @@ const APP_VERSION = '1.4.2';
           return (
             <g key={key} data-ui="1">
               <line x1={x} y1={y} x2={endX} y2={endY} stroke={dotColor} strokeWidth={sw} />
-              <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
+              <PicotMarker kind={kind} cx={x} cy={y} r={markerR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
             </g>
           );
         }
@@ -6067,7 +6077,7 @@ const APP_VERSION = '1.4.2';
       const gy = y + Math.sin(perpAngle) * gpOffset;
       return (
         <g key={key} className="guide-picot">
-          <circle cx={gx} cy={gy} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} opacity={0.9} />
+          <PicotMarker kind={kind} cx={gx} cy={gy} r={markerR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} opacity={0.9} />
         </g>
       );
     }
@@ -6108,7 +6118,7 @@ const APP_VERSION = '1.4.2';
     if (activeMode === 'picotJoin' && showEditingArtifacts) {
       return (
         <g key={key} data-ui="1">
-          <circle cx={x} cy={y} r={dotR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
+          <PicotMarker kind={kind} cx={x} cy={y} r={markerR} fill={dotColor} stroke={theme.markerOutline} strokeWidth={2 / zoom} />
         </g>
       );
     }
@@ -7966,6 +7976,10 @@ const APP_VERSION = '1.4.2';
               presetName={presetDisplayName(threadPresets.find(x => x.id === activePresetId) || threadPresets[0] || DEFAULT_THREAD_PRESET)}
               picotKindSelection={picotKindSelection}
               onSetPicotKind={setPicotKind}
+              picotKindColors={{
+                p: theme.jpUnconnected, lp: theme.jpUnconnected, sp: theme.jpUnconnected, jpg: theme.jpUnconnected,
+                gp: theme.snapInner, cj: theme.cjUnconnected, cjp: theme.cjUnconnected,
+              }}
               t={t}
             />
           ) : activeMode === 'beading' ? (

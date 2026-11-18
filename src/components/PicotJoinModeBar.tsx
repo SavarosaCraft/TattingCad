@@ -107,6 +107,9 @@ interface PicotJoinModeBarProps {
   // `active` lights the button when every selected picot has that kind.
   picotKindSelection: PicotKindSelection | null;
   onSetPicotKind: (kind: PicotKindToken) => void;
+  // Each button's text colour while not lit = the colour of that kind's
+  // unconnected marker on the canvas (there is no room for a shape icon).
+  picotKindColors?: Partial<Record<PicotKindToken, string>>;
   t: (key: string) => string;
 }
 
@@ -145,6 +148,7 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
   presetName,
   picotKindSelection,
   onSetPicotKind,
+  picotKindColors,
   t,
 }) => {
   const [copiedFoldProps, setCopiedFoldProps] = useState<FoldProps | null>(() => lastCopiedFoldProps);
@@ -264,6 +268,7 @@ export const PicotJoinModeBar: React.FC<PicotJoinModeBarProps> = ({
                     className={`px-2.5 py-0.5 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed${i > 0 ? ' border-l border-gray-600' : ''} ${
                       on ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                     }`}
+                    style={!on && picotKindColors?.[kind] ? { color: picotKindColors[kind] } : undefined}
                     title={t(PICOT_KIND_TITLE_KEY[kind])}
                     aria-pressed={on}
                   >

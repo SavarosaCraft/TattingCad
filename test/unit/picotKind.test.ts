@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseNotation } from '../../src/domain/parser';
-import { PICOT_KIND_TOKENS, picotKindToken, replacePicotKinds, planPicotKindChange, picotKindSelectionInfo } from '../../src/domain/picotKind';
+import { PICOT_KIND_TOKENS, picotKindToken, replacePicotKinds, planPicotKindChange, picotKindSelectionInfo, picotMarkerRadius, PICOT_MARKER_BASE_RADIUS } from '../../src/domain/picotKind';
 
 const el = (notation: string, extra: any = {}) => {
   const parsed = parseNotation(notation)!;
@@ -107,4 +107,23 @@ describe('picotKindSelectionInfo', () => {
   it('same kind → active', () => expect(picotKindSelectionInfo([sel(0)], [e])).toEqual({ active: 'p', canChange: true }));
   it('mixed → none lit, still changeable', () => expect(picotKindSelectionInfo([sel(0), sel(1)], [e])).toEqual({ active: null, canChange: true }));
   it('bead picot → cannot change', () => expect(picotKindSelectionInfo([sel(0), sel(2)], [e])).toEqual({ active: null, canChange: false }));
+});
+
+describe('picotMarkerRadius', () => {
+  it('short < medium < long, and short is not smaller than the old 4.5 dot', () => {
+    expect(PICOT_MARKER_BASE_RADIUS.sp).toBeGreaterThanOrEqual(4.5);
+    expect(PICOT_MARKER_BASE_RADIUS.sp).toBeLessThan(PICOT_MARKER_BASE_RADIUS.p);
+    expect(PICOT_MARKER_BASE_RADIUS.p).toBeLessThan(PICOT_MARKER_BASE_RADIUS.lp);
+  });
+  it('selected is 6/4.5 larger and everything divides by zoom', () => {
+    expect(picotMarkerRadius('sp', false, 1)).toBeCloseTo(4.5);
+    expect(picotMarkerRadius('sp', true, 1)).toBeCloseTo(6);
+    expect(picotMarkerRadius('lp', false, 2)).toBeCloseTo(3.5);
+  });
+  it('null kind falls back to the medium size', () => {
+    expect(picotMarkerRadius(null, false, 1)).toBe(PICOT_MARKER_BASE_RADIUS.p);
+  });
+  it('every kind has a radius', () => {
+    for (const k of PICOT_KIND_TOKENS) expect(PICOT_MARKER_BASE_RADIUS[k]).toBeGreaterThan(0);
+  });
 });

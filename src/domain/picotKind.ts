@@ -146,3 +146,15 @@ export const planPicotKindChange = (el: any, picotIds: string[], kind: PicotKind
   if (body === null) return null;
   return { notation: `${m[1]}: ${body}`, notationB: null };
 };
+
+// Picot Edit mode draws each joinable picot as a marker whose SHAPE says the
+// kind (components/PicotMarker.tsx) and whose colour says the state. Size is
+// part of the kind for the plain picots: short < medium < long. Screen px at
+// zoom 1 (divide by zoom); the medium one is bigger than the old uniform dot
+// (4.5) so the short one — which keeps the old size — is not tiny. A selected
+// marker is 6 / 4.5 larger, as before.
+export const PICOT_MARKER_BASE_RADIUS: Record<PicotKindToken, number> = {
+  sp: 4.5, p: 5.5, lp: 7, gp: 6.5, jpg: 5.5, cj: 5.5, cjp: 5.5,
+};
+export const picotMarkerRadius = (kind: PicotKindToken | null, selected: boolean, zoom: number): number =>
+  (PICOT_MARKER_BASE_RADIUS[kind ?? 'p'] * (selected ? 6 / 4.5 : 1)) / zoom;
